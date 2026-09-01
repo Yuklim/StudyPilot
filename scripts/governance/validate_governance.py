@@ -78,6 +78,21 @@ SEMANTIC_INVARIANTS = (
         "agent/coordinator/<task-id>-closeout",
     ),
     (
+        "control_plane.no_direct_main",
+        "AGENTS.md",
+        "`coordinator` 也不得直接在 `main` 写入或提交",
+    ),
+    (
+        "review.candidate_includes_handoff",
+        "AGENTS.md",
+        "交接报告必须包含在该候选提交中",
+    ),
+    (
+        "evidence.exact_allowlist",
+        "AGENTS.md",
+        "只允许原样写入同一任务的 `REVIEW`、`ACCEPTANCE`，以及仅修改任务单与索引的状态字段和决定日志",
+    ),
+    (
         "review.post_change_invalidates",
         "AGENTS.md",
         "任何超出该白名单的审查后变更都会生成新的候选 SHA，使旧审查与验收结论失效",
@@ -269,7 +284,11 @@ def git_symbolic_head() -> str | None:
     return result.stdout.strip()
 
 
-def validate(*, allow_unborn: bool) -> list[str]:
+def validate(
+    *,
+    allow_unborn: bool,
+    semantic_texts: dict[str, str] | None = None,
+) -> list[str]:
     errors: list[str] = []
 
     if not (ROOT / ".git").exists():
@@ -367,8 +386,10 @@ def validate(*, allow_unborn: bool) -> list[str]:
     if extra_skills:
         errors.append(f"Unregistered governance skills: {', '.join(sorted(extra_skills))}")
 
-    semantic_texts = load_semantic_texts(ROOT, errors)
-    validate_semantic_texts(semantic_texts, errors)
+    texts = semantic_texts
+    if texts is None:
+        texts = load_semantic_texts(ROOT, errors)
+    validate_semantic_texts(texts, errors)
 
     return errors
 

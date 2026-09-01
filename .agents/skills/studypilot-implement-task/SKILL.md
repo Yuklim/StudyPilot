@@ -42,7 +42,7 @@ If any check fails, remain read-only and report the blocker.
 
 1. Commit only task-owned files using the repository commit convention.
 2. Do not merge, force-push, or rewrite shared history.
-3. Produce a handoff using `docs/governance/templates/HANDOFF_TEMPLATE.md`; include the comparison base and candidate commit SHA, then return it to the `coordinator` before the candidate is frozen for review.
+3. Produce a handoff using `docs/governance/templates/HANDOFF_TEMPLATE.md`; include the comparison base and the pre-handoff implementation commit SHA, then return it to the `coordinator`. The coordinator commits the handoff and freezes that resulting commit as the review candidate; the handoff must not try to reference its own containing commit SHA.
 4. Do not directly edit the shared task status, task index, review report, or acceptance report. The coordinator persists evidence and advances state.
 
 Do not review or approve your own work. The next step is an independent read-only review.

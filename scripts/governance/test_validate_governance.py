@@ -17,8 +17,7 @@ class SemanticInvariantTests(unittest.TestCase):
             raise AssertionError("; ".join(load_errors))
 
     def test_current_semantic_baseline_passes(self) -> None:
-        errors: list[str] = []
-        governance.validate_semantic_texts(self.texts, errors)
+        errors = governance.validate(allow_unborn=False, semantic_texts=self.texts)
         self.assertEqual([], errors)
 
     def test_removing_each_guardrail_fails_closed(self) -> None:
@@ -29,8 +28,9 @@ class SemanticInvariantTests(unittest.TestCase):
                 mutated[relative_path] = mutated[relative_path].replace(
                     required_text, "", 1
                 )
-                errors: list[str] = []
-                governance.validate_semantic_texts(mutated, errors)
+                errors = governance.validate(
+                    allow_unborn=False, semantic_texts=mutated
+                )
                 self.assertTrue(
                     any(error.startswith(f"[{invariant_id}]") for error in errors),
                     errors,
@@ -42,8 +42,7 @@ class SemanticInvariantTests(unittest.TestCase):
         mutated[path] = mutated[path].replace(
             'sandbox_mode = "read-only"', 'sandbox_mode = "workspace-write"', 1
         )
-        errors: list[str] = []
-        governance.validate_semantic_texts(mutated, errors)
+        errors = governance.validate(allow_unborn=False, semantic_texts=mutated)
         self.assertTrue(
             any(
                 error.startswith("[integration.sandbox_declaration]")

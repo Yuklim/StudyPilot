@@ -174,7 +174,7 @@ agent/<role>/<task-id>-<short-description>
 完成后不要自行合并，返回标准交接报告给 coordinator。
 ```
 
-开发 Agent 不直接推进共享任务状态。`coordinator` 收到交接后，把报告保存为 `docs/tasks/TASK-XXX-HANDOFF.md`，再将任务登记为 `IN_REVIEW`。
+开发 Agent 不直接推进共享任务状态。交接报告记录比较基线和交接前的实现提交 SHA。`coordinator` 收到交接后，把报告保存为 `docs/tasks/TASK-XXX-HANDOFF.md` 并提交，所得提交才是冻结候选 SHA；候选不能在自身内容中引用自己的 SHA，精确值由之后的 REVIEW 和 ACCEPTANCE 记录。协调者再将任务登记为 `IN_REVIEW`。
 
 如果需要任务内并行调查：
 

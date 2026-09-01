@@ -71,7 +71,7 @@
 
 首次基线建立后，`coordinator` 也不得直接在 `main` 写入或提交。任务登记使用 `agent/coordinator/<task-id>-intake` 分支；审查与验收证据使用 `agent/coordinator/<task-id>-evidence` 分支；合并后的状态登记使用 `agent/coordinator/<task-id>-closeout` 分支。所有控制面分支都必须由用户决定并执行合并。`READY` 任务的 intake 分支必须先进入稳定 `main`，开发任务才可从该基线创建分支或 worktree。
 
-正式审查以一个已提交且不再变化的 **冻结候选提交 SHA** 为对象，交接报告必须包含在该候选提交中。Reviewer 与 Integration Owner 只返回报告，由 `coordinator` 在 evidence 分支原样保存。审查后只允许原样写入同一任务的 `REVIEW`、`ACCEPTANCE`，以及仅修改任务单与索引的状态字段和决定日志；不得改变 HANDOFF、任务目标、范围、允许路径、验收条件、代码、测试、配置、契约或治理规则。验收报告写回本身不要求再次验收。任何超出该白名单的审查后变更都会生成新的候选 SHA，使旧审查与验收结论失效，并要求原负责 Agent 修订后对新的完整合并差异重新只读审查。
+正式审查以一个已提交且不再变化的 **冻结候选提交 SHA** 为对象，交接报告必须包含在该候选提交中。HANDOFF 记录比较基线和交接前的实现提交 SHA；`coordinator` 提交 HANDOFF 后产生并冻结候选 SHA，候选的精确值只记录在之后返回的 REVIEW 和 ACCEPTANCE 中，不要求候选提交引用自身 SHA。Reviewer 与 Integration Owner 只返回报告，由 `coordinator` 在 evidence 分支原样保存。审查后只允许原样写入同一任务的 `REVIEW`、`ACCEPTANCE`，以及仅修改任务单与索引的状态字段和决定日志；不得改变 HANDOFF、任务目标、范围、允许路径、验收条件、代码、测试、配置、契约或治理规则。验收报告写回本身不要求再次验收。任何超出该白名单的审查后变更都会生成新的候选 SHA，使旧审查与验收结论失效，并要求原负责 Agent 修订后对新的完整合并差异重新只读审查。
 
 提交 `0b7e269` 是 TASK-000 在上述规则明确前直接写入 `main` 的一次性启动收尾偏差。保留该历史以便审计，不重写，也不得把它作为未来直接写入 `main` 的先例。
 
