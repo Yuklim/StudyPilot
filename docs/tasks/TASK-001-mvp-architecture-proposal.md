@@ -2,7 +2,7 @@
 
 ## 1. 基本信息
 
-- 状态：`IN_PROGRESS`
+- 状态：`IN_REVIEW`
 - 负责人角色：`architecture_owner`
 - 创建人：主协调 Agent
 - 创建日期：2026-09-01
@@ -143,3 +143,4 @@ Markdown 行尾空白检查
 | 2026-09-01 | IN_REVIEW | coordinator | 实现提交 `4ca1ae0` 与交接证据完整；提交 HANDOFF 后冻结候选并安排独立实际只读复审 |
 | 2026-09-01 | RETURNED | qa_reviewer | 实际只读复审候选 `d607bfb`，发现本地 API 跨站写入防护、上传崩溃恢复、删除确认版本绑定和主要主题所有权四项问题 |
 | 2026-09-01 | IN_PROGRESS | coordinator | 接受四项 finding，退回原 `architecture_owner` 在唯一允许的架构文档中修订 |
+| 2026-09-01 | IN_REVIEW | coordinator | 修订提交 `4dfe18d` 已关闭四项 finding；提交修订 HANDOFF 后冻结新候选并重新完整只读复审 |
