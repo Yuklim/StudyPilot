@@ -70,7 +70,7 @@
 代价：
 
 - 初学者需要同时学习 Python、HTTP、TypeScript、React 和浏览器安全边界。
-- 开发时有前后端两个进程，并需要处理严格限定来源的 CORS。CORS 是浏览器允许一个地址的前端访问另一个地址后端的规则；[FastAPI CORS 官方说明](https://fastapi.tiangolo.com/tutorial/cors/)建议明确列出允许来源。
+- 开发时有前后端两个进程，并需要配置同源开发代理以及服务端本地访问防护。CORS 只是附加限制；[FastAPI CORS 官方说明](https://fastapi.tiangolo.com/tutorial/cors/)表明简单请求仍会进入应用，因此不能把它当作写入授权。
 - 同一个功能通常涉及 API 契约和界面调用，若契约没有先冻结，多 Agent 并行容易产生理解不一致。
 
 ### 3.2 方案 B：Django + 服务端模板的一体化模块化单体
@@ -254,19 +254,29 @@ SQLite 限制：不允许在多个并行写入任务中共享同一个运行数�
 
 ### 5.4 原始文件存储
 
-数据库不保存大文件二进制本体，只保存：内部文件 ID、原始文件名、受控相对键、大小、媒体类型、SHA-256 校验值、创建时间和所属资料 ID。
+数据库不保存大文件二进制本体，只保存：内部文件 ID、原始文件名、受控相对键、大小、媒体类型、SHA-256 校验值、存储状态、创建/更新时间和所属资料 ID。正常状态沿 `PENDING → READY` 转换；无法自动恢复的 `PENDING` 或对账发现损坏的 `READY` 转为 `FAILED`，不能继续伪装成可下载文件。
 
 实际文件保存为类似 `var/uploads/<resource-id>/<file-id>` 的服务器生成路径。原始文件名只用于显示和下载，不直接作为磁盘路径，防止文件名中的 `../` 等内容越过数据目录。
 
-上传流程边界：
+文件系统和 SQLite 不能共享一个原子事务，因此上传采用可对账的状态机，而不是假设二者能同时提交：
 
-1. 接口层先检查请求类型和基础大小限制。
-2. 文件存储服务以随机内部 ID 写入临时位置，并计算校验值。
-3. 资料应用服务在数据库事务中建立资料与文件元数据。
-4. 数据库失败时移除临时文件；文件落盘失败时不创建资料记录。
-5. 正文解析不在此流程中，原件保存成功就可以完成基础资料添加。
+1. 接口层在读取请求体前完成本地访问令牌、`Host`、`Origin` 和 Fetch Metadata 校验，再检查文件类型与大小。
+2. 文件存储服务在**与最终目录相同的文件系统**中，以随机内部 ID 流式写入暂存文件；写完后刷新到磁盘并计算大小与 SHA-256。暂存文件不使用用户文件名。
+3. 第一个数据库事务建立 `LearningResource` 与 `OriginalFile(PENDING)`，记录唯一暂存键、最终存储键、大小和校验值。文件型资料在此状态下不进入普通资料列表。
+4. 事务提交后，存储服务验证暂存文件，再用同文件系统原子替换/重命名提升到最终键，并刷新目录元数据。[Python `os.replace` 官方文档](https://docs.python.org/3/library/os.html#os.replace)说明在 POSIX 上成功的替换是原子操作；实现仍须验证目标平台行为。
+5. 第二个数据库事务重新核对最终文件、大小和校验值，把 `OriginalFile` 改为 `READY`。只有该事务提交后，API 才返回添加成功，资料才对普通列表可见。
+6. 正文解析不在此流程中；`READY` 只表示原件可靠保存，不表示正文已解析。
 
-下载只能通过受控 API 按文件 ID 获取。API 根据数据库记录解析文件，不能接受任意本机路径。
+各崩溃点必须有确定恢复结果：
+
+- `PENDING` 提交前崩溃：数据库没有记录；超过宽限期的无引用暂存文件按孤儿回收。
+- `PENDING` 提交后、提升前崩溃：对账程序发现有效暂存文件后重试原子提升；文件无效则标为 `FAILED`，不返回成功。
+- 文件提升后、`READY` 提交前崩溃：对账程序核对最终文件与校验值，一致则幂等补记 `READY`，不一致则隔离并标为 `FAILED`。
+- `READY` 后：最终文件必须存在且校验元数据一致；若对账发现不一致，立即禁止下载并报告数据损坏，不能静默继续。
+
+应用每次启动时必须先执行一次对账，并在运行期间按固定短周期扫描超时 `PENDING`、`FAILED`、无数据库引用的暂存文件和无数据库引用的最终文件。清理只能处理超过宽限期且再次确认无活动上传、无数据库引用的孤儿；所有提升、补记和回收操作必须幂等，即重复执行也得到同一安全结果。
+
+下载只能通过受控 API 按文件 ID 获取，并要求本地访问令牌。API 只读取 `READY` 且实际文件与记录一致的对象；`PENDING`、`FAILED` 或对账异常一律返回不可用错误。API 根据数据库记录解析文件，不能接受任意本机路径。
 
 ### 5.5 依赖管理与本地运行
 
@@ -278,7 +288,7 @@ SQLite 限制：不允许在多个并行写入任务中共享同一个运行数�
 
 ```text
 终端 1：在 backend 中启动 FastAPI，仅监听 127.0.0.1
-终端 2：在 frontend 中启动 Vite，仅允许明确的本地 API 地址
+终端 2：在 frontend 中启动 Vite，由固定同源代理把 /api 转发给 FastAPI
 浏览器：打开 Vite 给出的本地地址
 ```
 
@@ -288,8 +298,8 @@ SQLite 限制：不允许在多个并行写入任务中共享同一个运行数�
 
 | 模块 | 拥有的数据与规则 | 可以依赖 | 明确不负责 |
 | --- | --- | --- | --- |
-| 资料 `resources` | 学习资料元数据、来源类型、网页链接、粘贴原文、原始文件元数据、资料删除用例 | 分类查询、文件存储接口、学习清理接口 | 正文解析、AI 摘要、状态/进度规则、学习统计算法 |
-| 分类 `taxonomy` | 主题、标签、资料—标签关系、主题/标签删除约束 | 数据仓储 | 资料状态和学习进度 |
+| 资料 `resources` | 学习资料元数据、`LearningResource.topic_id`、主要主题分配/变更、来源类型、网页链接、粘贴原文、原始文件元数据、`DeletionConfirmation`、资料删除用例 | taxonomy 的主题存在性验证和删除/转移规则、文件存储接口、学习清理接口 | 创建/修改 Topic 本身、标签关联、正文解析、AI 摘要、状态/进度规则、学习统计算法 |
+| 分类 `taxonomy` | `Topic`、`Tag`、`ResourceTag`、主题存在性验证、主题/标签删除与转移规则 | 查询 resources 提供的主题引用影响；通过 resources 用例执行主要主题重分配 | 直接修改 `LearningResource.topic_id`、资料状态和学习进度 |
 | 学习 `learning` | `LearningProgress`、学习状态、当前进度、开始/完成时间、学习记录、进度变化不变量 | 只按资料 ID 验证资料存在 | 原始文件、笔记正文、复习日期 |
 | 笔记 `notes` | 个人笔记内容、创建/更新时间、所属资料 | 只按资料 ID 验证资料存在 | AI 生成内容；两者必须保持不同类型和存储边界 |
 | 复习 `reviews` | 当前复习计划、到期/逾期判断、复习结果历史、重新安排 | 资料存在性、学习状态变更用例 | 强制间隔重复算法 |
@@ -301,10 +311,13 @@ SQLite 限制：不允许在多个并行写入任务中共享同一个运行数�
 ### 6.1 依赖与所有权原则
 
 - 一个事实只有一个权威所有者。例如当前进度由学习模块的 `LearningProgress` 修改，资料列表和统计模块只读取组合后的查询结果。
+- 主要主题关联只有一个写入所有者：`resources` 拥有 `LearningResource.topic_id` 及其分配、变更和清空。`taxonomy` 拥有 Topic/Tag/ResourceTag，负责验证 Topic 是否存在以及规定删除/转移条件，但不能直接写 `topic_id`。
 - 跨模块只传 ID、命令和明确的数据结构，不共享可随意修改的 ORM 对象。
 - 删除资料由资料应用服务编排，各从属模块提供清理能力；界面不能分别调用多个删除接口来模拟事务。
 - 统计默认实时聚合，不建立需要同步更新的“统计结果表”。真实性能不足后再依据测量引入缓存。
 - 所有时间由后端保存为 UTC，界面按用户本地时区显示，避免以后跨时区时含义不一致。
+
+主题删除或转移由应用服务在一个数据库事务中协调：taxonomy 先计算引用影响并验证新主题；resources 再按明确用户选择批量转移或清空 `topic_id`；taxonomy 最后删除旧 Topic。若用户没有确认转移/清空方案，或执行时引用影响已变化，则返回 409，不静默改动资料。
 
 ## 7. 最小公共契约基线
 
@@ -314,7 +327,10 @@ SQLite 限制：不允许在多个并行写入任务中共享同一个运行数�
 
 | API 资源组 | 最小职责 |
 | --- | --- |
-| `/api/v1/resources` | 新增链接、文件或粘贴内容；列表、详情、修改、搜索、筛选、排序、删除确认 |
+| `/api/v1/local-session` | 仅在可信 Host 与同源请求上下文中返回当前进程已经生成的内存访问令牌；不接受业务数据 |
+| `/api/v1/resources` | 新增链接、文件或粘贴内容；列表、详情、修改、搜索、筛选和排序 |
+| `/api/v1/resources/{id}/deletion-preview` | 返回当前删除影响摘要、短时一次性令牌和过期时间，不修改资料 |
+| `/api/v1/resources/{id}` 的 DELETE | 重算影响并消费删除令牌；不一致返回 409，新摘要必须重新确认 |
 | `/api/v1/topics` | 主题增删改查和删除冲突提示 |
 | `/api/v1/tags` | 标签增删改查以及资料标签关联 |
 | `/api/v1/resources/{id}/notes` | 某资料的个人笔记增删改查 |
@@ -333,12 +349,13 @@ SQLite 限制：不允许在多个并行写入任务中共享同一个运行数�
 ```text
 界面提交链接、文件或文本
 → API 校验互斥来源字段
-→ 资料应用服务保存原件/原文和数据库记录
-→ 分类模块建立主题、标签关联
-→ 成功后返回完整资料摘要
+→ taxonomy 验证所选 Topic/Tag 存在且可用
+→ resources 保存资料，并由 resources 写入 LearningResource.topic_id
+→ taxonomy 写入 ResourceTag；文件型资料继续完成 PENDING→READY 状态机
+→ 所有必要步骤成功后返回完整资料摘要
 ```
 
-一次资料必须且只能有一种主要来源：网页链接、上传文件或粘贴内容。部分失败不能留下用户看不到的半成品记录。
+一次资料必须且只能有一种主要来源：网页链接、上传文件或粘贴内容。`topic_id` 只能由 resources 写入，taxonomy 只提供验证。部分失败不能留下用户看不到的半成品记录；文件型资料必须达到 `OriginalFile.READY` 才能返回成功。
 
 #### 记录学习
 
@@ -383,12 +400,17 @@ SQLite 限制：不允许在多个并行写入任务中共享同一个运行数�
 
 ### 7.4 删除与用户确认边界
 
-删除资料至少分为两步：
+删除资料使用“预览—确认执行”协议，不能用重复资料 ID 代替确认：
 
-1. 前端获取删除影响摘要，显示将删除的资料、原始文件、笔记、学习记录和复习记录数量。
-2. 用户主动确认后，前端发送包含该资料 ID 的确认值；后端验证确认值与目标一致后，才执行统一删除用例。
+1. 前端调用受保护的删除预览接口。后端在当前数据库快照中计算资料版本、所有关联对象的 ID/版本集合和影响摘要，显示将删除的原始文件、笔记、学习记录和复习记录数量。
+2. 预览响应返回一个由密码学安全随机数生成器产生的**短时、一次性、不透明确认令牌**。服务端在独立的 `DeletionConfirmation` 记录中保存令牌摘要、过期时间、资料 ID、资料版本、关联影响摘要及使用状态；该记录不随资料级联删除，并保留到过期回收，以便拒绝重放。原始令牌不写数据库、URL 或日志。[Python `secrets` 官方文档](https://docs.python.org/3/library/secrets.html)建议使用操作系统安全随机源生成安全令牌。
+3. 用户看到完整摘要并主动确认后，前端通过专用自定义请求头提交令牌。服务端先验证本地访问令牌，再验证删除令牌未过期、未使用且绑定当前资料。
+4. 服务端在删除事务中锁定当前逻辑操作，重新计算资料版本和关联影响摘要。若与预览绑定值不同，令牌立即作废，返回 409 与新影响摘要；用户必须重新查看并取得新令牌，旧确认不能继续使用。
+5. 若完全一致，服务端保持同一数据库写事务，先把 `READY` 文件原子移动到同卷 trash 隔离键，再在事务内标记令牌已使用并删除关系数据，最后提交；提交成功后才清理隔离文件并返回成功。同一令牌的重放必须被拒绝，即使第一次请求的响应在网络中丢失。
 
-后端不能因为前端已经弹窗就省略确认校验。删除过程中若磁盘或数据库操作失败，应保留或恢复原件并返回明确失败，不能谎称删除成功。具体的暂存、回滚与重试算法由后续文件契约任务细化并测试。
+“关联影响摘要”至少覆盖资料版本、原始文件、笔记、学习记录、复习计划/记录和资料标签关联的稳定 ID 与版本或等价变更序号；只比较数量不够，因为一增一删可能保持相同数量。
+
+后端不能因为前端已经弹窗就省略上述重算。文件移动失败时数据库事务回滚；进程若在移动后、提交前崩溃，数据库仍有 `OriginalFile` 记录，对账程序据此把 trash 文件恢复到最终键；进程若在提交后、清理前崩溃，数据库已无记录，对账程序回收 trash 文件。任何无法确认结果的情况都返回失败并要求重新预览，不能谎称删除成功。
 
 主题或标签仍被资料使用时，默认返回 409 和影响数量，不静默连带删除资料。
 
@@ -417,8 +439,8 @@ SQLite 限制：不允许在多个并行写入任务中共享同一个运行数�
 这是概念级模型，用于统一含义，不是最终数据库迁移文件。
 
 ```text
-Topic 1 ──────── 0..* LearningResource  （每份资料可选择 0..1 个 Topic）
-Tag   0..* ───── 0..* LearningResource  （通过 ResourceTag）
+Topic 1 ──────── 0..* LearningResource  （resources 拥有可空的 topic_id）
+Tag   0..* ───── 0..* LearningResource  （taxonomy 通过 ResourceTag 拥有关联）
 
 LearningResource 1 ─── 0..1 OriginalFile
 LearningResource 1 ─── 1 LearningProgress
@@ -426,16 +448,18 @@ LearningResource 1 ─── 0..* Note
 LearningResource 1 ─── 0..* StudyRecord
 LearningResource 1 ─── 0..* ReviewRecord
 LearningResource 1 ─── 0..1 ActiveReviewPlan
+LearningResource 1 ┄┄┄ 0..* DeletionConfirmation  （逻辑绑定，不做级联外键）
 ```
 
 ### 8.1 对象与关键含义
 
 | 对象 | 第一阶段关键字段 | 关系与不变量 | 后续需细化 |
 | --- | --- | --- | --- |
-| `LearningResource` 学习资料 | ID、标题、来源类型、原始链接或粘贴原文、来源名称、保存原因、主题 ID、创建/更新时间 | 恰好一种主要来源；主题可为空后补；只拥有资料元数据，不直接拥有学习规则 | 各类型长度上限、搜索索引、乐观并发字段 |
-| `OriginalFile` 原始文件 | 文件 ID、资料 ID、原始名称、内部存储键、大小、媒体类型、SHA-256、创建时间 | 一份文件型资料对应一个原件；内部存储键唯一；不保存客户端绝对路径 | 上传上限、内容识别、备份与恢复细节 |
+| `LearningResource` 学习资料 | ID、标题、来源类型、原始链接或粘贴原文、来源名称、保存原因、`topic_id`、版本、创建/更新时间 | 恰好一种主要来源；主题可为空后补；resources 是 `topic_id` 唯一写入所有者，写前由 taxonomy 验证；不直接拥有学习规则 | 各类型长度上限、搜索索引、乐观并发字段 |
+| `OriginalFile` 原始文件 | 文件 ID、资料 ID、原始名称、暂存键、最终存储键、大小、媒体类型、SHA-256、`PENDING/READY/FAILED` 状态、创建/更新时间 | 一份文件型资料对应一个原件；存储键唯一；只有 `READY` 可见和下载；不保存客户端绝对路径 | 上传上限、内容识别、对账周期和宽限期具体数值 |
+| `DeletionConfirmation` 删除确认 | 令牌摘要、资料 ID、资料版本、关联影响摘要、过期时间、使用时间 | resources 拥有；不保存原始令牌；不随资料级联删除；过期后回收，用于一次性消费与重放拒绝 | 具体有效分钟数、回收批次大小 |
 | `LearningProgress` 学习进度 | 资料 ID、当前状态、当前进度、开始时间、完成时间、更新时间 | 每份资料恰有一条；进度 0～100；由 learning 模块维护并与 `StudyRecord` 事务性更新 | 状态转换表、并发更新策略、各时间自动填充规则 |
-| `Topic` 主题 | ID、名称、说明、创建/更新时间 | 一个资料至多一个主要主题；名称在规范化后唯一 | 大小写和空白规范、删除/转移流程 |
+| `Topic` 主题 | ID、名称、说明、版本、创建/更新时间 | taxonomy 拥有；一个资料至多一个主要主题；名称在规范化后唯一；删除/转移规则由 taxonomy 定义，`topic_id` 实际更新由 resources 执行 | 大小写和空白规范、删除/转移接口细节 |
 | `Tag` 标签 | ID、名称、创建/更新时间 | 标签名称规范化后唯一；可关联多份资料 | 颜色是否属于产品需求尚未确认，不加入当前模型 |
 | `ResourceTag` 资料标签关联 | 资料 ID、标签 ID | 复合唯一，避免同一标签重复添加 | 无额外业务字段时保持纯关联 |
 | `Note` 个人笔记 | ID、资料 ID、正文、创建/更新时间 | 只能由用户笔记操作修改；与 AI 生成内容分表或分边界 | Markdown 支持、版本历史、最大长度 |
@@ -467,9 +491,16 @@ LearningResource 1 ─── 0..1 ActiveReviewPlan
 
 ### 9.2 本地访问边界
 
-- 第一阶段只监听 `127.0.0.1`，即只有本机可连接；不得默认绑定 `0.0.0.0` 暴露给局域网。
-- 开发期 CORS 只允许明确的本地前端地址，不使用 `*`。
-- 第一阶段没有账户登录，**因此不能直接部署到公网**。任何联网部署必须先建立身份认证、授权、HTTPS、上传限制和备份任务。
+- 第一阶段只监听 `127.0.0.1`，即只有本机可连接；不得默认绑定 `0.0.0.0` 暴露给局域网。但回环地址本身不授权请求：恶意网页仍能把简单表单或 `multipart/form-data` 请求发送到本机服务，CORS 可能只阻止读取响应。[OWASP CSRF 指南](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html)也明确把这些类型列为无需预检的简单请求。
+- 浏览器只使用一个规范入口 `http://127.0.0.1:<固定配置端口>`。演示构建由 FastAPI 同源提供界面；开发期 Vite 必须通过同源 `/api` 代理访问后端，不能让业务代码任意直连不同来源端口。
+- 服务端在读取或写入请求体、创建临时文件、执行数据库查询前，严格校验 `Host`/`:authority` 等于配置的本机地址和端口，拒绝其他主机名、重复值及转发头覆盖，防止把攻击者域名解析到回环地址的 DNS rebinding。HTTP 规范说明 `Host` 表示目标 URI 的主机和端口；见 [RFC 9110 第 7.2 节](https://www.rfc-editor.org/rfc/rfc9110.html#name-host-and-authority)。
+- 每次后端启动都用操作系统安全随机源生成至少 256 位的**本地访问令牌**。令牌只通过已经通过 `Host` 与同源请求上下文校验的 bootstrap 响应交给可信 UI，响应设置 `Cache-Control: no-store`；前端只保存在内存，不放入 URL、Cookie、`localStorage`、Git 或日志，后端重启即轮换。[Python `secrets` 文档](https://docs.python.org/3/library/secrets.html)说明该模块适合生成认证和安全令牌。
+- 除 bootstrap 和静态界面外，所有 `/api/v1` 读取、下载和写入请求都必须携带 `X-StudyPilot-Token` 自定义头，后端使用恒定时间比较；缺失、错误或上一轮启动的令牌统一返回 403。恶意网页的普通 HTML 表单无法添加这个自定义头。
+- 所有 `POST`、`PUT`、`PATCH`、`DELETE` 还必须同时满足：`Origin` 与规范界面来源完全相等；`Sec-Fetch-Site` 为 `same-origin`；`Sec-Fetch-Mode`/`Sec-Fetch-Dest` 与 API fetch 一致；缺失、`null`、`same-site`、`cross-site` 或未知值均默认拒绝。W3C 的 [Fetch Metadata 规范](https://www.w3.org/TR/fetch-metadata/)定义这些请求上下文信号；Origin 是必需的后备与交叉校验，而不是只依赖一个头。
+- API 只接受契约指定的 JSON；只有文件上传端点接受 `multipart/form-data`。无论 Content-Type 是 `application/x-www-form-urlencoded`、`text/plain` 还是 multipart，只要缺少上述自定义头、令牌或来源信号，就必须在解析请求体和落盘前拒绝。
+- CORS 继续作为附加防线：只允许规范界面来源、方法和头，不使用 `*`，不开放未列出的来源。CORS 失败不能代替服务端授权检查，CORS 成功也不能跳过令牌、Host、Origin 和 Fetch Metadata。
+- bootstrap、交互式 API 文档和开发代理都必须遵守同一策略；不得留下“仅供调试”的无令牌写接口。非浏览器客户端若确有需要，必须由用户从当前可信 UI 明确授权并取得本次运行令牌，不能通过放宽 Origin 检查获得兼容性。
+- 第一阶段没有账户登录，**因此不能直接部署到公网**。本地访问令牌只解决恶意网页向回环服务发请求的问题，不是多用户身份系统。任何联网部署必须先建立正式身份认证、授权、HTTPS、上传限制和备份任务。
 
 ### 9.3 原始文件和笔记
 
@@ -507,10 +538,14 @@ LearningResource 1 ─── 0..1 ActiveReviewPlan
 ### 10.2 必测风险场景
 
 - 三种来源类型的资料添加，及“同时提交两种来源”的拒绝。
-- 文件落盘失败和数据库失败都不产生半成品。
+- 上传在“暂存写完前、`PENDING` 提交后、原子提升后、`READY` 提交前”各点模拟进程崩溃；重启对账后只能得到可下载 `READY`、明确 `FAILED` 或安全回收结果，不能有成功响应对应丢失文件。
+- 故障注入验证暂存写入、刷新、原子提升、两次数据库事务和定时对账分别失败时，不产生可见半成品；无引用暂存/最终文件只在宽限期后回收。
 - 进度小于 0、大于 100、负学习时长、非法状态值被拒绝。
 - 更新状态/进度时学习记录与当前值要么一起成功，要么一起失败。
-- 未确认删除、确认目标不匹配、关联主题仍被使用时被拒绝。
+- 删除令牌过期、重复使用、绑定错误资料时被拒绝；预览后新增/修改任一关联对象时执行返回 409 和新摘要，旧令牌作废并要求重新确认。
+- 主题分配只经过 resources 写 `topic_id`；不存在主题被拒绝，主题删除/转移在影响变化时返回 409，taxonomy 不能直接改资料表。
+- 恶意来源的 `application/x-www-form-urlencoded`、`text/plain` 和 `multipart/form-data` 简单 POST，以及跨站 fetch，均因 Host/Origin/Fetch Metadata/本地令牌或自定义头不满足而在解析请求体前返回 403；数据库、暂存目录和最终目录保持不变。
+- 正常同源请求仍需覆盖令牌缺失、错误、过期轮换、Host 不在白名单、`Sec-Fetch-Site: cross-site`、恶意预检和无令牌下载，确认响应与日志不泄露令牌。
 - 今日到期与逾期边界、跨日和时区显示。
 - 搜索、组合筛选、排序、分页结果稳定。
 - 统计值能从底层记录重新计算，不依赖手工维护的缓存。
@@ -531,10 +566,10 @@ LearningResource 1 ─── 0..1 ActiveReviewPlan
 
 | 需求位置 | 已确认行为 | 架构承载 |
 | --- | --- | --- |
-| 5.1 添加资料 | 网页、PDF、Word、Markdown、TXT、粘贴内容；保留原件 | `resources`、`OriginalFile`、multipart 上传、受控文件目录；解析明确延期 |
+| 5.1 添加资料 | 网页、PDF、Word、Markdown、TXT、粘贴内容；保留原件 | `resources`、`OriginalFile`、multipart 上传、同卷暂存与原子提升、`PENDING/READY/FAILED` 对账；解析明确延期 |
 | 5.2 基本信息 | 标题、来源、主题、标签、原因、状态、进度和时间 | `LearningResource`、`LearningProgress`、`Topic`、`Tag` 与后端校验 |
-| 5.3 资料库 | 列表/卡片、详情、修改、删除、打开链接、下载文件 | 资源 API、文件下载 API、React 视图、两步删除确认 |
-| 5.4 分类搜索筛选 | 主题/标签管理、组合筛选、排序、正文以后加入 | taxonomy 模块、分页列表契约；第一阶段只检索已保存元数据，正文索引留给解析阶段 |
+| 5.3 资料库 | 列表/卡片、详情、修改、删除、打开链接、下载文件 | 资源 API、只下载 `READY` 的文件 API、React 视图、绑定影响版本的一次性删除令牌 |
+| 5.4 分类搜索筛选 | 主题/标签管理、组合筛选、排序、正文以后加入 | resources 拥有主要主题分配，taxonomy 拥有 Topic/Tag/ResourceTag 与删除/转移规则；正文索引留给解析阶段 |
 | 5.5 状态进度 | 五状态、0～100%、保留变化 | learning 模块、当前值 + 追加 `StudyRecord`、单事务 |
 | 5.6 个人笔记 | 多条笔记增删改查，区别 AI 内容 | notes 独立所有权；AI 内容不进入 Note |
 | 5.7 学习记录 | 时间、时长、前后进度、总结、疑问，按资料和时间查看 | `StudyRecord` 与资源/近期记录 API |
@@ -552,7 +587,7 @@ LearningResource 1 ─── 0..1 ActiveReviewPlan
 | 先管理后智能 | extension ports 只有接口边界，没有解析、AI、RAG 或 Agent 实现 |
 | 学习过程优先 | 学习记录、复习历史和统计是一级模块，不把产品简化成收藏夹 |
 | AI 输出可验证 | 未来生成内容与原资料关联，RAG 端口必须返回来源；第一阶段不伪造能力 |
-| 用户保留控制权 | 删除后端二次校验；未来 Agent 只提案，修改数据前确认 |
+| 用户保留控制权 | 删除令牌绑定用户实际看到的影响版本并在执行时重算；未来 Agent 只提案，修改数据前确认 |
 | 展示不等于运营 | 提供本地演示构建和 API 文档，不选云平台或公网运营能力 |
 | 保留未来空间 | 模块和端口隔离具体实现，但不预建微服务、队列或向量库 |
 
@@ -565,11 +600,12 @@ LearningResource 1 ─── 0..1 ActiveReviewPlan
 ### 阶段 A：先冻结共享基础，不能并行跳过
 
 1. **建议任务 A：仓库与本地运行脚手架**
-   - 建立 backend/frontend 最小结构、版本文件、锁文件、Git 忽略、统一启动与检查说明。
+   - 建立 backend/frontend 最小结构、版本文件、锁文件、Git 忽略、统一启动与检查说明，以及默认拒绝的本地访问安全中间件骨架。
    - 只做到健康检查和空页面，不实现业务。
 2. **建议任务 B：API 与数据契约基线**
-   - 细化字段、枚举、状态转换、错误代码、分页筛选、时间语义、删除协议和 OpenAPI 示例。
-   - 建立概念模型对应的初始 SQLAlchemy 模型与 Alembic 迁移可以作为同一任务或紧随其后的独立数据库任务；在其冻结前业务模块不能各自建表。
+   - 细化字段、枚举、状态转换、错误代码、分页筛选、时间语义、本地令牌/来源校验、上传状态机、删除令牌协议和 OpenAPI 示例。
+   - 建立概念模型对应的初始 SQLAlchemy 模型与 Alembic 迁移可以作为同一任务或紧随其后的独立数据库任务；初始共享迁移必须由唯一的数据契约/迁移所有者串行建立，在其冻结前业务模块不能各自建表。
+   - 初始迁移明确 `LearningResource.topic_id`、`OriginalFile` 的存储状态/键和 `DeletionConfirmation` 属于 resources；`Topic`、`Tag`、`ResourceTag` 属于 taxonomy。跨模块外键必须在同一基线迁移中建立并实际启用 SQLite 外键校验。
 3. **建议任务 C：共享测试基础**
    - 建立临时数据库、临时文件目录、API 客户端、前端测试和最小端到端测试骨架。
 
@@ -587,7 +623,7 @@ API 与数据契约基线必须先于跨模块功能实现，因为后续 Agent 
 - **原始文件后端**：上传、保存、下载、校验和删除回滚。
 - **学习与笔记后端**：状态、进度、学习记录、个人笔记。
 
-同一 Alembic 迁移目录不能由多个 Agent 并行写入。新增表结构应由数据契约/迁移所有者串行提交，功能 Agent 只实现已存在模型或等待迁移合并。
+同一 Alembic 迁移目录不能由多个 Agent 并行写入。新增表结构应由数据契约/迁移所有者串行提交，功能 Agent 只实现已存在模型或等待迁移合并。基线之后，resources 提出 `LearningResource.topic_id` 与 `OriginalFile` 的结构变化，taxonomy 提出 Topic/Tag/ResourceTag 的结构变化；两者都不能直接修改对方拥有的模型，最终迁移仍由唯一迁移所有者串行落盘。
 
 ### 阶段 C：依赖基础记录，必须后置
 
@@ -608,8 +644,11 @@ API 与数据契约基线必须先于跨模块功能实现，因为后续 Agent 
 | 前端学习曲线比 Django 模板高 | 限制为 React/TypeScript/Vite/Router，不加大型状态库和 UI 框架；分阶段学习 | 用户在脚手架/首个页面后明确认为成本妨碍可用性 |
 | 前后端契约漂移 | OpenAPI 为外部契约，契约任务先行，API 测试和前端类型检查共同把关 | 出现字段含义不一致或多个 Agent 重复定义类型 |
 | SQLite 并发写限制 | 单用户本地使用，每请求独立 Session，测试数据库隔离 | 出现多用户、多进程高频写入或锁等待测量证据 |
-| 文件系统与数据库无法天然成为同一事务 | 临时文件、数据库事务、失败清理和可重试删除协议 | 故障注入测试发现原件丢失或孤儿文件无法恢复 |
-| 本地无登录不等于安全上线 | 只绑定本机，明确禁止直接公网部署 | 用户决定远程访问或公开演示 |
+| 文件系统与数据库无法天然成为同一事务 | 同卷暂存、原子提升、`PENDING/READY/FAILED`、成功响应门槛、启动/定时对账和宽限期孤儿回收 | 故障注入测试仍发现成功记录丢失原件或孤儿无法安全归类 |
+| 恶意网页请求无登录本地 API | 回环绑定之外同时校验 Host、Origin、Fetch Metadata、每次运行随机令牌和自定义头，并在读请求体前拒绝 | 任何简单 POST、multipart 或跨站 fetch 能造成数据库或磁盘变化 |
+| 删除预览后关联数据变化 | 短时一次性令牌绑定资料版本与关联影响摘要，执行时重算，不一致返回 409 | 并发场景能删除用户未在摘要中看到的数据 |
+| 主要主题关联被两个模块修改 | resources 唯一拥有 `topic_id`，taxonomy 只验证和定义删除/转移规则，迁移串行 | 任一 taxonomy 实现直接更新资料表或并行修改共享迁移 |
+| 本地无登录不等于安全上线 | 本地令牌只防回环跨站请求，仍明确禁止直接公网部署 | 用户决定远程访问或公开演示 |
 | 两套语言生态增加依赖维护 | uv 与 npm 各自锁定，更新作为独立任务并执行完整测试 | 安全公告、运行时结束支持或依赖冲突 |
 | 未来 AI 任务可能阻塞 Web 请求 | 当前不实现；只保留端口 | 真实解析/模型调用超过可接受等待并需要重试 |
 | 统计查询随数据增长变慢 | MVP 实时聚合，先正确后优化 | 性能测试证明查询超出已确定体验目标 |
@@ -635,12 +674,21 @@ API 与数据契约基线必须先于跨模块功能实现，因为后续 Agent 
 | 数据库迁移 | 可按顺序执行的数据库结构变更记录，例如新增一列或一张表 |
 | 事务 | 一组操作全部成功才生效，任何一步失败就整体撤销 |
 | CORS | 浏览器控制“一个地址的前端能否访问另一个地址后端”的安全规则 |
+| CSRF/跨站请求伪造 | 恶意网页借用户浏览器向另一个服务发送请求；即使读不到响应，请求仍可能改变数据 |
+| Host 与 Origin | Host 表示请求要到达哪个主机；Origin 表示网页请求从哪个来源发起，服务端需按完整值校验 |
+| Fetch Metadata | 浏览器附加的请求上下文头，例如 `Sec-Fetch-Site`，帮助后端判断请求来自同源页面还是跨站网页 |
+| 自定义请求头 | 应用自己约定的 HTTP 头；普通 HTML 表单不能添加它，因此可帮助后端拒绝简单跨站表单 |
+| 不透明令牌 | 随机且不可猜的短字符串，客户端只负责原样带回，不应从其内容推断任何数据 |
 | 契约 | 模块共同遵守的输入、输出、错误和数据含义；它比函数名称更重要 |
 | 端口/适配器 | 上层先定义需要的能力，底层再用 SQLite、本地文件或未来外部服务实现 |
 | 端到端测试 | 像真人一样在浏览器执行完整流程，检查多个模块合起来是否可用 |
 | 锁文件 | 记录实际安装的精确依赖版本，使不同机器得到一致环境 |
 | UTC | 全球统一的时间基准；后端按它保存时间，界面再换算成本地时间 |
 | SHA-256 | 根据文件内容计算的固定长度校验值；内容变化时值会改变，可用来检查原件是否一致，但它不是加密文件 |
+| 原子替换 | 文件替换要么完整发生，要么不发生，不让读取者看到只写了一半的最终文件 |
+| 状态机 | 对象只能按规定顺序改变状态；这里上传文件必须从 `PENDING` 进入 `READY` 才算成功 |
+| 对账/幂等 | 对账是比较数据库与磁盘并修复不一致；幂等表示同一修复重复执行也不会产生额外副作用 |
+| 孤儿文件 | 磁盘上存在但数据库没有对应记录的文件，确认没有活动操作后才能回收 |
 | 静态检查/lint | 不运行完整程序就查找代码错误和不符合规则之处的自动检查 |
 | CORS 来源 | 协议、域名和端口的组合；即使都叫 localhost，端口不同也是不同来源 |
 | 派生值 | 可以从权威原始记录计算出的结果，例如本周学习时长，不应人工维护第二份真相 |
@@ -653,6 +701,12 @@ API 与数据契约基线必须先于跨模块功能实现，因为后续 Agent 
 - [FastAPI：Testing](https://fastapi.tiangolo.com/tutorial/testing/)
 - [FastAPI：Request Files](https://fastapi.tiangolo.com/tutorial/request-files/)
 - [FastAPI：CORS](https://fastapi.tiangolo.com/tutorial/cors/)
+- [WHATWG Fetch Standard：CORS-safelisted request headers](https://fetch.spec.whatwg.org/#cors-safelisted-request-header)
+- [W3C：Fetch Metadata Request Headers](https://www.w3.org/TR/fetch-metadata/)
+- [OWASP：Cross-Site Request Forgery Prevention Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html)
+- [RFC 9110：Host and :authority](https://www.rfc-editor.org/rfc/rfc9110.html#name-host-and-authority)
+- [Python：secrets](https://docs.python.org/3/library/secrets.html)
+- [Python：os.replace](https://docs.python.org/3/library/os.html#os.replace)
 - [React 官方文档](https://react.dev/)
 - [React：Thinking in React](https://react.dev/learn/thinking-in-react)
 - [Vite：Getting Started](https://vite.dev/guide/)
@@ -660,6 +714,7 @@ API 与数据契约基线必须先于跨模块功能实现，因为后续 Agent 
 - [TypeScript Handbook](https://www.typescriptlang.org/docs/handbook/typescript-from-scratch.html)
 - [SQLite：About SQLite](https://www.sqlite.org/about.html)
 - [SQLite：Transactional](https://sqlite.org/transactional.html)
+- [SQLite：Foreign Key Support](https://www.sqlite.org/foreignkeys.html)
 - [SQLAlchemy：Session Basics](https://docs.sqlalchemy.org/en/20/orm/session_basics.html)
 - [SQLAlchemy：Transactions and Connection Management](https://docs.sqlalchemy.org/en/20/orm/session_transaction.html)
 - [Alembic 官方文档](https://alembic.sqlalchemy.org/en/latest/)
@@ -680,7 +735,10 @@ API 与数据契约基线必须先于跨模块功能实现，因为后续 Agent 
 2. 后端使用 FastAPI + SQLAlchemy + Alembic，数据库使用 SQLite，原始文件使用本地受控目录。
 3. 前端使用 React + TypeScript + Vite + React Router，通过 `/api/v1` REST API 与后端交互。
 4. uv 与 npm 分别锁定后端和前端依赖；pytest、Vitest 和 Playwright 覆盖分层测试。
-5. 资料、分类、学习、笔记、复习、统计和界面拥有独立职责，跨模块通过应用服务和契约协作。
-6. 删除必须同时具备可见确认和后端确认校验；文件、笔记和未来密钥不得进入 Git 或普通日志。
-7. 后续解析、AI、RAG 和 Agent 只保留端口，不在第一阶段实现。
-8. 下一个开发阶段先建立脚手架，再冻结数据/API 契约，之后才有限并行开发功能。
+5. 资料、分类、学习、笔记、复习、统计和界面拥有独立职责；resources 唯一拥有主要主题 `topic_id`，taxonomy 拥有主题、标签和标签关联。
+6. 本地无登录 API 除回环和 CORS 外，还必须校验 Host、Origin、Fetch Metadata、每次运行随机令牌和自定义头。
+7. 上传文件必须经过同卷暂存、`PENDING`、原子提升、`READY` 和启动/定时对账；只有 `READY` 才成功和可下载。
+8. 删除必须使用绑定资料版本与关联影响摘要的短时一次性令牌，执行时重算，不一致返回 409 并重新确认。
+9. 文件、笔记、本地令牌、删除令牌和未来密钥不得进入 Git 或普通日志。
+10. 后续解析、AI、RAG 和 Agent 只保留端口，不在第一阶段实现。
+11. 下一个开发阶段先建立脚手架，再冻结数据/API 契约，之后才有限并行开发功能。
