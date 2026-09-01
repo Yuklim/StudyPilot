@@ -2,7 +2,7 @@
 
 ## 1. 基本信息
 
-- 状态：`IN_REVIEW`
+- 状态：`ACCEPTED`
 - 负责人角色：`repo_maintainer`
 - 创建人：主协调 Agent
 - 创建日期：2026-09-01
@@ -81,7 +81,7 @@
 - [x] 修订后的缺陷复核无未解决 finding
 - [x] 实际 `read-only` 环境中的正式独立复审已完成，结论为 `CHANGES_REQUIRED`
 - [x] 正式复审的四项 finding 已修复
-- [ ] 修复后的实际只读复审已通过
+- [x] 修复后的实际只读复审已通过
 - [x] 初始 Git 提交已创建
 
 ## 10. 必须执行的检查
@@ -123,3 +123,5 @@ Markdown 行尾空白检查
 | 2026-09-01 | IN_REVIEW | repo_maintainer | 四项问题已修复并通过本地正向及负向治理检查；冻结候选提交后安排实际只读复审 |
 | 2026-09-01 | CHANGES_REQUIRED | qa_reviewer | 实际只读复审候选 `81d9284`，发现控制面禁写 main 未纳入完整负向门禁、HANDOFF 存在候选 SHA 自引用两项问题 |
 | 2026-09-01 | IN_REVIEW | repo_maintainer | 两项新增问题已由实现提交 `5cbb3ec` 修复；提交本交接后冻结新候选并重新完整只读复审 |
+| 2026-09-01 | READY_FOR_ACCEPTANCE | qa_reviewer | 在实际 `read-only` 环境完整复审冻结候选 `a31e3f9`，结论为 `No findings` |
+| 2026-09-01 | ACCEPTED | integration_owner | 独立实际只读阶段验收结论为 `PASS`；等待用户决定是否合并证据分支 |
