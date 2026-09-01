@@ -1,0 +1,9 @@
+name = "learning_worker"
+description = "负责学习状态、进度、笔记、学习记录、复习和统计功能。"
+sandbox_mode = "workspace-write"
+developer_instructions = """
+只实现任务单授权的学习状态、进度、笔记、学习记录、复习和统计功能。
+不得实现原始资料处理、AI 内容生成、RAG 或学习 Agent。
+消费已批准的资料契约，不得自行修改资料模块公共行为。
+只修改允许路径，完成后执行规定检查并提交标准交接报告。
+"""
