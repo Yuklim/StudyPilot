@@ -6,7 +6,9 @@
 - 负责人角色：`repo_maintainer`
 - 分支：`agent/repo-maintainer/TASK-000-governance-review-fixes`
 - 比较基线 SHA：`0b7e269`
-- 冻结候选提交 SHA：由 coordinator 提交本报告后锁定；本报告所在提交即候选
+- 交接前实现提交 SHA：`5cbb3ec9aec15cf64af7065a9974dd94ed190d35`
+
+`coordinator` 提交本报告后，所得提交才是冻结候选；其精确 SHA 记录在 REVIEW 和 ACCEPTANCE 中，本报告不引用自身所在提交。
 
 ## 2. 已完成内容
 
@@ -14,8 +16,9 @@
 - 定义冻结候选 SHA、精确证据写回白名单，以及非证据变化后旧报告失效和完整重审规则；
 - 为 coordinator 定义 intake、evidence、closeout 三类分支，禁止首次基线后的控制面更新直写 `main`；
 - 将 `0b7e269` 记录为不可复用、不可重写的一次性启动收尾偏差；
-- 扩充治理验证器，机械检查 27 项关键语义不变量，并加入逐项删除规则的负向回归测试；
+- 扩充治理验证器，机械检查 30 项关键语义不变量，并加入逐项删除规则的负向回归测试；
 - 补齐两份既有产品文档纳入首次 Git 基线的用户授权说明，明确未修改其内容。
+- 修复首次修订复审发现的两个新问题：将控制面禁写 `main`、候选包含 HANDOFF 和精确 evidence 白名单纳入完整验证；消除 HANDOFF 对自身提交 SHA 的不可能引用。
 
 ## 3. 未完成或未包含内容
 
@@ -50,14 +53,14 @@
 
 | 命令或检查 | 结果 | 说明 |
 | --- | --- | --- |
-| `python3 scripts/governance/validate_governance.py` | PASS | Python 3.9.6；13 个 Agent、4 个 Skill、27 项语义不变量 |
-| `python3 -m unittest scripts/governance/test_validate_governance.py` | PASS | 3 个测试；逐项负向突变覆盖 27 项不变量 |
+| `python3 scripts/governance/validate_governance.py` | PASS | Python 3.9.6；13 个 Agent、4 个 Skill、30 项语义不变量 |
+| `python3 -m unittest scripts/governance/test_validate_governance.py` | PASS | 3 个测试；内存隔离突变通过完整 `validate()` 覆盖 30 项不变量 |
 | `/opt/anaconda3/bin/python3 scripts/governance/validate_governance.py` | PASS | Python 3.13.9 标准 TOML 解析路径 |
 | `/opt/anaconda3/bin/python3 -m unittest scripts/governance/test_validate_governance.py` | PASS | Python 3.13.9 路径 |
 | Skill Creator `quick_validate.py` | PASS | 四个仓库 Skill 均有效 |
 | Python 3.13 标准 TOML 解析 | PASS | 14 个 `.toml` 文件 |
 | 敏感信息模式、Markdown 行尾空白、`git diff --check` | PASS | 无匹配或错误 |
-| `wc -c AGENTS.md` | PASS | 12,665 字节，低于 32 KiB 限制 |
+| `wc -c AGENTS.md` | PASS | 12,899 字节，低于 32 KiB 限制 |
 
 ## 8. 未执行检查
 

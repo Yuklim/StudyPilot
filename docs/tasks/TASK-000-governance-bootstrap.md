@@ -121,3 +121,5 @@ Markdown 行尾空白检查
 | 2026-09-01 | CHANGES_REQUIRED | qa_reviewer | 以 CLI `--sandbox read-only` 完成正式复审，发现 Integration Owner 独立性、验证器语义门禁、控制面分支流程和初始文档授权四项问题 |
 | 2026-09-01 | IN_PROGRESS | repo_maintainer | 用户要求修复全部四项问题并重新安排正式只读复审和验收；修复分支从 `0b7e269` 创建 |
 | 2026-09-01 | IN_REVIEW | repo_maintainer | 四项问题已修复并通过本地正向及负向治理检查；冻结候选提交后安排实际只读复审 |
+| 2026-09-01 | CHANGES_REQUIRED | qa_reviewer | 实际只读复审候选 `81d9284`，发现控制面禁写 main 未纳入完整负向门禁、HANDOFF 存在候选 SHA 自引用两项问题 |
+| 2026-09-01 | IN_REVIEW | repo_maintainer | 两项新增问题已由实现提交 `5cbb3ec` 修复；提交本交接后冻结新候选并重新完整只读复审 |
