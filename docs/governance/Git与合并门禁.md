@@ -7,7 +7,7 @@
 - 一个写入任务对应一个任务单、分支和 worktree。
 - 开发 Agent 不得合并自己的变更。
 - Reviewer 保持只读。
-- Integration Owner 只能给出是否达到合并门槛的建议。
+- Integration Owner 必须保持实际只读，只能给出是否达到合并门槛的建议；不得修改文件或处理冲突。
 - 最终合并由用户决定。
 
 仓库必须先有一个用户确认的 `main` 基线提交，才能创建开发 worktree。首次基线提交完成前，治理检查应视为未就绪，任何功能开发不得开始。
@@ -23,9 +23,14 @@ agent/<role>/<task-id>-<short-description>
 ```text
 agent/resource-worker/TASK-001-resource-create
 agent/learning-worker/TASK-002-progress-tracking
+agent/coordinator/TASK-001-intake
+agent/coordinator/TASK-001-evidence
+agent/coordinator/TASK-001-closeout
 ```
 
 禁止使用无法追溯任务和负责人的名称，例如 `test`、`temp`、`new-feature`。
+
+首次基线以后，控制面也必须走分支：任务登记使用 `agent/coordinator/<task-id>-intake`，审查与验收证据使用 `agent/coordinator/<task-id>-evidence`，合并事实登记使用 `agent/coordinator/<task-id>-closeout`。`coordinator` 不得直接在 `main` 提交，所有分支都由用户决定是否合并。
 
 Codex 管理的 worktree 默认可能处于 detached HEAD。创建 worktree 后必须先使用 **Create branch here** 或等价 Git 操作建立符合上述命名规则的分支，然后才能写入和提交。
 
@@ -65,6 +70,10 @@ Codex 管理的 worktree 默认可能处于 detached HEAD。创建 worktree 后�
 - 用户最终确认。
 
 任一项缺失都不得声称任务可合并。
+
+正式审查锁定一个包含交接报告的冻结候选提交 SHA。Reviewer 与 Integration Owner 均以该 SHA 为对象，并保持实际只读。审查后只允许原样写回同一任务的 `REVIEW`、`ACCEPTANCE`，以及仅更新任务单与索引的状态字段和决定日志；不得修改 HANDOFF、任务目标、范围、允许路径、验收条件、代码、测试、配置、契约或治理规则。验收报告写回本身不要求再次验收。任何超出该白名单的变更都会生成新候选 SHA，使旧报告失效，并要求对新的完整合并差异重新只读审查。冲突只能退回原负责 Agent，验收者不得自行解决。
+
+历史提交 `0b7e269` 是 TASK-000 在控制面分支规则写明前直接写入 `main` 的一次性启动收尾偏差。保留该历史用于审计，不重写，也不作为后续例外。
 
 ## 5. 连接 GitHub 后启用的保护
 

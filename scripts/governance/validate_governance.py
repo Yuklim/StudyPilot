@@ -28,6 +28,7 @@ REQUIRED_FILES = (
     "docs/governance/templates/STAGE_ACCEPTANCE_TEMPLATE.md",
     "docs/governance/templates/MODULE_AGENTS_TEMPLATE.md",
     "docs/tasks/任务索引.md",
+    "scripts/governance/test_validate_governance.py",
 )
 
 REQUIRED_AGENTS = {
@@ -52,6 +53,121 @@ REQUIRED_SKILLS = {
     "studypilot-review-change",
     "studypilot-stage-acceptance",
 }
+
+# These are enforcement boundaries, not prose style checks. Stable IDs let the
+# negative regression suite prove that removing any one guardrail fails closed.
+SEMANTIC_INVARIANTS = (
+    (
+        "merge.user_only",
+        "AGENTS.md",
+        "只有用户本人可以决定并执行最终合并",
+    ),
+    (
+        "control_plane.intake_branch",
+        "AGENTS.md",
+        "agent/coordinator/<task-id>-intake",
+    ),
+    (
+        "control_plane.evidence_branch",
+        "AGENTS.md",
+        "agent/coordinator/<task-id>-evidence",
+    ),
+    (
+        "control_plane.closeout_branch",
+        "AGENTS.md",
+        "agent/coordinator/<task-id>-closeout",
+    ),
+    (
+        "review.post_change_invalidates",
+        "AGENTS.md",
+        "任何超出该白名单的审查后变更都会生成新的候选 SHA，使旧审查与验收结论失效",
+    ),
+    (
+        "integration.no_write",
+        ".codex/agents/integration-owner.toml",
+        "不得修改文件、创建提交、处理集成冲突、cherry-pick、rebase 或执行任何合并",
+    ),
+    (
+        "integration.sandbox_declaration",
+        ".codex/agents/integration-owner.toml",
+        'sandbox_mode = "read-only"',
+    ),
+    (
+        "reviewer.sandbox_declaration",
+        ".codex/agents/qa-reviewer.toml",
+        'sandbox_mode = "read-only"',
+    ),
+    (
+        "intake.ready_gate",
+        ".agents/skills/studypilot-task-intake/SKILL.md",
+        "Set status to `READY` only when every authorization field is complete",
+    ),
+    (
+        "implementation.handoff",
+        ".agents/skills/studypilot-implement-task/SKILL.md",
+        "Produce a handoff using `docs/governance/templates/HANDOFF_TEMPLATE.md`",
+    ),
+    (
+        "review.read_only",
+        ".agents/skills/studypilot-review-change/SKILL.md",
+        "verify the actual runtime permission is read-only",
+    ),
+    (
+        "review.output_decisions",
+        ".agents/skills/studypilot-review-change/SKILL.md",
+        "`READY_FOR_ACCEPTANCE`, `CHANGES_REQUIRED`, or `BLOCKED`",
+    ),
+    (
+        "acceptance.read_only",
+        ".agents/skills/studypilot-stage-acceptance/SKILL.md",
+        "Verify the actual runtime is `read-only`",
+    ),
+    (
+        "acceptance.no_conflict_resolution",
+        ".agents/skills/studypilot-stage-acceptance/SKILL.md",
+        "Do not modify files, create commits, resolve integration conflicts, cherry-pick, rebase",
+    ),
+    *(
+        (
+            f"task_template.section_{number}",
+            "docs/governance/templates/TASK_TEMPLATE.md",
+            f"## {number}. {title}",
+        )
+        for number, title in (
+            (1, "基本信息"),
+            (2, "背景与依据"),
+            (3, "目标"),
+            (4, "非目标"),
+            (5, "允许修改路径"),
+            (6, "禁止修改路径"),
+            (7, "前置条件与依赖"),
+            (8, "功能要求"),
+            (9, "验收条件"),
+            (10, "必须执行的检查"),
+            (11, "审查要求"),
+            (12, "交接要求"),
+            (13, "决策与状态记录"),
+        )
+    ),
+)
+
+
+def load_semantic_texts(root: Path, errors: list[str]) -> dict[str, str]:
+    texts: dict[str, str] = {}
+    for relative_path in sorted({item[1] for item in SEMANTIC_INVARIANTS}):
+        try:
+            texts[relative_path] = (root / relative_path).read_text(encoding="utf-8")
+        except OSError as exc:
+            errors.append(f"Cannot read semantic source {relative_path}: {exc}")
+    return texts
+
+
+def validate_semantic_texts(texts: dict[str, str], errors: list[str]) -> None:
+    for invariant_id, relative_path, required_text in SEMANTIC_INVARIANTS:
+        if required_text not in texts.get(relative_path, ""):
+            errors.append(
+                f"[{invariant_id}] missing required governance text in {relative_path}"
+            )
 
 
 def load_toml(path: Path, errors: list[str]) -> dict:
@@ -219,6 +335,11 @@ def validate(*, allow_unborn: bool) -> list[str]:
         reviewer = load_toml(reviewer_path, errors)
         if reviewer.get("sandbox_mode") != "read-only":
             errors.append("qa_reviewer must remain read-only")
+    integration_path = found_agents.get("integration_owner")
+    if integration_path:
+        integration_owner = load_toml(integration_path, errors)
+        if integration_owner.get("sandbox_mode") != "read-only":
+            errors.append("[integration.runtime_read_only] integration_owner must remain read-only")
 
     skill_root = ROOT / ".agents/skills"
     found_skills: set[str] = set()
@@ -246,6 +367,9 @@ def validate(*, allow_unborn: bool) -> list[str]:
     if extra_skills:
         errors.append(f"Unregistered governance skills: {', '.join(sorted(extra_skills))}")
 
+    semantic_texts = load_semantic_texts(ROOT, errors)
+    validate_semantic_texts(semantic_texts, errors)
+
     return errors
 
 
@@ -267,6 +391,7 @@ def main() -> int:
     print(f"- {len(REQUIRED_AGENTS)} custom agents")
     print(f"- {len(REQUIRED_SKILLS)} repository skills")
     print("- root rules, workflow guide, task index, and templates present")
+    print(f"- {len(SEMANTIC_INVARIANTS)} semantic governance invariants enforced")
     if allow_unborn and not git_head_exists():
         print("- bootstrap-only: Git HEAD is still missing")
     return 0

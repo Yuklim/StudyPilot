@@ -71,6 +71,8 @@ python3 scripts/governance/validate_governance.py --allow-unborn
 
 这只验证治理结构，不代表 worktree 制度已经可运行。
 
+历史提交 `0b7e269` 是 TASK-000 在控制面分支规则写明前直接写入 `main` 的一次性启动收尾偏差。保留它用于审计，不重写历史，也不得把它当作今后的操作先例。
+
 ### 3.1 确认仓库规则
 
 从仓库根目录启动一个新的 Codex 任务，并要求：
@@ -134,7 +136,7 @@ docs/tasks/TASK-XXX-REVIEW.md
 docs/tasks/TASK-XXX-ACCEPTANCE.md
 ```
 
-控制面由 `coordinator` 串行维护。任务单达到 `READY` 后，必须先由用户确认并进入稳定 `main` 基线，才能创建开发 worktree。
+控制面由 `coordinator` 串行维护，但也必须走分支：任务登记使用 `agent/coordinator/<task-id>-intake`，审查与验收证据使用 `agent/coordinator/<task-id>-evidence`，合并事实登记使用 `agent/coordinator/<task-id>-closeout`。`coordinator` 不得直接向 `main` 提交。任务单达到 `READY` 后，intake 分支必须先由用户确认并合并到稳定 `main` 基线，才能创建开发 worktree。
 
 ### 第三步：判断是否可以并行
 
@@ -184,7 +186,7 @@ agent/<role>/<task-id>-<short-description>
 
 ### 第六步：独立审查
 
-实现完成后，新建一个权限明确选择为 **read-only** 的独立 Codex 审查任务，再调用 `qa_reviewer` 和 `$studypilot-review-change`。如果必须从现有父任务派生 Reviewer，应先把父任务实时权限切换为只读并验证；仅在 TOML 中写 `sandbox_mode = "read-only"` 不能代替实际权限确认。
+实现、检查和交接报告全部提交后，记录该提交为冻结候选 SHA。新建一个权限明确选择为 **read-only** 的独立 Codex 审查任务，再调用 `qa_reviewer` 和 `$studypilot-review-change`，明确要求审查该 SHA 对稳定基线的完整差异。如果必须从现有父任务派生 Reviewer，应先把父任务实时权限切换为只读并验证；仅在 TOML 中写 `sandbox_mode = "read-only"` 不能代替实际权限确认。
 
 ```text
 只读审查 TASK-001 对 main 的实际合并差异。
@@ -192,11 +194,13 @@ agent/<role>/<task-id>-<short-description>
 不得修改文件或创建提交。
 ```
 
-Reviewer 按 `REVIEW_TEMPLATE.md` 输出，并记录实际运行权限。发现的问题由原开发 Agent 修复，然后重新审查受影响部分。Reviewer 将报告返回给 `coordinator`，由协调者保存为 `docs/tasks/TASK-XXX-REVIEW.md`。
+Reviewer 按 `REVIEW_TEMPLATE.md` 输出，并记录实际运行权限。发现的问题由原开发 Agent 修复并形成新的候选 SHA，再重新审查新的完整合并差异。Reviewer 只把报告返回给 `coordinator`，不得自行写文件或创建提交。
+
+`coordinator` 使用 evidence 分支原样保存报告。审查后只允许原样写入同一任务的 `REVIEW`、`ACCEPTANCE`，以及仅修改任务单与索引的状态字段和决定日志；不得改变 HANDOFF、任务目标、范围、允许路径、验收条件、代码、测试、配置、契约或治理规则。验收报告写回本身不要求再次验收。任何超出白名单的变更都会生成新的候选 SHA，使旧报告失效，并要求重新完整只读审查。
 
 ### 第七步：阶段验收
 
-Integration Owner 使用 `$studypilot-stage-acceptance`，检查：
+Integration Owner 必须在实际 **read-only** 权限中使用 `$studypilot-stage-acceptance`，检查：
 
 - 需求和任务单；
 - 完整 diff；
@@ -211,7 +215,7 @@ Integration Owner 使用 `$studypilot-stage-acceptance`，检查：
 - `RETURN`：需要原 Agent 修订；
 - `BLOCKED`：缺少决策、权限或外部条件。
 
-Integration Owner 把报告返回给 `coordinator`，由协调者保存为 `docs/tasks/TASK-XXX-ACCEPTANCE.md` 并更新任务状态。阶段验收通过不等于自动合并，最终只能由用户本人确认并执行。
+Integration Owner 只把报告返回给 `coordinator`，不得修改文件、创建提交、解决冲突、cherry-pick、rebase 或合并。冲突退回原负责 Agent；任何修订形成新候选 SHA 后，都必须重新执行完整只读审查。协调者在 evidence 分支保存验收报告并更新相应状态。阶段验收通过不等于自动合并，最终只能由用户本人确认并执行。
 
 ## 5. 任务状态
 

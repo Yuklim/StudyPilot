@@ -5,7 +5,8 @@
 - 状态：`COMPLETE` / `PARTIAL` / `BLOCKED`
 - 负责人角色：
 - 分支：
-- 提交 SHA：
+- 比较基线 SHA：
+- 冻结候选提交 SHA：`<由 coordinator 提交本报告后锁定；本报告所在提交即候选>`
 
 ## 2. 已完成内容
 

@@ -23,9 +23,9 @@ Turn one confirmed product or engineering objective into a bounded, reviewable t
 6. List exact allowed paths and forbidden paths. Do not use a repository-wide wildcard for an implementation task.
 7. Record dependencies, acceptance conditions, required checks, review requirements, and handoff requirements.
 8. Check whether the task can run independently. If it overlaps another active task or depends on an unapproved contract, mark it `BLOCKED` or `DRAFT`.
-9. Reserve the task number and allowed paths in `docs/tasks/任务索引.md` before parallel work is dispatched.
+9. On `agent/coordinator/<task-id>-intake`, reserve the task number and allowed paths in `docs/tasks/任务索引.md` before parallel work is dispatched.
 10. Set status to `READY` only when every authorization field is complete and no material decision is missing.
-11. Ensure the READY task and registry update enter the stable shared `main` baseline before a development worktree is created.
+11. Ask the user to merge the READY task and registry update into the stable shared `main` baseline before a development worktree is created. Never commit the control plane directly on `main`.
 
 ## Boundaries
 
