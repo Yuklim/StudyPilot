@@ -4,8 +4,8 @@
 
 - 状态：`BLOCKED`
 - 负责人角色：`repo_maintainer`
-- 分支：`main`（unborn）
-- 提交 SHA：待创建；Git 作者身份已配置，初始基线尚未提交
+- 分支：`main`
+- 提交 SHA：`bb40c56`（初始治理基线）
 
 ## 2. 已完成内容
 
@@ -18,7 +18,6 @@
 
 ## 3. 未完成或未包含内容
 
-- 未创建初始 Git 提交；
 - 未在实际 `read-only` 运行环境中完成正式独立复审；
 - 未启用远程仓库、GitHub 分支保护或 CI；
 - 未进行技术选型或产品功能开发。
@@ -51,7 +50,7 @@
 | --- | --- | --- |
 | `python3 scripts/governance/validate_governance.py --allow-unborn` | PASS | 13 个 Agent、4 个 Skill 和治理文件完整；明确标记 bootstrap-only |
 | 工作区 Python 3.12 执行同一命令 | PASS | TOML 标准库解析通过 |
-| `python3 scripts/governance/validate_governance.py` | FAIL（预期） | 无 Git HEAD 时正常门禁拒绝放行 |
+| `python3 scripts/governance/validate_governance.py` | PASS | 初始 `main` 基线创建后正常门禁通过 |
 | Skill Creator `quick_validate.py` | PASS | 四个 Skill 均有效 |
 | Markdown 行尾空白扫描 | PASS | 无匹配项 |
 | 敏感信息模式扫描 | PASS | 无匹配项 |
@@ -60,17 +59,13 @@
 
 ## 8. 未执行检查
 
-- 检查名称：初始提交后的正常治理验证；
-- 原因：本报告生成时初始提交尚未创建；
-- 剩余风险：没有稳定 `main` 基线，禁止创建开发 worktree。
-
 - 检查名称：正式独立只读复审；
 - 原因：当前协作子 Agent 实际继承 `workspace-write`；
 - 剩余风险：不能把现有复核结果当作正式审查门禁证据。
 
 ## 9. 已知限制与风险
 
-- 治理制度已经成形，但在初始提交和正式只读复审完成前不可进入产品开发；
+- 治理制度和稳定 `main` 基线已经建立，但在正式只读复审完成前不可进入产品开发；
 - 远程分支保护与 CI 需在远程仓库和技术栈确定后配置。
 
 ## 10. 建议审查重点

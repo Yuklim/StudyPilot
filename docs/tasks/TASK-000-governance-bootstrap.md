@@ -7,7 +7,7 @@
 - 创建人：主协调 Agent
 - 创建日期：2026-09-01
 - 目标阶段：开发制度初始化
-- 基线分支或提交：空 Git 仓库，无历史提交
+- 基线分支或提交：`main` / `bb40c56`
 
 ## 2. 背景与依据
 
@@ -76,7 +76,7 @@
 - [x] 两轮缺陷审查已完成，发现的问题已修订
 - [x] 修订后的缺陷复核无未解决 finding
 - [ ] 实际 `read-only` 环境中的正式独立复审已通过
-- [ ] 初始 Git 提交已创建
+- [x] 初始 Git 提交已创建
 
 ## 10. 必须执行的检查
 
@@ -110,3 +110,4 @@ Markdown 行尾空白检查
 | 2026-09-01 | IN_REVIEW | repo_maintainer | 已补充首次基线规则、coordinator 控制面、实际只读权限校验和用户唯一合并权，等待复审 |
 | 2026-09-01 | CHANGES_REQUIRED | governance_audit | 发现验证器未确认 `main` 基线、Integration Owner 合并边界仍有歧义 |
 | 2026-09-01 | BLOCKED | repo_maintainer | 两项缺陷已修订且复核无未解决 finding；Git 作者身份已配置，正式只读复审和初始提交仍待完成 |
+| 2026-09-01 | BLOCKED | repo_maintainer | 已在 `main` 创建初始基线 `bb40c56`；仅剩实际 `read-only` 环境中的正式复审门禁 |
