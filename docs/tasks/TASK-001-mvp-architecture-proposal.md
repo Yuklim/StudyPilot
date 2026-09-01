@@ -2,12 +2,12 @@
 
 ## 1. 基本信息
 
-- 状态：`READY`
+- 状态：`IN_PROGRESS`
 - 负责人角色：`architecture_owner`
 - 创建人：主协调 Agent
 - 创建日期：2026-09-01
 - 目标阶段：第一阶段 MVP 架构决策
-- 基线分支或提交：`main` / `834a3d7`
+- 基线分支或提交：`main` / `e1a77bf`
 
 ## 2. 背景与依据
 
@@ -66,7 +66,7 @@ docs/tasks/任务索引.md
 - [x] 本任务负责提出公共契约基线，不依赖既有技术契约
 - [x] TASK-000 已完成并合并
 - [x] 允许路径没有被其他活跃任务占用
-- [x] 本地 `main` 与 `origin/main` 均位于 `834a3d7`
+- [x] intake 合并后本地 `main` 与 `origin/main` 均位于 `e1a77bf`
 
 ## 8. 功能要求
 
@@ -139,3 +139,4 @@ Markdown 行尾空白检查
 | 日期 | 状态或决定 | 责任人 | 说明 |
 | --- | --- | --- | --- |
 | 2026-09-01 | READY | coordinator | 需求、角色、允许路径、验收条件和检查完整；等待用户将 intake 分支合并到稳定 `main` 后派发 |
+| 2026-09-01 | IN_PROGRESS | coordinator | 用户已合并 PR #1；从稳定基线 `e1a77bf` 创建架构工作分支并派发 `architecture_owner` |
