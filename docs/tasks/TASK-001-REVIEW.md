@@ -1,83 +1,100 @@
-# TASK-001 独立审查报告
+# TASK-001 第二次独立复审报告
 
 ## 1. 审查信息
 
-- Reviewer：`qa_reviewer`
-- 审查目标：TASK-001 完整实际合并差异
+- Reviewer：第二个全新独立 `qa_reviewer`
+- 审查目标：TASK-001 相对稳定基线的完整实际合并差异
 - 比较基线：`e1a77bf96a0223603df390441df782461d2f3e70`
-- 冻结候选提交 SHA：`d607bfb8a50562b225efebfac89045931ba4b562`
+- 冻结候选提交 SHA：`ea64bf25947a2bcb98fc8b7f7303e98291d8c309`
 - 审查日期：2026-09-01
 - 实际运行权限：`read-only`
-- 权限证据：在仓库内执行 `touch .qa-review-readonly-probe` 被系统以 `Operation not permitted` 拒绝；探针文件未创建，Git 状态未变化。
-- 合并差异确认：两端提交均可解析，`git merge-base` 返回指定基线 `e1a77bf96a0223603df390441df782461d2f3e70`，候选是该基线的线性后代。
+- 权限证据：执行 `touch .codex-readonly-probe-task-001` 被系统以 `Operation not permitted` 拒绝；探针未创建，最终 Git 工作区和暂存区均保持干净。
+- 合并差异确认：两端提交均可解析；`git merge-base` 精确返回指定基线 `e1a77bf96a0223603df390441df782461d2f3e70`。完整差异为 5 个文件、952 行新增、4 行删除。
+- 候选完整性：候选包含修订 HANDOFF、历史 REVIEW、任务状态记录及完整架构提案。
 
 ## 2. Findings
 
-### [P1] 为无登录本地 API 增加服务端跨站写入防护
-
-- 位置：`docs/architecture/MVP架构与技术选型提案.md:471`
-- 违反的需求、任务或规则：TASK-001 功能要求 8；根 `AGENTS.md` 第 10 节不可信输入与隐私规则；提案自身的本地访问安全边界。
-- 触发场景：StudyPilot 正在监听 `127.0.0.1` 时，用户访问恶意网页。该网页可以向本机 API 发送无需预检的简单 `POST`/`multipart/form-data` 请求。严格 CORS 会阻止网页读取响应，但不会阻止简单请求到达并被后端处理。FastAPI 官方文档也明确说明简单请求会正常传入应用，仅在响应上附加 CORS 头；CORS 本质上控制响应能否跨来源共享。[FastAPI CORS 文档](https://fastapi.tiangolo.com/tutorial/cors/)、[Fetch Standard](https://fetch.spec.whatwg.org/#http-new-header-syntax)
-- 实际影响：没有身份认证的本地服务仍可能被网页跨站创建或修改资料、写入上传内容并消耗磁盘；若未来某个破坏性操作接受简单请求形式，也可能影响现有数据。只绑定回环地址和配置 CORS 不能构成完整的本地写入授权边界。
-- 安全修复路径：在架构基线中明确所有写操作必须具备服务端来源防护，例如可信 `Host` 校验，以及 `Origin`/Fetch Metadata 校验、每次运行的不可预测本地令牌或 CSRF 令牌；也可以强制写请求携带自定义头并拒绝不满足要求的请求。后续安全测试应覆盖恶意来源的简单表单和 multipart 请求。该修复不要求第一阶段引入账户系统。
-
-### [P2] 补全临时上传文件进入最终存储的成功与崩溃恢复路径
-
-- 位置：`docs/architecture/MVP架构与技术选型提案.md:264`
-- 违反的需求、任务或规则：需求 5.1 的原始文件保留要求；TASK-001 功能要求 6 和验收条件中的原始文件处理边界；提案第 7.2 节“不留下半成品”的不变量。
-- 触发场景：当前流程先把文件写入“临时位置”，随后提交数据库元数据，但没有定义临时文件何时、如何提升为最终文件。数据库提交成功后进程退出，或预期的文件提升失败时，数据库可能引用仍在临时区或已经被清理的文件；进程崩溃时，异常清理逻辑也不会执行。
-- 实际影响：成功响应后原件可能无法下载，或者产生数据库孤儿记录、无法识别的临时文件，与“原始文件必须保留”和“不能留下半成品”冲突。后续实现 Agent 必须自行猜测最关键的跨存储状态转换。
-- 安全修复路径：在架构文档中至少冻结可观察状态和操作顺序，例如同文件系统临时写入、校验和持久化、原子重命名、数据库 `pending/ready` 状态及启动时对账；或者先完成最终文件再提交数据库，并明确孤儿文件回收机制。下载只能读取 `ready` 文件，并要求通过进程崩溃和故障注入测试验证。
-
-### [P2] 将删除确认绑定到用户实际看到的影响版本
-
-- 位置：`docs/architecture/MVP架构与技术选型提案.md:388`
-- 违反的需求、任务或规则：需求 5.3 的“明确说明并再次确认”；TASK-001 功能要求 6 的用户确认边界。
-- 触发场景：用户在一个页面查看删除影响摘要，随后在另一个标签页为同一资料新增笔记或学习记录，再确认第一个页面。当前后端确认值仅规定包含资料 ID，没有绑定影响摘要、资料版本或关联数据版本。
-- 实际影响：实际删除的数据可能超过用户确认时看到的范围；任意客户端也可以直接回显 URL 中已有的资料 ID，跳过影响摘要步骤，后端所谓二次校验没有保证两步流程。
-- 安全修复路径：让预览接口返回短时、一次性的确认令牌，绑定资料 ID、资源版本及影响摘要；执行删除时重新计算并校验。数据已变化时返回 409 和新摘要，要求用户重新确认。也可使用等价的乐观版本协议，但不能只重复目标 ID。
-
-### [P2] 统一主要主题关联的数据所有权
-
-- 位置：`docs/architecture/MVP架构与技术选型提案.md:291`、`docs/architecture/MVP架构与技术选型提案.md:435`
-- 违反的需求、任务或规则：TASK-001 功能要求 5、6；提案第 6.1 节“一个事实只有一个权威所有者”原则。
-- 触发场景：`resources` 拥有包含 `topic_id` 的 `LearningResource`，但添加资料流程要求 `taxonomy` 建立主题关联；`taxonomy` 的所有权表只明确拥有主题、标签和资料—标签关系，没有明确谁能修改资料表中的 `topic_id`。
-- 实际影响：资料和分类实现任务可能都认为自己拥有主要主题关联，导致共享模型、迁移和更新接口发生冲突；删除或转移主题时也缺少唯一负责模块。
-- 安全修复路径：选择并记录唯一所有者。可由 `resources` 拥有 `topic_id` 和主要主题分配，调用 `taxonomy` 验证主题；或者建立由 `taxonomy` 独立拥有的 `ResourceTopic` 关系。同步修正模块表、添加流程、概念模型和后续迁移所有权。
+No findings.
 
 ## 3. 审查覆盖
 
 - [x] 完整 diff
 - [x] 相关调用路径和文档数据流
-- [x] 需求与任务验收条件
+- [x] 需求与任务全部验收条件
 - [x] 测试和检查证据
 - [x] 公共契约
 - [x] 安全与隐私边界
 - [x] 修改范围
 
-验证结果：
+### 历史四项 finding 闭环
 
-- `git diff --check e1a77bf... d607bfb...`：PASS。
-- `PYTHONDONTWRITEBYTECODE=1 python3 scripts/governance/validate_governance.py`：PASS；13 个 Agent、4 个仓库 Skill、30 项治理不变量。
-- Markdown 行尾空白检查：PASS。
-- 敏感信息模式扫描：PASS。
-- 实现提交 `4ca1ae0e9751ccc447ca831d95c453a286154673` 相对 `2b336e8` 只新增任务允许的架构提案。
-- 完整候选的另外三个变更均为 coordinator 允许维护的 TASK-001 任务、索引和 HANDOFF 控制面文件。
-- HANDOFF 分支、基线、实现提交及候选历史均可复现。
-- 两个本地文档引用存在；16 个主章节和需求 5.1～5.10 追踪行均存在；官方资料列表包含 24 项。
-- FastAPI/OpenAPI、Django 模型与迁移、SQLite、SQLAlchemy Session、uv 和前端工具的主要事实与当前官方资料一致。两套方案使用相同比较维度，评分计算正确；推荐 FastAPI + React 符合 Python/API 学习与作品展示目标，并通过模块化单体和依赖限制控制复杂度。
-- 未发现提前实现 AI/RAG/Agent、多用户、云部署或商业化等未经确认的需求扩张。
-- 最终 `git status --short --branch` 仍为干净的 `agent/architecture-owner/TASK-001-mvp-architecture`。只读环境导致 Git/Xcode 尝试创建临时缓存时产生警告，但相关只读检查均以退出码 0 完成。
+1. **服务端本地 API 跨站写入防护：已闭环**
+   - 第 5.4、9.2、10.2、13、16 节一致要求在读取请求体、创建临时文件和数据库查询前校验 `Host`、`Origin`、Fetch Metadata、本地访问令牌及自定义头。
+   - 明确覆盖 `application/x-www-form-urlencoded`、`text/plain`、`multipart/form-data` simple POST 和跨站 fetch，失败时数据库及磁盘不得变化。
+   - CORS 被正确限定为附加防线。FastAPI 官方文档确认简单请求会正常进入应用；OWASP 也明确列出上述三种 simple content type 的 CSRF 风险。[FastAPI CORS](https://fastapi.tiangolo.com/tutorial/cors/)、[OWASP CSRF Prevention](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html)
+
+2. **上传状态机、成功门槛和崩溃对账：已闭环**
+   - 第 5.4、7.2、8.1、10.2、11.1、13、16 节统一采用同卷暂存、`PENDING → READY/FAILED`、原子提升、启动及定时对账。
+   - 只有最终文件重新核验且 `READY` 事务提交后才能返回成功并允许下载。
+   - `PENDING` 提交前、提交后提升前、提升后 `READY` 前及 `READY` 后损坏均有确定恢复结果；提升、补记和孤儿回收均明确要求幂等。
+   - `os.replace` 的原子性描述附带 POSIX 和目标平台验证边界，与 Python 官方说明一致。[Python `os.replace`](https://docs.python.org/3/library/os.html#os.replace)
+
+3. **删除一次性令牌绑定完整影响版本：已闭环**
+   - 第 7.1、7.4、8.1、10.2、11、13、16 节一致规定短时一次性令牌绑定资料 ID、资料版本、关联对象稳定 ID 及版本或等价变更序号。
+   - 执行删除时在事务内重算；任何影响变化立即作废旧令牌、返回 409 和新摘要，强制用户重新确认。
+   - 令牌过期、重放、绑定错误资料、关联对象变化及文件移动期间崩溃均进入必测范围。
+
+4. **`resources/taxonomy` 的 `topic_id` 所有权：已闭环**
+   - 模块职责表、所有权原则、添加流程、概念模型、需求追踪、迁移顺序、测试策略、风险表和决策摘要均统一规定：
+     - `resources` 是 `LearningResource.topic_id` 的唯一写入所有者；
+     - `taxonomy` 拥有 `Topic`、`Tag`、`ResourceTag`，只负责主题存在性验证和删除/转移规则；
+     - `taxonomy` 不得直接修改 `topic_id`。
+   - 未发现章节间的第二套所有权解释。
+
+### TASK-001 验收条件
+
+- [x] 第一阶段需求 5.1–5.10 和七项项目原则均有逐项映射，未增加多用户、商业化、云部署、AI/RAG 实现等产品范围。
+- [x] FastAPI + React 与 Django 模板两套方案使用相同维度和预先声明的权重比较；加权分数 `4.20` 与 `4.10` 计算正确。
+- [x] 最终推荐单一、组成完整、理由与重新评估条件明确。
+- [x] 资料、分类、学习、笔记、复习、统计、API、前端和基础设施职责、依赖方向及所有权清晰。
+- [x] 概念模型覆盖第一阶段全部核心对象，并明确后续待细化字段。
+- [x] 原始文件、删除确认、笔记和未来 API Key 隐私边界，以及未来 AI/RAG/Agent 端口均有说明。
+- [x] 后续任务顺序、共享契约前置条件、迁移串行要求和有限并行组明确。
+- [x] 重大选择均解释实际问题；关键术语提供初学者说明。
+- [x] 实现修订 `038c0a9..4dfe18d` 只修改架构文档；候选冻结提交只修改 coordinator 控制面文件。
+- [x] 文档明确标记为提案，未冒充已生效决定。
+- [x] 修订 HANDOFF 完整记录基线、实现 SHA、检查、限制和风险。
+
+### 实际运行检查
+
+- `git diff --check e1a77bf... ea64bf2...`：PASS
+- `PYTHONDONTWRITEBYTECODE=1 python3 scripts/governance/validate_governance.py`：PASS
+  - 13 个 Agent
+  - 4 个仓库 Skill
+  - 30 项治理不变量
+- Markdown 行尾空白检查：PASS
+- 高可信私钥、云凭据和访问令牌模式扫描：PASS
+- 本地文档引用检查：PASS
+- 16 个主章节结构检查：PASS
+- 需求 5.1–5.10 十项追踪检查：PASS
+- 最终 `git status --short --branch`：工作区干净
+- 最终工作区及暂存区 `git diff --exit-code`：PASS
+
+只读 sandbox 阻止 Git/Xcode 在 `/tmp` 创建缓存，产生警告，但上述命令均以退出码 0 完成，未改变仓库状态。
+
+核心技术事实也与当前官方资料一致，包括 Fetch Metadata 的服务端预判用途、SQLite 事务可靠性以及 SQLAlchemy Session 的非并发单事务边界。[W3C Fetch Metadata](https://www.w3.org/TR/fetch-metadata/)、[SQLite](https://www.sqlite.org/about.html)、[SQLAlchemy Session](https://docs.sqlalchemy.org/en/20/orm/session_basics.html)
 
 ## 4. 测试缺口与剩余风险
 
-- 本任务只有架构文档，未运行应用构建、lint、类型检查或运行测试；这与任务单和 HANDOFF 的说明一致。
-- 精确依赖版本兼容性、本地启动体验、SQLite 外键启用方式、上传内容识别和下载响应安全头仍需后续脚手架及契约任务实际验证。
-- 文件系统与数据库不能共享原子事务，除上述 finding 外，后续仍必须通过故障注入验证上传、删除、恢复和孤儿数据对账。
-- 方案评分包含项目取舍判断，不是技术性能基准；用户仍需最终确认是否接受 React/TypeScript 的额外学习成本。
+- 本任务只有架构文档，没有可运行应用，因此未运行应用构建、lint、类型检查或运行时测试；与任务单和 HANDOFF 一致。
+- 上传、删除、跨站防护和对账仍必须由后续实现任务通过故障注入及浏览器测试证明。
+- Python/Node 及依赖精确兼容版本、SQLite 外键启用、本地启动体验、上传限制、对账周期和宽限期仍待后续脚手架及契约任务确定。
+- 文件系统与 SQLite 不共享原子事务；提案已给出恢复协议，但最终可靠性依赖实现质量和目标平台验证。
+- React/TypeScript 的额外学习成本仍是用户合并架构提案前需要确认的产品取舍。
+- 本报告尚未写入仓库；`coordinator` 必须在 `agent/coordinator/<task-id>-evidence` 分支原样保存本报告后，才能推进阶段验收。
 
 ## 5. 总体结论
 
-- `CHANGES_REQUIRED`
+- `READY_FOR_ACCEPTANCE`
 
-任何修订都会形成新的冻结候选 SHA，届时必须相对稳定基线重新审查完整实际合并差异。
+任何后续非证据变更都会生成新的候选 SHA，使本报告失效，并要求再次审查相对稳定基线的完整合并差异。
