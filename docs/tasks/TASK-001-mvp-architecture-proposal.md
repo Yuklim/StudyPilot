@@ -2,7 +2,7 @@
 
 ## 1. 基本信息
 
-- 状态：`IN_PROGRESS`
+- 状态：`IN_REVIEW`
 - 负责人角色：`architecture_owner`
 - 创建人：主协调 Agent
 - 创建日期：2026-09-01
@@ -140,3 +140,4 @@ Markdown 行尾空白检查
 | --- | --- | --- | --- |
 | 2026-09-01 | READY | coordinator | 需求、角色、允许路径、验收条件和检查完整；等待用户将 intake 分支合并到稳定 `main` 后派发 |
 | 2026-09-01 | IN_PROGRESS | coordinator | 用户已合并 PR #1；从稳定基线 `e1a77bf` 创建架构工作分支并派发 `architecture_owner` |
+| 2026-09-01 | IN_REVIEW | coordinator | 实现提交 `4ca1ae0` 与交接证据完整；提交 HANDOFF 后冻结候选并安排独立实际只读复审 |
