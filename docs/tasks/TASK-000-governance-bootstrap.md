@@ -2,7 +2,7 @@
 
 ## 1. 基本信息
 
-- 状态：`ACCEPTED`
+- 状态：`MERGED`
 - 负责人角色：`repo_maintainer`
 - 创建人：主协调 Agent
 - 创建日期：2026-09-01
@@ -125,3 +125,4 @@ Markdown 行尾空白检查
 | 2026-09-01 | IN_REVIEW | repo_maintainer | 两项新增问题已由实现提交 `5cbb3ec` 修复；提交本交接后冻结新候选并重新完整只读复审 |
 | 2026-09-01 | READY_FOR_ACCEPTANCE | qa_reviewer | 在实际 `read-only` 环境完整复审冻结候选 `a31e3f9`，结论为 `No findings` |
 | 2026-09-01 | ACCEPTED | integration_owner | 独立实际只读阶段验收结论为 `PASS`；等待用户决定是否合并证据分支 |
+| 2026-09-01 | MERGED | coordinator | 用户明确要求合并；`main` 已快进到验收证据提交 `440812b`，无冲突 |
