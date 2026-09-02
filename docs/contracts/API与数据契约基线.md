@@ -89,6 +89,7 @@
 | 409 | `DUPLICATE_TOPIC` / `DUPLICATE_TAG` | 规范化名称重复。 |
 | 409 | `VERSION_CONFLICT` | `expected_version` 或 `If-Match` 已过期。 |
 | 409 | `INVALID_STATE_TRANSITION` / `STATE_CONFLICT` | 当前状态不允许请求动作或额外字段不满足。 |
+| 409 | `SOURCE_TYPE_MISMATCH` | PATCH 提交了与资料已有且不可变的 `source_type` 不匹配的来源字段。 |
 | 409 | `TAXONOMY_IN_USE` | 主题或标签仍被资料使用。 |
 | 409 | `FILE_STATE_UNAVAILABLE` / `FILE_CORRUPTED` | 文件未 READY 或对账发现不一致。 |
 | 409 | `DELETION_TOKEN_REPLAYED` | 一次性删除令牌已经消费。 |
@@ -175,6 +176,8 @@ FILE 创建时不接受 `source_url`/`pasted_content`，并在同一成功响应
 | `failure_code` | string | R | FAILED 时非空；否则 null；不含路径/文件名 | 否 | resources |
 | `version` | int / `2` | R | 必有，默认 1；状态、failure_code、大小、媒体类型、SHA-256 或受控存储元数据实际变化时递增 | 否 | resources；删除影响绑定此值 |
 | `created_at` / `updated_at` | instant | R | 自动，不空 | 否 | resources |
+
+普通列表、复习列表和概览中的 `OriginalFileSummary` 只返回 `id`、`original_name`、`size_bytes`、`media_type` 和固定为 `READY` 的 `status`；不返回 `sha256`、`resource_id`、`failure_code`、`version` 或时间字段。完整 `OriginalFile` 只在 FILE 资料详情中返回。
 
 ### 4.3 DeletionConfirmation（resources 所有）
 
@@ -297,6 +300,8 @@ PUT 添加与 DELETE 移除是幂等的，避免整组标签覆盖造成并发�
 
 有下次日期时更新计划并保持 REVIEW_DUE；无下次日期只允许 UNDERSTOOD，计划转 PAUSED，学习状态转 COMPLETED。计划、记录和学习状态在同一事务更新。
 
+OpenAPI 中 `ReviewRecord` 用条件 schema 固化上述规则：`NEEDS_REVIEW` 必须有非空 `next_review_date`；`UNDERSTOOD` 可以为 null。正向示例覆盖这两种合法形状；`x-rejected-examples` 只记录应被拒绝的反例，不得当作有效 schema 示例。
+
 ### 4.12 关系、唯一性与删除/保留语义 `[架构][细化]`
 
 | 关系 | 基数与唯一约束 | 资料删除时 | 单独删除时 |
@@ -326,6 +331,8 @@ PUT 添加与 DELETE 移除是幂等的，避免整组标签覆盖造成并发�
 三者可带 `source_name`、`save_reason`、可空 `topic_id` 和最多 20 个不重复 `tag_ids`。JSON 中 `tag_ids` 是 UUID 数组；multipart 中是重复的 `tag_ids` 表单字段。响应只返回摘要/详情，不回显全部粘贴正文；详情通过 `pasted_content` 显式返回，因此属于敏感响应。文件创建只有达到 `OriginalFile.READY` 才返回 `201`；不暗示正文已解析。
 
 所有 WEB 创建、修改和详情共同引用唯一 `SourceUrl` schema。服务端必须真正解析 URL，并同时满足：协议仅 http/https，username/password 均为空，fragment 为空；查询字符串允许保留。仅靠前缀字符串判断不够。`SourceUrl` 标记为敏感字段，不进入普通日志；例如 `https://user:password@example.test/doc#private` 必须返回 `422 VALIDATION_ERROR`。
+
+`ResourcePatch` 不允许同时提交 `source_url` 和 `pasted_content`，这种请求在查询数据库前按 schema 返回 `422 VALIDATION_ERROR`。只提交一个来源字段时，服务端还必须与现有资料的不可变 `source_type` 比对：WEB 仅接受 `source_url`，PASTE 仅接受 `pasted_content`，FILE 两者都拒绝；不匹配返回 `409 SOURCE_TYPE_MISMATCH`，不修改任何数据。
 
 ## 6. 学习状态、进度与复习一致性
 
@@ -453,7 +460,7 @@ PUT 添加与 DELETE 移除是幂等的，避免整组标签覆盖造成并发�
 | --- | --- | --- | --- |
 | GET `/local-session` | bootstrap / api | Fetch 头；200 `LocalSession` | 200/403/500；无业务副作用，只返回启动时已生成的进程内令牌 |
 | GET `/resources` | 资料列表 / resources | 资料筛选分页；200 `ResourcePage` | 200/403/422/500；只读 |
-| POST `/resources` | 三来源创建 / resources | JSON WEB/PASTE 或 multipart FILE；201 `ResourceDetail` | 201/400/403/404/409/413/415/422/500/503；创建资料，文件仅 READY 成功 |
+| POST `/resources` | 三来源创建 / resources | JSON WEB/PASTE 或 multipart FILE；201 `ResourceDetail` | 201/400/403/404/413/415/422/500/503；创建资料，文件仅 READY 成功 |
 | GET `/resources/{resource_id}` | 详情 / resources | 路径 ID；200 `ResourceDetail` | 200/403/404/500；只读 |
 | PATCH `/resources/{resource_id}` | 修改元数据/同源内容 / resources | `ResourcePatch`；200 详情 | 200/400/403/404/409/415/422/428/500；写入并递增版本 |
 | POST `/resources/{resource_id}/deletion-preview` | 删除预览 / resources | 写安全；200 `DeletionPreview` | 200/403/404/500；只创建确认记录 |
@@ -501,7 +508,7 @@ DELETE review 带 JSON 是契约列明的例外；它仍是写请求并必须先
 | `listResources` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `VALIDATION_ERROR`, `UNKNOWN_ERROR` |
 | `createResource` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `TOPIC_NOT_FOUND`, `TAG_NOT_FOUND`, `FILE_TOO_LARGE`, `CONTENT_TYPE_UNSUPPORTED`, `FILE_TYPE_UNSUPPORTED`, `VALIDATION_ERROR`, `STORAGE_PATH_UNAVAILABLE`, `UNKNOWN_ERROR` |
 | `getResource` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `RESOURCE_NOT_FOUND`, `UNKNOWN_ERROR` |
-| `updateResource` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `RESOURCE_NOT_FOUND`, `TOPIC_NOT_FOUND`, `VERSION_CONFLICT`, `CONTENT_TYPE_UNSUPPORTED`, `VALIDATION_ERROR`, `VERSION_REQUIRED`, `UNKNOWN_ERROR` |
+| `updateResource` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `RESOURCE_NOT_FOUND`, `TOPIC_NOT_FOUND`, `VERSION_CONFLICT`, `SOURCE_TYPE_MISMATCH`, `CONTENT_TYPE_UNSUPPORTED`, `VALIDATION_ERROR`, `VERSION_REQUIRED`, `UNKNOWN_ERROR` |
 | `deleteResource` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `RESOURCE_NOT_FOUND`, `DELETION_TOKEN_REQUIRED`, `DELETION_TOKEN_INVALID`, `DELETION_TOKEN_REPLAYED`, `DELETION_IMPACT_CHANGED`, `DELETION_TOKEN_EXPIRED`, `STORAGE_PATH_UNAVAILABLE`, `UNKNOWN_ERROR` |
 | `previewResourceDeletion` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `RESOURCE_NOT_FOUND`, `UNKNOWN_ERROR` |
 | `attachResourceTag` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `RESOURCE_NOT_FOUND`, `TAG_NOT_FOUND`, `UNKNOWN_ERROR` |
@@ -554,9 +561,9 @@ DELETE review 带 JSON 是契约列明的例外；它仍是写请求并必须先
 
 ## 11. 请求/响应 schema 要点
 
-- `ResourceSummary`：LearningResource 通用元数据 + `progress` + tags + 可空 `original_file` 摘要 + 可空 `review_plan`；机器 schema 彻底排除 `source_url` 和 `pasted_content`，列表、复习和概览都不能返回来源 URL 或正文。
+- `ResourceSummary`：使用 `WebResourceSummary` / `PasteResourceSummary` / `FileResourceSummary` 按 `source_type` 判别。WEB/PASTE 的 `original_file` 必须为 null；FILE 必须返回 READY `OriginalFileSummary`。列表、复习和概览不返回 `source_url`、`pasted_content`、`sha256` 或其他原件详情字段。
 - `ResourceDetail`：使用 `source_type` 判别的 `WebResourceDetail`、`PasteResourceDetail`、`FileResourceDetail` 联合；WEB 只额外返回敏感 `source_url`，PASTE 只额外返回敏感 `pasted_content`，FILE 只返回非空且 READY 的 `original_file`，不得出现其他来源字段。
-- `ResourcePatch`：必含 `expected_version`，至少一个可修改字段；`source_url` 仅 WEB，`pasted_content` 仅 PASTE，`topic_id/source_name/save_reason` 可显式 null。
+- `ResourcePatch`：必含 `expected_version`，至少一个可修改字段；`source_url` 与 `pasted_content` 不得同时出现，且只能匹配现有资料的 WEB/PASTE 来源，不匹配返回 `409 SOURCE_TYPE_MISMATCH`；`topic_id/source_name/save_reason` 可显式 null。
 - Topic/Tag/Note PATCH 必含 `expected_version` 和至少一个业务字段。
 - StudyRecordCreate 必含 `expected_progress_version`、`started_at`、`duration_seconds`、`progress_before/after`、`status_before/after`；服务端必须核对 before，不能信任客户端。
 - ReviewScheduleRequest 必含 `expected_progress_version`、可空 `expected_plan_version`（首次为 null）、`due_date`；ARCHIVED 拒绝。
