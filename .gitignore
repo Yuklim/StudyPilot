@@ -1,8 +1,40 @@
 .DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
 .env
 .env.*
 !.env.example
 *.log
 .codex-log/
+
+# Python
 __pycache__/
 *.py[cod]
+.python-version.local
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Node / frontend
+node_modules/
+.npm-cache/
+dist/
+coverage/
+.vite/
+*.tsbuildinfo
+
+# StudyPilot local runtime data
+var/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+uploads/
+trash/
