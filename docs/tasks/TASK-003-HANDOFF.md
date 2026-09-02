@@ -4,9 +4,9 @@
 
 - 状态：`COMPLETE`
 - 负责人角色：`architecture_owner`
-- 分支：`agent/architecture-owner/TASK-003-api-data-contract-r2`
+- 分支：`agent/architecture-owner/TASK-003-api-data-contract-r3`
 - 比较基线 SHA：`3b911834f2e44edd5bd25500b60275640e34a676`
-- 交接前实现提交 SHA：`0e4ec3f29c41f533e30d37d921a86e7b0ad49252`
+- 交接前实现提交 SHA：`aa54222d1d2319f40a7f9cf97c97eeb283dc722c`
 
 `coordinator` 提交本报告后，所得提交才是冻结候选。本报告不引用未来的候选 SHA。
 
@@ -24,6 +24,7 @@
 - 完成首轮正式只读复审提出的 3 个 P1、7 个 P2 和 1 个 P3 修订，且没有增加产品范围。
 - 删除影响变化错误不再返回新令牌；复习归档语义统一；资料摘要不再暴露来源 URL 或粘贴正文，详情按三种来源判别。
 - 增加 OriginalFile 稳定版本、核心状态条件 schema、逐 operation 错误矩阵和成功示例、SourceUrl 安全约束及 ALL 复习列表空日期稳定排序。
+- 完成第二轮正式只读复审的 6 个 P2：资料列表使用不含 SHA-256 的文件摘要并按来源判别；四个 PATCH 示例体现真实更新和版本递增；ReviewRecord 固化结果与下次日期条件；ResourcePatch 固化来源字段互斥和 `SOURCE_TYPE_MISMATCH`；移除 createResource 无合法语义的 409；提供可对固定提交重复执行的专项只读检查命令。
 
 ## 3. 未完成或未包含内容
 
@@ -105,6 +106,10 @@
 - SourceUrl 只允许 http/https，拒绝 userinfo 和 fragment，并作为敏感字段处理；
 - OriginalFile 每次实际状态或存储元数据变化递增 version，并参与删除影响绑定；
 - 35 个 operation 使用逐项响应状态和稳定 `x-error-codes` 矩阵。
+- 普通列表中的文件投影使用 `OriginalFileSummary`，不包含 SHA-256、内部版本和时间等详情；FILE 必有 READY 摘要，WEB/PASTE 必为 null；
+- `NEEDS_REVIEW` 类型的 ReviewRecord 必须提供非空下次复习日期；
+- `ResourcePatch` 同时提交网页链接和粘贴正文时返回 422；单一来源字段与既有来源类型不匹配时返回 `409 SOURCE_TYPE_MISMATCH`；
+- createResource 没有合法 409 场景，因此不声明 409 响应。
 
 ## 7. 验证证据
 
@@ -115,14 +120,114 @@
 | `PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python -c 'from pathlib import Path; from fastapi.openapi.models import OpenAPI; OpenAPI.model_validate_json(Path("docs/contracts/openapi-v1.json").read_text())'` | PASS | OpenAPI 模型可解析 |
 | `PYTHONDONTWRITEBYTECODE=1 python3 scripts/governance/validate_governance.py` | PASS | 30 项治理语义不变量通过 |
 | `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts/governance/test_validate_governance.py` | PASS | 3 个测试通过 |
-| 复审 11 项专项语义断言 | PASS | 35 operations、12 个请求体操作、74 schemas；令牌、投影、条件、错误、示例、排序、URL 和标签均被断言 |
-| OpenAPI 引用、标识和安全参数交叉检查 | PASS | 20 paths、35 个唯一 operationId、432 个引用全部可解析；Host、令牌、Origin、Fetch Metadata、403/500 全覆盖 |
+| 提交级专项语义断言 | PASS | 固定读取实现提交 `aa54222d...`；20 paths、35 operations、12 个请求体操作、79 schemas、442 refs、4 个 PATCH 示例；覆盖两轮 findings 与关键安全不变量 |
+| OpenAPI 引用、标识和安全参数交叉检查 | PASS | 20 paths、35 个唯一 operationId、442 个引用全部可解析；Host、令牌、Origin、Fetch Metadata、403/500 全覆盖 |
 | Markdown—OpenAPI 双向映射 | PASS | 路径、方法、响应状态及 `x-error-codes` 一致 |
-| `git diff --name-only e121e28..0e4ec3f` 允许路径检查 | PASS | 只有两份授权契约文件 |
+| `git diff --name-only 4d5553c..aa54222` 允许路径检查 | PASS | 只有两份授权契约文件 |
 | 敏感信息模式扫描 | PASS | 未发现私钥、OpenAI/GitHub token、JWT、用户主机路径或非示例邮箱 |
 | 需求/架构人工追踪 | PASS | 需求 5.1～5.10 与架构 6～9、11 均有承载或明确延期 |
 
-自定义检查早期曾因 Git 中文路径转义、把 `example.test` 安全反例误识别为邮箱、把“11 个其他请求体操作”误算为请求体操作总数，以及标题文本匹配过严而失败；修正只读检查逻辑后全部 PASS，均非契约缺陷。
+### 7.1 可复现的提交级专项只读检查
+
+以下命令不读取当前工作区文件，而是固定从实现提交 `aa54222d1d2319f40a7f9cf97c97eeb283dc722c` 读取两份契约；Reviewer 和 Integration Owner 可直接复制执行。预期首行输出为 `TASK-003 committed semantic check: PASS`。
+
+```bash
+TASK003_INPUT_SHA=aa54222d1d2319f40a7f9cf97c97eeb283dc722c python3 - <<'PY'
+import json, os, subprocess
+from datetime import datetime
+
+sha = os.environ["TASK003_INPUT_SHA"]
+
+def read(path):
+    return subprocess.check_output(["git", "show", f"{sha}:{path}"], text=True)
+
+md = read("docs/contracts/API与数据契约基线.md")
+oas = json.loads(read("docs/contracts/openapi-v1.json"))
+schemas = oas["components"]["schemas"]
+verbs = {"get", "post", "put", "patch", "delete"}
+ops = {
+    op["operationId"]: (path, method, op)
+    for path, item in oas["paths"].items()
+    if isinstance(item, dict)
+    for method, op in item.items()
+    if method in verbs
+}
+
+summary = schemas["OriginalFileSummary"]
+assert set(summary["properties"]) == {"id", "original_name", "size_bytes", "media_type", "status"}
+assert set(summary["required"]) == set(summary["properties"])
+assert summary["properties"]["status"]["const"] == "READY"
+assert not {"sha256", "resource_id", "failure_code", "version", "created_at", "updated_at"} & set(summary["properties"])
+assert set(schemas["ResourceSummary"]["discriminator"]["mapping"]) == {"WEB", "PASTE", "FILE"}
+for source, name in (("WEB", "WebResourceSummary"), ("PASTE", "PasteResourceSummary"), ("FILE", "FileResourceSummary")):
+    rule = schemas[name]["allOf"][-1]
+    assert rule["properties"]["source_type"]["const"] == source
+    assert "original_file" in rule["required"]
+    expected = ({"$ref": "#/components/schemas/OriginalFileSummary"} if source == "FILE" else {"type": "null"})
+    assert rule["properties"]["original_file"] == expected
+
+checks = (
+    ("updateResource", "save_reason", "补充实践原因"),
+    ("updateTopic", "description", None),
+    ("updateTag", "name", "待复习"),
+    ("updateResourceNote", "content", "更新后的个人理解。"),
+)
+for operation_id, field, expected in checks:
+    op = ops[operation_id][2]
+    request = op["requestBody"]["content"]["application/json"]["example"]
+    result = op["responses"]["200"]["content"]["application/json"]["example"]["data"]
+    assert request[field] == result[field] == expected
+    assert result["version"] == 2
+    created = datetime.fromisoformat(result["created_at"].replace("Z", "+00:00"))
+    updated = datetime.fromisoformat(result["updated_at"].replace("Z", "+00:00"))
+    assert updated > created
+
+record = schemas["ReviewRecord"]
+assert record["if"]["properties"]["result"]["const"] == "NEEDS_REVIEW"
+assert record["then"]["properties"]["next_review_date"] == {"type": "string", "format": "date"}
+valid = lambda value: value["result"] != "NEEDS_REVIEW" or value["next_review_date"] is not None
+assert all(valid(value) for value in record["examples"])
+assert all(not valid(item["value"]) for item in record["x-rejected-examples"].values())
+
+patch = schemas["ResourcePatch"]
+assert set(patch["not"]["required"]) == {"source_url", "pasted_content"}
+update = ops["updateResource"][2]
+assert "SOURCE_TYPE_MISMATCH" in update["x-error-codes"]
+assert "409" in update["responses"]
+assert "409 SOURCE_TYPE_MISMATCH" in update["description"]
+assert "`SOURCE_TYPE_MISMATCH`" in md
+
+create = ops["createResource"][2]
+assert "409" not in create["responses"]
+assert not {"VERSION_CONFLICT", "STATE_CONFLICT", "SOURCE_TYPE_MISMATCH"} & set(create["x-error-codes"])
+
+delete_409 = json.dumps(ops["deleteResource"][2]["responses"]["409"], ensure_ascii=False)
+assert "confirmation_token" not in delete_409
+assert "expires_at" not in delete_409
+assert "ActiveReviewPlan 保持 SCHEDULED、保留 due_date 且版本不变" in md
+assert "计划同时 PAUSED" not in md
+original = schemas["OriginalFile"]
+assert "version" in original["required"]
+assert original["properties"]["version"]["minimum"] == 1
+for name in ("OriginalFile", "LearningProgress", "ActiveReviewPlan"):
+    assert any(all(key in clause for key in ("if", "then", "else")) for clause in schemas[name].get("allOf", []))
+for operation_id, (_, _, op) in ops.items():
+    assert op.get("x-contract-section")
+    assert op.get("x-error-codes")
+    expected_security = [] if operation_id == "bootstrapLocalSession" else [{"LocalToken": []}]
+    assert op["security"] == expected_security
+    for status, response in op["responses"].items():
+        if status.startswith("2") and status != "204":
+            for media in response.get("content", {}).values():
+                assert "example" in media or "examples" in media
+
+print("TASK-003 committed semantic check: PASS")
+path_count = sum(1 for path, item in oas["paths"].items() if path.startswith("/") and isinstance(item, dict))
+print(f"input={sha} paths={path_count} operations={len(ops)} schemas={len(schemas)} patch_examples={len(checks)}")
+PY
+```
+
+实际输出摘要：`input=aa54222d... paths=20 operations=35 schemas=79 patch_examples=4`。
 
 ## 8. 未执行检查
 
