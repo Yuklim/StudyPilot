@@ -12,6 +12,12 @@ from scripts.governance import validate_governance as gov
 
 
 class CheckTests(unittest.TestCase):
+    def test_branch_role_accepts_hyphen_and_underscore(self):
+        for role in ("coordinator", "repo-maintainer", "repo_maintainer", "resource_worker"):
+            self.assertTrue(check.valid_task_branch(f"agent/{role}/TASK-005-example"))
+        for branch in ("main", "agent/repo_maintainer/example", "TASK-005-example", ""):
+            self.assertFalse(check.valid_task_branch(branch))
+
     def test_profiles_cannot_be_omitted_by_task(self):
         self.assertEqual({"backend"}, check.selected_profiles(["backend/src/main.py"], []))
         self.assertEqual({"frontend"}, check.selected_profiles(["frontend/src/a.tsx"], []))

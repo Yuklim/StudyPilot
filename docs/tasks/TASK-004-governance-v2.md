@@ -41,7 +41,7 @@ acceptance_exception = "V2_USER_REQUEST_2026-09-03"
 
 ## 实现与测试
 
-- 实现提交：`964e844a6a5bdabb77a2a45a7c26942076f616c5`。36 个文件，仅本任务 allowlist；业务源码、产品需求及 TASK-003 契约没有改动。
+- 首轮实现提交：`964e844a6a5bdabb77a2a45a7c26942076f616c5`。36 个文件，仅本任务 allowlist；业务源码、产品需求及 TASK-003 契约没有改动。后续修订由下述指纹与最终 Review 候选绑定。
 - 主要变化：风险路由、单任务记录/分支、短上下文/短报告、同 Reviewer 增量复核、证据复用、只读权限保持；现有 13 角色/4 Skills 保留而非重建。
 - 机械检查：`PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-004-governance-v2.md --worktree`，退出 0，STATIC/CHECKS PASS；自动选择 governance。
 - 被测实现指纹：`672e4c5f89ce9be757764f153a13b1cbbf295eb65a028bba9720b3582f99818b`。任务及索引后续证据变化不改变此指纹，但仍受冻结授权检查。
@@ -51,6 +51,7 @@ acceptance_exception = "V2_USER_REQUEST_2026-09-03"
 - 系统 `python3` 为 3.9.6；新说明统一指向项目 3.13 环境，避免静默降级为不完整 TOML 正则解析。
 - 静态文本统计：根规则 + 四个 Skills + 使用指南从 22130 字符降至 12212 字符，约减少 45%；不是实测 Token 或工时收益承诺。
 - TASK-003 分支指针仍为 `fe6196f724cafbb67a30f1479769a57b5affc8d4`；该候选及实现提交均保留。
+- 首轮 Review 后定点修订：分支角色段同时接受中横线和下划线，新增合法角色与 main/非任务分支反例测试。相同治理检查入口再次退出 0，23 个测试及 lint/format/静态检查全部通过；最新指纹 `9dda08ff7965f0a43407c78dbd8c0348d6eeed688dbe2afd6be447854c0196f0`。未改变其他治理行为。
 
 ## TASK-003 保全与迁移决定
 
@@ -68,7 +69,8 @@ acceptance_exception = "V2_USER_REQUEST_2026-09-03"
 
 - 2026-09-03：IN_PROGRESS；用户授权本次主 Agent 实施 + 1 个独立 Reviewer，余下验收为主 Agent 证据核对。
 - 2026-09-03：IN_REVIEW；实现与机械检查完成，准备冻结候选并派发唯一独立只读 Reviewer。
-- Reviewer：待执行。
+- 首轮 Reviewer：独立会话 `01a062f8-bb34-7032-80f8-ec811697bc71`，候选 `7a64aa8bb49aadec87bbe41749a1b2076eb4b3c0`，CHANGES_REQUIRED；1 个 P2（分支角色名下划线误拒绝），已定点修正，待同一 Reviewer 更新结论。
+- 权限说明校正：运行器启动记录明确 `sandbox: read-only`、`approval: never`；Git 临时缓存写入被系统拒绝。首轮报告称“已执行临时文件试写”，但显式探测命令被拦截或语法失败，不能作成功执行的检测证据；要求 Reviewer 在最终报告更正，不沿用不准确表述。
 - 验收：待执行。
 - 用户合并：未发生。
 <!-- EVIDENCE:END -->

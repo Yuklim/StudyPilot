@@ -32,6 +32,10 @@ SECRET_PATTERNS = {
 PROFILE_NAMES = {"governance", "backend", "frontend", "contracts"}
 
 
+def valid_task_branch(branch: str) -> bool:
+    return bool(re.fullmatch(r"agent/[a-z0-9_-]+/TASK-\d{3,}-.+", branch))
+
+
 def git(*args: str) -> bytes:
     result = subprocess.run(["git", *args], cwd=ROOT, capture_output=True, env=ENV, check=False)
     if result.returncode:
@@ -251,7 +255,7 @@ def main() -> int:
         if not gov.valid_scope(args.task) or args.task.endswith("/**"):
             raise ValueError("task must be an exact relative file")
         branch = git("symbolic-ref", "--short", "HEAD").decode().strip()
-        if not re.fullmatch(r"agent/[a-z0-9-]+/TASK-\d{3,}-.+", branch):
+        if not valid_task_branch(branch):
             raise ValueError("run on the named task branch, never main or detached HEAD")
         candidate = revision(args.candidate)
         base_files: dict[str, bytes | None] = {}
