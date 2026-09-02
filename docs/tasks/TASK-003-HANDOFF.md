@@ -4,9 +4,9 @@
 
 - 状态：`COMPLETE`
 - 负责人角色：`architecture_owner`
-- 分支：`agent/architecture-owner/TASK-003-api-data-contract-r3`
+- 分支：`agent/architecture-owner/TASK-003-api-data-contract-r4`
 - 比较基线 SHA：`3b911834f2e44edd5bd25500b60275640e34a676`
-- 交接前实现提交 SHA：`aa54222d1d2319f40a7f9cf97c97eeb283dc722c`
+- 交接前实现提交 SHA：`2f41182aadba77bc341687cc2f3f519a05ea82e5`
 
 `coordinator` 提交本报告后，所得提交才是冻结候选。本报告不引用未来的候选 SHA。
 
@@ -25,6 +25,7 @@
 - 删除影响变化错误不再返回新令牌；复习归档语义统一；资料摘要不再暴露来源 URL 或粘贴正文，详情按三种来源判别。
 - 增加 OriginalFile 稳定版本、核心状态条件 schema、逐 operation 错误矩阵和成功示例、SourceUrl 安全约束及 ALL 复习列表空日期稳定排序。
 - 完成第二轮正式只读复审的 6 个 P2：资料列表使用不含 SHA-256 的文件摘要并按来源判别；四个 PATCH 示例体现真实更新和版本递增；ReviewRecord 固化结果与下次日期条件；ResourcePatch 固化来源字段互斥和 `SOURCE_TYPE_MISMATCH`；移除 createResource 无合法语义的 409；提供可对固定提交重复执行的专项只读检查命令。
+- 完成第三轮正式只读复审的 2 个 P2：按 bootstrap、读取、写入及对象类型拆分共享错误响应，确保每个错误示例都属于挂载 operation 的稳定错误矩阵；把专项检查改为不依赖 heredoc 或临时文件的固定提交只读命令，并补齐引用解析、operationId 唯一性、请求体计数、Markdown 双向映射及逐错误示例交叉验证。
 
 ## 3. 未完成或未包含内容
 
@@ -110,6 +111,7 @@
 - `NEEDS_REVIEW` 类型的 ReviewRecord 必须提供非空下次复习日期；
 - `ResourcePatch` 同时提交网页链接和粘贴正文时返回 422；单一来源字段与既有来源类型不匹配时返回 `409 SOURCE_TYPE_MISMATCH`；
 - createResource 没有合法 409 场景，因此不声明 409 响应。
+- 共享错误响应按实际 operation 能返回的错误码拆分；428 描述同时覆盖 JSON `expected_version` 与无请求体删除的 `If-Match`。
 
 ## 7. 验证证据
 
@@ -120,20 +122,21 @@
 | `PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python -c 'from pathlib import Path; from fastapi.openapi.models import OpenAPI; OpenAPI.model_validate_json(Path("docs/contracts/openapi-v1.json").read_text())'` | PASS | OpenAPI 模型可解析 |
 | `PYTHONDONTWRITEBYTECODE=1 python3 scripts/governance/validate_governance.py` | PASS | 30 项治理语义不变量通过 |
 | `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts/governance/test_validate_governance.py` | PASS | 3 个测试通过 |
-| 提交级专项语义断言 | PASS | 固定读取实现提交 `aa54222d...`；20 paths、35 operations、12 个请求体操作、79 schemas、442 refs、4 个 PATCH 示例；覆盖两轮 findings 与关键安全不变量 |
-| OpenAPI 引用、标识和安全参数交叉检查 | PASS | 20 paths、35 个唯一 operationId、442 个引用全部可解析；Host、令牌、Origin、Fetch Metadata、403/500 全覆盖 |
-| Markdown—OpenAPI 双向映射 | PASS | 路径、方法、响应状态及 `x-error-codes` 一致 |
-| `git diff --name-only 4d5553c..aa54222` 允许路径检查 | PASS | 只有两份授权契约文件 |
+| 提交级专项语义断言 | PASS | 固定读取实现提交 `2f41182...`；20 paths、35 operations、12 个请求体操作、79 schemas、459 refs、4 个 PATCH 示例；覆盖前三轮 findings 与关键安全不变量 |
+| OpenAPI 引用、标识和安全参数交叉检查 | PASS | 20 paths、35 个唯一 operationId、459 个引用全部可解析；Host、令牌、Origin、Fetch Metadata、403/500 全覆盖 |
+| 错误示例交叉检查 | PASS | 279 个 operation 挂载错误示例全部匹配 HTTP 状态和对应 `x-error-codes`；每个错误状态及每个 operation 均有适用失败示例 |
+| Markdown—OpenAPI 双向映射 | PASS | 路径、方法、响应状态、全局错误 HTTP 映射及逐 operation `x-error-codes` 一致 |
+| `git diff --name-only ba0dc5b..2f41182` 允许路径检查 | PASS | 只有两份授权契约文件 |
 | 敏感信息模式扫描 | PASS | 未发现私钥、OpenAI/GitHub token、JWT、用户主机路径或非示例邮箱 |
 | 需求/架构人工追踪 | PASS | 需求 5.1～5.10 与架构 6～9、11 均有承载或明确延期 |
 
 ### 7.1 可复现的提交级专项只读检查
 
-以下命令不读取当前工作区文件，而是固定从实现提交 `aa54222d1d2319f40a7f9cf97c97eeb283dc722c` 读取两份契约；Reviewer 和 Integration Owner 可直接复制执行。预期首行输出为 `TASK-003 committed semantic check: PASS`。
+以下命令不读取当前工作区文件，而是固定从实现提交 `2f41182aadba77bc341687cc2f3f519a05ea82e5` 读取两份契约；Reviewer 和 Integration Owner 可直接复制执行。它使用 `python3 -c` 的多行参数，不使用 heredoc、不创建临时文件，适用于仓库和系统临时目录都不可写的强只读环境。预期首行输出为 `TASK-003 committed semantic check: PASS`。
 
 ```bash
-TASK003_INPUT_SHA=aa54222d1d2319f40a7f9cf97c97eeb283dc722c python3 - <<'PY'
-import json, os, subprocess
+TASK003_INPUT_SHA=2f41182aadba77bc341687cc2f3f519a05ea82e5 python3 -c '
+import json, os, re, subprocess
 from datetime import datetime
 
 sha = os.environ["TASK003_INPUT_SHA"]
@@ -145,13 +148,134 @@ md = read("docs/contracts/API与数据契约基线.md")
 oas = json.loads(read("docs/contracts/openapi-v1.json"))
 schemas = oas["components"]["schemas"]
 verbs = {"get", "post", "put", "patch", "delete"}
-ops = {
-    op["operationId"]: (path, method, op)
-    for path, item in oas["paths"].items()
-    if isinstance(item, dict)
-    for method, op in item.items()
-    if method in verbs
+path_items = {path: item for path, item in oas["paths"].items() if path.startswith("/") and isinstance(item, dict)}
+ops = {}
+duplicate_operation_ids = []
+for path, item in path_items.items():
+    for method, op in item.items():
+        if method not in verbs:
+            continue
+        operation_id = op["operationId"]
+        if operation_id in ops:
+            duplicate_operation_ids.append(operation_id)
+        ops[operation_id] = (path, method, op)
+
+def pointer(ref):
+    assert ref.startswith("#/")
+    value = oas
+    for part in ref[2:].split("/"):
+        value = value[part.replace("~1", "/").replace("~0", "~")]
+    return value
+
+def walk_refs(value):
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key == "$ref":
+                yield item
+            yield from walk_refs(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from walk_refs(item)
+
+def resolved(value):
+    return pointer(value["$ref"]) if isinstance(value, dict) and set(value) == {"$ref"} else value
+
+refs = list(walk_refs(oas))
+for ref in refs:
+    pointer(ref)
+
+assert len(path_items) == 20
+assert len(ops) == 35
+assert not duplicate_operation_ids
+body_operations = sum("requestBody" in op for _, _, op in ops.values())
+assert body_operations == 12
+assert len(schemas) == 79
+assert len(refs) == 459
+
+markdown_operations = {}
+for line in md.splitlines():
+    match = re.match(r"^\| (GET|POST|PUT|PATCH|DELETE) `([^`]+)` \|.*\| ([^|]+) \|$", line)
+    if not match:
+        continue
+    method, short_path, result = match.groups()
+    statuses = set(re.findall(r"\b\d{3}\b", result.split("；", 1)[0]))
+    markdown_operations[("/api/v1" + short_path, method.lower())] = statuses
+
+openapi_operations = {
+    (path, method): set(op["responses"])
+    for path, method, op in ops.values()
 }
+assert markdown_operations == openapi_operations
+
+markdown_errors = {}
+for line in md.splitlines():
+    match = re.match(r"^\| `([A-Za-z][A-Za-z0-9]+)` \| (.*) \|$", line)
+    if match and match.group(1) in ops:
+        markdown_errors[match.group(1)] = set(re.findall(r"`([A-Z][A-Z0-9_]+)`", match.group(2)))
+assert markdown_errors == {operation_id: set(op[2]["x-error-codes"]) for operation_id, op in ops.items()}
+
+catalog_status = {}
+for line in md.splitlines():
+    match = re.match(r"^\| (\d{3}) \| (.*) \|", line)
+    if match:
+        for code in re.findall(r"`([A-Z][A-Z0-9_]+)`", match.group(2)):
+            catalog_status[code] = match.group(1)
+openapi_error_codes = set().union(*(set(op[2]["x-error-codes"]) for op in ops.values()))
+assert set(catalog_status) == openapi_error_codes
+
+write_methods = {"post", "put", "patch", "delete"}
+local_token = oas["components"]["securitySchemes"]["LocalToken"]
+assert {key: local_token[key] for key in ("type", "in", "name")} == {"type": "apiKey", "in": "header", "name": "X-StudyPilot-Token"}
+error_examples = 0
+invalid_error_examples = []
+operations_without_valid_failure_example = []
+error_statuses_without_example = []
+for operation_id, (path, method, op) in ops.items():
+    allowed_codes = set(op["x-error-codes"])
+    expected_security = [] if operation_id == "bootstrapLocalSession" else [{"LocalToken": []}]
+    assert op["security"] == expected_security
+    assert op.get("tags") and op.get("summary") and op.get("x-contract-section")
+    parameters = [resolved(parameter) for parameter in path_items[path].get("parameters", []) + op.get("parameters", [])]
+    parameter_names = {parameter["name"] for parameter in parameters}
+    assert "Host" in parameter_names
+    if method in write_methods:
+        assert {"Origin", "Sec-Fetch-Site", "Sec-Fetch-Mode"} <= parameter_names
+    assert "403" in op["responses"] and "500" in op["responses"]
+    for code in allowed_codes:
+        assert catalog_status[code] in op["responses"]
+    operation_valid_examples = 0
+    for status, response_value in op["responses"].items():
+        response = resolved(response_value)
+        contents = response.get("content", {})
+        if status.startswith("2") and status != "204":
+            assert contents
+            for media in contents.values():
+                assert "example" in media or "examples" in media
+        if status.startswith("2"):
+            continue
+        status_examples = 0
+        for media in contents.values():
+            examples = []
+            if "example" in media:
+                examples.append(media["example"])
+            examples.extend(item["value"] for item in media.get("examples", {}).values())
+            for example in examples:
+                error_examples += 1
+                status_examples += 1
+                code = example.get("error", {}).get("code")
+                if code not in allowed_codes or catalog_status.get(code) != status:
+                    invalid_error_examples.append((operation_id, status, code))
+                else:
+                    operation_valid_examples += 1
+        if status_examples == 0:
+            error_statuses_without_example.append((operation_id, status))
+    if operation_valid_examples == 0:
+        operations_without_valid_failure_example.append(operation_id)
+
+assert error_examples == 279
+assert not invalid_error_examples
+assert not operations_without_valid_failure_example
+assert not error_statuses_without_example
 
 summary = schemas["OriginalFileSummary"]
 assert set(summary["properties"]) == {"id", "original_name", "size_bytes", "media_type", "status"}
@@ -201,7 +325,7 @@ create = ops["createResource"][2]
 assert "409" not in create["responses"]
 assert not {"VERSION_CONFLICT", "STATE_CONFLICT", "SOURCE_TYPE_MISMATCH"} & set(create["x-error-codes"])
 
-delete_409 = json.dumps(ops["deleteResource"][2]["responses"]["409"], ensure_ascii=False)
+delete_409 = json.dumps(resolved(ops["deleteResource"][2]["responses"]["409"]), ensure_ascii=False)
 assert "confirmation_token" not in delete_409
 assert "expires_at" not in delete_409
 assert "ActiveReviewPlan 保持 SCHEDULED、保留 due_date 且版本不变" in md
@@ -209,6 +333,11 @@ assert "计划同时 PAUSED" not in md
 original = schemas["OriginalFile"]
 assert "version" in original["required"]
 assert original["properties"]["version"]["minimum"] == 1
+source_url = schemas["SourceUrl"]
+assert source_url["format"] == "uri"
+assert source_url["pattern"].startswith("^https?://")
+assert "@" in source_url["pattern"] and "#" in source_url["pattern"]
+assert source_url["x-sensitive"] is True
 for name in ("OriginalFile", "LearningProgress", "ActiveReviewPlan"):
     assert any(all(key in clause for key in ("if", "then", "else")) for clause in schemas[name].get("allOf", []))
 for operation_id, (_, _, op) in ops.items():
@@ -222,12 +351,11 @@ for operation_id, (_, _, op) in ops.items():
                 assert "example" in media or "examples" in media
 
 print("TASK-003 committed semantic check: PASS")
-path_count = sum(1 for path, item in oas["paths"].items() if path.startswith("/") and isinstance(item, dict))
-print(f"input={sha} paths={path_count} operations={len(ops)} schemas={len(schemas)} patch_examples={len(checks)}")
-PY
+print(f"input={sha} paths={len(path_items)} operations={len(ops)} body_operations={body_operations} schemas={len(schemas)} refs={len(refs)} markdown_operations={len(markdown_operations)} error_examples={error_examples} invalid_error_examples={len(invalid_error_examples)} error_statuses_without_example={len(error_statuses_without_example)} patch_examples={len(checks)}")
+'
 ```
 
-实际输出摘要：`input=aa54222d... paths=20 operations=35 schemas=79 patch_examples=4`。
+实际输出摘要：`input=2f41182... paths=20 operations=35 body_operations=12 schemas=79 refs=459 markdown_operations=35 error_examples=279 invalid_error_examples=0 error_statuses_without_example=0 patch_examples=4`。
 
 ## 8. 未执行检查
 
