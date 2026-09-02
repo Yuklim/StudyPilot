@@ -2,7 +2,7 @@
 
 ## 1. 基本信息
 
-- 状态：`ACCEPTED`
+- 状态：`MERGED`
 - 负责人角色：`architecture_owner`
 - 创建人：主协调 Agent
 - 创建日期：2026-09-01
@@ -147,3 +147,4 @@ Markdown 行尾空白检查
 | 2026-09-01 | READY_FOR_ACCEPTANCE | qa_reviewer | 第二个全新独立 Reviewer 在真实只读权限中复审冻结候选 `ea64bf2`；`No findings`，四项历史问题全部闭环 |
 | 2026-09-01 | IN_ACCEPTANCE | coordinator | 冻结候选、修订 HANDOFF、成功复审报告和检查证据齐全，安排独立实际只读阶段验收 |
 | 2026-09-01 | ACCEPTED | integration_owner | 实际只读阶段验收逐项核对 11 项验收条件并给出 `PASS`；等待用户决定是否合并证据分支 |
+| 2026-09-02 | MERGED | user | 用户已将 GitHub PR #2 合并到 `main`；远程与本地稳定基线均核实为 `105e25c` |
