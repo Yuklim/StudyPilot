@@ -4,9 +4,9 @@
 
 - 状态：`COMPLETE`
 - 负责人角色：`architecture_owner`
-- 分支：`agent/architecture-owner/TASK-003-api-data-contract`
+- 分支：`agent/architecture-owner/TASK-003-api-data-contract-r2`
 - 比较基线 SHA：`3b911834f2e44edd5bd25500b60275640e34a676`
-- 交接前实现提交 SHA：`0c1ef24a72bdafb6702038ab5cdfb52f22eb7ff3`
+- 交接前实现提交 SHA：`0e4ec3f29c41f533e30d37d921a86e7b0ad49252`
 
 `coordinator` 提交本报告后，所得提交才是冻结候选。本报告不引用未来的候选 SHA。
 
@@ -21,6 +21,9 @@
 - 冻结文件识别、25 MiB 上限、上传状态机、崩溃恢复、对账和下载协议。
 - 冻结删除影响全集、5 分钟一次性令牌、重算、重放拒绝和 trash 恢复协议。
 - 提供需求 5.1～5.10、架构 6～9/11、中文契约和 OpenAPI 的三向追踪表。
+- 完成首轮正式只读复审提出的 3 个 P1、7 个 P2 和 1 个 P3 修订，且没有增加产品范围。
+- 删除影响变化错误不再返回新令牌；复习归档语义统一；资料摘要不再暴露来源 URL 或粘贴正文，详情按三种来源判别。
+- 增加 OriginalFile 稳定版本、核心状态条件 schema、逐 operation 错误矩阵和成功示例、SourceUrl 安全约束及 ALL 复习列表空日期稳定排序。
 
 ## 3. 未完成或未包含内容
 
@@ -53,12 +56,12 @@
 | --- | --- |
 | 第 2 节统一 HTTP、错误、分页、并发 | `ErrorResponse`、`PageMeta`、公共 responses/parameters |
 | 第 3 节枚举 | 6 个枚举 schema |
-| 第 4 节对象与关系 | 11 个核心对象 schema 及组合投影 |
+| 第 4 节对象与关系 | 11 个核心对象 schema、条件约束及来源安全组合投影 |
 | 第 5 节三来源创建 | `/api/v1/resources` POST 和三个创建 schema |
 | 第 6 节学习、复习、时间 | StudyRecord/Review paths 和 schemas |
 | 第 7 节本地安全 | `LocalToken`、Host/Origin/Fetch 参数、403 示例 |
 | 第 8 节上传下载 | multipart 请求、OriginalFile、download 二进制媒体类型 |
-| 第 9 节确认删除 | deletion-preview、DELETE、DeletionPreview 与 409 新摘要示例 |
+| 第 9 节确认删除 | deletion-preview、DELETE、DeletionPreview 与不含新令牌的 409 当前影响摘要 |
 | 第 10 节操作总表 | 20 paths、35 operations、唯一 operationId |
 | 第 12 节三向追踪 | paths/schemas 与需求、架构逐项映射 |
 
@@ -97,25 +100,29 @@
 - 复习日期采用本地日历语义，时间点统一 UTC；
 - Topic/Tag 规范化名称唯一；
 - 单标签 PUT/DELETE 关联采用幂等操作。
+- `REVIEW_DUE` 归档保留 SCHEDULED 计划和 due_date，但所有复习列表排除归档资料；恢复后原计划重新可见；
+- `scope=ALL` 中空 due_date 无论升降序均固定排在有日期计划之后；
+- SourceUrl 只允许 http/https，拒绝 userinfo 和 fragment，并作为敏感字段处理；
+- OriginalFile 每次实际状态或存储元数据变化递增 version，并参与删除影响绑定；
+- 35 个 operation 使用逐项响应状态和稳定 `x-error-codes` 矩阵。
 
 ## 7. 验证证据
 
 | 命令或检查 | 结果 | 说明 |
 | --- | --- | --- |
-| `git diff --cached --check` | PASS | 无空白错误 |
+| `git diff --check` | PASS | 按任务单要求检查完整工作区，无空白错误 |
 | `python3 -m json.tool docs/contracts/openapi-v1.json >/dev/null` | PASS | JSON 语法有效 |
-| FastAPI `OpenAPI.model_validate_json(...)` | PASS | OpenAPI 模型可解析 |
+| `PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python -c 'from pathlib import Path; from fastapi.openapi.models import OpenAPI; OpenAPI.model_validate_json(Path("docs/contracts/openapi-v1.json").read_text())'` | PASS | OpenAPI 模型可解析 |
 | `PYTHONDONTWRITEBYTECODE=1 python3 scripts/governance/validate_governance.py` | PASS | 30 项治理语义不变量通过 |
 | `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts/governance/test_validate_governance.py` | PASS | 3 个测试通过 |
-| 自定义 OpenAPI 交叉检查 | PASS | 35 operations、唯一 operationId、388 个引用可解析、63 个 schemas |
-| 写请求安全参数检查 | PASS | 所有写操作均有 Token、Origin 和三个 Fetch Metadata 要求 |
-| Host/403/500/成功响应检查 | PASS | 所有操作完整 |
-| Markdown—OpenAPI 端点映射 | PASS | 两侧均为 35 个操作 |
-| 允许路径检查 | PASS | 只有两份任务文件 |
-| 敏感信息模式扫描 | PASS | 未发现邮箱、密钥或私钥模式 |
+| 复审 11 项专项语义断言 | PASS | 35 operations、12 个请求体操作、74 schemas；令牌、投影、条件、错误、示例、排序、URL 和标签均被断言 |
+| OpenAPI 引用、标识和安全参数交叉检查 | PASS | 20 paths、35 个唯一 operationId、432 个引用全部可解析；Host、令牌、Origin、Fetch Metadata、403/500 全覆盖 |
+| Markdown—OpenAPI 双向映射 | PASS | 路径、方法、响应状态及 `x-error-codes` 一致 |
+| `git diff --name-only e121e28..0e4ec3f` 允许路径检查 | PASS | 只有两份授权契约文件 |
+| 敏感信息模式扫描 | PASS | 未发现私钥、OpenAI/GitHub token、JWT、用户主机路径或非示例邮箱 |
 | 需求/架构人工追踪 | PASS | 需求 5.1～5.10 与架构 6～9、11 均有承载或明确延期 |
 
-一次早期自定义映射脚本因 Git 中文路径转义以及未去除统一 `/api/v1` 前缀而报告失败；修正检查逻辑后原样重跑为 PASS，契约内容未因此出现失败。
+自定义检查早期曾因 Git 中文路径转义、把 `example.test` 安全反例误识别为邮箱、把“11 个其他请求体操作”误算为请求体操作总数，以及标题文本匹配过严而失败；修正只读检查逻辑后全部 PASS，均非契约缺陷。
 
 ## 8. 未执行检查
 
