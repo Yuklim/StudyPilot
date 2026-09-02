@@ -6,7 +6,7 @@
 - 负责人角色：`repo_maintainer`
 - 分支：`agent/repo-maintainer/TASK-002-runnable-scaffold`
 - 比较基线 SHA：`2ded4eb3612fd0df2129f667bc4ace05fb2dbf20`
-- 交接前实现提交 SHA：`6b84a3adfeff1dae96a1191715956564b6947cd3`
+- 交接前实现提交 SHA：`f8b978f06de789aa902196d2acefe2a18d0e3ee4`
 
 `coordinator` 提交本报告后，所得提交才是冻结候选；其精确 SHA 记录在 REVIEW 和 ACCEPTANCE 中，本报告不引用自身所在提交。
 
@@ -26,6 +26,7 @@
 - 仅同步根 `AGENTS.md` 第 3 节项目状态。
 - 根据冻结候选 `93b6ff47c1a692eb89b3ba2a599066c9cacb77a4` 的正式只读复审完成修订：全局错误边界不再记录原始异常对象或组件栈，只输出固定脱敏诊断；测试明确验证敏感异常消息与组件栈不会进入控制台参数。
 - 将 `@types/node` 从 26.4.1 调整为与固定 Node.js 24 运行时一致的 24.13.3，并同步 npm 锁文件。
+- 根据冻结候选 `36da78d0fa9eec1a2f02af696aaad50bfeff8322` 的第二轮正式只读复审完成修订：为 React 根节点的 caught、uncaught、recoverable 三类错误显式配置固定脱敏诊断，移除错误边界重复日志；新增经过真实 `createRoot`、`StrictMode` 和错误边界渲染路径的测试，并扫描全部常用控制台方法参数，证明敏感异常消息与组件栈标记不会泄露。
 
 ## 3. 未完成或未包含内容
 
@@ -119,7 +120,7 @@ Python 3.13 来自已批准架构；Node.js 24 是受支持的偶数 LTS 主版�
 | `cd frontend && npm run format:check` | PASS | Prettier 检查通过 |
 | `cd frontend && npm run lint` | PASS | ESLint 检查通过 |
 | `cd frontend && npm run typecheck` | PASS | TypeScript 检查通过 |
-| `cd frontend && npm run test -- --run` | PASS | 2 个测试文件、4 项测试；包含错误诊断脱敏验证 |
+| `cd frontend && npm run test -- --run` | PASS | 2 个测试文件、5 项测试；包含真实 React 根渲染路径及 caught、uncaught、recoverable 三类错误诊断脱敏验证 |
 | `cd frontend && npm run build` | PASS | 正式构建 25 个模块 |
 | npm 安全审计 | PASS | 0 个漏洞 |
 | 敏感密钥模式扫描 | PASS | 无匹配 |
