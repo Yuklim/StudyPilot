@@ -358,7 +358,7 @@ PUT 添加与 DELETE 移除是幂等的，避免整组标签覆盖造成并发�
 
 ### 7.1 规范来源与启动令牌
 
-- 打包演示：UI 来源和可信 authority 为配置的 `http://127.0.0.1:<port>`；开发：UI 为配置的 Vite `http://127.0.0.1:<ui-port>`，同源 `/api` 代理的后端 authority 为配置的 `127.0.0.1:<api-port>`。不自动信任 `localhost`、IPv6、其他端口或局域网地址。
+- 默认打包演示的 UI 来源是 `http://127.0.0.1:8000`，可信 authority 是 `127.0.0.1:8000`；默认开发 UI 来源是 `http://127.0.0.1:5173`，同源 `/api` 代理固定转向可信后端 authority `127.0.0.1:8000`。若用户显式更改启动端口，进程启动时只从该配置计算一次新的完整规范值，之后仍必须精确匹配；不自动信任 `localhost`、IPv6、其他端口或局域网地址。
 - 后端只监听 `127.0.0.1`。可信 Host/`:authority` 必须是配置的单一规范值；重复 Host、绝对形式目标不一致、`Forwarded`/`X-Forwarded-Host` 试图覆盖均拒绝。开发代理必须把后端实际收到的 Host 固定为可信 API authority，不能动态转发用户 Host。
 - 每次后端启动使用系统安全随机源生成至少 32 字节（256 位）令牌；后端重启立即使旧令牌失效。比较使用恒定时间算法。
 - `GET /api/v1/local-session` 仅在 Host 正确、`Sec-Fetch-Site=same-origin`、`Sec-Fetch-Mode=cors`、`Sec-Fetch-Dest=empty` 时返回令牌；`Origin` 可缺失，若存在必须等于规范 UI 来源。响应 `Cache-Control: no-store`。
@@ -448,7 +448,7 @@ PUT 添加与 DELETE 移除是幂等的，避免整组标签覆盖造成并发�
 
 | 方法与路径 | 用途/所有者 | 输入与成功 | 可预期错误/副作用 |
 | --- | --- | --- | --- |
-| GET `/local-session` | bootstrap / api | Fetch 头；200 `LocalSession` | 403；无业务副作用，但创建/返回进程内令牌 |
+| GET `/local-session` | bootstrap / api | Fetch 头；200 `LocalSession` | 403；无业务副作用，只返回启动时已生成的进程内令牌 |
 | GET `/resources` | 资料列表 / resources | 资料筛选分页；200 `ResourceSummaryPage` | 403/422；只读 |
 | POST `/resources` | 三来源创建 / resources | JSON WEB/PASTE 或 multipart FILE；201 `ResourceDetail` | 403/409/413/415/422/503；创建资料，文件仅 READY 成功 |
 | GET `/resources/{resource_id}` | 详情 / resources | 路径 ID；200 `ResourceDetail` | 403/404；只读 |
