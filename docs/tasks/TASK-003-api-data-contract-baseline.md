@@ -2,7 +2,7 @@
 
 ## 1. 基本信息
 
-- 状态：`IN_REVIEW`
+- 状态：`RETURNED`
 - 负责人角色：`architecture_owner`
 - 创建人：主协调 Agent
 - 创建日期：2026-09-02
@@ -212,3 +212,4 @@ python3 -m json.tool docs/contracts/openapi-v1.json >/dev/null
 | 2026-09-02 | IN_REVIEW | coordinator | 原 `architecture_owner` 已在提交 `0e4ec3f29c41f533e30d37d921a86e7b0ad49252` 修复首轮 11 项 findings；更新交接和可复现检查后冻结第二轮候选，重新安排完整独立只读复审 |
 | 2026-09-02 | RETURNED | coordinator | 独立只读 `qa_reviewer` 审查第二轮冻结候选 `f76a97d768dfba7b63616b09576cbf6db8c413f8` 后结论为 `CHANGES_REQUIRED`；无 P0/P1，发现 6 个 P2，其中首轮 2 项未完整修复并新增 4 项契约语义问题，详见 `TASK-003-REVIEW.md`，退回原 `architecture_owner` 定点修订 |
 | 2026-09-02 | IN_REVIEW | coordinator | 原 `architecture_owner` 已在提交 `aa54222d1d2319f40a7f9cf97c97eeb283dc722c` 完成第二轮 6 个 P2 的定点修订；交接加入固定提交的可复现专项命令，待冻结第三轮候选并重新安排完整独立只读复审 |
+| 2026-09-02 | RETURNED | coordinator | 独立只读 `qa_reviewer` 审查第三轮冻结候选 `fa5af8477f1e72a326431dd8e4e674a574394666` 后结论为 `CHANGES_REQUIRED`；第二轮前五项契约问题已关闭，仍有 2 个 P2：共享错误示例与操作矩阵不一致、交接命令无法在强只读环境完整复现，详见 `TASK-003-REVIEW.md` |

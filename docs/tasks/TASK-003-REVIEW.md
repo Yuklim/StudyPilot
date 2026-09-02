@@ -1,114 +1,72 @@
-# TASK-003 第二轮独立审查报告
+# TASK-003 第三轮独立审查报告
 
 ## 1. 审查信息
 
 - Reviewer：`qa_reviewer`
-- 审查目标：TASK-003 第二轮冻结候选
 - 比较基线：`3b911834f2e44edd5bd25500b60275640e34a676`
-- 冻结候选提交 SHA：`f76a97d768dfba7b63616b09576cbf6db8c413f8`
-- 候选父提交：`0e4ec3f29c41f533e30d37d921a86e7b0ad49252`
+- 冻结候选：`fa5af8477f1e72a326431dd8e4e674a574394666`
+- 候选父提交：`aa54222d1d2319f40a7f9cf97c97eeb283dc722c`
 - Merge-base：`3b911834f2e44edd5bd25500b60275640e34a676`
-- 审查日期：2026-09-02
-- 实际运行权限：`read-only`
-- 权限证据：运行环境为 restricted/read-only；Git 写入临时缓存被系统以 `Operation not permitted` 拒绝；未修改文件、创建提交、推送或合并
-- 工作区：干净；HEAD 精确等于冻结候选
-- 分支：`agent/coordinator/TASK-003-evidence-r2`
+- 分支：`agent/coordinator/TASK-003-evidence-r3`
+- 日期：2026-09-02
+- 实际权限：`read-only`
+- 权限证据：运行环境明确为 `restricted/read`；Git 临时缓存和 Bash/Zsh heredoc 临时文件写入均被系统以 `Operation not permitted` 拒绝；审查结束时暂存区及工作区差异均为 0 字节。
+- 拓扑与清洁度：HEAD、父提交、merge-base 均精确匹配；工作区干净。
 
 ## 2. Findings
 
 P0、P1：No findings.
 
-### [P2] 收窄 ResourceSummary 的文件投影并排除 SHA-256
+### [P2] 使共享错误响应示例与各 operation 的稳定错误矩阵一致
 
-- 位置：`docs/contracts/openapi-v1.json:254`、`docs/contracts/openapi-v1.json:255`；`docs/contracts/API与数据契约基线.md:173`、`docs/contracts/API与数据契约基线.md:557`
-- 违反的需求、任务或规则：TASK-003 第 10、12、32 项；中文契约关于 `sha256` 不进入普通列表及来源投影互斥的规则。
-- 触发场景：返回 FILE 资料列表、复习列表或概览中的 `ResourceSummary`。
-- 实际影响：`ResourceSummary.original_file` 直接引用完整 `ReadyOriginalFile`，因此非空时必须返回敏感 `sha256`，与“普通列表不返回”矛盾；该 schema 也允许 FILE 的 `original_file=null`，或 WEB/PASTE 携带文件对象，未保持来源关系。
-- 安全修复路径：建立不含 `sha256` 等详情字段的 `OriginalFileSummary`，并以按 `source_type` 判别的 Summary 联合 schema 保证 FILE 必有 READY 文件摘要、WEB/PASTE 必为 null。
+- 位置：`docs/contracts/openapi-v1.json:73`、`:77`、`:316`、`:317`、`:318`、`:323`
+- 违反规则：TASK-003 第 6、31、32 项；中文契约逐 operation `x-error-codes` 矩阵。
+- 触发场景：`createTopic` 的 409 显示不允许的 `VERSION_CONFLICT`；`getTopic` 的 404 显示 `RESOURCE_NOT_FOUND`；只读操作的 Forbidden 包含不适用的 `REQUEST_ORIGIN_FORBIDDEN`；bootstrap 包含不适用的 `LOCAL_TOKEN_REQUIRED`；PATCH 的 428 描述只说缺少 `If-Match`，但实际缺少的是请求体 `expected_version`。
+- 实际影响：独立交叉检查发现 27 个 operation/status/example 挂载点展示了该 operation 明确不允许的错误码。生成的 API 文档、契约测试和客户端可能据此实现错误分支，与权威错误矩阵冲突。
+- 安全修复路径：按 bootstrap、读取、写入及具体对象类型拆分响应组件，或在 operation 中提供专用响应；保证每个示例的 `error.code` 属于该 operation 的 `x-error-codes` 且匹配 HTTP 状态。将 428 描述同时覆盖 `expected_version` 与 `If-Match`，并加入自动交叉检查。
 
-### [P2] 修正四个 PATCH 成功示例的实际更新结果
+### [P2] 提供在强只读环境可直接运行且覆盖全部 PASS 声明的交接命令
 
-- 位置：`docs/contracts/openapi-v1.json:46`、`docs/contracts/openapi-v1.json:87`、`docs/contracts/openapi-v1.json:100`、`docs/contracts/openapi-v1.json:119`
-- 违反的需求、任务或规则：TASK-003 第 6、20、31、32 项；中文契约第 2.4 节。
-- 触发场景：开发者或契约测试依据 `updateResource`、`updateTopic`、`updateTag`、`updateResourceNote` 的成功示例实现更新。
-- 实际影响：请求分别修改保存原因、清空主题说明、修改标签名和笔记正文，但成功响应仍返回旧值、旧 `version=1` 和未变化的 `updated_at`。示例暗示成功修改可以不生效且不递增版本。
-- 安全修复路径：让每个响应反映请求后的值，将实际修改对象版本递增至 2，并使用晚于创建/旧更新时间的 `updated_at`。
-
-### [P2] 为 ReviewRecord 补齐结果与下次日期的条件 schema
-
-- 位置：`docs/contracts/API与数据契约基线.md:295`；`docs/contracts/openapi-v1.json:250`
-- 违反的需求、任务或规则：TASK-003 第 10、31、32 项。
-- 触发场景：复习历史返回 `result=NEEDS_REVIEW`、`next_review_date=null`。
-- 实际影响：中文字段字典规定 `NEEDS_REVIEW` 必须有下次日期，但 `ReviewRecord` 机器 schema 接受上述非法历史对象；实际只读验证也确认该对象通过 schema。
-- 安全修复路径：在 `ReviewRecord` 中增加与 `ReviewCompleteRequest` 一致的 `if/then` 条件，并加入正反示例。
-
-### [P2] 在 ResourcePatch 中表达来源字段互斥
-
-- 位置：`docs/contracts/API与数据契约基线.md:559`；`docs/contracts/openapi-v1.json:263`
-- 违反的需求、任务或规则：TASK-003 第 12、31、32 项。
-- 触发场景：PATCH 同时提交 `source_url` 和 `pasted_content`，或对不匹配的现有来源类型提交来源字段。
-- 实际影响：当前机器 schema 接受同时包含两个来源字段的请求，与“一份资料恰好一种主要来源”和中文修改限制不一致；生成客户端和契约测试无法提前识别非法组合。
-- 安全修复路径：至少用 `oneOf`/`not` 禁止两个来源字段同时出现；同时在 operation 描述和错误矩阵中明确服务端按现有 `source_type` 校验不匹配字段时的稳定错误。
-
-### [P2] 消除 createResource 的无错误码 409 响应
-
-- 位置：`docs/contracts/openapi-v1.json:30`、`docs/contracts/openapi-v1.json:31`；`docs/contracts/API与数据契约基线.md:456`、`docs/contracts/API与数据契约基线.md:502`
-- 违反的需求、任务或规则：TASK-003 第 6～8、31、32 项。
-- 触发场景：`createResource` 返回契约声明的 HTTP 409。
-- 实际影响：该 operation 声明 409，但其 `x-error-codes` 没有任何映射到 409 的错误码；复用的 409 示例是该 operation 不允许的 `VERSION_CONFLICT`。客户端无法稳定判断此响应。
-- 安全修复路径：若创建流程没有合法 409 场景，删除 Markdown/OpenAPI 中的 409；否则定义有依据的稳定错误码，并同步错误目录、operation 矩阵和专用示例。
-
-### [P2] 提供首轮要求的可复现专项检查命令
-
-- 位置：`docs/tasks/TASK-003-HANDOFF.md:118`、`docs/tasks/TASK-003-HANDOFF.md:119`、`docs/tasks/TASK-003-HANDOFF.md:120`
-- 违反的需求、任务或规则：根 AGENTS 第 9、12 节；首轮 REVIEW 第 90～96 行；TASK-003 第 10、12 节。
-- 触发场景：Reviewer 或 Integration Owner 尝试复现“11 项专项断言”、引用/安全交叉检查及 Markdown—OpenAPI 映射。
-- 实际影响：交接仍只记录检查名称、PASS 和结果摘要，没有完整命令或已提交脚本；首轮该 P2 未真正修复，也无法重现声称通过的断言逻辑。独立复验已经发现其断言遗漏上述语义问题。
-- 安全修复路径：在 HANDOFF 中完整记录只读命令、输入 SHA 和输出摘要，或经任务授权提交可复现检查脚本；形成新候选后重新审查完整差异。
+- 位置：`docs/tasks/TASK-003-HANDOFF.md:123`、`:124`、`:125`、`:132`、`:135`、`:214`、`:226`
+- 违反规则：根 AGENTS 第 9、12 节；第二轮 REVIEW 的可复现性 finding；TASK-003 第 10、12 节。
+- 触发场景：Reviewer 或 Integration Owner 原样执行第 135～227 行命令，或尝试复现表格声明的引用、唯一性和 Markdown 映射结果。
+- 实际影响：从 HANDOFF 原样提取后，以 Bash 和 Zsh 执行均在 Python 启动前失败，因为只读沙箱不能创建 heredoc 临时文件。通过标准输入绕过后，相同 Python 载荷通过，但没有遍历和解析 442 个 `$ref`，没有独立检测重复 `operationId`，没有统计 12 个请求体操作，也没有执行 Markdown—OpenAPI 双向映射，因此完整 PASS 声明仍不可复现。
+- 安全修复路径：记录一个不依赖可写临时文件、固定读取实现 SHA 的完整命令，或经授权提交只读检查脚本；实际实现引用解析、独立 operationId 唯一性、请求体计数、安全参数和 Markdown 双向映射，并记录真实输出。新候选需重新完整审查。
 
 P3：No findings.
 
 ## 3. 审查覆盖
 
-- [x] 完整差异：6 个文件，1193 行新增、2 行删除
-- [x] 路径范围：实现提交仅修改两份授权契约；其余为 coordinator 允许的任务状态、索引、HANDOFF 和首轮 REVIEW
-- [x] 20 paths、35 operations、35 个唯一 operationId
-- [x] 11 个核心对象及 74 个 OpenAPI schemas
-- [x] 432 个 `$ref` 全部可解析
-- [x] Markdown/OpenAPI 的路径、方法、响应状态及 `x-error-codes` 双向集合
-- [x] 三来源投影、状态转换、OriginalFile version、NULL 排序和 SourceUrl
-- [x] Host、本地令牌、Origin、Fetch Metadata、CORS、安全拒绝顺序
-- [x] 上传状态机、崩溃恢复、READY 门槛和下载约束
-- [x] 删除影响集合、一次性令牌、影响变化、重放及 trash 恢复
-- [x] 敏感信息扫描和范围检查
+- 完整审查 `baseline..candidate`：6 个文件，1305 行新增、2 行删除。
+- 实现修订 `4d5553c..aa54222d`：仅两份授权契约文件，PASS。
+- Coordinator 冻结变更 `aa54222d..fa5af847`：仅 TASK、HANDOFF、索引控制面文件，PASS。
+- 候选中的两份契约 blob 与实现提交完全一致。
+- 覆盖 20 paths、35 operations、79 schemas、442 个 `$ref`。
+- 覆盖全部 11 个核心对象、6 个枚举、字段/关系/所有权、分页搜索、状态/时间、上传、下载、删除、安全与隐私语义。
+- Markdown 与 OpenAPI 的路径、方法、响应状态和 `x-error-codes` 双向集合一致。
+- 第二轮前五项契约 finding 均已修复：安全 ResourceSummary、四个 PATCH 示例、ReviewRecord 日期条件、ResourcePatch 来源互斥和 createResource 409 对齐。
+- HANDOFF 可复现性 finding 仅部分修复。
 
-首轮 findings 复验结果：
+## 4. 实际执行的检查
 
-- 3 个 P1：3/3 已修复。
-- 7 个 P2：5 个已完整修复；逐 operation 示例仅结构性补齐但成功语义仍错误；可复现 HANDOFF 命令未修复。
-- 1 个 P3：已修复。
-- 新发现 4 个 schema/错误矩阵问题，详见以上 findings。
+- `git diff --check 3b911834...fa5af847...`：PASS。
+- JSON 解析、FastAPI OpenAPI 模型解析：PASS。
+- 治理验证：30 项 PASS；治理单测：3/3 PASS。
+- 原样提取 HANDOFF 命令并分别交给 Bash/Zsh：均因只读环境无法创建 heredoc 临时文件而失败。
+- 相同固定 SHA Python 载荷经标准输入执行：PASS，输出 `20 paths / 35 operations / 79 schemas / 4 PATCH examples`。
+- AJV 6 可支持语义：318 个正例、1 个拒绝例全部符合预期。
+- 12 项来源判别、SHA 排除、PATCH 互斥、ReviewRecord 条件和 SourceUrl 正反检查：全部 PASS。
+- 独立引用/operation/security/error/status/Markdown 映射检查：结构检查 PASS；发现上述 27 个错误示例语义冲突。
+- 允许路径和敏感模式扫描：PASS；只命中明确标注的 `example.test` URL 安全反例。
+- 最终再次验证 HEAD、父提交、merge-base、工作区和暂存区：均未变化。
 
-实际执行结果：
+## 5. 环境限制、测试缺口与剩余风险
 
-- `git diff --check 3b911834...f76a97d...`：PASS
-- JSON 语法检查：PASS
-- FastAPI OpenAPI 模型解析：PASS
-- 治理验证：30 项 PASS
-- 治理单测：3/3 PASS
-- Markdown—OpenAPI 双向映射：35/35 PASS
-- 安全参数交叉检查：PASS
-- 257 个现有 schema/request/response 示例的可用 AJV 关键字验证：0 个结构失败
-- 敏感模式扫描：未发现密钥、私钥、JWT、用户主机路径或真实邮箱；仅发现有意保留的 `example.test` 安全反例
-- 审查结束时 HEAD、父提交、merge-base 和工作区状态未变化
-
-## 4. 测试缺口与剩余风险
-
-- 仓库没有支持 JSON Schema Draft 2020-12 全语义和格式校验的第三方 OpenAPI linter；现有 AJV 6 不验证 `unevaluatedProperties` 等 2020-12 关键字。
+- 未安装支持 JSON Schema Draft 2020-12 全语义的 OpenAPI linter；现有 AJV 6 不验证 `unevaluatedProperties`。这是工具限制，不是单独产品缺陷。
 - 后端、前端和端到端测试按任务非目标未运行。
-- DELETE 携带 JSON、恶意文件扫描延期和仅限本地单用户运行仍是已声明风险。
-- 当前缺少已提交或完整记录的专项语义检查，无法作为后续 CI 或验收的可重复证据。
+- DELETE JSON 请求体、恶意文件扫描延期及仅限本地单用户运行仍是契约已声明风险。
+- heredoc 失败源于强只读环境；但 HANDOFF 载荷未覆盖其声称的检查是独立的证据缺陷。
 
-## 5. 总体结论
+## 6. 总体结论
 
 - `CHANGES_REQUIRED`
