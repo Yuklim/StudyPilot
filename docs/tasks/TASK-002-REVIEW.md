@@ -1,52 +1,31 @@
-# TASK-002 独立审查报告
+# TASK-002 第二轮独立审查报告
 
 ## 1. 审查信息
 
 - Reviewer：`qa_reviewer`
 - 审查目标：TASK-002 可运行项目与本地开发脚手架的完整合并差异
 - 比较基线：`2ded4eb3612fd0df2129f667bc4ace05fb2dbf20`
-- 冻结候选提交 SHA：`93b6ff47c1a692eb89b3ba2a599066c9cacb77a4`
+- 冻结候选提交 SHA：`36da78d0fa9eec1a2f02af696aaad50bfeff8322`
 - 合并基点：`2ded4eb3612fd0df2129f667bc4ace05fb2dbf20`
 - 审查日期：2026-09-02
 - 实际运行权限：`read-only`
 - 权限证据：
-  - 运行时权限配置明确为只读；
-  - Git 尝试创建 `/tmp/xcrun_db-*` 缓存时被系统以 `Operation not permitted` 拒绝；
-  - 审查结束时 HEAD 仍为冻结候选，工作区相对候选无修改；
-  - 未写文件、未创建提交、未修复代码。
+  - 运行时权限配置明确为只读，审批策略不允许提权；
+  - Git、Vitest 等工具尝试创建缓存或临时文件时被系统以 `Operation not permitted` 或 `EPERM` 拒绝；
+  - 当前 HEAD 精确等于冻结候选，工作区相对候选无修改；
+  - 审查过程未写入文件、未创建提交、未修复代码。
 
 ## 2. Findings
 
-### [P2] 不要在全局错误边界记录未经清理的异常对象
+### [P2] 在 React 根节点覆盖会泄露原始异常的默认回调
 
-- 位置：`frontend/src/ErrorBoundary.tsx:18`
-- 违反的需求、任务或规则：
-  - TASK-002 功能要求 12；
-  - `AGENTS.md` 安全与数据规则；
-  - `frontend/AGENTS.md` 第 3 节“不得记录用户正文、笔记或密钥”；
-  - 架构第 9.3 节日志脱敏边界。
-- 触发场景：README 将 `npm run dev` 作为当前主要使用方式；任何后续子组件若抛出包含 API 响应、用户正文、笔记或密钥信息的异常，`componentDidCatch` 会把完整 `error` 和 `errorInfo` 交给 `console.error`。
-- 实际影响：敏感内容和异常上下文可能进入浏览器控制台；当前测试仅屏蔽 `console.error`，没有验证日志参数已脱敏。作为全局脚手架边界，这会把不安全的日志默认行为带入后续所有页面。
-- 安全修复路径：不要转发原始异常对象；只记录固定、脱敏的诊断信息或安全错误编号。补充测试，证明异常正文和上下文不会作为控制台参数输出。
+- 位置：`frontend/src/main.tsx:15`
+- 违反的需求、任务或规则：TASK-002 功能要求 12、根规则与前端规则中的敏感日志禁令，以及架构第 9.3 节日志脱敏边界。
+- 触发场景：任意由 `ErrorBoundary` 捕获的子组件抛出包含 API 响应、私人笔记或密钥的异常。虽然 `componentDidCatch` 已改为只记录固定文本，但 `createRoot(rootElement)` 没有配置 `onCaughtError`。锁定的 React DOM 19.2.8 默认回调仍会把原始异常交给 `console.error`。
+- 实际影响：上一轮日志泄露问题没有在真实 React 渲染调用路径上完全关闭。使用候选锁定的 React 19.2.8 和 jsdom 进行只读内存复现时产生两次控制台调用：错误边界的固定消息存在，但原始敏感标记同样进入了控制台参数；生产构建中的默认回调也会记录原始错误。
+- 安全修复路径：在 `createRoot` 的根选项中提供不会转发 `error` 或 `componentStack` 的 `onCaughtError`，只输出固定脱敏诊断或完全抑制日志，并避免与 `componentDidCatch` 重复记录。补充经过实际 React 根节点渲染的测试，证明全部控制台调用均不包含异常消息或组件栈中的敏感标记；同时按相同隐私原则审视根级 `onUncaughtError` 和 `onRecoverableError`。
 
-### [P2] 在冻结候选中同步任务的审查状态
-
-- 位置：`docs/tasks/TASK-002-runnable-project-scaffold.md:5`；`docs/tasks/任务索引.md:24`
-- 违反的需求、任务或规则：
-  - `AGENTS.md` 第 8 节阶段门禁；
-  - `docs/governance/多Agent开发制度使用指南.md` 的冻结候选流程；
-  - 任务索引定义的状态机。
-- 触发场景：冻结候选已经包含完成的实现和 HANDOFF，且正式独立审查已经启动，但任务单和索引仍显示 `READY`，索引说明仍称“等待 intake 分支进入 main”；实际上 intake 已在比较基线 `2ded4eb` 中合并。
-- 实际影响：控制面把已完成并处于审查阶段的任务显示为仍可分配，不能准确反映路径占用和证据阶段，削弱后续验收的可追溯性。
-- 安全修复路径：coordinator 保存本报告时，将任务单和索引按当前结论同步为 `RETURNED` 并记录决定；形成修订候选时，再将两处一致更新为 `IN_REVIEW`。仅修改允许的状态字段和决定日志。
-
-### [P3] 让 Node 类型定义与固定的 Node 24 运行时一致
-
-- 位置：`frontend/package.json:29`
-- 违反的需求、任务或规则：TASK-002 关于固定 Node.js 版本、降低环境差异和建立可信 TypeScript 检查基线的要求。
-- 触发场景：项目运行时明确限制为 Node `>=24 <25`，但类型检查使用 `@types/node` `26.4.1`。后续工具代码调用 Node 26 新增 API 时，TypeScript 可能接受代码，而固定的 Node 24 在运行时并不提供该 API。
-- 实际影响：类型检查不能可靠代表仓库声明的运行环境，可能产生“类型检查通过、实际启动或构建失败”的回归。
-- 安全修复路径：将 `@types/node` 固定为兼容 Node 24 的版本，同步更新 `package-lock.json`，重新执行 `npm ci`、lint、typecheck、测试和正式构建。
+未发现其他符合报告阈值的问题。
 
 ## 3. 审查覆盖
 
@@ -58,29 +37,41 @@
 - [x] 安全与隐私边界
 - [x] 修改范围
 
-补充证据：
+完整差异核对结果：
 
-- 两个 SHA 均验证为提交，基线是候选祖先，实际合并基点与指定基线一致。
-- 候选包含实现提交 `188bee69c00899a919407e888faab6addce856c2` 和 HANDOFF 冻结提交。
-- 完整差异共 39 个文件：38 个实现文件均在任务允许路径内，另一个是 coordinator 控制面的 HANDOFF。
-- 未发现被提交的运行数据、数据库、依赖目录、缓存、构建产物、个人绝对路径或高风险密钥模式。
-- `package-lock.json` 共 267 个 package 条目，非根条目均有 integrity，未发现非 npm registry 来源；前后端清单与锁文件的直接依赖一致。
-- 独立只读复核结果：
-  - `git diff --check`：PASS
-  - 治理验证：PASS，30 项不变量
-  - 治理单元测试：PASS，3 项
-  - 内存态 `/health` 与 `/api/v1` 默认拒绝冒烟：PASS
-- HANDOFF 记录了后端 6 项测试、前端 3 项测试及格式、lint、类型、构建、安装和人工冒烟结果。
+- 两个 SHA 均为有效提交；指定基线是新候选祖先，实际合并基点与指定基线一致；
+- 完整差异为 42 个文件：38 个实现文件均属于任务允许路径，另外 4 个是 coordinator 获准维护的 TASK-002 HANDOFF、REVIEW、任务状态和索引；
+- 根 `AGENTS.md` 仅修改第 3 节；
+- 未发现提交的数据库、运行数据、依赖目录、构建产物、缓存、日志、个人绝对路径、真实邮箱或高风险密钥模式；
+- npm 锁文件根依赖与 `package.json` 一致，非根包均包含完整性校验，未发现非 npm registry 来源；uv 锁文件仅包含项目自身 editable 来源和 PyPI registry 来源。
+
+上一轮三项发现复核：
+
+1. 异常日志：`componentDidCatch` 已停止转发原始异常并补充直接调用测试，但真实 React 根调用路径仍会通过默认 `onCaughtError` 泄露原始异常，因此未完全解决。
+2. 控制面状态：已解决。任务单和任务索引均同步为 `IN_REVIEW`，决定日志完整。
+3. Node 类型定义：已解决。`@types/node` 已调整为 `24.13.3`，`package-lock.json` 已同步。
+
+独立只读检查：
+
+- `git diff --check`：PASS
+- 治理验证：PASS，30 项语义不变量
+- 治理单元测试：PASS，3 项
+- Ruff 格式检查和静态检查：PASS
+- Prettier 格式检查：PASS
+- ESLint：PASS
+- 后端无写入测试子集：PASS，3 项
+- React 根节点日志内存复现：确认原始敏感异常仍会进入控制台参数
 
 ## 4. 测试缺口与剩余风险
 
-- 错误边界测试没有验证异常内容不会进入控制台日志。
-- Reviewer 为保持实际只读，没有重新执行会生成 `.venv`、`node_modules`、临时目录、缓存或 `dist` 的完整安装、pytest、Vitest 和构建命令；这些结果依赖冻结候选所含 HANDOFF 证据。
-- 用户环境默认 npm 缓存仍存在既有 `EACCES`；HANDOFF 已验证使用独立缓存的 `npm ci` 替代步骤。
-- Host、Origin、Fetch Metadata、本地令牌和自定义头的完整协议按任务边界有意延期；当前所有 `/api/v1` 请求必须继续保持默认拒绝。
+- `frontend/src/ErrorBoundary.test.tsx` 直接调用 `componentDidCatch`，绕过了 `createRoot` 的默认错误处理，因此无法证明真实渲染路径已脱敏。
+- Reviewer 无法在实际只读环境重新运行 Vitest：Vite 必须创建临时文件，写入被只读 sandbox 拒绝；候选中的完整前端测试结果仍依赖 HANDOFF 证据。
+- Reviewer 未重新运行会生成依赖目录、构建产物、缓存或临时目录的完整安装、pytest、Vitest 和构建命令；HANDOFF 已记录这些检查通过。
+- 默认 npm 用户缓存仍存在既有 `EACCES`，README 已提供使用被 Git 忽略的项目内缓存进行干净安装的替代步骤。
+- Host、Origin、Fetch Metadata、本地令牌和自定义头协议按任务边界有意延期；在正式契约批准前，全部 `/api/v1` 请求必须继续默认拒绝。
 
 ## 5. 总体结论
 
 - `CHANGES_REQUIRED`
 
-以上问题修订后会形成新的冻结候选 SHA，届时必须重新对新基线差异执行完整只读审查。
+修订会形成新的冻结候选 SHA，必须重新审查相对同一基线的完整合并差异。

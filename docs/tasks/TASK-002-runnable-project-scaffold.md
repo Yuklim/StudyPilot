@@ -2,7 +2,7 @@
 
 ## 1. 基本信息
 
-- 状态：`IN_REVIEW`
+- 状态：`RETURNED`
 - 负责人角色：`repo_maintainer`
 - 创建人：主协调 Agent
 - 创建日期：2026-09-02
@@ -215,3 +215,4 @@ cd frontend && npm run build
 | 2026-09-02 | READY | coordinator | TASK-001 已合并；目标、非目标、允许路径、依赖、检查和验收条件完整；等待用户将 intake 分支合并到稳定 `main` 后派发 |
 | 2026-09-02 | RETURNED | coordinator | 冻结候选 `93b6ff47c1a692eb89b3ba2a599066c9cacb77a4` 的独立实际只读复审发现 3 项问题，退回原负责 Agent 修订；修订后重新冻结并完整复审 |
 | 2026-09-02 | IN_REVIEW | coordinator | 原负责 Agent 已在实现提交 `6b84a3adfeff1dae96a1191715956564b6947cd3` 修复异常日志泄露风险并对齐 Node 24 类型定义；更新交接后重新冻结候选并安排完整只读复审 |
+| 2026-09-02 | RETURNED | coordinator | 冻结候选 `36da78d0fa9eec1a2f02af696aaad50bfeff8322` 的第二轮独立实际只读复审发现 React 19 根级默认 `onCaughtError` 仍会记录原始异常；退回原负责 Agent 修订并要求补充真实根渲染路径的脱敏测试 |
