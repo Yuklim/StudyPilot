@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-004"
-status = "IN_REVIEW"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "治理权限、风险门禁与自动检查变化，不能因为文件是文档就判为 L1。"
 risk_flags = ["governance"]
@@ -69,7 +69,9 @@ acceptance_exception = "V2_USER_REQUEST_2026-09-03"
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 2026-09-03 追加修订：IN_REVIEW；以下旧候选 PASS 为历史证据，不代表本次规则补充已审。复用同一 Reviewer 定向审查新增决策规则，完成后更新最终候选。
+- 2026-09-03 追加修订完成：ACCEPTED；最新最终候选为 `0021895a96d0e725b08dd2ea60f9edd66538bac7`。同一 Reviewer `01a062f8-bb34-7032-80f8-ec811697bc71` 增量复核 PASS，无新增阻断/非阻断问题；以下旧候选记录保留为历史证据，最新报告见末尾。
+- 本次主 Agent证据验收 PASS（仍仅用户已授权的一次性例外）：新增规则与当前需求相符，23 项测试通过且候选静态指纹与本次被测指纹一致；实际只读 Review 覆盖新增 10 文件、继承旧覆盖；TASK-003 指针仍为 `fe6196f724cafbb67a30f1479769a57b5affc8d4`。没有放宽必要检查、改变已确认契约或遗留阻断问题。
+- 用户操作仍为合并同一 PR #8；不创建额外任务/PR，不自动合并。下面 Reviewer 末句所说的候选已经提交冻结，无需再提交实现。
 - 2026-09-03：IN_PROGRESS；用户授权本次主 Agent 实施 + 1 个独立 Reviewer，余下验收为主 Agent 证据核对。
 - 2026-09-03：IN_REVIEW；实现与机械检查完成，准备冻结候选并派发唯一独立只读 Reviewer。
 - 首轮 Reviewer：独立会话 `01a062f8-bb34-7032-80f8-ec811697bc71`，候选 `7a64aa8bb49aadec87bbe41749a1b2076eb4b3c0`，CHANGES_REQUIRED；1 个 P2（分支角色名下划线误拒绝），已定点修正，待同一 Reviewer 更新结论。
@@ -115,6 +117,37 @@ acceptance_exception = "V2_USER_REQUEST_2026-09-03"
 
 ### 结论
 **PASS**
+
+</details>
+<details>
+<summary>同一独立 Reviewer 对实际风险/成本追加规则的最终报告原文</summary>
+
+### REVIEW 结论（TASK-004，same Reviewer）
+
+- 当前候选：`0021895a96d0e725b08dd2ea60f9edd66538bac7`  
+- 继承审阅范围：已继承 `3b911834f2e44edd5bd25500b60275640e34a676 → ecd3f3d5c82a12752a991f6b8d1a2f1e0fc77e54` 的完整审查结论（含上轮 P2 问题已闭环）。本轮仅做 `3cb56c4aaf739397f4755945d7bd704ef37656f2 → 0021895a96d0e725b08dd2ea60f9edd66538bac7` 增量复核，覆盖 10 文件。
+
+### 实际权限依据
+- 运行仅读取；本轮未执行任何仓库/临时文件写操作。
+- `git show`/`git status` 相关执行输出出现系统层提示：`/tmp/xcrun_db-*` 创建失败 `Operation not permitted`，与启动说明中的 `sandbox: read-only`、`approval: never` 一致，满足实际只读验证要求（且不需要试写）。
+- 具体命令失败事实：`git: warning confstr() failed ...; error: couldn't create cache file ... Operation not permitted`（已如实记录）。
+
+### 关键变更与一致性核查
+- 变更文件均为治理文案/技能模板，未改 `scripts/governance/check_task.py` 等实现逻辑、未改风险机器路由、未改 TASK-003 保全内容或产品契约。
+- 已同步的增量规则（`AGENTS.md`、[risk guide](/Users/yuklimching/Desktop/StudyPilot/docs/governance/风险分级与检查规则.md)、[review/acceptance skill](/Users/yuklimching/Desktop/StudyPilot/.agents/skills/studypilot-review-change/SKILL.md)、[模板](/Users/yuklimching/Desktop/StudyPilot/docs/governance/templates/REVIEW_TEMPLATE.md)）与既有 Review/Acceptance 流程不冲突：  
+  - 仍保留 `TASK-004` 的一次性例外（主 Agent代验收），未泛化。  
+  - 明确要求 PASS 可含已处置的非阻断问题，阻断问题仍必须拦截；允许记录而非阻断的边界场景有明示依据。  
+  - 明确禁止覆盖独立阻断结论。  
+- 任务状态与记录已更新为 `IN_REVIEW`，与本轮“新增增量待同一 Reviewer”语境一致；历史证据（如旧 PASS 文案）仅作历史背景。
+
+### 阻断/非阻断 findings
+- 阻断：无。  
+- 非阻断：无新增真实问题。  
+- 可选建议：可选。
+
+### 决议
+- **PASS**。  
+- 需用户动作：按你既有流程继续提交该候选为最终冻结 SHA，并完成最终合并决策。
 
 </details>
 <!-- EVIDENCE:END -->
