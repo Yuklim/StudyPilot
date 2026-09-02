@@ -92,7 +92,7 @@
 | 409 | `TAXONOMY_IN_USE` | 主题或标签仍被资料使用。 |
 | 409 | `FILE_STATE_UNAVAILABLE` / `FILE_CORRUPTED` | 文件未 READY 或对账发现不一致。 |
 | 409 | `DELETION_TOKEN_REPLAYED` | 一次性删除令牌已经消费。 |
-| 409 | `DELETION_IMPACT_CHANGED` | 预览后资料或关联集合变化；`details.preview` 返回新的安全摘要和新令牌。 |
+| 409 | `DELETION_IMPACT_CHANGED` | 预览后资料或关联集合变化；`details.current_impact` 只返回新摘要和 revision，绝不返回新令牌。 |
 | 410 | `DELETION_TOKEN_EXPIRED` | 删除确认令牌超过有效期。 |
 | 413 | `FILE_TOO_LARGE` | 上传超过 26,214,400 字节。 |
 | 415 | `CONTENT_TYPE_UNSUPPORTED` / `FILE_TYPE_UNSUPPORTED` | 写入媒体类型或文件签名/格式不支持。 |
@@ -110,14 +110,14 @@
 - 排序使用白名单字段；前缀 `-` 表示降序。所有排序最后追加 `id` 升序作为稳定决胜项，因此翻页不会因相同时间而随机换位。
 - 不接受任意数据库列名。未知搜索、筛选或排序参数返回 `422 VALIDATION_ERROR`；不把未知参数静默忽略。
 - 文本搜索在 Unicode NFKC 规范化、大小写折叠和连续空白折叠后做“包含”匹配。`progress_min/max` 两端都包含；时间范围 `from` 包含、`to` 不包含。语法正确但不存在的筛选 ID 返回空页，不返回 404。
-- `topic_id` 与 `topic_unassigned=true` 互斥；`topic_unassigned=false` 等同省略。`ReviewScope` 默认 TODAY；ALL 同时包含 SCHEDULED 与 PAUSED，其他三个 scope 只包含 SCHEDULED。
+- `topic_id` 与 `topic_unassigned=true` 互斥；`topic_unassigned=false` 等同省略。`ReviewScope` 默认 TODAY；ALL 同时包含 SCHEDULED 与 PAUSED，其他三个 scope 只包含 SCHEDULED。按 `due_date` 升序时，PAUSED 的 null 永远排在所有有日期计划之后；降序时仍排在最后，然后按 `title,id` 决胜，不能依赖数据库默认 null 顺序。
 
 | 列表 | 搜索/筛选白名单 | 排序白名单与默认值 |
 | --- | --- | --- |
 | 资料 | `q` 只搜标题、来源名称、保存原因；`topic_id`、`topic_unassigned`、重复 `tag_id`、重复 `source_type`、重复 `learning_status`、`progress_min/max`、`created_from/to`、`updated_from/to` | `created_at`、`updated_at`、`title`、`progress_percent`；默认 `-created_at,id` |
 | 单资料学习记录 | `started_from/to` | `started_at`、`created_at`、`duration_seconds`；默认 `-started_at,id` |
 | 全局学习记录 | 在上项基础上增加 `resource_id`、`topic_id` | 同上 |
-| 复习列表 | `scope=TODAY/OVERDUE/UPCOMING/ALL`、`time_zone`、`topic_id`、`q`（同资料搜索） | `due_date`、`title`；默认 `due_date,title,id` |
+| 复习列表 | `scope=TODAY/OVERDUE/UPCOMING/ALL`、`time_zone`、`topic_id`、`q`（同资料搜索） | `due_date`、`title`；默认 `due_date NULLS LAST,title,id`，`-due_date` 也固定 NULLS LAST |
 | 主题统计 | `q` 搜主题名称；`time_zone` | `name`、`resource_count`、`completion_rate`、`study_seconds`；默认 `name,id` |
 
 ### 2.4 乐观并发 `[细化]`
@@ -173,6 +173,7 @@ FILE 创建时不接受 `source_url`/`pasted_content`，并在同一成功响应
 | `sha256` | string / 64 位十六进制 | R | 固定 64 小写字符 | 是 | resources；普通列表不返回，详情可返回 |
 | `status` | enum / `READY` | R | 默认 PENDING | 否 | resources；仅允许规定转换 |
 | `failure_code` | string | R | FAILED 时非空；否则 null；不含路径/文件名 | 否 | resources |
+| `version` | int / `2` | R | 必有，默认 1；状态、failure_code、大小、媒体类型、SHA-256 或受控存储元数据实际变化时递增 | 否 | resources；删除影响绑定此值 |
 | `created_at` / `updated_at` | instant | R | 自动，不空 | 否 | resources |
 
 ### 4.3 DeletionConfirmation（resources 所有）
@@ -310,7 +311,7 @@ PUT 添加与 DELETE 移除是幂等的，避免整组标签覆盖造成并发�
 | LearningResource—ReviewRecord | 1 对 0..*；记录不可变 | 纳入影响集合，经确认删除 | 不提供修改/删除接口，新结果不能覆盖历史 |
 | LearningResource—DeletionConfirmation | 逻辑 1 对 0..*，不建级联外键 | 至少保留 24 小时以拒绝重放 | 过期且过安全回收期后清理 |
 
-资料元数据用 `LearningResource.version`；每个可变从属对象使用自身 `version`；ResourceTag 使用不可变 `association_version=1`；不可变历史使用其 ID 与创建序号。删除 `impact_manifest` 绑定这些稳定值的全集，因此任意一增、一删或一改都会改变 `impact_revision`。
+资料元数据用 `LearningResource.version`；OriginalFile 和其他可变从属对象使用自身 `version`；ResourceTag 使用不可变 `association_version=1`；不可变历史使用其 ID 与创建序号。删除 `impact_manifest` 绑定这些稳定值的全集，因此任意一增、一删或一改都会改变 `impact_revision`。
 
 ## 5. 资料来源与创建契约 `[需求][细化]`
 
@@ -324,6 +325,8 @@ PUT 添加与 DELETE 移除是幂等的，避免整组标签覆盖造成并发�
 
 三者可带 `source_name`、`save_reason`、可空 `topic_id` 和最多 20 个不重复 `tag_ids`。JSON 中 `tag_ids` 是 UUID 数组；multipart 中是重复的 `tag_ids` 表单字段。响应只返回摘要/详情，不回显全部粘贴正文；详情通过 `pasted_content` 显式返回，因此属于敏感响应。文件创建只有达到 `OriginalFile.READY` 才返回 `201`；不暗示正文已解析。
 
+所有 WEB 创建、修改和详情共同引用唯一 `SourceUrl` schema。服务端必须真正解析 URL，并同时满足：协议仅 http/https，username/password 均为空，fragment 为空；查询字符串允许保留。仅靠前缀字符串判断不够。`SourceUrl` 标记为敏感字段，不进入普通日志；例如 `https://user:password@example.test/doc#private` 必须返回 `422 VALIDATION_ERROR`。
+
 ## 6. 学习状态、进度与复习一致性
 
 ### 6.1 转换矩阵 `[需求][细化]`
@@ -335,14 +338,14 @@ PUT 添加与 DELETE 移除是幂等的，避免整组标签覆盖造成并发�
 | UNREAD | — | ✓（首次自动 started_at） | × | × | ✓（记住 UNREAD） |
 | IN_PROGRESS | ✓（同请求 progress_after 必须为 0） | — | ✓（自动 completed_at） | ✓（必须先/同时已有 SCHEDULED 计划） | ✓（记住 IN_PROGRESS） |
 | COMPLETED | × | ✓（清空当前 completed_at，历史保留） | — | ✓（必须安排计划；保留 completed_at） | ✓（记住 COMPLETED） |
-| REVIEW_DUE | × | ✓（仅暂停计划且明确返回 IN_PROGRESS） | ✓（完成复习且无下次日期，或暂停时明确返回 COMPLETED） | — | ✓（计划同时 PAUSED） |
+| REVIEW_DUE | × | ✓（仅暂停计划且明确返回 IN_PROGRESS） | ✓（完成复习且无下次日期，或暂停时明确返回 COMPLETED） | — | ✓（保留 SCHEDULED 计划及 due_date） |
 | ARCHIVED | 仅当记忆值为 UNREAD | 仅当记忆值为 IN_PROGRESS | 仅当记忆值为 COMPLETED | 仅当记忆值为 REVIEW_DUE | — |
 
 - 进度必须为整数 0～100。达到 100 不自动改为 COMPLETED；状态需要用户明确提交。
 - 手动回到 UNREAD 时，非零进度不会静默清零；客户端必须在同一 StudyRecord 请求显式提交 `progress_after=0`。
 - 归档保留进度、started_at、completed_at 和历史；普通资料/复习列表默认排除 ARCHIVED，明确筛选可查看。
 - REVIEW_DUE 表示已经学习过且存在复习需要；SCHEDULED 计划进入该状态，暂停或无下次安排的完成复习退出该状态。安排计划只允许当前为 IN_PROGRESS、COMPLETED 或 REVIEW_DUE；UNREAD/ARCHIVED 返回 409。完成复习要求当前计划为 SCHEDULED 且学习状态为 REVIEW_DUE。
-- 归档 REVIEW_DUE 时保留其 SCHEDULED 计划，但复习列表排除已归档资料；恢复到 REVIEW_DUE 后计划重新可见。归档本身不伪造复习结果。
+- 归档 REVIEW_DUE 时，LearningProgress 与 StudyRecord 在同一事务更新，LearningProgress.version 递增；ActiveReviewPlan 保持 SCHEDULED、保留 due_date 且版本不变，但所有复习列表排除已归档资料。恢复只能回到记忆的 REVIEW_DUE，LearningProgress.version 再递增，原计划重新可见。归档/恢复都不暂停计划、不清空日期，也不伪造复习结果。
 - 学习记录与 LearningProgress、复习动作与 ActiveReviewPlan/ReviewRecord/LearningProgress 均在单一数据库事务中更新。
 
 ### 6.2 时间规则 `[架构][细化]`
@@ -435,7 +438,7 @@ PUT 添加与 DELETE 移除是幂等的，避免整组标签覆盖造成并发�
 1. `POST /resources/{id}/deletion-preview` 不删除数据；生成 5 分钟、一次性、至少 256 位不透明令牌。响应列出安全影响计数、资料版本、`impact_revision` 和过期时间，不返回正文、笔记或完整文件名。
 2. 服务端保存令牌摘要，并把令牌绑定到资料 ID/版本，以及按类型和 ID 排序的 OriginalFile、Note、StudyRecord、ActiveReviewPlan、ReviewRecord、ResourceTag 的 ID+版本（不可变历史用创建序号）全集。只比较数量不够。
 3. 用户确认后，DELETE 在 `X-StudyPilot-Deletion-Token` 专用头提交原令牌；URL、JSON、日志均不得出现。
-4. 同一数据库写事务中验证未过期/未用/绑定正确并重算全集。变化时旧令牌立即作废，返回 `409 DELETION_IMPACT_CHANGED`，`details.preview` 给新摘要、新令牌和过期时间；用户必须重新确认。
+4. 同一数据库写事务中验证未过期/未用/绑定正确并重算全集。变化时旧令牌立即作废，返回 `409 DELETION_IMPACT_CHANGED`；`details.current_impact` 只给当前资料版本、影响计数和 `impact_revision`，不得包含确认令牌或过期时间。OpenAPI 用 `DeletionImpactChangedErrorResponse` 把这一统一 `ErrorResponse` 场景收窄为不可多字段的机器 schema。界面展示新摘要，用户确认查看后必须重新调用 deletion-preview 才能取得新令牌。
 5. 一致时先把 READY 文件原子移动到同卷 trash 隔离键，再标记令牌已用、删除关联及资料并提交；提交成功后异步/对账清理 trash。文件移动失败则数据库回滚。
 6. 移动后提交前崩溃：数据库仍有 OriginalFile，对账从 trash 恢复最终键。提交后清理前崩溃：数据库已无记录，对账在 24 小时宽限后回收 trash。结果不确定时返回失败，绝不谎称成功。
 7. 成功响应是 `204`。同令牌重放即使首次响应丢失也返回 `409 DELETION_TOKEN_REPLAYED`；过期 410；绑定其他资料 403。
@@ -448,47 +451,88 @@ PUT 添加与 DELETE 移除是幂等的，避免整组标签覆盖造成并发�
 
 | 方法与路径 | 用途/所有者 | 输入与成功 | 可预期错误/副作用 |
 | --- | --- | --- | --- |
-| GET `/local-session` | bootstrap / api | Fetch 头；200 `LocalSession` | 403；无业务副作用，只返回启动时已生成的进程内令牌 |
-| GET `/resources` | 资料列表 / resources | 资料筛选分页；200 `ResourceSummaryPage` | 403/422；只读 |
-| POST `/resources` | 三来源创建 / resources | JSON WEB/PASTE 或 multipart FILE；201 `ResourceDetail` | 403/409/413/415/422/503；创建资料，文件仅 READY 成功 |
-| GET `/resources/{resource_id}` | 详情 / resources | 路径 ID；200 `ResourceDetail` | 403/404；只读 |
-| PATCH `/resources/{resource_id}` | 修改元数据/同源内容 / resources | `ResourcePatch`；200 详情 | 403/404/409/422；写入并递增版本 |
-| POST `/resources/{resource_id}/deletion-preview` | 删除预览 / resources | 写安全；200 `DeletionPreview` | 403/404；只创建确认记录 |
-| DELETE `/resources/{resource_id}` | 确认删除 / resources | 专用删除头；204 | 403/404/409/410/503；不可逆删除，按第9节恢复 |
-| PUT `/resources/{resource_id}/tags/{tag_id}` | 幂等关联 / taxonomy | 无体；200 `ResourceTag` | 403/404；首次创建关联，已有不变 |
-| DELETE `/resources/{resource_id}/tags/{tag_id}` | 幂等解除 / taxonomy | 无体；204 | 403/404(resource/tag)；关联不存在仍 204 |
-| GET `/resources/{resource_id}/notes` | 笔记列表 / notes | 分页；200 `NotePage` | 403/404；只读 |
-| POST `/resources/{resource_id}/notes` | 新增笔记 / notes | `NoteCreate`；201 Note | 403/404/422；创建 |
-| GET `/resources/{resource_id}/notes/{note_id}` | 笔记详情 / notes | ID；200 Note | 403/404；只读 |
-| PATCH `/resources/{resource_id}/notes/{note_id}` | 修改笔记 / notes | `NotePatch`；200 Note | 403/404/409/422；写入 |
-| DELETE `/resources/{resource_id}/notes/{note_id}` | 删除笔记 / notes | If-Match；204 | 403/404/409/428；删除 |
-| GET `/resources/{resource_id}/study-records` | 单资料历史 / learning | 分页/时间筛选；200 `StudyRecordPage` | 403/404/422；只读 |
-| POST `/resources/{resource_id}/study-records` | 记录学习并更新当前值 / learning | `StudyRecordCreate`；201 `StudyRecordResult` | 403/404/409/422；事务写入 |
-| GET `/study-records` | 全局近期活动 / learning | 分页/筛选；200 页面 | 403/422；只读 |
-| GET `/topics` | 主题列表 / taxonomy | 分页、`q`；200 `TopicPage` | 403/422；只读 |
-| POST `/topics` | 创建主题 / taxonomy | `TopicCreate`；201 Topic | 403/409/422；创建 |
-| GET `/topics/{topic_id}` | 主题详情 / taxonomy | ID；200 Topic | 403/404；只读 |
-| PATCH `/topics/{topic_id}` | 修改主题 / taxonomy | `TopicPatch`；200 Topic | 403/404/409/422；写入 |
-| DELETE `/topics/{topic_id}` | 删除未使用主题 / taxonomy | If-Match；204 | 403/404/409/428；删除，不级联资料 |
-| GET `/tags` | 标签列表 / taxonomy | 分页、`q`；200 `TagPage` | 403/422；只读 |
-| POST `/tags` | 创建标签 / taxonomy | `TagCreate`；201 Tag | 403/409/422；创建 |
-| GET `/tags/{tag_id}` | 标签详情 / taxonomy | ID；200 Tag | 403/404；只读 |
-| PATCH `/tags/{tag_id}` | 修改标签 / taxonomy | `TagPatch`；200 Tag | 403/404/409/422；写入 |
-| DELETE `/tags/{tag_id}` | 删除未使用标签 / taxonomy | If-Match；204 | 403/404/409/428；删除，不级联资料 |
-| GET `/reviews` | 到期/逾期/未来列表 / reviews | scope/time_zone/筛选分页；200 `ReviewPlanPage` | 403/422；只读 |
-| PUT `/reviews/{resource_id}` | 安排或改期 / reviews | `ReviewScheduleRequest`；200 `ReviewPlanResult` | 403/404/409/422；计划+学习状态事务写入 |
-| DELETE `/reviews/{resource_id}` | 移出复习列表 / reviews | `ReviewPauseRequest` JSON；200 `ReviewPlanResult` | 403/404/409/422；计划暂停+状态事务写入 |
-| POST `/reviews/{resource_id}/complete` | 完成复习 / reviews | `ReviewCompleteRequest`；201 `ReviewCompleteResult` | 403/404/409/422；追加历史并事务更新 |
-| GET `/resources/{resource_id}/review-records` | 复习历史 / reviews | 分页；200 `ReviewRecordPage` | 403/404/422；只读 |
-| GET `/analytics/overview` | 概览 / analytics | `time_zone`；200 `OverviewAnalytics` | 403/422；实时只读聚合 |
-| GET `/analytics/topics` | 主题统计 / analytics | `time_zone`/分页/搜索排序；200 `TopicAnalyticsPage` | 403/422；实时只读聚合 |
-| GET `/files/{file_id}/download` | 原件下载 / resources | 文件 ID；200 binary | 403/404/409/503；只读，不改时间 |
+| GET `/local-session` | bootstrap / api | Fetch 头；200 `LocalSession` | 200/403/500；无业务副作用，只返回启动时已生成的进程内令牌 |
+| GET `/resources` | 资料列表 / resources | 资料筛选分页；200 `ResourcePage` | 200/403/422/500；只读 |
+| POST `/resources` | 三来源创建 / resources | JSON WEB/PASTE 或 multipart FILE；201 `ResourceDetail` | 201/400/403/404/409/413/415/422/500/503；创建资料，文件仅 READY 成功 |
+| GET `/resources/{resource_id}` | 详情 / resources | 路径 ID；200 `ResourceDetail` | 200/403/404/500；只读 |
+| PATCH `/resources/{resource_id}` | 修改元数据/同源内容 / resources | `ResourcePatch`；200 详情 | 200/400/403/404/409/415/422/428/500；写入并递增版本 |
+| POST `/resources/{resource_id}/deletion-preview` | 删除预览 / resources | 写安全；200 `DeletionPreview` | 200/403/404/500；只创建确认记录 |
+| DELETE `/resources/{resource_id}` | 确认删除 / resources | 专用删除头；204 | 204/403/404/409/410/500/503；不可逆删除，按第9节恢复 |
+| PUT `/resources/{resource_id}/tags/{tag_id}` | 幂等关联 / taxonomy | 无体；200 `ResourceTag` | 200/403/404/500；首次创建关联，已有不变 |
+| DELETE `/resources/{resource_id}/tags/{tag_id}` | 幂等解除 / taxonomy | 无体；204 | 204/403/404/500；关联不存在仍 204 |
+| GET `/resources/{resource_id}/notes` | 笔记列表 / notes | 分页；200 `NotePage` | 200/403/404/422/500；只读 |
+| POST `/resources/{resource_id}/notes` | 新增笔记 / notes | `NoteCreate`；201 Note | 201/400/403/404/415/422/500；创建 |
+| GET `/resources/{resource_id}/notes/{note_id}` | 笔记详情 / notes | ID；200 Note | 200/403/404/500；只读 |
+| PATCH `/resources/{resource_id}/notes/{note_id}` | 修改笔记 / notes | `NotePatch`；200 Note | 200/400/403/404/409/415/422/428/500；写入 |
+| DELETE `/resources/{resource_id}/notes/{note_id}` | 删除笔记 / notes | If-Match；204 | 204/403/404/409/428/500；删除 |
+| GET `/resources/{resource_id}/study-records` | 单资料历史 / learning | 分页/时间筛选；200 `StudyRecordPage` | 200/403/404/422/500；只读 |
+| POST `/resources/{resource_id}/study-records` | 记录学习并更新当前值 / learning | `StudyRecordCreate`；201 `StudyRecordResult` | 201/400/403/404/409/415/422/500；事务写入 |
+| GET `/study-records` | 全局近期活动 / learning | 分页/筛选；200 页面 | 200/403/422/500；只读 |
+| GET `/topics` | 主题列表 / taxonomy | 分页、`q`；200 `TopicPage` | 200/403/422/500；只读 |
+| POST `/topics` | 创建主题 / taxonomy | `TopicCreate`；201 Topic | 201/400/403/409/415/422/500；创建 |
+| GET `/topics/{topic_id}` | 主题详情 / taxonomy | ID；200 Topic | 200/403/404/500；只读 |
+| PATCH `/topics/{topic_id}` | 修改主题 / taxonomy | `TopicPatch`；200 Topic | 200/400/403/404/409/415/422/428/500；写入 |
+| DELETE `/topics/{topic_id}` | 删除未使用主题 / taxonomy | If-Match；204 | 204/403/404/409/428/500；删除，不级联资料 |
+| GET `/tags` | 标签列表 / taxonomy | 分页、`q`；200 `TagPage` | 200/403/422/500；只读 |
+| POST `/tags` | 创建标签 / taxonomy | `TagCreate`；201 Tag | 201/400/403/409/415/422/500；创建 |
+| GET `/tags/{tag_id}` | 标签详情 / taxonomy | ID；200 Tag | 200/403/404/500；只读 |
+| PATCH `/tags/{tag_id}` | 修改标签 / taxonomy | `TagPatch`；200 Tag | 200/400/403/404/409/415/422/428/500；写入 |
+| DELETE `/tags/{tag_id}` | 删除未使用标签 / taxonomy | If-Match；204 | 204/403/404/409/428/500；删除，不级联资料 |
+| GET `/reviews` | 到期/逾期/未来列表 / reviews | scope/time_zone/筛选分页；200 `ReviewPlanPage` | 200/403/422/500；只读 |
+| PUT `/reviews/{resource_id}` | 安排或改期 / reviews | `ReviewScheduleRequest`；200 `ReviewPlanResult` | 200/400/403/404/409/415/422/500；计划+学习状态事务写入 |
+| DELETE `/reviews/{resource_id}` | 移出复习列表 / reviews | `ReviewPauseRequest` JSON；200 `ReviewPlanResult` | 200/400/403/404/409/415/422/500；计划暂停+状态事务写入 |
+| POST `/reviews/{resource_id}/complete` | 完成复习 / reviews | `ReviewCompleteRequest`；201 `ReviewCompleteResult` | 201/400/403/404/409/415/422/500；追加历史并事务更新 |
+| GET `/resources/{resource_id}/review-records` | 复习历史 / reviews | 分页；200 `ReviewRecordPage` | 200/403/404/422/500；只读 |
+| GET `/analytics/overview` | 概览 / analytics | `time_zone`；200 `OverviewAnalytics` | 200/403/422/500；实时只读聚合 |
+| GET `/analytics/topics` | 主题统计 / analytics | `time_zone`/分页/搜索排序；200 `TopicAnalyticsPage` | 200/403/422/500；实时只读聚合 |
+| GET `/files/{file_id}/download` | 原件下载 / resources | 文件 ID；200 binary | 200/403/404/409/500/503；只读，不改时间 |
 
 DELETE review 带 JSON 是契约列明的例外；它仍是写请求并必须先做安全前置校验，再读取请求体。
 
 ### 10.1 每个操作的成功/失败示例索引
 
-OpenAPI 中每个 operation 均给出成功 schema 和列出的错误响应。以下短例可逐项替换 ID，不包含真实数据或秘密：
+上一张 35 行操作表的最后一列是逐 operation 响应状态矩阵（含成功与错误）；错误状态码对应第2.2节稳定错误码。OpenAPI 中每个非 204 operation 都在自己的成功响应 content 内给出可验证示例，每个 operation 也给出至少一个带安全示例的错误响应；WEB、PASTE 和 multipart FILE 三种创建媒体均有独立请求示例。以下短例仅作索引，不替代各 operation 示例：
+
+以下为逐 operation 的稳定错误码矩阵（所有代码均使用第2.2节统一 ErrorResponse）：
+
+| operationId | 可返回的 error.code |
+| --- | --- |
+| `bootstrapLocalSession` | `HOST_FORBIDDEN`, `REQUEST_ORIGIN_FORBIDDEN`, `UNKNOWN_ERROR` |
+| `listResources` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `VALIDATION_ERROR`, `UNKNOWN_ERROR` |
+| `createResource` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `TOPIC_NOT_FOUND`, `TAG_NOT_FOUND`, `FILE_TOO_LARGE`, `CONTENT_TYPE_UNSUPPORTED`, `FILE_TYPE_UNSUPPORTED`, `VALIDATION_ERROR`, `STORAGE_PATH_UNAVAILABLE`, `UNKNOWN_ERROR` |
+| `getResource` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `RESOURCE_NOT_FOUND`, `UNKNOWN_ERROR` |
+| `updateResource` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `RESOURCE_NOT_FOUND`, `TOPIC_NOT_FOUND`, `VERSION_CONFLICT`, `CONTENT_TYPE_UNSUPPORTED`, `VALIDATION_ERROR`, `VERSION_REQUIRED`, `UNKNOWN_ERROR` |
+| `deleteResource` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `RESOURCE_NOT_FOUND`, `DELETION_TOKEN_REQUIRED`, `DELETION_TOKEN_INVALID`, `DELETION_TOKEN_REPLAYED`, `DELETION_IMPACT_CHANGED`, `DELETION_TOKEN_EXPIRED`, `STORAGE_PATH_UNAVAILABLE`, `UNKNOWN_ERROR` |
+| `previewResourceDeletion` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `RESOURCE_NOT_FOUND`, `UNKNOWN_ERROR` |
+| `attachResourceTag` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `RESOURCE_NOT_FOUND`, `TAG_NOT_FOUND`, `UNKNOWN_ERROR` |
+| `detachResourceTag` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `RESOURCE_NOT_FOUND`, `TAG_NOT_FOUND`, `UNKNOWN_ERROR` |
+| `listTopics` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `VALIDATION_ERROR`, `UNKNOWN_ERROR` |
+| `createTopic` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `DUPLICATE_TOPIC`, `CONTENT_TYPE_UNSUPPORTED`, `VALIDATION_ERROR`, `UNKNOWN_ERROR` |
+| `getTopic` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `TOPIC_NOT_FOUND`, `UNKNOWN_ERROR` |
+| `updateTopic` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `TOPIC_NOT_FOUND`, `DUPLICATE_TOPIC`, `VERSION_CONFLICT`, `CONTENT_TYPE_UNSUPPORTED`, `VALIDATION_ERROR`, `VERSION_REQUIRED`, `UNKNOWN_ERROR` |
+| `deleteTopic` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `TOPIC_NOT_FOUND`, `TAXONOMY_IN_USE`, `VERSION_CONFLICT`, `VERSION_REQUIRED`, `UNKNOWN_ERROR` |
+| `listTags` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `VALIDATION_ERROR`, `UNKNOWN_ERROR` |
+| `createTag` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `DUPLICATE_TAG`, `CONTENT_TYPE_UNSUPPORTED`, `VALIDATION_ERROR`, `UNKNOWN_ERROR` |
+| `getTag` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `TAG_NOT_FOUND`, `UNKNOWN_ERROR` |
+| `updateTag` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `TAG_NOT_FOUND`, `DUPLICATE_TAG`, `VERSION_CONFLICT`, `CONTENT_TYPE_UNSUPPORTED`, `VALIDATION_ERROR`, `VERSION_REQUIRED`, `UNKNOWN_ERROR` |
+| `deleteTag` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `TAG_NOT_FOUND`, `TAXONOMY_IN_USE`, `VERSION_CONFLICT`, `VERSION_REQUIRED`, `UNKNOWN_ERROR` |
+| `listResourceNotes` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `RESOURCE_NOT_FOUND`, `VALIDATION_ERROR`, `UNKNOWN_ERROR` |
+| `createResourceNote` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `RESOURCE_NOT_FOUND`, `CONTENT_TYPE_UNSUPPORTED`, `VALIDATION_ERROR`, `UNKNOWN_ERROR` |
+| `getResourceNote` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `RESOURCE_NOT_FOUND`, `NOTE_NOT_FOUND`, `UNKNOWN_ERROR` |
+| `updateResourceNote` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `RESOURCE_NOT_FOUND`, `NOTE_NOT_FOUND`, `VERSION_CONFLICT`, `CONTENT_TYPE_UNSUPPORTED`, `VALIDATION_ERROR`, `VERSION_REQUIRED`, `UNKNOWN_ERROR` |
+| `deleteResourceNote` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `RESOURCE_NOT_FOUND`, `NOTE_NOT_FOUND`, `VERSION_CONFLICT`, `VERSION_REQUIRED`, `UNKNOWN_ERROR` |
+| `listResourceStudyRecords` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `RESOURCE_NOT_FOUND`, `VALIDATION_ERROR`, `UNKNOWN_ERROR` |
+| `createResourceStudyRecord` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `RESOURCE_NOT_FOUND`, `VERSION_CONFLICT`, `INVALID_STATE_TRANSITION`, `STATE_CONFLICT`, `CONTENT_TYPE_UNSUPPORTED`, `VALIDATION_ERROR`, `UNKNOWN_ERROR` |
+| `listStudyRecords` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `VALIDATION_ERROR`, `UNKNOWN_ERROR` |
+| `listReviews` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `VALIDATION_ERROR`, `UNKNOWN_ERROR` |
+| `scheduleReview` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `RESOURCE_NOT_FOUND`, `VERSION_CONFLICT`, `INVALID_STATE_TRANSITION`, `STATE_CONFLICT`, `CONTENT_TYPE_UNSUPPORTED`, `VALIDATION_ERROR`, `UNKNOWN_ERROR` |
+| `pauseReview` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `RESOURCE_NOT_FOUND`, `VERSION_CONFLICT`, `INVALID_STATE_TRANSITION`, `STATE_CONFLICT`, `CONTENT_TYPE_UNSUPPORTED`, `VALIDATION_ERROR`, `UNKNOWN_ERROR` |
+| `completeReview` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `RESOURCE_NOT_FOUND`, `VERSION_CONFLICT`, `INVALID_STATE_TRANSITION`, `STATE_CONFLICT`, `CONTENT_TYPE_UNSUPPORTED`, `VALIDATION_ERROR`, `UNKNOWN_ERROR` |
+| `listResourceReviewRecords` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `RESOURCE_NOT_FOUND`, `VALIDATION_ERROR`, `UNKNOWN_ERROR` |
+| `getOverviewAnalytics` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `VALIDATION_ERROR`, `UNKNOWN_ERROR` |
+| `listTopicAnalytics` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `VALIDATION_ERROR`, `UNKNOWN_ERROR` |
+| `downloadOriginalFile` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `FILE_NOT_FOUND`, `FILE_STATE_UNAVAILABLE`, `FILE_CORRUPTED`, `STORAGE_PATH_UNAVAILABLE`, `UNKNOWN_ERROR` |
+
 
 | 操作组 | 成功示例 | 失败示例 |
 | --- | --- | --- |
@@ -510,8 +554,8 @@ OpenAPI 中每个 operation 均给出成功 schema 和列出的错误响应。�
 
 ## 11. 请求/响应 schema 要点
 
-- `ResourceSummary`：LearningResource 通用字段（不含 `pasted_content`，非 WEB 时可省略 `source_url`）+ `progress` + tags + 可空 `original_file` 摘要 + 可空 `review_plan`。
-- `ResourceDetail`：在 Summary 基础上，PASTE 才返回 `pasted_content`，WEB 才返回 `source_url`；FILE 返回 READY OriginalFile。
+- `ResourceSummary`：LearningResource 通用元数据 + `progress` + tags + 可空 `original_file` 摘要 + 可空 `review_plan`；机器 schema 彻底排除 `source_url` 和 `pasted_content`，列表、复习和概览都不能返回来源 URL 或正文。
+- `ResourceDetail`：使用 `source_type` 判别的 `WebResourceDetail`、`PasteResourceDetail`、`FileResourceDetail` 联合；WEB 只额外返回敏感 `source_url`，PASTE 只额外返回敏感 `pasted_content`，FILE 只返回非空且 READY 的 `original_file`，不得出现其他来源字段。
 - `ResourcePatch`：必含 `expected_version`，至少一个可修改字段；`source_url` 仅 WEB，`pasted_content` 仅 PASTE，`topic_id/source_name/save_reason` 可显式 null。
 - Topic/Tag/Note PATCH 必含 `expected_version` 和至少一个业务字段。
 - StudyRecordCreate 必含 `expected_progress_version`、`started_at`、`duration_seconds`、`progress_before/after`、`status_before/after`；服务端必须核对 before，不能信任客户端。
