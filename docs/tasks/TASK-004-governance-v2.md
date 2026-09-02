@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-004"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "治理权限、风险门禁与自动检查变化，不能因为文件是文档就判为 L1。"
 risk_flags = ["governance"]
@@ -41,7 +41,16 @@ acceptance_exception = "V2_USER_REQUEST_2026-09-03"
 
 ## 实现与测试
 
-待填真实结果。比较基线固定见元数据；测试证据必须包含命令、结果、输入指纹和未执行项。
+- 实现提交：`964e844a6a5bdabb77a2a45a7c26942076f616c5`。36 个文件，仅本任务 allowlist；业务源码、产品需求及 TASK-003 契约没有改动。
+- 主要变化：风险路由、单任务记录/分支、短上下文/短报告、同 Reviewer 增量复核、证据复用、只读权限保持；现有 13 角色/4 Skills 保留而非重建。
+- 机械检查：`PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-004-governance-v2.md --worktree`，退出 0，STATIC/CHECKS PASS；自动选择 governance。
+- 被测实现指纹：`672e4c5f89ce9be757764f153a13b1cbbf295eb65a028bba9720b3582f99818b`。任务及索引后续证据变化不改变此指纹，但仍受冻结授权检查。
+- 结果：范围、diff、敏感模式、JSON、治理结构、Ruff lint、格式检查均通过；22 个单元测试通过（包括故意模拟失败/缺工具/超时的负向测试）。环境：项目 Python 3.13.9，Ruff 0.16.5。
+- Skill Creator 的 `quick_validate.py` 对四个 Skills 均通过，使用现有 `/opt/anaconda3/bin/python3.13`，未新增依赖。
+- 未运行：backend/frontend 业务套件与实际 OpenAPI 快照校验，因为本分支不改业务源码/契约；脚本的选择与 OpenAPI 结构负例有单元测试，不宣称结构校验等于业务语义验证。
+- 系统 `python3` 为 3.9.6；新说明统一指向项目 3.13 环境，避免静默降级为不完整 TOML 正则解析。
+- 静态文本统计：根规则 + 四个 Skills + 使用指南从 22130 字符降至 12212 字符，约减少 45%；不是实测 Token 或工时收益承诺。
+- TASK-003 分支指针仍为 `fe6196f724cafbb67a30f1479769a57b5affc8d4`；该候选及实现提交均保留。
 
 ## TASK-003 保全与迁移决定
 
@@ -58,6 +67,7 @@ acceptance_exception = "V2_USER_REQUEST_2026-09-03"
 ## 状态与最终证据
 
 - 2026-09-03：IN_PROGRESS；用户授权本次主 Agent 实施 + 1 个独立 Reviewer，余下验收为主 Agent 证据核对。
+- 2026-09-03：IN_REVIEW；实现与机械检查完成，准备冻结候选并派发唯一独立只读 Reviewer。
 - Reviewer：待执行。
 - 验收：待执行。
 - 用户合并：未发生。
