@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-004"
-status = "ACCEPTED"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "治理权限、风险门禁与自动检查变化，不能因为文件是文档就判为 L1。"
 risk_flags = ["governance"]
@@ -17,6 +17,7 @@ acceptance_exception = "V2_USER_REQUEST_2026-09-03"
 ## 需求与范围
 
 - 授权：用户 2026-09-03 的 V2 请求；明确要求主 Agent 修改制度，最后只用 1 个独立 Reviewer。
+- 追加授权：用户要求驳回前评估实际使用中的风险、发生概率与修复/维护成本，不追求理论完备；补充有边界的非阻断问题处理，不降低安全与真实证据底线。
 - 目标：风险分级、按需派发、单任务记录、复用上下文/测试证据、机械检查自动化、简短报告。
 - 非目标：不改产品需求、技术选择、业务代码、公共 API、数据契约或 TASK-003 成果。不安装新依赖，不调整远程保护规则。
 - 唯一写入者：主 Agent 同时承担 repo_maintainer 工作；不另派 Worker。
@@ -52,6 +53,7 @@ acceptance_exception = "V2_USER_REQUEST_2026-09-03"
 - 静态文本统计：根规则 + 四个 Skills + 使用指南从 22130 字符降至 12212 字符，约减少 45%；不是实测 Token 或工时收益承诺。
 - TASK-003 分支指针仍为 `fe6196f724cafbb67a30f1479769a57b5affc8d4`；该候选及实现提交均保留。
 - 首轮 Review 后定点修订：分支角色段同时接受中横线和下划线，新增合法角色与 main/非任务分支反例测试。相同治理检查入口再次退出 0，23 个测试及 lint/format/静态检查全部通过；最新指纹 `9dda08ff7965f0a43407c78dbd8c0348d6eeed688dbe2afd6be447854c0196f0`。未改变其他治理行为。
+- 用户追加实际风险/成本原则：新增阻断/非阻断/建议的处置标准，同步根规则、风险指南、两份 Skills 与模板；未改代码、机器风险路由、必要检查或 TASK-003。相同治理检查入口退出 0，23 测试及 lint/format/范围检查通过；本次最新指纹 `163a287d4bb3ce182ef0087115b4453066c5b6d90aa0607d9e9293e2b6e028a1`。两份改动 Skills 的 quick_validate 均通过；纯决策指引由同一独立 Reviewer 定向复核，不新增匹配措辞的形式化测试。
 
 ## TASK-003 保全与迁移决定
 
@@ -67,6 +69,7 @@ acceptance_exception = "V2_USER_REQUEST_2026-09-03"
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
+- 2026-09-03 追加修订：IN_REVIEW；以下旧候选 PASS 为历史证据，不代表本次规则补充已审。复用同一 Reviewer 定向审查新增决策规则，完成后更新最终候选。
 - 2026-09-03：IN_PROGRESS；用户授权本次主 Agent 实施 + 1 个独立 Reviewer，余下验收为主 Agent 证据核对。
 - 2026-09-03：IN_REVIEW；实现与机械检查完成，准备冻结候选并派发唯一独立只读 Reviewer。
 - 首轮 Reviewer：独立会话 `01a062f8-bb34-7032-80f8-ec811697bc71`，候选 `7a64aa8bb49aadec87bbe41749a1b2076eb4b3c0`，CHANGES_REQUIRED；1 个 P2（分支角色名下划线误拒绝），已定点修正，待同一 Reviewer 更新结论。
