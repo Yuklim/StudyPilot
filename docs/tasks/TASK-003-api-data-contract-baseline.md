@@ -2,7 +2,7 @@
 
 ## 1. 基本信息
 
-- 状态：`READY`
+- 状态：`IN_REVIEW`
 - 负责人角色：`architecture_owner`
 - 创建人：主协调 Agent
 - 创建日期：2026-09-02
@@ -207,3 +207,4 @@ python3 -m json.tool docs/contracts/openapi-v1.json >/dev/null
 | 日期 | 状态或决定 | 责任人 | 说明 |
 | --- | --- | --- | --- |
 | 2026-09-02 | READY | coordinator | TASK-001、TASK-002 及其收尾均已合并；目标、允许路径、技术决策权限、依赖、检查和验收条件完整，无需用户补充产品决定；等待用户将 intake 分支合并到稳定 `main` 后派发 |
+| 2026-09-02 | IN_REVIEW | coordinator | `architecture_owner` 已完成两份契约和全部规定检查，交接前实现提交为 `0c1ef24a72bdafb6702038ab5cdfb52f22eb7ff3`；交接报告已保存，提交后冻结候选并安排正式独立只读复审 |
