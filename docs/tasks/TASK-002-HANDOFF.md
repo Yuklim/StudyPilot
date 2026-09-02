@@ -6,7 +6,7 @@
 - 负责人角色：`repo_maintainer`
 - 分支：`agent/repo-maintainer/TASK-002-runnable-scaffold`
 - 比较基线 SHA：`2ded4eb3612fd0df2129f667bc4ace05fb2dbf20`
-- 交接前实现提交 SHA：`188bee69c00899a919407e888faab6addce856c2`
+- 交接前实现提交 SHA：`6b84a3adfeff1dae96a1191715956564b6947cd3`
 
 `coordinator` 提交本报告后，所得提交才是冻结候选；其精确 SHA 记录在 REVIEW 和 ACCEPTANCE 中，本报告不引用自身所在提交。
 
@@ -24,6 +24,8 @@
 - 完成面向初学者的 README，覆盖安装、启动顺序、停止、检查、术语和常见问题。
 - 扩充 Git 忽略规则，覆盖运行数据、数据库、上传、trash、环境文件、依赖、构建、缓存、覆盖率和日志。
 - 仅同步根 `AGENTS.md` 第 3 节项目状态。
+- 根据冻结候选 `93b6ff47c1a692eb89b3ba2a599066c9cacb77a4` 的正式只读复审完成修订：全局错误边界不再记录原始异常对象或组件栈，只输出固定脱敏诊断；测试明确验证敏感异常消息与组件栈不会进入控制台参数。
+- 将 `@types/node` 从 26.4.1 调整为与固定 Node.js 24 运行时一致的 24.13.3，并同步 npm 锁文件。
 
 ## 3. 未完成或未包含内容
 
@@ -97,7 +99,7 @@ frontend/vite.config.ts
 
 - Python `3.13.9`；FastAPI `0.141.1`；Uvicorn `0.52.4`；pydantic-settings `2.15.0`；Ruff `0.16.5`；mypy `1.20.2`；pytest `8.4.2`；httpx2 `2.12.0`。
 - Node.js `24.18.0`，仓库固定 LTS 主版本 `24`；npm `11.16.0`。
-- React / React DOM `19.2.8`；React Router DOM `7.18.3`；Vite `8.2.2`；TypeScript `6.0.3`；Vitest `4.1.11`；ESLint `10.9.1`；Prettier `3.9.6`。
+- React / React DOM `19.2.8`；React Router DOM `7.18.3`；Vite `8.2.2`；TypeScript `6.0.3`；`@types/node` `24.13.3`；Vitest `4.1.11`；ESLint `10.9.1`；Prettier `3.9.6`。
 
 Python 3.13 来自已批准架构；Node.js 24 是受支持的偶数 LTS 主版本。直接依赖采用当前稳定版本并写入清单或锁文件。未采用 TypeScript 7.0.2，因为当前 `typescript-eslint` 声明支持 `<6.1`；选择兼容的 6.0.3。使用 Starlette 当前推荐的 `httpx2`，避免旧 `httpx` TestClient 弃用警告。
 
@@ -117,7 +119,7 @@ Python 3.13 来自已批准架构；Node.js 24 是受支持的偶数 LTS 主版�
 | `cd frontend && npm run format:check` | PASS | Prettier 检查通过 |
 | `cd frontend && npm run lint` | PASS | ESLint 检查通过 |
 | `cd frontend && npm run typecheck` | PASS | TypeScript 检查通过 |
-| `cd frontend && npm run test -- --run` | PASS | 2 个测试文件、3 项测试 |
+| `cd frontend && npm run test -- --run` | PASS | 2 个测试文件、4 项测试；包含错误诊断脱敏验证 |
 | `cd frontend && npm run build` | PASS | 正式构建 25 个模块 |
 | npm 安全审计 | PASS | 0 个漏洞 |
 | 敏感密钥模式扫描 | PASS | 无匹配 |
@@ -132,6 +134,7 @@ Python 3.13 来自已批准架构；Node.js 24 是受支持的偶数 LTS 主版�
 - `/health` 返回 HTTP 200，响应精确匹配。
 - form、text、multipart 三类未知 `/api/v1` 请求全部返回 HTTP 403。
 - 浏览器状态页标题可见，假业务按钮数量为 0，控制台错误数量为 0；状态卡背景为暖米白，计算圆角为 `42px`。
+- 复审修订后再次确认两项服务只监听 loopback、`/health` 精确响应、form/text/multipart 请求默认 403，前端首页与修订后的错误边界模块均可由 Vite 提供；验证后服务已停止。
 
 ## 9. 未执行或环境性失败
 
@@ -152,6 +155,7 @@ npm ci --cache ../.npm-cache
 - 当前前端只展示脚手架状态，不调用业务 API。
 - 当前没有数据库、文件存储或业务能力。
 - 当前无登录，不能直接部署到公网。
+- 第二轮实际浏览器控制连接不可用，因此没有重复第一轮的视觉 DOM 检查；本次没有修改页面结构或样式，修订后的组件测试、Vite HTTP 冒烟和正式构建均通过。
 
 ## 11. 建议审查重点
 
