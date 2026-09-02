@@ -12,7 +12,7 @@ if (!rootElement) {
   throw new Error('StudyPilot root element was not found.')
 }
 
-createRoot(rootElement).render(
+createRoot(rootElement, ErrorBoundary.rootErrorOptions).render(
   <StrictMode>
     <ErrorBoundary>
       <BrowserRouter>

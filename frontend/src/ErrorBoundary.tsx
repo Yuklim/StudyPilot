@@ -1,4 +1,5 @@
-import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { Component, type ReactNode } from 'react'
+import type { RootOptions } from 'react-dom/client'
 
 interface ErrorBoundaryProps {
   children: ReactNode
@@ -9,21 +10,22 @@ interface ErrorBoundaryState {
 }
 
 export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  public static readonly rootErrorOptions: RootOptions = {
+    onCaughtError: () => {
+      console.error('StudyPilot caught a rendering error. Error details were suppressed.')
+    },
+    onUncaughtError: () => {
+      console.error('StudyPilot encountered an uncaught error. Error details were suppressed.')
+    },
+    onRecoverableError: () => {
+      console.error('StudyPilot recovered from a rendering error. Error details were suppressed.')
+    },
+  }
+
   public state: ErrorBoundaryState = { hasError: false }
 
   public static getDerivedStateFromError(): ErrorBoundaryState {
     return { hasError: true }
-  }
-
-  public componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
-    // React requires these diagnostic values, but they can contain user data.
-    // Keep them out of logs until a separately approved redaction policy exists.
-    void error
-    void errorInfo
-
-    if (import.meta.env.DEV) {
-      console.error('StudyPilot page rendering failed. Error details were suppressed.')
-    }
   }
 
   public render(): ReactNode {
