@@ -16,8 +16,13 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
+    // React requires these diagnostic values, but they can contain user data.
+    // Keep them out of logs until a separately approved redaction policy exists.
+    void error
+    void errorInfo
+
     if (import.meta.env.DEV) {
-      console.error('StudyPilot page rendering failed.', error, errorInfo)
+      console.error('StudyPilot page rendering failed. Error details were suppressed.')
     }
   }
 
