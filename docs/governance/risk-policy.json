@@ -1,0 +1,66 @@
+{
+  "version": 2,
+  "levels": {
+    "L1": {
+      "review": false,
+      "acceptance": false
+    },
+    "L2": {
+      "review": true,
+      "acceptance": false
+    },
+    "L3": {
+      "review": true,
+      "acceptance": true
+    }
+  },
+  "high_risk_flags": [
+    "architecture",
+    "public-api",
+    "migration",
+    "security",
+    "authentication",
+    "critical-data",
+    "major-cross-module",
+    "governance",
+    "sensitive-storage",
+    "deletion"
+  ],
+  "normal_flags": [
+    "business",
+    "internal-refactor",
+    "tests",
+    "tooling",
+    "uncertain"
+  ],
+  "low_risk_flags": [
+    "documentation",
+    "small-ui",
+    "local-fix"
+  ],
+  "high_risk_paths": [
+    "AGENTS.md",
+    "**/AGENTS.md",
+    ".codex/**",
+    ".agents/**",
+    "docs/governance/**",
+    "scripts/governance/**",
+    "docs/architecture/**",
+    "docs/contracts/**",
+    "项目需求说明.md",
+    "项目背景与介绍.md",
+    "backend/**/models/**",
+    "backend/**/migrations/**",
+    "backend/**/security/**",
+    "backend/**/auth*",
+    "backend/**/database*"
+  ],
+  "exceptions": {
+    "TASK004": {
+      "task_id": "TASK-004",
+      "authorization": "V2_USER_REQUEST_2026-09-03",
+      "review": true,
+      "acceptance": false
+    }
+  }
+}
