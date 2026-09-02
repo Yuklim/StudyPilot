@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-004"
-status = "IN_REVIEW"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "治理权限、风险门禁与自动检查变化，不能因为文件是文档就判为 L1。"
 risk_flags = ["governance"]
@@ -71,6 +71,47 @@ acceptance_exception = "V2_USER_REQUEST_2026-09-03"
 - 2026-09-03：IN_REVIEW；实现与机械检查完成，准备冻结候选并派发唯一独立只读 Reviewer。
 - 首轮 Reviewer：独立会话 `01a062f8-bb34-7032-80f8-ec811697bc71`，候选 `7a64aa8bb49aadec87bbe41749a1b2076eb4b3c0`，CHANGES_REQUIRED；1 个 P2（分支角色名下划线误拒绝），已定点修正，待同一 Reviewer 更新结论。
 - 权限说明校正：运行器启动记录明确 `sandbox: read-only`、`approval: never`；Git 临时缓存写入被系统拒绝。首轮报告称“已执行临时文件试写”，但显式探测命令被拦截或语法失败，不能作成功执行的检测证据；要求 Reviewer 在最终报告更正，不沿用不准确表述。
-- 验收：待执行。
+- 验收：主 Agent证据核对，结果见下。
 - 用户合并：未发生。
+- 最终候选：`ecd3f3d5c82a12752a991f6b8d1a2f1e0fc77e54`。
+- 最终 Review：同一独立 Reviewer PASS；继承首轮完整覆盖，增量复核仅 3 文件，未重新派发。
+- 主 Agent证据验收（仅本次用户例外，不冒称独立 Acceptance）：PASS。
+  - 条件 1/2：最终 Review 覆盖根规则、风险路由、4 Skills、13 角色与单任务模板，未见冲突。
+  - 条件 3/4：检查入口真实退出 0，23 个测试 + lint/format 通过；最终候选静态指纹与最后被测指纹一致，未重复运行产品测试。
+  - 条件 5：TASK-003 原分支仍精确指向 `fe6196f724cafbb67a30f1479769a57b5affc8d4`，业务实现和原证据未改。
+  - 远程 main 只读核对仍是 `3b911834f2e44edd5bd25500b60275640e34a676`，与比较基线相同。
+- 2026-09-03：ACCEPTED，等待用户合并。只完成 V2；没有自动续跑 TASK-003 或合并任何分支。
+- 剩余限制：本地机械检查不是 GitHub required checks；敏感模式不是完整秘密检测；风险语义仍需主 Agent判断。没有新增项目依赖，未修改远程保护配置。
+- 下一步：用户合并本次 V2 PR 后，再恢复 TASK-003 剩余独立 Review/Acceptance；不重做契约实现。
+
+<details>
+<summary>唯一独立 Reviewer 的最终报告原文</summary>
+
+## Reviewer 报告（TASK-004，继续）
+
+### 实际权限证据
+- 任务记录与运行上下文一致：`sandbox=read-only`、`approval=never`。
+- 本次审查未执行任何仓库/临时文件写入，且当前环境仍有 Git 缓存写入被系统拒绝的证据（`/tmp` 写入 `xcrun_db-*` 报 `Operation not permitted`）。
+
+### 候选与继承覆盖
+- 比对范围：`3b911834f2e44edd5bd25500b60275640e34a676 → ecd3f3d5c82a12752a991f6b8d1a2f1e0fc77e54`
+- 本次新增增量文件（仅 3 个）：
+  - [scripts/governance/check_task.py](/Users/yuklimching/Desktop/StudyPilot/scripts/governance/check_task.py)
+  - [scripts/governance/test_check_task.py](/Users/yuklimching/Desktop/StudyPilot/scripts/governance/test_check_task.py)
+  - [docs/tasks/TASK-004-governance-v2.md](/Users/yuklimching/Desktop/StudyPilot/docs/tasks/TASK-004-governance-v2.md)
+- 继承上轮审查覆盖：保留上一轮已检查范围（风险路由、TASK-003 保全、fail-closed、权限/契约一致性）不变；无新增治理/配置/产品契约文件变化需复查。
+
+### 上轮问题关闭情况
+- 已修复：分支角色名正则从 `agent/[a-z0-9-]+/TASK-\d{3,}-.+` 调整为允许下划线的 `agent/[a-z0-9_-]+/TASK-\d{3,}-.+`（封装为 `valid_task_branch`）。
+- 已添加定向回归测试：`test_branch_role_accepts_hyphen_and_underscore`，同时覆盖合法正例与非任务分支反例。
+- 任务记录同步更新了“首轮 CHANGES_REQUIRED 已闭环修正”与最新指纹，执行结果记载为 23 个测试及 lint/format 静态检查通过。
+
+### Findings / 风险
+- No findings。
+- 残余风险：仅有“角色名必须为小写且含 `0-9a-z_-`”的约束；与本轮变更目标一致，未引入新风险。
+
+### 结论
+**PASS**
+
+</details>
 <!-- EVIDENCE:END -->
