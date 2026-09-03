@@ -33,6 +33,7 @@ def main() -> int:
         environment = {
             **os.environ,
             "STUDYPILOT_DATABASE_URL": paths.database_url,
+            "STUDYPILOT_FILES_ROOT": str(paths.files),
             "STUDYPILOT_API_PORT": "18000",
             "STUDYPILOT_UI_PORT": "15173",
             "PYTHONDONTWRITEBYTECODE": "1",

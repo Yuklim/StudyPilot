@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from starlette.concurrency import run_in_threadpool
 from starlette.responses import JSONResponse
 
+from studypilot.api.file_upload import create_file
 from studypilot.application import resources
 from studypilot.modules.resources.contracts import CREATE_RESOURCE, ResourceError, ResourceQuery
 
@@ -21,7 +22,13 @@ MESSAGES = {
     "TAG_NOT_FOUND": "所选标签不存在。",
     "VALIDATION_ERROR": "输入不符合要求。请检查字段、筛选条件与取值范围。",
     "MALFORMED_REQUEST": "请求内容无法解析。",
-    "CONTENT_TYPE_UNSUPPORTED": "当前仅支持 application/json 网页或粘贴资料。",
+    "CONTENT_TYPE_UNSUPPORTED": "请使用规定的 JSON 或文件表单格式。",
+    "FILE_NOT_FOUND": "没有找到这个原始文件。",
+    "FILE_TOO_LARGE": "文件不能超过 25 MiB。",
+    "FILE_TYPE_UNSUPPORTED": "文件格式不受支持或内容与格式不符。",
+    "FILE_STATE_UNAVAILABLE": "文件尚未保存完成或已经失效。",
+    "FILE_CORRUPTED": "文件缺失或校验不符。已停止提供下载。请重新添加。",
+    "STORAGE_PATH_UNAVAILABLE": "原始文件存储暂不可用。请检查本地存储配置。",
     "UNKNOWN_ERROR": "资料操作未完成。请使用请求编号排查。",
 }
 
@@ -59,6 +66,18 @@ def respond(
 @router.post("")
 async def create_resource(request: Request) -> JSONResponse:
     media_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if media_type == "multipart/form-data":
+        try:
+            result = await create_file(request)
+            return JSONResponse(status_code=201, content=jsonable_encoder(result))
+        except ResourceError as error:
+            if error.status == 409:
+                # Integrity failure while saving is a failed server operation;
+                # 409 file-state responses belong to the download contract.
+                error = ResourceError("UNKNOWN_ERROR", 500)
+            return failure(request, error)
+        except Exception:
+            return failure(request, ResourceError("UNKNOWN_ERROR", 500))
     if media_type != "application/json":
         return failure(request, ResourceError("CONTENT_TYPE_UNSUPPORTED", 415))
     try:

@@ -467,9 +467,17 @@ def test_delivery_catalog_matches_taxonomy_routes_and_preserves_resource_limits(
     }
     available = set(profile["available_operations"])
     assert expected <= available
-    assert len(available) == 16
-    assert profile["available_operations"]["createResource"]["source_types"] == ["WEB", "PASTE"]
-    assert profile["deferred_inputs"][0]["status"] == 415
+    assert len(available) == 17 and "downloadOriginalFile" in available
+    assert profile["available_operations"]["createResource"]["source_types"] == [
+        "WEB",
+        "PASTE",
+        "FILE",
+    ]
+    assert profile["available_operations"]["createResource"]["request_media_types"] == [
+        "application/json",
+        "multipart/form-data",
+    ]
+    assert profile["deferred_inputs"] == []
     operations = {
         value["operationId"]
         for entry in document["paths"].values()

@@ -81,6 +81,10 @@ class PasteCreate(CreateBase):
     pasted_content: str = Field(min_length=1, max_length=1_000_000)
 
 
+class FileCreate(CreateBase):
+    source_type: Literal["FILE"]
+
+
 CreateResource = WebCreate | PasteCreate
 CREATE_RESOURCE: TypeAdapter[CreateResource] = TypeAdapter(
     Annotated[CreateResource, Field(discriminator="source_type")]

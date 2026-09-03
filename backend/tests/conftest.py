@@ -19,6 +19,7 @@ def runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Runtime
     paths = runtime_paths(tmp_path)
     monkeypatch.chdir(paths.root)
     monkeypatch.setenv("STUDYPILOT_DATABASE_URL", paths.database_url)
+    monkeypatch.setenv("STUDYPILOT_FILES_ROOT", str(paths.files))
     monkeypatch.setenv("STUDYPILOT_API_PORT", "8000")
     monkeypatch.setenv("STUDYPILOT_UI_PORT", "5173")
     get_settings.cache_clear()
