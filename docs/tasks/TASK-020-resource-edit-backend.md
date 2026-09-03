@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-020"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "实现既定资料修改接口，涉及用户原文、主题归属、版本竞争和事务保存；同步交付清单，保留独立只读审查与验收，不改模型或迁移。"
 risk_flags = ["business", "critical-data", "tests"]
@@ -38,10 +38,16 @@ checks = ["backend", "contracts"]
 
 ## 实现与测试
 
-- 待实现与实际验证；NOT_RUN 不等于 PASS。
+- 实现 SHA：`6e31c0e70ff5d83571f0bf56b76be14626067117`，12 文件。增加既定 ResourcePatch 验证、受保护路由、事务与 ORM 版本更新；复用原 URL 校验和 FILE 可见性判定，原文不 trim。标准 OpenAPI 不变，仅交付元数据增加 updateResource。
+- 2026-09-03 运行 `PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-020-resource-edit-backend.md --worktree`：退出 0，CHECKS PASS；输入指纹 `d8a724dd477b3b99b29e41651a85c67f6a0c15048035fdf9f0e01f9ad65bbe8e`、12 文件、L3。Ruff 格式/静态检查、mypy（59 源文件）、pytest **466/466**（含新增 51 项，6.71 秒）、`uv build --offline` 的 wheel/sdist、FastAPI OpenAPI 结构校验全部通过；Python 3.13.9、pytest 8.4.2，本机隔离临时数据库/文件，不接触真实资料。
+- 新增测试覆盖三来源保存/重启、无变化/省略/null/版本时间、心得/旧学习记录/标签/原件不变、实际原件下载、主题重分配及引用保护/搜索筛选、严格输入/媒体/JSON/安全先于正文、非 READY 文件隐藏及归档编辑、提交与 flush 失败回滚、实际 ORM 旧版本冲突和双线程竞争一成功一受控失败。错误仅安全代码/编号/版本，不泄露正文或路径。
+- 检查后仅校正 ResourceError docstring 和 README 的旧“只有三个接口”说明；运行时代码、测试、依赖/配置/契约没有再变。最终 `--worktree --static-only` 退出 0，指纹 `37dc8bae8c54883cbb4f3d3c63f09eecdd104cc7fe3071ea6d7a506e1eded6cb`；静态检查不是重跑功能测试，以上测试按无行为变化复用。`git diff --check` 退出 0。
+- Node 深比较相对 base：删除 x-delivery-profile 后标准 OpenAPI 完全相同，可用操作只增加 updateResource，退出 0。前端/模型/迁移未修改；本次不重跑 249 前端单元或 26 浏览器测试，沿用 TASK-019 的前端基线证据，不宣称新后端已经过新一轮浏览器联测；本任务新增入口仅后端，页面交由下一任务真实联测。
+- 开发中的失败已处理：初轮新增 51 项通过但 lint 标记合成全角测试文字，改等价 Unicode 转义；第一次统一检查 mypy 缺测试变量类型、旧分类测试仍断言 25 个可用操作、uv 沙箱无法访问既有缓存。补类型并在登记范围后将断言精确更新为 26 和 updateResource，不降低其他检查；以批准的缓存权限离线构建，完整统一检查重跑通过，无遗留失败。
+- 已知限制：仅后端无编辑页面，不更换资料类型/FILE 原件；SQLite 写竞争可能受控 500，失败不自动重试，客户端需重新读取核对。不新增原文修订历史/回收站、不做删除或解析/AI；用户保留最终合并权。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- IN_PROGRESS；已核实依赖合并，待实现/测试后冻结候选。最终合并权限归用户。
+- IN_REVIEW；实现与真实测试证据齐全，待独立只读 Review；随后由另一独立只读 Agent 核对完成条件。最终合并权限归用户。
 <!-- EVIDENCE:END -->
