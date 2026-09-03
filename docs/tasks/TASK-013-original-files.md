@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-013"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "实现既定原始文件敏感存储、两阶段事务、中断恢复和孤儿回收；下载缓存头适配安全中间件。保留独立只读 Review 与独立 Acceptance。"
 risk_flags = ["business", "sensitive-storage", "security", "deletion", "tests"]
@@ -40,7 +40,7 @@ checks = ["backend", "frontend", "contracts", "governance"]
 
 ## 实现与测试
 
-- 实现 SHA 在实现提交后、冻结证据时补录；唯一写入者为主 Agent 兼任 resource_worker。
+- 实现 SHA `7836dbebb79e3fe812057ae8633a3b025682b952`；唯一写入者为主 Agent 兼任 resource_worker。下述最终输入指纹绑定此实现；冻结提交只补证据与状态。
 - 实现流式有界 multipart、单文件大小/UTF-8/容器识别、随机受控键、流式 SHA-256 与落盘复核、两次数据库事务、仅 READY 成功、已校验字节快照附件下载。复用既有分类验证、初始进度和 READY 投影；模型/迁移和前端生产代码不变。
 - 同卷 staging/objects/trash，按配置规范化祖先路径、拒绝受控根/内部符号链接、独占创建及目录刷新。启动与每 60 秒对账；PENDING 10 分钟超时，READY 损坏拒绝，trash 回滚恢复；随机无引用孤儿 24 小时及活动上传排除，失败不删除资料记录。数据库缺失不创建/迁移，异常仅固定代码日志。
 - 依赖新增 python-multipart 0.0.32、pypdf 6.16.2、olefile 0.47、defusedxml 0.7.1；uv lock / uv sync --locked exit=0。格式校验只认结构不抽正文，容器子进程限 6 秒墙钟/4 秒 CPU，Linux 另设 768 MiB 地址空间；macOS 不声称有系统内存硬限。DOCX 解压校验预算 128 MiB。默认/未知 MIME 由内容识别，明确类型冲突拒绝。
@@ -55,4 +55,5 @@ checks = ["backend", "frontend", "contracts", "governance"]
 ## 状态与最终证据
 
 - 2026-09-03：IN_PROGRESS；L3，稳定依赖已合并。Review / Acceptance 尚未执行。
+- 2026-09-03：IN_REVIEW；实现与全部自动/浏览器证据冻结，等待独立实际只读 Review 与 Acceptance。
 <!-- EVIDENCE:END -->
