@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-007"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L2"
 risk_reason = "多页面布局、导航与可访问性实现，改变可见界面但不改变公共 API、数据模型、安全策略或业务状态；一次独立 Review 足够。"
 risk_flags = ["business", "tests"]
@@ -40,11 +40,18 @@ checks = ["frontend", "governance"]
 
 ## 实现与测试
 
-- 进行中，尚未报告 PASS。
+- 实现 SHA：`86cb5185cc7411d9258ec1135ba2b31758fdd93c`；12 文件。共用导航/标题/键盘焦点，7 个已规划页面与未知地址提示；暖纸色、灰绿、圆角、书页/胶带/便签；无业务请求、持久化、假数据或保存/上传表单。原错误边界与后端代码不变，未增加依赖。
+- 环境：macOS arm64，Node 24.18.0/npm 11.16.0、Python 3.13.9，Vitest 4.1.11、Playwright 1.62.1/Chromium 151.0.7922.34；沿用 TASK-006 的隔离测试服务，不接触个人资料。
+- 首次完整入口（上方 `check_task.py --worktree`）：前端格式/lint、21 项组件测试、治理校验/格式/lint/23 单测均 exit=0；E2E 源文件缺少浏览器 DOM 类型声明导致 typecheck/build exit=2，完整入口如实 FAIL。仅在该测试文件加入 `reference lib="dom"`，未改运行逻辑、断言或配置；随后 `cd frontend; npm run format:check && npm run lint && npm run typecheck && npm run build` exit=0，正式构建成功。其余未变化检查复用首次有效结果，不把首次完整入口改称 PASS。
+- `cd frontend; npm run test:e2e`：4 项真实 Chromium 测试 PASS，exit=0（11.8 秒）。覆盖桌面导航、键盘跳过导航/新标题焦点、当前页、前后退、详情直达/刷新、未知地址返回、无业务/外部请求、390px/320px 全页面无横向溢出、触控入口高度与减少动效；原真实同源代理 403 断言保留。上述仅类型声明的补丁无运行时代码，浏览器证据仍对应相同实现与断言，无需重复启动。
+- 最终 `check_task.py --task docs/tasks/TASK-007-journal-app-shell.md --worktree --static-only`：exit=0，12 文件，指纹 `0964124aeb9e47d7a8997f1601f81108aa509a8bfbf3877dd253f9b9b076949a`。本条仅为范围/Git diff/敏感模式/JSON 等静态检查，模块测试采用上两条有效证据。未改后端，复用 TASK-006 的 55 项后端基线，不重复运行。
+- 目视核对：实际 1440×1050 桌面概览/添加预览、390px 与 320px 概览全页截图均已查看，文字、卡片和装饰没有遮挡/裁切；截图位于 `frontend/test-results/`（已验证 Git 忽略）。本机预览 `http://127.0.0.1:5173/` 已启动，不公开部署。
+- 完成条件 1/2 → 21 项组件测试（含原错误边界/测试隔离断言）、4 项浏览器测试及代码自检；3/4 → 真实浏览器与上述截图；5 → 格式/lint/类型/构建/治理通过，README 更新。独立 Review 待执行；L2 独立 Acceptance N/A。
+- 限制：现在只能看布局和切换页面，不能管理真实资料；仅 macOS Chromium 实测，不声称已完成跨浏览器、屏幕阅读器或全业务闭环认证。后续接口/令牌接入必须另立任务，不借本次开放。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 2026-09-03：IN_PROGRESS；依赖已合并。独立 Review 待执行，L2 独立 Acceptance N/A。
+- 2026-09-03：IN_REVIEW；主 Agent完成实现、自检和测试证据核对。只使用一位实际只读独立 Reviewer，沿用用户已授权的临时 GPT-5.4/medium，不更改默认配置；L2 独立 Acceptance N/A。
 - 最终合并仅由用户决定并执行。
 <!-- EVIDENCE:END -->
