@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-015"
-status = "IN_ACCEPTANCE"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "实现既定学习写接口，涉及当前进度与不可变历史的原子保存、版本冲突及状态/时间不变量。标准契约与数据库结构不变，保留独立只读 Review 和 Acceptance。"
 risk_flags = ["business", "critical-data", "public-api", "tests"]
@@ -66,5 +66,16 @@ PASS。`base=94a037f5a3cc279546a3869b2bcec472bb96db76`，`candidate=3453af065c06
 No findings。已完整审阅一次 `base..candidate` 15 文件 diff，并补核相关调用链：新路由经既有 `LocalAccessMiddleware` 先做 Host/令牌/Origin/Fetch Metadata 前置判定，再读 body；`learning_store.py` 仅写 `LearningProgress/StudyRecord`，复用既有可见性与版本保护；`state.py` 对应契约第 6 节的 before/version、状态/时间矩阵、归档记忆、`REVIEW_DUE` 只读计划条件；全局/单资源分页、半开时间范围、排序白名单与 `id` 决胜实现一致。已按要求复用指纹 `68c2...0618` 的既有检查证据，未机械重跑全套；覆盖内无阻断缺口。
 
 - coordinator：Review PASS，No findings；无需产品修订，进入 IN_ACCEPTANCE。审查后仅同任务 status/EVIDENCE 与索引行写回；原实现/测试证据不变。
+
+
+### 独立只读 Acceptance
+
+- 2026-09-03：独立于实现者及 Reviewer 的 CLI 会话 `01a06639-451c-79b3-aae6-8c830d858220`，沿用已批准临时 `gpt-5.4 / medium`，启动头 read-only / never，禁止子派发，进程退出 0。以下为报告原文。
+
+PASS。验收候选 `3453af065c0688242e30c910b66d8e9085f6cdbd`，当前 `HEAD=75cfb899958df47619c578a0442804e66f3ba579`。本会话实际独立只读：`approval=never`，`test -w .` 退出 `1`，未试写；`git status --short --branch` 仅见分支前进，无工作区改动。`candidate..HEAD` 仅变更 [docs/tasks/TASK-015-learning-backend.md](/Users/yuklimching/Desktop/StudyPilot/docs/tasks/TASK-015-learning-backend.md) 与 [docs/tasks/任务索引.md](/Users/yuklimching/Desktop/StudyPilot/docs/tasks/任务索引.md) 的合法状态/Review/EVIDENCE/索引写回；`--static-only` 返回 `EVIDENCE_ONLY PASS`，未称全测。
+
+五项完成条件证据完整，均绑定同一 `product_fingerprint=68c2b314879d2c6afc0d7174bdcd9a566eda177b22b5d8703a58b3feb4a70618`：三操作与 schema/page/envelope、状态矩阵与 before/version/summary-only/复习边界、严格筛选/分页/安全与未知筛选空页、SQLite 原子回滚/竞争写受控回滚、契约深比较不变且仅新增 metadata 三操作。366 后端测试、93 新测、23 治理与契约/类型/lint/format 均有退出 0 证据；首次全检脚本退出 1 仅因 `uv` 缓存权限导致 `uv build --offline` 退出 2，后续同输入单独构建退出 0，已诚实保留，不构成阻断。未解决缺口仅为已记录边界：前端本次未接入且未重跑旧前端/浏览器证据，SQLite 竞争写允许受控 `500/409` 回滚且不重放，summary-only 追加历史不改 progress version，不创建/暂停/完成复习计划。最终是否合并仍由用户本人决定。
+
+- coordinator：五项完成条件证据齐备，366 项后端已包含 93 项新增测试；Review / Acceptance 均 PASS、无待修复 findings。首次构建失败与成功补跑完整保留，最终必要检查均完成。ACCEPTED，等待用户最终合并；未推送 main、未代为合并。最终仅证据写回与窄门禁，不递归验收。
 
 <!-- EVIDENCE:END -->
