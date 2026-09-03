@@ -9,6 +9,7 @@ import {
   progress,
   status,
   string,
+  validateProgressPlan,
   type Progress,
 } from './model'
 
@@ -80,25 +81,16 @@ export async function listRecords(query: string, resourceId?: string): Promise<R
   }
 }
 export function options(resource: Resource): Status[] {
-  const current = resource.progress
-  const states: Status[] =
-    current.status === 'ARCHIVED'
-      ? ['ARCHIVED', current.archived_from_status!]
-      : current.status === 'UNREAD'
-        ? ['UNREAD', 'IN_PROGRESS', 'ARCHIVED']
-        : current.status === 'IN_PROGRESS'
-          ? ['UNREAD', 'IN_PROGRESS', 'COMPLETED', 'ARCHIVED']
-          : current.status === 'COMPLETED'
-            ? ['IN_PROGRESS', 'COMPLETED', 'ARCHIVED']
-            : ['REVIEW_DUE', 'ARCHIVED']
-  if (
-    resource.review_plan?.status === 'SCHEDULED' &&
-    ['IN_PROGRESS', 'COMPLETED'].includes(current.status)
-  )
-    states.push('REVIEW_DUE')
-  if (resource.review_plan?.status === 'PAUSED' && current.status === 'REVIEW_DUE')
-    states.push('IN_PROGRESS', 'COMPLETED')
-  return states
+  const current = validateProgressPlan(resource.progress, resource.review_plan)
+  return current.status === 'ARCHIVED'
+    ? ['ARCHIVED', current.archived_from_status!]
+    : current.status === 'UNREAD'
+      ? ['UNREAD', 'IN_PROGRESS', 'ARCHIVED']
+      : current.status === 'IN_PROGRESS'
+        ? ['UNREAD', 'IN_PROGRESS', 'COMPLETED', 'ARCHIVED']
+        : current.status === 'COMPLETED'
+          ? ['IN_PROGRESS', 'COMPLETED', 'ARCHIVED']
+          : ['REVIEW_DUE', 'ARCHIVED']
 }
 export async function createRecord(resource: Resource, command: StudyCommand): Promise<Progress> {
   id(resource.id)
@@ -132,7 +124,7 @@ export async function createRecord(resource: Resource, command: StudyCommand): P
     saved.questions_next !== command.questions_next
   )
     return invalid()
-  return current
+  return validateProgressPlan(current, resource.review_plan)
 }
 export function learningError(error: unknown, reading = false): string {
   if (!(error instanceof ApiError)) return '操作未完成，请检查连接后再试。'

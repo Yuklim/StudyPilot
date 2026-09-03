@@ -4,6 +4,7 @@ import { fileIssue, type OriginalFile } from './files'
 import {
   progress as parseProgress,
   reviewPlan,
+  validateProgressPlan,
   type Progress,
   type ReviewPlan,
 } from '../learning/model'
@@ -131,6 +132,7 @@ function resource(value: unknown, detail: boolean): Resource {
             media_type: string(file.media_type),
           },
   }
+  validateProgressPlan(result.progress, result.review_plan)
   if (detail && source === 'WEB') result.source_url = string(item.source_url)
   if (detail && source === 'PASTE') result.pasted_content = string(item.pasted_content)
   return result

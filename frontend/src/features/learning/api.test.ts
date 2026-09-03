@@ -75,6 +75,14 @@ describe('learning adapters', () => {
     { archived_from_status: 'UNREAD' },
     { status: 'ARCHIVED', archived_from_status: null },
     { status: 'COMPLETED', completed_at: null },
+    { status: 'IN_PROGRESS', completed_at: '2026-09-03T01:00:00Z' },
+    { status: 'ARCHIVED', archived_from_status: 'UNREAD', progress_percent: 20 },
+    { status: 'ARCHIVED', archived_from_status: 'COMPLETED', completed_at: null },
+    {
+      status: 'ARCHIVED',
+      archived_from_status: 'IN_PROGRESS',
+      completed_at: '2026-09-03T01:00:00Z',
+    },
     { started_at: 'bad' },
   ])('requires a real complete resource snapshot: %s', async (value) => {
     const item = sample()
@@ -86,12 +94,77 @@ describe('learning adapters', () => {
   it('limits archive restoration and review states using actual snapshot conditions', () => {
     expect(options(sample())).toEqual(['UNREAD', 'IN_PROGRESS', 'ARCHIVED'])
     const item = sample({
-      progress: { ...sample().progress, status: 'ARCHIVED', archived_from_status: 'COMPLETED' },
+      progress: {
+        ...sample().progress,
+        status: 'ARCHIVED',
+        archived_from_status: 'COMPLETED',
+        completed_at: '2026-09-03T01:00:00Z',
+      },
     })
     expect(options(item)).toEqual(['ARCHIVED', 'COMPLETED'])
     expect(
       options(sample({ progress: { ...sample().progress, status: 'IN_PROGRESS' } })),
     ).not.toContain('REVIEW_DUE')
+  })
+  it.each([
+    ['REVIEW_DUE', null, null],
+    ['REVIEW_DUE', null, { status: 'PAUSED', due_date: null }],
+    ['ARCHIVED', 'REVIEW_DUE', null],
+    ['ARCHIVED', 'REVIEW_DUE', { status: 'PAUSED', due_date: null }],
+    ['IN_PROGRESS', null, { status: 'SCHEDULED', due_date: '2026-09-04' }],
+    ['ARCHIVED', 'IN_PROGRESS', { status: 'SCHEDULED', due_date: '2026-09-04' }],
+  ])('rejects contradictory progress/plan snapshots: %s %s %s', async (state, archived, plan) => {
+    const item = sample()
+    vi.spyOn(api, 'request').mockResolvedValue({
+      data: {
+        ...item,
+        progress: { ...item.progress, status: state, archived_from_status: archived },
+        review_plan: plan,
+      },
+    })
+    await expect(getResource(resourceId)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+  })
+  it('keeps valid scheduled and archived review snapshots usable without exposing review actions', async () => {
+    const item = sample()
+    const request = vi.spyOn(api, 'request')
+    for (const archived of [false, true]) {
+      request.mockResolvedValueOnce({
+        data: {
+          ...item,
+          progress: {
+            ...item.progress,
+            status: archived ? 'ARCHIVED' : 'REVIEW_DUE',
+            archived_from_status: archived ? 'REVIEW_DUE' : null,
+          },
+          review_plan: { status: 'SCHEDULED', due_date: '2026-09-04' },
+        },
+      })
+      const valid = await getResource(resourceId)
+      expect(options(valid)).toEqual(
+        archived ? ['ARCHIVED', 'REVIEW_DUE'] : ['REVIEW_DUE', 'ARCHIVED'],
+      )
+    }
+    const invalid = sample({
+      progress: { ...item.progress, status: 'REVIEW_DUE' },
+      review_plan: { status: 'PAUSED', due_date: null },
+    })
+    expect(() => options(invalid)).toThrow()
+  })
+  it('does not accept a successful write response whose plan and progress contradict', async () => {
+    const item = sample({ progress: { ...sample().progress, status: 'IN_PROGRESS' } })
+    const body = {
+      ...command(),
+      status_before: 'IN_PROGRESS' as const,
+      status_after: 'REVIEW_DUE' as const,
+    }
+    const saved = result()
+    vi.spyOn(api, 'request').mockResolvedValue({
+      data: {
+        record: { ...saved.data.record, status_before: 'IN_PROGRESS', status_after: 'REVIEW_DUE' },
+        progress: { ...saved.data.progress, status: 'REVIEW_DUE' },
+      },
+    })
+    await expect(createRecord(item, body)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
   })
   it('converts local times without silently normalizing impossible dates', () => {
     const valid = '2026-09-03T12:34:56'

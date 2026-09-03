@@ -40,6 +40,8 @@ checks = ["frontend", "contracts", "governance"]
 
 ## 实现与测试
 
+以下先保留首轮实现和检查事实；R1 修订证据见本节末尾，以最终候选所绑定的最新指纹和结果为准。
+
 - 实现提交：`de66a981f9cb40bce4daa9f820cd37ac0c2edc47`；后续冻结提交仅绑定此实现及测试证据。
 - 已实现资料详情按需学习手帐、真实版本/前值提交、归档恢复确认，以及全局/单资料历史的本地时间筛选、排序、分页。既有 API/存储/授权协议不变；资源投影补当前 UI 消费的进度/计划验证。总结/疑问按纯文本显示，无浏览器持久化。
 - 冲突与不确定保存保留草稿并锁定重发，必须显式重读最新进度/历史并确认；失败重读继续锁定，迟到响应不更新卸载表单。保存后只消费已验证的服务端进度，并刷新历史；用独立组件键避免保存后表单重复。
@@ -49,9 +51,29 @@ checks = ["frontend", "contracts", "governance"]
 - 如实记录开发期失败：首次类型检查发现 StudyCommand 不满足共享 JSON 对象类型，改为显式对象展开；新增测试未用 import 导致下一次类型检查失败，已移除。一次单测 202/203 通过，失败暴露表单与历史重复 key，已改为分别带前缀的键并保持原单表单断言。首轮浏览器 19/22 通过：两项日期填值被 Chromium 规范化后与 Playwright 输入比较不符，改用规范分钟值并单独保留非零秒精度测试；旧导航白名单未包含本次新增历史 GET，限定在打开学习记录后精确允许该只读路径。未放宽其他安全断言；最终上述检查全过。
 - 已知边界：草稿只在页内，收起/离页/刷新会丢失，已提示；发出请求不因离页撤销；网络不确定结果由用户核对历史，不能承诺恰好一次。复习计划、笔记、概览统计、历史编辑删除及高级主题/资料筛选未开放。当前仅本机个人运行，未承诺公网或大量并发。
 
+### R1 定向修订
+
+- 仅 4 个既有前端文件修改：进度有效状态（含归档记忆）的完成时间/未开始进度检查、资源及保存结果的计划一致性校验，删除依赖半更新计划的状态选项。增加 12 个测试，包含矛盾快照拒绝、合法待复习/归档快照保持可用、写成功返回异常不能报成功；未扩展功能或改后端契约。
+- 修订首次全检的所有子项退出 0（215 前端、23 治理等），但主 Agent 在运行期间追加了本任务首轮审查原文，整体因此 `inputs changed during checks` 退出 1。未改产品代码且指纹相同，但不把该次整体标为 PASS；随后已稳定输入重跑。
+- R1 最终全检（同上完整 check_task --worktree 命令）整体退出 0：范围/敏感模式/JSON/diff、契约、格式/lint/类型/构建、215 前端/23 治理全部 PASS；`product_fingerprint=338dfef65831aaba597aedde9a5c250adc29cab87ccc578ce750ce8241483c12`。真实 Chromium 同上命令再次 22/22 PASS（23.2 秒），无新增失败，临时服务退出。标准契约、后端、样式未再变化；沿用未变契约比对与截图观察证据。
+
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
 - 2026-09-03：IN_PROGRESS，依赖已合并，L3 边界已确认。
 - 2026-09-03：IN_REVIEW，实现和必要检查已完成；待独立实际只读 Review。用户仍独占最终合并。
+### 首轮独立只读 Review
+
+- CLI 独立会话 `01a0665a-541c-79d1-b683-270b90103b26`，沿用已批准临时 `gpt-5.4 / medium`，启动头 read-only / never，禁止子派发，进程退出 0。候选 `7ed35e9e4b76918fd21748373942d2bc91fec929`。以下为报告原文。
+
+`CHANGES_REQUIRED`
+
+`base=cd348e9d9935a69902e24223b1e5421bba6821bd`，`candidate=7ed35e9e4b76918fd21748373942d2bc91fec929`。实际只读权限已确认：运行器为 `sandbox read-only / approval never`，仓库根执行 `test -w .` 退出 `1`，未试写；当前 `HEAD=7ed35e9e4b76918fd21748373942d2bc91fec929`，`git merge-base(base,candidate)=base`，`git status --short --branch` 仅见分支 `ahead 2`，无工作区改动。
+
+阻断：
+- [frontend/src/features/learning/model.ts](/Users/yuklimching/Desktop/StudyPilot/frontend/src/features/learning/model.ts:50) 与 [frontend/src/features/learning/api.ts](/Users/yuklimching/Desktop/StudyPilot/frontend/src/features/learning/api.ts:82) 没有把 `LearningProgress` 和 `ActiveReviewPlan` 做联合一致性校验，反而在 `options()` 里接受了 `REVIEW_DUE + PAUSED` 这种与契约第 6.1 节不一致的组合。触发条件：后端快照漂移、返回不完整/错误状态，或未来有人误改投影字段。影响：前端不会 fail closed，而会展示不可能的当前状态，甚至给出学习表单里本不该出现的状态选项，违背本任务“完整进度/计划字段验证”和状态矩阵要求。最小修正：在资源投影解析处补齐跨字段不变量校验，例如 `REVIEW_DUE` 必须伴随 `SCHEDULED` 计划，`IN_PROGRESS` 不得带当前 `completed_at`，并删除/拒绝 `PAUSED + REVIEW_DUE` 分支，遇到不一致快照直接报 `INVALID_RESPONSE`。
+
+覆盖：已完整审阅首轮 `base..candidate` 的 27 文件 diff，并补核学习页核心调用链、共享客户端错误映射、资源投影、路由接入、契约 1.3/2.3/4.4/4.9/6 与相关 OpenAPI 片段。按要求复用现有机械检查证据，未全量重跑；除上述问题外，未再发现需要阻断的缺陷。
+
+- 处置：首轮 RETURNED；当前正常后端事务不会产生这种中间状态，未观察到正常使用的数据丢失。为兑现异常快照拒绝且修正成本较低，主 Agent 限于既有前端路径补联合校验，不改后端或标准契约：有效（含归档记忆）REVIEW_DUE 当且仅当计划 SCHEDULED；学习中不能有当前完成时间；恢复前进度也验证。删除学习选项中依赖半更新计划的分支，安排/暂停计划仍归后续复习功能。将由同一 Reviewer 增量复核，继承首轮其余覆盖。
 <!-- EVIDENCE:END -->

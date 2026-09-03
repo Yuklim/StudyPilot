@@ -67,12 +67,20 @@ export function progress(value: unknown, resourceId: string): Progress {
     completed_at: row.completed_at === null ? null : instant(row.completed_at),
     updated_at: instant(row.updated_at),
   }
+  const effective = state === 'ARCHIVED' ? archived : state
   if (
-    (state === 'UNREAD' && result.progress_percent !== 0) ||
-    (state === 'COMPLETED' && !result.completed_at)
+    (effective === 'UNREAD' && result.progress_percent !== 0) ||
+    (effective === 'COMPLETED' && !result.completed_at) ||
+    (effective === 'IN_PROGRESS' && result.completed_at !== null)
   )
     return invalid()
   return result
+}
+// Review actions change the plan and progress atomically, never as a half-updated UI snapshot.
+export function validateProgressPlan(current: Progress, plan: ReviewPlan | null): Progress {
+  const effective = current.status === 'ARCHIVED' ? current.archived_from_status : current.status
+  if ((effective === 'REVIEW_DUE') !== (plan?.status === 'SCHEDULED')) return invalid()
+  return current
 }
 export function reviewPlan(value: unknown): ReviewPlan | null {
   if (value === null) return null
