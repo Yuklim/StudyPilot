@@ -1,4 +1,4 @@
-"""HTTP conversion for the three authorized resource operations only."""
+"""HTTP conversion for authorized resource create/read/update operations."""
 
 import json
 from collections.abc import Callable
@@ -13,13 +13,21 @@ from starlette.responses import JSONResponse
 
 from studypilot.api.file_upload import create_file
 from studypilot.application import resources
-from studypilot.modules.resources.contracts import CREATE_RESOURCE, ResourceError, ResourceQuery
+from studypilot.modules.resources.contracts import (
+    CREATE_RESOURCE,
+    ResourceError,
+    ResourcePatch,
+    ResourceQuery,
+)
 
 router = APIRouter(prefix="/api/v1/resources", redirect_slashes=False)
 MESSAGES = {
     "RESOURCE_NOT_FOUND": "没有找到这份资料。",
     "TOPIC_NOT_FOUND": "所选主题不存在。",
     "TAG_NOT_FOUND": "所选标签不存在。",
+    "VERSION_REQUIRED": "请先读取资料的当前版本。",
+    "VERSION_CONFLICT": "资料已发生变化。请重新读取后核对内容。",
+    "SOURCE_TYPE_MISMATCH": "来源内容与资料类型不匹配。不能更换资料类型或文件原件。",
     "VALIDATION_ERROR": "输入不符合要求。请检查字段、筛选条件与取值范围。",
     "MALFORMED_REQUEST": "请求内容无法解析。",
     "CONTENT_TYPE_UNSUPPORTED": "请使用规定的 JSON 或文件表单格式。",
@@ -44,7 +52,9 @@ def failure(request: Request, error: ResourceError) -> JSONResponse:
             "error": {
                 "code": error.code,
                 "message": MESSAGES[error.code],
-                "details": {},
+                "details": {"current_version": error.current_version}
+                if error.code == "VERSION_CONFLICT" and error.current_version is not None
+                else {},
                 "request_id": request.state.request_id,
             }
         },
@@ -126,3 +136,30 @@ def get_resource(request: Request, resource_id: str) -> JSONResponse:
     except ValueError:
         return failure(request, ResourceError("RESOURCE_NOT_FOUND", 404))
     return respond(request, lambda: resources.get_resource(identity))
+
+
+@router.patch("/{resource_id}")
+async def update_resource(request: Request, resource_id: str) -> JSONResponse:
+    if (
+        request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+        != "application/json"
+    ):
+        return failure(request, ResourceError("CONTENT_TYPE_UNSUPPORTED", 415))
+    try:
+        raw = await request.body()
+        value = json.loads(raw, parse_constant=reject_json_constant)
+    except (ValueError, RecursionError):
+        return failure(request, ResourceError("MALFORMED_REQUEST", 400))
+    if isinstance(value, dict) and "expected_version" not in value:
+        return failure(request, ResourceError("VERSION_REQUIRED", 428))
+    try:
+        command = ResourcePatch.model_validate_json(raw)
+    except ValidationError:
+        return failure(request, ResourceError("VALIDATION_ERROR", 422))
+    try:
+        identity = UUID(resource_id)
+    except ValueError:
+        return failure(request, ResourceError("RESOURCE_NOT_FOUND", 404))
+    return await run_in_threadpool(
+        respond, request, lambda: resources.update_resource(identity, command)
+    )
