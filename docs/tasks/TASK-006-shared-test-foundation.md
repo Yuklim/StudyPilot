@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-006"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L2"
 risk_reason = "仅整理共用测试设施、补浏览器联通验证，不改变生产接口、安全策略、数据模型或迁移；测试可靠性需一次独立 Review。"
 risk_flags = ["tests", "tooling", "internal-refactor"]
@@ -39,11 +39,19 @@ checks = ["backend", "frontend", "governance"]
 
 ## 实现与测试
 
-- 进行中，尚未报告 PASS。
+- 实现 SHA：`eebf94d527db4012adb0935c1f3baacd56392b4b`，25 文件。抽出共用夹具/迁移辅助/合成资料工厂，去除全局 API 客户端与 test 文件互相导入；统一路由渲染与清理；增加独立临时运行的 Chromium 联通测试、报告忽略与说明。生产模型、迁移、安全实现、页面内容及正常开发代理配置未改，原断言保留。
+- 环境：macOS arm64、Python 3.13.9、Node 24.18.0/npm 11.16.0；Playwright 1.62.1 固定锁文件，配套 Chromium 151.0.7922.34；沿用 pytest 8.4.2/Vitest 4.1.11。依赖安装、浏览器下载和测试分开运行，没有隐藏安装。
+- 完整入口 `PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-006-shared-test-foundation.md --worktree`：exit=0，CHECKS PASS；首次指纹 `dbb4899b270f5ff330a6226e80f4dbdce9410d36268df8dbcc8c0ef118fa9fce`。后端格式/lint、mypy（20 文件）、pytest（55 项）、离线构建；前端格式/lint/typecheck、Vitest（8 项）、构建；治理校验、格式/lint及 23 单测全部 exit=0。
+- 首次 `cd frontend; npm run test:e2e`：1 项真实 Chromium 联通测试 PASS，exit=0。随后只补全 E2E 配置导入的 `.ts` 扩展名消除工具未来兼容警告；相同命令再次 PASS（7.5 秒），该候选浏览器逻辑不再变化。
+- 真实浏览器运行后暴露格式检查误扫 `test-results/.last-run.json` 的失败，未忽略失败结论或格式化生成报告，改 `.prettierignore` 只排除测试生成目录；随后 `npm run format:check`、`npm run typecheck`、`npm run lint` 均 exit=0，报告保留时也通过。中途两处 mypy 对测试 monkeypatch 导入的标注问题已修正，最终完整检查通过。
+- 最终静态检查及治理元数据校验 exit=0，25 文件，`product_fingerprint=b90e107330882f6d17510e566f7e66ab26ee08ecbdd61838a0c9d6fb413133b0`；除 E2E 导入扩展名和生成物格式忽略外，其余内容未变，复用上述后端/组件/构建/治理测试，不把 static-only 称为完整测试。
+- 额外失败路径探针：仓库根运行 `backend/.venv/bin/python -`（标准库临时 HTTPServer，独占本次占用的 127.0.0.1:18000），其存活期间运行 `npm run test:e2e` 得到预期 exit=1/`already used`；验证原临时服务仍存活，随后仅关闭探针自建服务。探针总 exit=0，并用 socket.bind 确认 18000/15173 均已释放；不结束不明进程。
+- 完成条件映射：1/2 → 原 49 项后端回归及 `test_support.py` 新增 6 项（重复隔离、回滚、客户端不建库、启动器正常/中断回收与外部配置哨兵保留）；3 → 原 5 项组件回归及 3 项路由/DOM/global 隔离测试；4 → 实际 Playwright、端口探针、启动器清理测试；5 → 完整工具输出与 README，独立 Review 待执行。生成目录 Git 忽略已核实。
+- 限制：只承诺 macOS 已验证的 Chromium 脚手架联通；Linux 系统依赖和 Windows 启动路径/信号需另行验证/适配。E2E 非全业务闭环，未启用远程 CI；README 明确需独立运行 E2E 命令。L2，独立 Acceptance N/A。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 2026-09-03：IN_PROGRESS；TASK-005 合并已核实。L2，独立验收 N/A；独立 Review 待执行。
+- 2026-09-03：IN_REVIEW；TASK-005 合并已核实。L2，独立验收 N/A；主 Agent完成范围/断言自检，独立 Review 待执行。
 - 用户独占最终合并权限。
 <!-- EVIDENCE:END -->
