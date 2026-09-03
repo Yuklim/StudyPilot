@@ -49,7 +49,7 @@
         "operationId": "createResource",
         "tags": ["resources"],
         "summary": "添加网页、文件或粘贴资料",
-        "description": "完整目标：JSON 使用 WEB/PASTE oneOf；multipart 只用于 FILE，文件达到 READY 才成功。当前 TASK-009 仅交付 JSON WEB/PASTE；通过安全门禁的 multipart 请求在读体/业务操作前返回415 CONTENT_TYPE_UNSUPPORTED，FILE仍由后续任务完成。阶段可用性以契约第1.3节及 x-delivery-profile 为准；最终要求见第5、7、8节。",
+        "description": "完整目标：JSON 使用 WEB/PASTE oneOf；multipart 只用于 FILE，文件达到 READY 才成功。阶段可用性以契约第1.3节及 x-delivery-profile 为准；最终要求见第5、7、8节。",
         "x-contract-section": "5,7,8",
         "security": [{"LocalToken": []}],
         "parameters": [{"$ref": "#/components/parameters/OriginHeader"}, {"$ref": "#/components/parameters/SecFetchSite"}, {"$ref": "#/components/parameters/SecFetchMode"}, {"$ref": "#/components/parameters/SecFetchDest"}],

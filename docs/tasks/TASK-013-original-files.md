@@ -23,7 +23,7 @@ checks = ["backend", "frontend", "contracts", "governance"]
 - 按文件 UUID 下载，只允许 READY，先校验完整大小与 SHA-256，附件方式、无嗅探、private/no-store，不暴露真实路径。中间件只兼容受控附件的更严格缓存头，不放松权限或持久化令牌。
 - 启动及每 60 秒对账；恢复两阶段中断和仍有记录的 trash，PENDING 超过 10 分钟失败；缺失/损坏 READY 失败并禁止下载。孤儿仅随机受控键、无数据库引用、无活跃上传且满 24 小时后清理；重复执行安全。未初始化数据库时不创建库或迁移；不自动删除资料记录。
 - 允许新增必要格式/流式 multipart 依赖及锁文件，配置受控原件目录、合成测试隔离路径。当前本机单进程模式；不支持公网/多 Worker，不扫描病毒/提取正文，不执行文档内容。
-- 完成实现、测试、Review 和验收后交付说明同步为 FILE 后端可用（等待用户合并）；仅契约 1.3 和 OpenAPI x-delivery-profile 可改，标准 paths/schemas/含义保持不变。文件页面随后另任务接入；不开放资料删除 API、修改、AI 或云存储。
+- 完成实现、测试、Review 和验收后交付说明同步为 FILE 后端可用（等待用户合并）；仅契约 1.3、OpenAPI x-delivery-profile，以及 createResource.description 中已过期的 TASK-009 阶段限制说明可改。后者在首次 Review 发现后由 coordinator 明确为同一交付元数据修正：只删过期阶段一句，保留目标要求和指向当前清单的引用；不改字段、schema、标准操作规则/行为或已确认需求。文件页面随后另任务接入；不开放资料删除 API、修改、AI 或云存储。
 - 所有未列路径禁止，尤其模型/迁移、前端生产代码、治理规则、用户运行数据与密钥。
 
 ## 完成条件
@@ -31,7 +31,7 @@ checks = ["backend", "frontend", "contracts", "governance"]
 1. 合法五类文件可上传、创建资料/分类关联、列表/详情读取、下载同字节原件；普通 JSON 行为保持。文件上限、空文件、伪装/错误格式、重复/未知字段、错误分类受控拒绝，不产生假成功或部分可见资料。
 2. 安全中间件先于正文/数据库/文件副作用；文件名/存储键穿越、符号链接、损坏、非 READY 下载受保护。错误不泄露输入、磁盘路径或堆栈，响应附件头符合契约。
 3. 对两次事务、落盘/提升/响应前失败有故障测试；启动和周期对账、PENDING 超时、READY 损坏、trash 恢复、24 小时孤儿回收/活跃上传排除与幂等有合成临时目录测试；数据库不可用时不回收文件。
-4. 新增真实 Chromium 同源 FormData 上传→读取→下载比对场景，无凭据持久化/trace/真实资料；现有回归与自动 backend/frontend/contracts/governance 检查通过；标准 OpenAPI 与 base 排除交付元数据后完全一致。
+4. 新增真实 Chromium 同源 FormData 上传→读取→下载比对场景，无凭据持久化/trace/真实资料；现有回归与自动 backend/frontend/contracts/governance 检查通过；OpenAPI 与 base 排除交付元数据及上述单句历史阶段描述后完全一致（该 description 其余文字也保持），schemas/参数/响应/安全声明无变化。
 5. README/配置/交付说明与实际能力一致，独立实际只读 Review 与另一独立 Acceptance 对最终候选 PASS，最终合并由用户执行。
 
 ## 上下文包
@@ -50,10 +50,28 @@ checks = ["backend", "frontend", "contracts", "governance"]
 - 契约一致性：Python JSON 深比较 base 与工作区，排除顶层 x-delivery-profile 后完全相等；中文第 1.3 节以外逐字相等，exit=0。仅交付元数据随实现更新，不修改标准 API、schema、需求或模型。README/.env.example 说明准确边界与停服整组备份。
 - 开发期失败如实记录：第一次新测试 36 PASS/3 FAIL，macOS 拒绝 RLIMIT_AS 设置导致有效 PDF/DOCX/DOC 被误拒；只对 Linux 设置该硬限并区分校验器初始化失败，随后 39 项及最终 47 项通过。首套浏览器 15 PASS/1 FAIL，新上传 503，根因为 macOS /var 临时目录祖先别名；启动时规范化配置祖先、仍拒绝受控根符号链接，补回归后最终全套 16 PASS。初始 Ruff 行宽/中文逗号与测试类型标注错误已修正，未删断言或隐藏失败。
 - 环境：macOS / Python 3.13.9 / Node 24.18.0 / npm 11.16.0；本机单进程，未验证 Linux 运行、未适配 Windows/多 Worker/公网。复杂极端文件可能保守拒绝；自动恢复不是备份。文件页面、资料删除与正文解析尚未交付。主 Agent完成一次范围/实现自检，独立 Review/Acceptance 另行记录，不用自检替代。
+- 首次 Review 后修订仅清除 createResource.description 的过期阶段一句，并明确上述元数据范围；源代码/依赖/测试/配置未改，复用实现 7836dbe 的 273/114/23/16 通过证据。原“排除 x-delivery-profile 全等”是首轮候选的真实检查，不冒用为修订后全等：修订后另对该 description 精确删句比较，再排除此受控描述与交付清单深比较其他全部字段；中文仍只改 1.3。定向 OpenAPI 模型校验与候选静态门禁另记录于最终证据。
+- 修订验证：Python 精确删句断言、其他完整 JSON 深比较和 FastAPI OpenAPI 模型校验 exit=0；check_task.py --worktree --static-only exit=0 / STATIC PASS，30 文件，product_fingerprint=`579982ac23f0f40112424c674bfa87a93e485ccdf34ba9b15e4542ebc29e1b06`。静态门禁不是另一次全套测试；代码/环境未变的全套结果继承首轮候选。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
 - 2026-09-03：IN_PROGRESS；L3，稳定依赖已合并。Review / Acceptance 尚未执行。
 - 2026-09-03：IN_REVIEW；实现与全部自动/浏览器证据冻结，等待独立实际只读 Review 与 Acceptance。
+
+### 独立 Review 首轮原文
+
+- 会话 `01a06603-fb61-7371-89b8-d2bc913b01d6`；gpt-5.4 medium，CLI 实际 read-only / approval never，仓库 test -w 返回 1，exit=0。未试写；Git 的自身缓存尝试由沙箱拦截。
+
+base `ff03d8bb7660fd327e55be8ffbd122f5da491517`，candidate `6e52d7d42d610e02d12e10c7eb79b93f321291a4`。运行时为实际只读：会话配置 `approval never` / read-only；仓库根执行 `test -w .` 返回非可写，且 `git` 连 `/tmp` 缓存试写都被系统拒绝。
+
+审查范围：首次完整检查 `base..candidate` 最终 diff，覆盖文件上传/下载链路、两阶段事务与恢复、格式识别、24h 回收、安全中间件缓存头、README/契约 2/4.2/5/7/8/9 与交付元数据 diff；复用指纹 `29da...14ed` 绑定的已通过自动/Chromium 证据，未机械重跑。
+
+阻断：
+- `docs/contracts/openapi-v1.json:52`：`x-delivery-profile` 已声明 TASK-013 开放 FILE 上传/下载，但 `createResource` 的标准 operation description 仍写“当前 TASK-009 仅交付 JSON WEB/PASTE，multipart 返回 415，FILE 后续完成”。触发：任何按 operation description 阅读/生成客户端/做验收的人。影响：交付元数据自相矛盾，和 README 及契约 1.3 不一致，违反“交付说明与实际能力一致”。最小修正：把该描述改为与 TASK-013 当前可用性一致，或删除过时的阶段性 415 表述。
+
+其余未见新的可达阻断；单进程/macOS/无病毒扫描/页面未接入均已在契约与证据内披露。结论：`CHANGES_REQUIRED`。
+
+- 2026-09-03：RETURNED → IN_REVIEW。采纳唯一文档阻断，最小删除过期阶段一句，不改变产品契约含义；同步候选范围说明后请同一 Reviewer 增量确认。未重跑代码审查或未变更的测试。
+
 <!-- EVIDENCE:END -->
