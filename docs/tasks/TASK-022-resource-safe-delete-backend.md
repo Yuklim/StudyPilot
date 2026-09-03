@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-022"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "实现资料整体删除，涉及不可逆数据删除、删除确认令牌、数据库级联、文件 trash 隔离和公共 API 可用能力清单。"
 risk_flags = ["business", "critical-data", "security", "sensitive-storage", "public-api", "deletion", "tests"]
@@ -39,12 +39,15 @@ checks = ["backend", "contracts"]
 
 ## 实现与测试
 
-- 实现 SHA/变更摘要：待填。
-- 命令、真实退出结果、product_fingerprint、环境、未运行原因：待填。
-- 已知限制/未完成项：删除页面尚未接入；无回收站/撤销；trash 仍按现有对账宽限清理。
+- 实现 SHA：`352ae80f37a99dfe143a31db1d93d641400319ff`，12 个登记路径。新增后端删除预览与确认删除：预览生成 5 分钟一次性令牌并只保存 SHA-256 摘要；确认删除用 `X-StudyPilot-Deletion-Token`，事务内重算影响集合，变化时消费旧令牌并返回无新令牌的当前影响摘要；一致时级联删除资料关联，Topic/Tag 本体保留。FILE 原件在数据库删除提交前移入既有同卷 trash，提交失败可由对账恢复，提交成功后按既有 24 小时宽限回收。
+- 新增影响绑定：资料版本、OriginalFile、Note、StudyRecord、ActiveReviewPlan、ReviewRecord、ResourceTag，并额外绑定 LearningProgress 版本；影响响应仅含安全计数、资料版本和 `impact_revision`，不返回正文、心得、磁盘路径、完整文件名或令牌原文。新增 API 消息与错误 details 仍走统一脱敏响应；安全中间件/CORS 白名单未放宽。
+- 2026-09-03 定向命令 `cd backend && uv run pytest tests/test_resource_deletion.py` 退出 0，**5/5 PASS**。覆盖 WEB/PASTE/FILE 删除预览与确认、关联计数、Topic/Tag 保留、令牌绑定其他资料/重放/过期/影响变化、专用头缺失/重复前置拒绝、FILE trash 隔离与 24 小时对账清理、文件移动后数据库提交失败由对账恢复。使用隔离临时数据库和文件目录，不触碰真实资料。
+- 2026-09-03 统一命令 `PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-022-resource-safe-delete-backend.md --worktree` 退出 0，CHECKS PASS；product_fingerprint `253c3edf59148d68374caa417a24e22bbf20bc73169a894a97d3beb8f7887616`。范围/分支/敏感模式/JSON/OpenAPI 结构 PASS；后端 Ruff 格式、Ruff lint、mypy **60 source files**、pytest **471/471 PASS**、`uv build --offline` 成功；契约 FastAPI OpenAPI 模型校验通过。
+- 过程失败已处理：首次定向测试因缺少本文件 `authorized` fixture 未收集；补 fixture 后 3 PASS/2 FAIL，其中过期令牌测试违反数据库过期约束、提交失败注入未命中删除提交点，均修正为真实故障注入。统一检查首轮发现风险标记 `storage` 不是机器允许值、格式/import/RUF001/mypy、交付清单测试仍期望 26 个操作，已改为 `sensitive-storage`、格式化/类型修正并把可用操作数更新为 28。`uv build --offline` 曾被沙箱用户级缓存权限阻止，按审批重跑同一统一检查后 PASS。未降低断言，无遗留失败。
+- 已知限制/未完成项：删除页面尚未接入；无回收站/撤销/批量删除；资料删除只通过后端确认协议，不自动替用户执行真实资料删除；trash 清理仍依赖既有启动/周期对账和 24 小时宽限；复习、统计、解析和 AI 仍未开放。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- IN_PROGRESS；实现中。
+- IN_REVIEW；实现与统一检查证据齐全，待独立实际只读 Review，随后另一独立 Acceptance 核对完成条件。
 <!-- EVIDENCE:END -->
