@@ -51,3 +51,14 @@ checks = ["backend", "contracts"]
 
 - IN_REVIEW；实现与统一检查证据齐全，待独立实际只读 Review，随后另一独立 Acceptance 核对完成条件。
 <!-- EVIDENCE:END -->
+
+## Review Evidence
+
+- Review kind: independent read-only Codex Review
+- Runtime proof: `filesystem=read-only`, `approval=never`; reviewer reported `/tmp/xcrun_db-*` writes denied with `Operation not permitted`, and no writes/commits/pushes/fixes/delegation.
+- Scope: `2df99dc44399db053f30653cf7803f2cedced108..ac5e604a6107e304a2d426424fabd111d73b0346`
+- Candidate: `ac5e604a6107e304a2d426424fabd111d73b0346`
+- Product fingerprint: `253c3edf59148d68374caa417a24e22bbf20bc73169a894a97d3beb8f7887616`
+- Result: PASS
+- Findings: No findings.
+- Residual risk noted by reviewer: tests do not individually cover every "same count, changed revision" scenario, but manifest binds resource/file/learning/note/study-plan/review/tag versions or identifiers, so this is non-blocking.
