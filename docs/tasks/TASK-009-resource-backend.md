@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-009"
-status = "IN_REVIEW"
+status = "BLOCKED"
 risk = "L3"
 risk_reason = "首次启用资料持久化及原子创建事务，含敏感原文、初始进度和标签关联；复用既定契约但需验证数据完整性及错误不泄露。"
 risk_flags = ["critical-data", "sensitive-storage", "public-api", "tests"]
@@ -55,4 +55,37 @@ checks = ["backend", "frontend", "governance"]
 ## 状态与最终证据
 
 - 2026-09-03：IN_REVIEW。完整检查通过，主 Agent已完成一次自检；沿用获授权的 GPT-5.4 medium 实际只读运行器，不改默认 Agent 配置。独立 Review/Acceptance 待执行。
+### 独立 Review 原文
+
+Reviewer session `01a06570-7368-7482-83de-88f3080584c2`，Codex CLI 0.145.0/GPT-5.4 medium，启动配置实际为 `sandbox: read-only`、`approval: never`；独立于主 Agent实现者，`test -w .` 输出 exit=1。初审输出 /private/tmp/studypilot-task009-review.32wcsz/review.md。
+
+**CHANGES_REQUIRED**
+
+base `910e85b3164704e02664f1420eee65e509467e63` → candidate `e33f989c4bb7c376cae9cb199e3165fff74e00ab`。实际权限证明：`test -w .` 返回 `exit=1`，当前运行时为只读；未写文件、未提交、未委派。
+
+- [backend/src/studypilot/api/resources.py](/Users/yuklimching/Desktop/StudyPilot/backend/src/studypilot/api/resources.py:61) 把 `POST /api/v1/resources` 的所有非 `application/json` 请求一律返回 `415`。触发条件：按已批准 `createResource` schema 发送 `multipart/form-data` 的 FILE 创建。影响：与当前已批准契约/operation schema 冲突，[docs/contracts/API与数据契约基线.md](/Users/yuklimching/Desktop/StudyPilot/docs/contracts/API与数据契约基线.md:321) 第 5 节和 [docs/contracts/openapi-v1.json](/Users/yuklimching/Desktop/StudyPilot/docs/contracts/openapi-v1.json:22) 都声明该操作接受 FILE multipart；现实现会让契约客户端稳定失败。最小修正：要么在本任务内补齐已批准的 FILE 分支，要么先经授权单独冻结并收窄契约/OpenAPI，再审新候选。
+
+覆盖：已完成首次完整审查 16 文件 `base..candidate` diff，核对了根/`backend`/`frontend` AGENTS、TASK-009、风险规则、三项 operation schema、`resources` API/应用层/store/安全接线，以及后端 `test_resources.py` 与前端 8 项 Chromium 用例。测试执行未默认重跑，复用已绑定证据：backend 187、frontend 46、governance 23、Chromium 8，静态指纹 `78025e1025ce2c353b04078751e0b9ccc88187ed6e3245bbd3c67805e45dc9ee`；其余未见新的阻断点。剩余风险：除上述契约偏差外，Unicode 内存搜索的规模边界已被任务明确披露，按当前个人/低流量场景可接受。
+
+### 同一 Reviewer 定向复核原文
+
+没有任何代码/任务授权修订，候选仍为 `e33f989c4bb7c376cae9cb199e3165fff74e00ab`。主 Agent提供阶段 B 架构 614～627 行、TASK-008 下一步和当前任务非目标作为范围证据，请同一身份定向判断，不单方面覆盖阻断；续接运行器仍为 read-only/approval never，未重新进行完整 Review 或测试。输出 /private/tmp/studypilot-task009-review.32wcsz/reconsideration.md。
+
+**CHANGES_REQUIRED**
+
+候选未变：`e33f989c4bb7c376cae9cb199e3165fff74e00ab`。只读证明继承首轮：`test -w .` 为 `exit=1`；本次未重读全量源码/治理/契约，未重跑测试，完整继承我首轮对 16 文件 `base..candidate` 的覆盖结论。
+
+重新评估后，唯一 finding 仍为阻断。依据不是“必须一次做完整资料管理”，也不是要求扩大到文件实现；而是当前候选已经在公开已冻结的同一操作 `POST /api/v1/resources` 上提供了与已批准契约相冲突的现网行为。[docs/contracts/API与数据契约基线.md](/Users/yuklimching/Desktop/StudyPilot/docs/contracts/API与数据契约基线.md:321) 第 5 节与 [docs/contracts/openapi-v1.json](/Users/yuklimching/Desktop/StudyPilot/docs/contracts/openapi-v1.json:22) 都把 `createResource` 定义为同一路径同一操作，接受 `application/json` 的 WEB/PASTE 和 `multipart/form-data` 的 FILE；而 [backend/src/studypilot/api/resources.py](/Users/yuklimching/Desktop/StudyPilot/backend/src/studypilot/api/resources.py:61) 对所有 multipart 固定返回 `415 CONTENT_TYPE_UNSUPPORTED`。这不是单纯“后续阶段未做”，而是已暴露操作对一类已批准输入给出相反结果。当前可达损害是：任何按已冻结 schema/OpenAPI 生成或手写的 FILE 客户端请求都会稳定失败，且失败语义与契约不一致。
+
+因此我不能把它降为非阻断未完成范围。若要放行，需要新的授权路径消解这处冲突：要么补齐 FILE 分支，要么先冻结一个明确允许该操作分阶段未实现的新契约/兼容方案，再基于新候选复核。其余首轮结论不变，未新增 findings。
+
+### 协调结论与下一步
+
+- 候选 `e33f989c4bb7c376cae9cb199e3165fff74e00ab` 静态检查 exit=0，指纹仍为 `78025e1025ce2c353b04078751e0b9ccc88187ed6e3245bbd3c67805e45dc9ee`，与真实完整测试一致；后续仅证据写回。
+- 2026-09-03：BLOCKED。首轮及同一 Reviewer 定向复核均 CHANGES_REQUIRED，唯一阻断是 FILE multipart 未实现与最终 createResource 契约的阶段解释分歧；不是自动测试失败。其余首轮审查结论未报告阻断。
+- 主 Agent判断：批准架构阶段 B 已区分资料/原始文件后端，当前无 FILE 客户端和可用功能回归；直接加入文件处理会扩大已登记范围。仍遵守不可覆盖独立阻断及两轮不收敛停止规则，不改最终产品需求/契约、不找第二位 Reviewer 寻求不同结论、不启动尚无前置条件的 Acceptance。
+- Acceptance：NOT_RUN，原因是独立 Review 未通过；不冒称 ACCEPTED。代码和测试全部保留在本分支，不丢弃、不重做，不推送/合并 main。
+- 请求用户授权的最小下一步：在保持最终 MVP 功能契约不变的前提下，补充明确的阶段性接口可用范围/兼容说明（本阶段 WEB/PASTE，可见且暂不支持 FILE，后续单独文件任务完成），登记新增契约文档允许路径后再按实际改动复核。若用户选择本阶段完成 FILE，需另行明确扩大范围和完成条件，不能由 Worker自行加入。
+- 本次后端已可工作、界面尚未接入；目前未创建合并请求，不请求用户在阻断状态下合并。
+
 <!-- EVIDENCE:END -->
