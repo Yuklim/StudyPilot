@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-013"
-status = "IN_ACCEPTANCE"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "实现既定原始文件敏感存储、两阶段事务、中断恢复和孤儿回收；下载缓存头适配安全中间件。保留独立只读 Review 与独立 Acceptance。"
 risk_flags = ["business", "sensitive-storage", "security", "deletion", "tests"]
@@ -84,5 +84,18 @@ base `ff03d8bb7660fd327e55be8ffbd122f5da491517`，candidate `6e52d7d42d610e02d12
 我继承首轮对 `base ff03d8bb7660fd327e55be8ffbd122f5da491517..previous_candidate` 未变范围的完整覆盖；本轮唯一阻断已解决：OpenAPI `createResource.description` 中过期的 TASK-009/415 阶段说明已删除，现与 `x-delivery-profile`、README 和任务证据一致。TASK 同步了该元数据范围、首轮原文报告和静态验证证据；无代码/依赖/配置/测试新增风险。剩余风险不变，仍限已披露的本机单进程/macOS/页面未接入边界。结论覆盖 `new_candidate`：`PASS`。
 
 - 2026-09-03：IN_ACCEPTANCE；最终审查候选 `8e09b7ca857ee874e39eebda956bc424887ded67`。主 Agent只核对范围、测试绑定、唯一阻断闭环和 Review 结论，不重复代码审查。此后仅同任务状态/EVIDENCE 与索引行写回，交另一实际只读会话验收。
+
+
+### 独立 Acceptance 原文
+
+- 会话 `01a06609-4ca4-7953-b575-992f041eac39`，独立于实现者和 Reviewer；gpt-5.4 medium，CLI 实际 read-only / approval never，test -w 为不可写，exit=0。只核条件与证据，未复审代码或重跑功能测试。
+
+独立 Acceptance 结论：`PASS`。`base=ff03d8bb7660fd327e55be8ffbd122f5da491517`，Review 最终 `candidate=8e09b7ca857ee874e39eebda956bc424887ded67`，当前 `HEAD=b026efa83ff1278042beaec72a22a5cc96fdefbc`。运行时为实际独立只读：会话已给定 `sandbox=read-only / approval=never`，仓库根 `test -w .` 返回不可写，`git` 对 `/tmp` 缓存试写也被沙箱拒绝，未见可写能力，故非 BLOCKED。
+
+五项完成条件映射成立：1）功能链路由任务中 `273` 后端通过与 `16` Chromium 真上传/读取/逐字节下载比对覆盖。2）安全与副作用顺序、非 READY/损坏/路径穿越/缓存头，由任务证据与独立 Review 首轮范围覆盖。3）两阶段失败、启动/周期对账、PENDING 超时、READY 损坏、trash 恢复、24h 孤儿回收、数据库不可用不清理，均在任务测试证据中明确。4）回归绑定到 `273/114/23/16 PASS`，其后仅文档修订；Reviewer 对 `6e52d7d..8e09b7c` 两文件增量复核 PASS，任务另记录定向 OpenAPI 校验、深比较与 `static-only` 通过，指纹 `579982ac...e1b06`。5）README/配置/交付说明一致；唯一文档阻断已闭环，`HEAD..candidate` 之后仅 TASK 状态/EVIDENCE 与索引行写回，符合 EVIDENCE_ONLY。
+
+未见新的证据缺口。剩余风险仅为已披露边界：本机单进程、macOS、未接入文件页面、无病毒扫描/多 Worker/公网支持；按实际风险规则属已接受非阻断项。
+
+- 2026-09-03：ACCEPTED。最终 Review 候选 `8e09b7ca857ee874e39eebda956bc424887ded67`，独立 Review 与 Acceptance 均 PASS；无未解决阻断或必要检查失败。主 Agent按证据汇总，不第三次审代码。本次只交付文件后端，下一任务接入上传/下载页面。待用户本人决定并执行合并，不预写 MERGED、不推 main。
 
 <!-- EVIDENCE:END -->
