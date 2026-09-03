@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-009"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "首次启用资料持久化及原子创建事务，含敏感原文、初始进度和标签关联；本次续接另含用户授权的阶段契约说明，仍需 L3 独立审查验收。"
 risk_flags = ["critical-data", "sensitive-storage", "public-api", "tests"]
@@ -133,4 +133,5 @@ PASS。独立只读 Integration/Acceptance，独立于实现者与 Reviewer sess
 - `39bfdf82a42d74cab1d5e4ecc55bb32edb5060cd` 的 `check_task.py --candidate HEAD --evidence-from 56c6941f325b3ae2a0dde5859e55c3b3ed5091d0 --static-only` 实际 exit=0/EVIDENCE_ONLY PASS；最终证据提交后继续同一窄门禁，不递归调用 Reviewer。
 - 非阻断风险沿用上文处置：当前阶段只提供 WEB/PASTE；FILE 后续完成，客户端须遵守清单。没有未处置阻断；不声称整套 MVP/页面/文件功能已完成。
 - 用户操作：准备推送本任务分支并建立合并请求，最终合并由用户决定。用户合并后下一项是现有手帐页面接入真实网页/粘贴资料表单、列表与详情；不提前加入 FILE 或 AI。
+- 2026-09-03：用户确认合并，PR #14 已核实 MERGED（2026-09-03T04:28:25Z），merge commit `6ff2aace02d527dce1a9acb2144c4e00e57a4636`，origin/main 一致。状态 MERGED；原审查/验收历史保留。TASK-010 接入现有手帐页面，不重做后端。
 <!-- EVIDENCE:END -->

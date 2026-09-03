@@ -6,7 +6,7 @@ test('real browser loads the honest shell and reaches the backend through the pr
   page,
 }) => {
   await page.goto('/')
-  await expect(page.getByText('工程框架已运行，业务功能尚未实现')).toBeVisible()
+  await expect(page.getByText('网页与粘贴资料已开放')).toBeVisible()
   await expect(page.getByRole('button')).toHaveCount(0)
 
   // This is a real browser fetch through Vite to the real FastAPI middleware.
@@ -25,13 +25,19 @@ test('real browser loads the honest shell and reaches the backend through the pr
   expect(denied.body.error.request_id).toMatch(/^req_[a-f0-9]{32}$/)
 })
 
-test('navigation, history, direct links and keyboard focus work without business requests', async ({
+test('navigation, history, direct links and keyboard focus use only approved resource requests', async ({
   page,
 }, testInfo) => {
   const unexpectedRequests: string[] = []
+  let resourcePageOpened = false
   page.on('request', (request) => {
     const url = new URL(request.url())
-    if (url.origin !== 'http://127.0.0.1:15173' || url.pathname.startsWith('/api/')) {
+    const isApi = url.pathname.startsWith('/api/')
+    const approvedRead =
+      resourcePageOpened &&
+      request.method() === 'GET' &&
+      ['/api/v1/local-session', '/api/v1/resources'].includes(url.pathname)
+    if (url.origin !== 'http://127.0.0.1:15173' || (isApi && !approvedRead)) {
       unexpectedRequests.push(url.origin + url.pathname)
     }
   })
@@ -45,18 +51,20 @@ test('navigation, history, direct links and keyboard focus work without business
   await expect(page.getByRole('main')).toBeFocused()
   const nav = page.getByRole('navigation', { name: '主要导航' })
   await nav.getByRole('link', { name: '资料库' }).focus()
+  resourcePageOpened = true
   await page.keyboard.press('Enter')
   await expect(page).toHaveURL(/\/resources$/)
   await expect(page.getByRole('heading', { name: '资料库', level: 1 })).toBeFocused()
-  await page.getByRole('link', { name: '添加资料页面预览' }).click()
+  await page.getByRole('link', { name: '添加资料', exact: true }).click()
   await expect(page).toHaveURL(/\/resources\/new$/)
-  await expect(page.getByText('尚未开放', { exact: true })).toHaveCount(3)
+  await expect(page.getByRole('form', { name: '添加资料表单' })).toBeVisible()
+  await expect(page.getByText('文件上传、主题与标签管理尚未开放。')).toBeVisible()
   await expect(nav.getByRole('link', { name: '资料库' })).toHaveAttribute('aria-current', 'page')
   await page.goBack()
   await expect(page.getByRole('heading', { name: '资料库', level: 1 })).toBeFocused()
   await page.goForward()
   await expect(page.getByRole('heading', { name: '添加资料', level: 1 })).toBeFocused()
-  await page.screenshot({ path: testInfo.outputPath('desktop-add-preview.png'), fullPage: true })
+  await page.screenshot({ path: testInfo.outputPath('desktop-add-form.png'), fullPage: true })
   await page.goto('/resources/synthetic-id')
   await page.reload()
   await expect(page.getByRole('heading', { name: '资料详情', level: 1 })).toBeVisible()
@@ -89,11 +97,13 @@ for (const width of [390, 320]) {
     ]) {
       await page.goto(route)
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
-      await expect(page.getByText('工程框架已运行，业务功能尚未实现')).toBeVisible()
+      await expect(page.getByText('网页与粘贴资料已开放')).toBeVisible()
+      if (route === '/resources')
+        await expect(page.getByRole('navigation', { name: '资料分页' })).toBeVisible()
       expect(
         await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
       ).toBe(true)
-      const nav = page.getByRole('navigation')
+      const nav = page.getByRole('navigation', { name: '主要导航' })
       for (const link of await nav.getByRole('link').all()) {
         const box = await link.boundingBox()
         expect(box).not.toBeNull()
@@ -109,7 +119,7 @@ for (const width of [390, 320]) {
         })
       }
     }
-    await page.getByRole('link', { name: '添加资料页面预览' }).click()
+    await page.getByRole('link', { name: '添加资料', exact: true }).click()
     await expect(page.getByRole('heading', { name: '添加资料', level: 1 })).toBeFocused()
     await page.getByRole('link', { name: '返回资料库' }).click()
     await expect(page.getByRole('heading', { name: '资料库', level: 1 })).toBeVisible()

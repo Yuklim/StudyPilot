@@ -1,14 +1,12 @@
 import { fireEvent, screen, within } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
+import { api } from './api/client'
 import { renderWithRouter } from './test/render'
 
 const routes = [
   ['/', '学习概览'],
-  ['/resources', '资料库'],
-  ['/resources/new', '添加资料'],
-  ['/resources/synthetic-id', '资料详情'],
   ['/study-records', '学习记录'],
   ['/reviews', '复习安排'],
   ['/topics', '主题统计'],
@@ -16,9 +14,12 @@ const routes = [
 ] as const
 
 describe('StudyPilot journal shell', () => {
+  beforeEach(() => {
+    vi.spyOn(api, 'request').mockImplementation(() => new Promise(() => {}))
+  })
   it('clearly distinguishes the shell from real learning data', () => {
     renderWithRouter(<App />)
-    expect(screen.getByText('工程框架已运行，业务功能尚未实现')).toBeInTheDocument()
+    expect(screen.getByText('网页与粘贴资料已开放')).toBeInTheDocument()
     expect(screen.getByText('学习数据尚未接入，暂不展示资料或进度。')).toBeInTheDocument()
     const metrics = within(screen.getByRole('region', { name: '统计尚未接入' }))
     expect(metrics.getAllByText('未接入')).toHaveLength(3)
@@ -33,10 +34,11 @@ describe('StudyPilot journal shell', () => {
       const { container } = renderWithRouter(<App />, route)
       expect(screen.getByRole('heading', { name: title, level: 1 })).toBeInTheDocument()
       expect(document.title).toBe(`${title} · StudyPilot`)
-      expect(screen.getByText('工程框架已运行，业务功能尚未实现')).toBeInTheDocument()
+      expect(screen.getByText('网页与粘贴资料已开放')).toBeInTheDocument()
       expect(screen.queryByRole('button')).not.toBeInTheDocument()
       expect(container.querySelector('input, textarea, select, form')).toBeNull()
       expect(fetchSpy).not.toHaveBeenCalled()
+      expect(api.request).not.toHaveBeenCalled()
       expect(storageSpy).not.toHaveBeenCalled()
     },
   )
@@ -57,12 +59,13 @@ describe('StudyPilot journal shell', () => {
     }
   })
 
-  it('opens the explicitly labelled add preview rather than a working form', () => {
+  it('opens the working form and clearly limits unavailable features', () => {
     renderWithRouter(<App />)
-    fireEvent.click(screen.getByRole('link', { name: '添加资料页面预览' }))
+    fireEvent.click(screen.getByRole('link', { name: '添加资料' }))
     expect(screen.getByRole('heading', { name: '添加资料', level: 1 })).toHaveFocus()
-    expect(screen.getAllByText('尚未开放')).toHaveLength(3)
-    expect(screen.getByText(/目前不能保存或上传/)).toBeInTheDocument()
+    expect(screen.getByRole('form', { name: '添加资料表单' })).toBeInTheDocument()
+    expect(screen.getAllByRole('radio')).toHaveLength(2)
+    expect(screen.getByText('文件上传、主题与标签管理尚未开放。')).toBeInTheDocument()
     expect(
       within(screen.getByRole('navigation')).getByRole('link', { name: '资料库' }),
     ).toHaveAttribute('aria-current', 'page')

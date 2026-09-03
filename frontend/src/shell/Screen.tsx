@@ -1,4 +1,8 @@
-import { Link } from 'react-router-dom'
+import { Link, useMatch } from 'react-router-dom'
+
+import { ResourceDetail } from '../features/resources/ResourceDetail'
+import { ResourceForm } from '../features/resources/ResourceForm'
+import { ResourceLibrary } from '../features/resources/ResourceLibrary'
 
 import { BookSketch, Icon } from './Icon'
 import type { ShellPage } from './pages'
@@ -37,7 +41,7 @@ function Overview() {
             不必赶路，也可以慢慢向前。
           </p>
           <Link className="text-link" to="/resources">
-            看看资料库页面 <Icon name="arrow" />
+            打开资料库 <Icon name="arrow" />
           </Link>
         </div>
         <div className="journal-decoration" aria-hidden="true">
@@ -97,39 +101,13 @@ function Overview() {
   )
 }
 
-function AddResource() {
-  return (
-    <section className="add-sheet" aria-labelledby="sources-title">
-      <div className="section-heading">
-        <h2 id="sources-title">选择你的资料来源</h2>
-        <span>来源方式预览</span>
-      </div>
-      <div className="source-cards">
-        {[
-          ['01', '网页链接', '保留网页地址、标题与收藏的原因。'],
-          ['02', '本地文件', '保留 PDF、Word、Markdown 或 TXT 原件。'],
-          ['03', '粘贴内容', '直接保存一段 Markdown 或纯文本。'],
-        ].map(([number, title, description]) => (
-          <article key={number}>
-            <span className="source-number">{number}</span>
-            <h3>{title}</h3>
-            <p>{description}</p>
-            <span className="source-status">尚未开放</span>
-          </article>
-        ))}
-      </div>
-      <p className="add-disclaimer">
-        这里仅展示已规划的资料来源。目前不能保存或上传，也不会收集任何内容。
-      </p>
-      <Link className="text-link" to="/resources">
-        返回资料库 <Icon name="arrow" />
-      </Link>
-    </section>
-  )
-}
-
 export function Screen({ page }: { page: ShellPage }) {
+  const match = useMatch('/resources/:resourceId')
   if (page.path === '/') return <Overview />
-  if (page.path === '/resources/new') return <AddResource />
+  if (page.path === '/resources/new') return <ResourceForm />
+  if (page.path === '/resources') return <ResourceLibrary />
+  if (page.path === '/resources/:resourceId' && match?.params.resourceId) {
+    return <ResourceDetail key={match.params.resourceId} resourceId={match.params.resourceId} />
+  }
   return <EmptyPage page={page} />
 }

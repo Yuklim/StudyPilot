@@ -46,10 +46,9 @@ function App() {
             ))}
           </nav>
         </div>
-        <Link className="add-link" to="/resources/new" aria-label="添加资料页面预览">
+        <Link className="add-link" to="/resources/new" aria-label="添加资料">
           <Icon name="plus" />
           <span>添加资料</span>
-          <span className="preview-label">预览</span>
         </Link>
         <div className="sidebar-note" aria-hidden="true">
           <span className="note-pin" />
@@ -75,7 +74,7 @@ function App() {
             </span>
             {page.title}
           </span>
-          <span className="workspace-badge">界面预览</span>
+          <span className="workspace-badge">本机学习空间</span>
         </div>
         <header className="page-heading">
           <span className="eyebrow">STUDYPILOT / YOUR LEARNING JOURNAL</span>
@@ -87,14 +86,14 @@ function App() {
         <div className="preview-notice" role="note" aria-label="当前开发阶段">
           <Icon name="info" />
           <p>
-            <strong>工程框架已运行，业务功能尚未实现</strong>
-            <span>当前可浏览页面，暂不读取或保存学习数据。</span>
+            <strong>网页与粘贴资料已开放</strong>
+            <span>学习记录、文件上传等功能仍在开发中。</span>
           </p>
         </div>
         <Screen page={page} />
         <footer className="workspace-footer">
           <span>为每一次认真学习，留一页空白。</span>
-          <span>导航可用 · 业务未接入</span>
+          <span>资料可用 · 学习功能待接入</span>
         </footer>
       </main>
     </div>

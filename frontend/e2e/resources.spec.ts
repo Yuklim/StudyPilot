@@ -58,6 +58,6 @@ test('real client saves WEB/PASTE and reads persistent summaries/details after r
     initialized: true,
     persistedToken: 0,
   })
-  // This task implements backend APIs, not a user-facing form yet.
-  await expect(page.getByText('工程框架已运行，业务功能尚未实现')).toBeVisible()
+  // Keep direct-client coverage in addition to the user-facing form scenarios.
+  await expect(page.getByText('网页与粘贴资料已开放')).toBeVisible()
 })
