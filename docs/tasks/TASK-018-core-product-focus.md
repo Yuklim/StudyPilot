@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-018"
-status = "IN_REVIEW"
+status = "IN_ACCEPTANCE"
 risk = "L3"
 risk_reason = "用户明确调整基础闭环及优先级，涉及权威需求、背景及架构/契约的阶段说明；不改变运行时、标准接口或数据。按现行路径规则保留独立只读审查和验收。"
 risk_flags = ["documentation", "architecture"]
@@ -60,6 +60,15 @@ PASS
 - 结论：未发现阻断性问题。`docs/contracts/openapi-v1.json` 仅 `info.description` 有改动，`paths/schemas/security/x-delivery-profile` 未改；未出现页面代码、接口变更、数据模型变更、测试/治理规则改动或虚构时间/时长/状态默认值写入。
 - 剩余风险（非阻断）：TASK-018仍处 `IN_REVIEW`，当前仅文档级收敛，功能是否可用仍依赖后续实现任务（尤其 `TASK-017` 相关后续页能力）。
 
-- 最终增量 Review/Acceptance：待新候选报告；首轮 PASS 不直接代表修订后的候选。
-- 当前 IN_REVIEW；不声明页面已改或 TASK-017 已合并。
+- 最终候选：`292dd3c708639dc6116523bc062730df371fd4f1`。同一 Reviewer 会话增量复核，运行器 read-only / never，进程退出 0；继承首轮未变范围。报告原文如下（仅去掉行末空格）：
+
+PASS（增量）
+候选：`292dd3c708639dc6116523bc062730df371fd4f1`（基线未变：`aaa1b5abfe929117f87d59b70d60040499a1d50f`）。
+
+权限确认：`test -w .` 返回 `1`，实际环境不可写；本次仅读文件与比对，无写入。
+覆盖范围：仅比对 `2b66862b28c488f0c0d2460e2e1ea5ee29a18ada` 到 `292dd3...` 增量，3 文件变更（`README.md`、`docs/tasks/TASK-018-core-product-focus.md`、`docs/tasks/任务索引.md`）；复用首轮 `AAA...→2b6686...` 的风险/契约范围与结论。
+结论：增量与用户描述一致：README 产品方向段落仅位置迁移与表述微调，索引行迁移到末尾，TASK-018 增补修订测试与首轮报告。未见页面、接口、数据模型、代码或契约变更，未触发新阻断缺口。
+剩余风险：仅文档任务状态，功能实现与验收仍待后续任务/合并。
+
+- 独立 Acceptance：待执行。当前 IN_ACCEPTANCE；页面实现不在本任务内，不声明页面已改或 TASK-017 已合并。
 <!-- EVIDENCE:END -->
