@@ -2,7 +2,7 @@
 
 ## 1. 基本信息
 
-- 状态：`RETURNED`
+- 状态：`IN_REVIEW`
 - 负责人角色：`architecture_owner`
 - 创建人：主协调 Agent
 - 创建日期：2026-09-02
@@ -214,3 +214,4 @@ python3 -m json.tool docs/contracts/openapi-v1.json >/dev/null
 | 2026-09-02 | IN_REVIEW | coordinator | 原 `architecture_owner` 已在提交 `aa54222d1d2319f40a7f9cf97c97eeb283dc722c` 完成第二轮 6 个 P2 的定点修订；交接加入固定提交的可复现专项命令，待冻结第三轮候选并重新安排完整独立只读复审 |
 | 2026-09-02 | RETURNED | coordinator | 独立只读 `qa_reviewer` 审查第三轮冻结候选 `fa5af8477f1e72a326431dd8e4e674a574394666` 后结论为 `CHANGES_REQUIRED`；第二轮前五项契约问题已关闭，仍有 2 个 P2：共享错误示例与操作矩阵不一致、交接命令无法在强只读环境完整复现，详见 `TASK-003-REVIEW.md` |
 | 2026-09-02 | IN_REVIEW | coordinator | 原 `architecture_owner` 已在提交 `2f41182aadba77bc341687cc2f3f519a05ea82e5` 完成第三轮 2 个 P2 的定点修订：279 个挂载错误示例全部与 operation 错误矩阵对齐；交接专项命令不再依赖临时文件，并覆盖 459 个引用、唯一 operationId、12 个请求体操作、Markdown 双向映射和逐示例交叉验证；待冻结第四轮候选并重新安排完整独立只读复审 |
+| 2026-09-03 | IN_REVIEW | coordinator | 用户已合并 TASK-004 PR #8，目标 main 为 `9b6b21d73752e86a2c89e871222d3705d4dea6c7`。按保全方案从原冻结候选 `fe6196f724cafbb67a30f1479769a57b5affc8d4` 创建证据续接分支；两份契约及 HANDOFF 原样保留，原分支不变；本次只同步状态与决定日志。TASK-003 为 L3，仍完成 V1 完整独立只读复审与独立验收，并按用户最新实际风险/成本原则判断发现，不把理论建议当作阻断。V2 合并事实在此记录，合并后的统一索引状态随下一次已授权控制面工作更新，不另开收尾 PR |
