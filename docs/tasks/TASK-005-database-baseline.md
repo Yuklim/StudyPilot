@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-005"
-status = "IN_ACCEPTANCE"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "初始共享数据模型、跨模块外键和数据库迁移会影响数据完整性，保留独立 Review 与独立验收。"
 risk_flags = ["migration", "critical-data", "sensitive-storage"]
@@ -97,4 +97,27 @@ PASS
 覆盖与风险：已核对本轮仅涉及的模型、初始迁移、数据库测试、任务证据更新；后端 49 项、Ruff format/lint、mypy、离线构建和静态治理检查的复用/更新证据与本次修订一致，未见新的契约漂移或未覆盖影响。
 
 - 当前 IN_ACCEPTANCE；主 Agent只核对边界、测试指纹、Review 结论和剩余风险，未重复完整代码审查；首轮阻断已关闭。等待与实现者/Reviewer 分离的只读验收。
+### 独立验收原文
+
+独立验收 session `01a06500-8551-7c43-adbe-f18af48c14ed`，与实现者及 Reviewer 分离；Codex CLI 启动头实证 `sandbox: read-only`、`approval: never`。仅复用已绑定的测试及 Review 并核对完成条件，未再次做整份代码 Review。
+
+**PASS**
+
+已按独立 `Integration/Acceptance` 只读验收执行。实际 runtime 为只读且 `approval: never`，不是只看任务描述：当前会话里 `git status`/`git rev-parse` 都触发了对 `/tmp/xcrun_db-*` 的写入失败并返回 `Operation not permitted`，可作为实际只读证明。当前证据头是 `b7a01170d4f7b51a271860276d0a75c0781fc33c`，已 Review 的最终候选是 `6dee1d061b84fa4b0dc63ef9f6d331d1fb46dec2`；我核对了 `6dee1d0..b7a0117`，只有 [docs/tasks/TASK-005-database-baseline.md](/Users/yuklimching/Desktop/StudyPilot/docs/tasks/TASK-005-database-baseline.md:1) 和 [docs/tasks/任务索引.md](/Users/yuklimching/Desktop/StudyPilot/docs/tasks/任务索引.md:1) 的证据/状态写回，没有实现代码变化，与“后续只写证据”一致。独立 Reviewer `01a064fa-2a88-7b70-a847-485041a59554` 的最终结论是 PASS，且覆盖到最终候选。
+
+六条完成条件未见证据缺口：
+1. 11 个模型都在候选中，`DeletionConfirmation.resource_id` 仅为逻辑绑定索引、非资料级联外键；`OriginalFile.media_type` 契约漂移已修复，Review 增量 PASS。
+2. 连接与事务入口由 `connection.py` 明确提供；`test_foreign_keys_enabled_on_every_new_connection`、`test_transaction_commit_rollback_and_separate_sessions` 对应外键、独立 Session、提交/回滚/关闭路径。
+3. `test_utc_roundtrip_naive_rejection_and_calendar_dates`、`test_normalized_names_are_unique`、`test_version_conflict_and_noop_preserve_timestamps` 覆盖 UTC、无时区拒绝、日期不转换、名称规范化唯一、版本冲突。
+4. `test_upgrade_is_repeatable_and_matches_models`、`test_empty_downgrade_and_reupgrade`、`test_nonempty_downgrade_refuses_before_dropping_any_table` 覆盖唯一初始迁移、重复升级保留数据、无结构漂移、非空降级拒绝。
+5. 非法状态/范围/互斥、确认记录保留、普通 ORM 修改拒绝、事务回滚均有正反测试；跨对象业务不变量仍明确留给后续任务，未伪称已实现。
+6. `/health` 与 `/api/v1` 默认拒绝边界未改；README 已写明显式迁移、路径、备份和当前不能直接使用业务功能。测试指纹为 `41bcf1d38279615c7f23fd1a72ce261b47826af2cf171bd047380a51f36e3e3e`，与最终 Review 绑定一致。49 项后端测试、23 项治理测试的有效性在任务证据中闭合；最初完整入口因 `uv build --offline` 受缓存读取限制失败，这一点被如实记录，随后在同内容同环境定向补跑构建成功，没有把首次失败冒记为 PASS。
+
+剩余风险是已声明且非阻断的范围边界：当前仅支持 SQLite，不包含 HTTP 业务、跨表状态机、文件操作、PostgreSQL 实际支持；ORM 级保护不覆盖绕过 ORM 的直接 SQL。这些都已在任务与 README 中明确，不构成本次验收退回理由。
+
+最终结论：`PASS`。是否合并仅由你本人决定并执行；我不会提交、修复或合并。
+
+- 2026-09-03 最终状态：ACCEPTED，候选 `6dee1d061b84fa4b0dc63ef9f6d331d1fb46dec2` 已通过独立 Review 与独立验收；首轮唯一阻断已修正，无未处置阻断。
+- 主 Agent完成证据门禁：测试指纹、授权范围、六项条件与独立结论一致；后续只有本任务 EVIDENCE/status 和索引行写回。交付仅数据库基础，不触碰用户真实数据库、不开放业务接口。未实现的后续服务/PG 属于既定非目标，不作为已完成能力。
+- 等待用户决定并执行最终合并，Agent 不合并或推送 main。下一任务计划为共享测试基础（统一临时数据库/文件/API 客户端等测试入口），为真实业务模块和前端开发提供可复用验证；须在本任务合并后登记实施。
 <!-- EVIDENCE:END -->
