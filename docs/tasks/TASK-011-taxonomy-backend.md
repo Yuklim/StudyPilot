@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-011"
-status = "IN_ACCEPTANCE"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "实现既定分类修改、版本前置条件、删除未使用分类及资料标签关联，涉及删除与事务一致性；仅同步发布能力清单，不改变接口字段或已确认语义。保留独立 Review 与独立验收。"
 risk_flags = ["business", "deletion", "sensitive-storage", "tests"]
@@ -79,4 +79,32 @@ No findings。
 复用已绑定候选的有效证据，未重复全套回归：`check_task.py` 的静态/范围检查 PASS；后端 `226 PASS`、前端 `70 PASS`、治理 `23 PASS`、Chromium `12 PASS`，输入指纹 `fa99765c2fc37ce98db7ddb6be9bef2208bd637019907a3bf4a6d1dff142b546`，与实现提交 `789e303ce32598fb252da19a50d08c0f951193b9` 绑定。已知未测/剩余风险维持任务原披露边界：仅承诺本机个人与少量 SQLite 写入场景，分类页面尚未接入，不扩展到更高并发或未授权的资料删除/主题重分配能力。
 
 - 2026-09-03：IN_ACCEPTANCE。主 Agent只核对候选、范围及测试/Review 证据；本次仅回写本任务证据、状态及索引行，交由独立于实现者和 Reviewer 的验收会话核对完成条件。
+
+### 独立 Acceptance 原文
+
+- 会话：`01a065cb-b974-75a0-8db1-10e4344da631`，不同于实现者和 Reviewer；独立 CLI，`gpt-5.4 medium`，实际 `read-only / approval never / agents.enabled=false`。退出码 0；只读检查输出 `not_writable`。
+
+**PASS**
+
+`base=706c32732c4b3312acf26694302b43a8800ca2ea`  
+`candidate=4981e9274969c6cf1119c6a904bcb6d6c323c121`  
+`current_head=d3ba70db89c40a1745918896ee4d953d257ac514`
+
+独立只读权限证据：本会话运行时受 `read-only / approval never` 约束；在仓库根目录执行 `test -w .` 返回 `not_writable`，未做任何试写。附加旁证是本地 `git` 因 `/tmp` 不可写无法创建缓存文件。独立性方面，我不是实现者，也不是 Reviewer 会话 `01a065c8-feef-7e93-9984-137aeb961d59`。
+
+完成条件映射如下：
+1. 12 个 taxonomy/resource-tag 操作与错误约束：任务记录“实现与测试”明确已交付 12 个既定操作；后端 `226 PASS` 与 Reviewer PASS 一致覆盖字段、状态码、规范化重名、版本/删除前置条件、错误脱敏。
+2. SQLite 持久化、并发重名/旧版本保护、事务回滚：任务记录写明真实 SQLite 临时库、重启持久化、两线程重名创建、ORM 版本竞争、`before_commit` 失败回滚均已验证；Reviewer 未提出新缺口。
+3. 引用中删除保护与幂等关联/解除：任务记录与 Chromium `12 PASS` 都覆盖“建分类→创建引用分类的资料→关联/解除→旧版本/使用中删除拒绝→刷新读取”；行为与完成条件一致。
+4. 安全拒绝、故障受控、既有接口/页面回归：任务记录明确未授权请求在读 body/连库前拒绝、未建库/数据库故障受控、现有资料接口和页面未破坏；对应证据已包含在后端/前端/治理通过结果与 Reviewer 结论中。
+5. 集成链路、契约稳定、最终候选覆盖：后端 `226 PASS`、前端 `70 PASS`、治理 `23 PASS`、Chromium `12 PASS` 全部绑定输入指纹 `fa99765c2fc37ce98db7ddb6be9bef2208bd637019907a3bf4a6d1dff142b546`；OpenAPI 标准内容与 `base` 的 Node 深比较已 PASS，仅交付元数据更新。冻结后我额外执行 `check_task.py --candidate ... --static-only`，结果 `STATIC PASS`。`candidate..HEAD` 仅变更 [docs/tasks/TASK-011-taxonomy-backend.md](/Users/yuklimching/Desktop/StudyPilot/docs/tasks/TASK-011-taxonomy-backend.md) 和 [任务索引.md](/Users/yuklimching/Desktop/StudyPilot/docs/tasks/任务索引.md)，内容仅为 Review 证据与状态回写，无实现漂移。
+
+剩余风险：仍以任务已披露边界为准，仅承诺本机个人、少量 SQLite 写入场景；分类页面尚未接入；不扩展到更高并发、资料删除、主题重分配或更宽部署承诺。`check_task.py` 原完整运行不是全绿，唯一失败是 `uv build --offline` 缓存权限问题；该项已按同一输入单独重跑并 `exit=0`，所以不构成当前阻断。
+
+结论：L3 验收通过，可进入 `ACCEPTED` 方向的证据回写与后续人工合并流程。最终是否合并仍由你执行。
+
+### 主 Agent收口
+
+- 2026-09-03：ACCEPTED。只核对任务边界、测试输入/失败恢复、Review PASS、独立 Acceptance PASS 及完成条件；没有第三次代码审查。冻结候选 `4981e9274969c6cf1119c6a904bcb6d6c323c121` 之后仅窄证据回写；`d3ba70d` 已通过 EVIDENCE_ONLY，最终写回提交后再次执行同一窄门禁，不重跑产品测试。
+- 当前无未解决阻断问题；已知少量 SQLite 写入及分类页面未接入限制保留。提交本任务分支供用户最终合并，不向 main 推送或自行合并。合并后的下一项为主题/标签管理页面及资料表单选择、列表筛选接入。
 <!-- EVIDENCE:END -->
