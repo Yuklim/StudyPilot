@@ -22,6 +22,18 @@ export interface FileDownload {
 }
 const fileIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+function versionedDeleteTarget(target: string): boolean {
+  const parts = target.split('/')
+  return (
+    (parts.length === 5 && ['topics', 'tags'].includes(parts[3]) && fileIdPattern.test(parts[4])) ||
+    (parts.length === 7 &&
+      parts[3] === 'resources' &&
+      fileIdPattern.test(parts[4]) &&
+      parts[5] === 'notes' &&
+      fileIdPattern.test(parts[6]))
+  )
+}
+
 const messages = {
   HOST_FORBIDDEN: '请求地址不受信任，请使用本机页面。',
   REQUEST_ORIGIN_FORBIDDEN: '请求来源不受信任，请使用本机页面。',
@@ -37,6 +49,7 @@ const messages = {
   TOPIC_NOT_FOUND: '这个主题已不存在，请重新选择。',
   TAG_NOT_FOUND: '这个标签已不存在，请重新选择。',
   RESOURCE_NOT_FOUND: '这份资料已不存在，请重新打开资料库。',
+  NOTE_NOT_FOUND: '这条心得已不存在，请重新读取心得列表。',
   VERSION_CONFLICT: '内容已被修改，本次操作未执行。请载入最新版本后重新确认。',
   VERSION_REQUIRED: '缺少有效版本，请重新载入后再操作。',
   STATE_CONFLICT: '当前进度或复习计划不满足要求，请读取最新资料后重新确认。',
@@ -164,6 +177,7 @@ async function failure(response: Response): Promise<ApiError> {
     'TOPIC_NOT_FOUND',
     'TAG_NOT_FOUND',
     'RESOURCE_NOT_FOUND',
+    'NOTE_NOT_FOUND',
     'VERSION_CONFLICT',
     'VERSION_REQUIRED',
     'STATE_CONFLICT',
@@ -388,9 +402,7 @@ export function createApiClient() {
           options.body !== undefined ||
           !Number.isSafeInteger(options.ifMatchVersion) ||
           options.ifMatchVersion < 1 ||
-          !/^\/api\/v1\/(topics|tags)\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-            target,
-          ))
+          !versionedDeleteTarget(target))
       )
         throw new ApiError('INVALID_REQUEST')
       let body: string | undefined

@@ -159,7 +159,7 @@ function RecordForm({
       onSubmit={(event) => void submit(event)}
       noValidate
     >
-      <h3>写下这一次学习</h3>
+      <h3>旧学习状态与进度管理</h3>
       <p className="resource-hint">
         当前快照：{statusLabels[current.status]} · {current.progress_percent}%（版本{' '}
         {current.version}）。
@@ -281,33 +281,53 @@ function RecordForm({
 export function LearningPanel({ resource }: { resource: Resource }) {
   const [snapshot, setSnapshot] = useState(resource)
   const [open, setOpen] = useState(false)
+  const [manage, setManage] = useState(false)
   const [savedCount, setSavedCount] = useState(0)
   const [historyRevision, setHistoryRevision] = useState(0)
   const [savedNotice, setSavedNotice] = useState(false)
   return (
     <section className="learning-panel" aria-label="资料学习手帐">
       <ResourceProgress resource={snapshot} />
-      <button className="journal-button" aria-expanded={open} onClick={() => setOpen(!open)}>
-        {open ? '收起学习手帐' : '记录学习 / 查看历史'}
+      <button
+        className="journal-button"
+        aria-expanded={open}
+        onClick={() => {
+          setOpen(!open)
+          setManage(false)
+        }}
+      >
+        {open ? '收起旧学习历史' : '查看旧学习历史'}
       </button>
       {savedNotice && <p role="status">学习记录已保存，当前进度已更新。</p>}
       {open && (
         <>
-          <RecordForm
-            key={'form-' + savedCount}
-            resource={snapshot}
-            started={() => setSavedNotice(false)}
-            saved={(value) => {
-              setSavedNotice(true)
-              setSnapshot({ ...snapshot, progress: value })
-              setSavedCount(savedCount + 1)
-              setHistoryRevision(historyRevision + 1)
-            }}
-            reloaded={(value) => {
-              setSnapshot(value)
-              setHistoryRevision(historyRevision + 1)
-            }}
-          />
+          <p className="resource-hint">
+            这里保留以前的学习记录。新的理解或疑问直接写在上方心得中，不用登记时长、进度和状态。
+          </p>
+          <button
+            className="journal-button"
+            aria-expanded={manage}
+            onClick={() => setManage(!manage)}
+          >
+            {manage ? '收起状态管理' : '更多：状态与归档管理'}
+          </button>
+          {manage && (
+            <RecordForm
+              key={'form-' + savedCount}
+              resource={snapshot}
+              started={() => setSavedNotice(false)}
+              saved={(value) => {
+                setSavedNotice(true)
+                setSnapshot({ ...snapshot, progress: value })
+                setSavedCount(savedCount + 1)
+                setHistoryRevision(historyRevision + 1)
+              }}
+              reloaded={(value) => {
+                setSnapshot(value)
+                setHistoryRevision(historyRevision + 1)
+              }}
+            />
+          )}
           <RecordHistory key={'history-' + historyRevision} resourceId={resource.id} />
         </>
       )}

@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-018"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "用户明确调整基础闭环及优先级，涉及权威需求、背景及架构/契约的阶段说明；不改变运行时、标准接口或数据。按现行路径规则保留独立只读审查和验收。"
 risk_flags = ["documentation", "architecture"]
@@ -49,6 +49,8 @@ checks = ["contracts"]
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
+
+- 2026-09-03 用户已合并；GitHub 核实 PR #23 MERGED，mergedAt=2026-09-03T09:32:01Z，mergeCommit=4b760010c8476ccda7e57f7a835a6cd21c547b84。以下为原候选与审查历史。
 
 - 首轮候选：`2b66862b28c488f0c0d2460e2e1ea5ee29a18ada`，Reviewer 会话 `01a06692-43cc-7361-a5a5-f05e4c7d96e4`，运行器头 sandbox=read-only、approval=never，未改模型默认设置，进程退出 0。原文如下（仅去掉行末空格）：
 

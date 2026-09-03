@@ -20,7 +20,9 @@ describe('StudyPilot journal shell', () => {
     renderWithRouter(<App />)
     expect(screen.getByText('网页、文件与粘贴资料已开放')).toBeInTheDocument()
     expect(
-      screen.getByText('概览统计尚未接入。可以在资料详情记录学习，或在学习记录中查看历史。'),
+      screen.getByText(
+        '打开一份资料，随手记下理解或疑问。旧学习历史仍可查看，复习与详细统计后续再做。',
+      ),
     ).toBeInTheDocument()
     const metrics = within(screen.getByRole('region', { name: '统计尚未接入' }))
     expect(metrics.getAllByText('未接入')).toHaveLength(3)

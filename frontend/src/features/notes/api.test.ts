@@ -1,0 +1,103 @@
+import { describe, expect, it, vi } from 'vitest'
+import { api, ApiError } from '../../api/client'
+import { cleanContent, deleteNote, getNote, listNotes, saveNote } from './api'
+import { note, notePage } from './fixtures'
+
+const resourceId = note().resource_id
+const url = `/api/v1/resources/${resourceId}/notes`
+
+describe('controlled note API', () => {
+  it('writes only content and version; uses versioned deletion and stable pagination', async () => {
+    const request = vi.spyOn(api, 'request')
+    request.mockResolvedValueOnce({ data: note() })
+    await saveNote(resourceId, '  这是合成心得。\n', null)
+    expect(request).toHaveBeenLastCalledWith(url, {
+      method: 'POST',
+      body: { content: '这是合成心得。' },
+    })
+    request.mockResolvedValueOnce({ data: note({ content: '更新', version: 2 }) })
+    await saveNote(resourceId, '更新', note())
+    expect(request).toHaveBeenLastCalledWith(url + '/' + note().id, {
+      method: 'PATCH',
+      body: { expected_version: 1, content: '更新' },
+    })
+    request.mockResolvedValueOnce({ data: note() })
+    await saveNote(resourceId, note().content, note())
+    request.mockResolvedValueOnce(undefined)
+    await deleteNote(resourceId, note())
+    expect(request).toHaveBeenLastCalledWith(url + '/' + note().id, {
+      method: 'DELETE',
+      ifMatchVersion: 1,
+    })
+    request.mockResolvedValueOnce(notePage([], 2))
+    await listNotes(resourceId, 2)
+    expect(request).toHaveBeenLastCalledWith(url + '?page=2&page_size=20&sort=-created_at')
+  })
+  it.each([
+    { resource_id: '018f1f58-4eb2-4a0d-a716-fb81b1960999' },
+    { id: '../wrong' },
+    { version: 0 },
+    { version: 1.5 },
+    { content: '' },
+    { content: ' '.repeat(3) },
+    { content: 'x'.repeat(50001) },
+    { created_at: '2026-09-03T02:00:00' },
+    { updated_at: 'wrong' },
+  ])('rejects malformed or wrong-parent notes %j', async (override) => {
+    vi.spyOn(api, 'request').mockResolvedValue({ data: { ...note(), ...override } })
+    await expect(getNote(resourceId, note().id)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+  })
+  it('rejects wrong ID, content or version in successful write responses', async () => {
+    const request = vi
+      .spyOn(api, 'request')
+      .mockResolvedValue({ data: note({ id: '018f1f58-4eb2-4a0d-a716-fb81b1960999' }) })
+    await expect(getNote(resourceId, note().id)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    request.mockResolvedValue({ data: note({ content: 'not mine' }) })
+    await expect(saveNote(resourceId, 'mine', null)).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    })
+    request.mockResolvedValue({ data: note({ content: 'mine', version: 1 }) })
+    await expect(saveNote(resourceId, 'mine', note())).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    })
+    request.mockResolvedValue({ data: note() })
+    await expect(deleteNote(resourceId, note())).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+  })
+  it.each([0, 3, 50001])(
+    'rejects invalid content without a request (length %s)',
+    async (length) => {
+      const content = length < 4 ? ' '.repeat(length) : 'x'.repeat(length)
+      const request = vi.spyOn(api, 'request')
+      await expect(saveNote(resourceId, content, null)).rejects.toBeInstanceOf(ApiError)
+      expect(request).not.toHaveBeenCalled()
+    },
+  )
+  it('counts Unicode characters and preserves internal whitespace', async () => {
+    const content = '🌱'.repeat(50000)
+    vi.spyOn(api, 'request').mockResolvedValue({ data: note({ content }) })
+    await expect(saveNote(resourceId, content, null)).resolves.toMatchObject({ content })
+    expect(cleanContent('\u0085\u001f one\n  two \u0085')).toBe('one\n  two')
+  })
+  it.each([
+    { data: [note(), note()], page: notePage([], 1, 2).page },
+    { data: [note()], page: { ...notePage().page, number: 2 } },
+    { data: [note()], page: { ...notePage().page, size: 0 } },
+    { data: [], page: { ...notePage().page, has_more: 'false' } },
+    { data: [], page: { ...notePage().page, total_items: -1 } },
+  ])('rejects malformed pages', async (value) => {
+    vi.spyOn(api, 'request').mockResolvedValue(value)
+    await expect(listNotes(resourceId)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+  })
+  it('rejects bad paths, pages and cross-resource writes before sending', async () => {
+    const request = vi.spyOn(api, 'request')
+    await expect(listNotes('../bad')).rejects.toMatchObject({ code: 'INVALID_REQUEST' })
+    await expect(listNotes(resourceId, 0)).rejects.toMatchObject({ code: 'INVALID_REQUEST' })
+    await expect(saveNote(resourceId, 'x', note({ resource_id: 'other' }))).rejects.toMatchObject({
+      code: 'INVALID_REQUEST',
+    })
+    await expect(deleteNote(resourceId, note({ version: 0 }))).rejects.toMatchObject({
+      code: 'INVALID_REQUEST',
+    })
+    expect(request).not.toHaveBeenCalled()
+  })
+})

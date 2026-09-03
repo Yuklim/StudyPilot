@@ -279,6 +279,51 @@ describe('memory-only local API client', () => {
       expect(fetchMock).toHaveBeenCalledTimes(2)
     },
   )
+  it('sends a strong version header only to the exact note deletion path', async () => {
+    const path =
+      '/api/v1/resources/018f1f58-4eb2-4a0d-a716-fb81b1960001/notes/018f1f58-4eb2-4a0d-a716-fb81b1960005'
+    fetchMock
+      .mockResolvedValueOnce(session())
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+    await expect(
+      createApiClient().request(path, { method: 'DELETE', ifMatchVersion: 2 }),
+    ).resolves.toBeUndefined()
+    expect(new Headers(fetchMock.mock.calls[1][1]?.headers).get('If-Match')).toBe('"2"')
+    for (const target of [
+      path + '?x=1',
+      path + '/extra',
+      path.replace('/notes/', '/study-records/'),
+      path.replace(/\/notes\/.*$/, ''),
+      path.replace(/0005$/, 'bad'),
+    ]) {
+      await expect(
+        createApiClient().request(target, { method: 'DELETE', ifMatchVersion: 2 }),
+      ).rejects.toMatchObject({ code: 'INVALID_REQUEST' })
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+  it('projects a safe missing-note error without leaking backend text or retrying', async () => {
+    fetchMock.mockResolvedValueOnce(session()).mockResolvedValueOnce(
+      Response.json(
+        {
+          error: {
+            code: 'NOTE_NOT_FOUND',
+            message: 'private note',
+            details: { content: 'private note' },
+          },
+        },
+        { status: 404 },
+      ),
+    )
+    const error = await createApiClient()
+      .request(
+        '/api/v1/resources/018f1f58-4eb2-4a0d-a716-fb81b1960001/notes/018f1f58-4eb2-4a0d-a716-fb81b1960005',
+      )
+      .catch((value: unknown) => value)
+    expect(error).toMatchObject({ code: 'NOTE_NOT_FOUND', status: 404, details: {} })
+    expect(String(error)).not.toContain('private note')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
   it('bootstraps once for parallel callers, exposes no token, and never persists', async () => {
     const store = vi.spyOn(Storage.prototype, 'setItem')
     const log = vi.spyOn(console, 'log')

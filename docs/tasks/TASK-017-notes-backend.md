@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-017"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "实现既定个人笔记写入、版本修改和直接删除，涉及用户文本保护与删除竞争；标准契约和数据库模型不变，保留独立只读 Review/Acceptance。"
 risk_flags = ["business", "critical-data", "tests"]
@@ -49,6 +49,8 @@ checks = ["backend", "contracts", "governance"]
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
+
+- 2026-09-03 用户已合并；GitHub 核实 PR #22 MERGED，mergedAt=2026-09-03T09:31:49Z，mergeCommit=d2fc5acbfc7989ff8bd8b013ae70ac7cace25c5f。原实现及审查证据保留。
 
 - 2026-09-03：IN_PROGRESS，稳定依赖已合并，风险与唯一写入者已确定。
 - 2026-09-03：IN_REVIEW，最终检查通过，待独立实际只读 Review；用户独占最终合并。

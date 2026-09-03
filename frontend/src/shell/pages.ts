@@ -42,15 +42,15 @@ export const pages: ShellPage[] = [
     caption: '原始资料与自己的理解，各有一个位置。',
     icon: 'library',
     emptyTitle: '打开收藏的这一页',
-    description: '查看原始内容、记录学习与回看历史；笔记仍待接入。',
+    description: '查看原始资料，随手写下心得，再回来继续补充。',
   },
   {
     path: '/study-records',
     title: '学习记录',
-    caption: '留下理解，也留下一点下一次的方向。',
+    caption: '以前的学习记录都在；新的心得，从资料详情随手写起。',
     icon: 'record',
     emptyTitle: '让学习过程有迹可循',
-    description: '按时间回看真实学习时长、状态和进度变化、总结与疑问。',
+    description: '按时间回看旧学习活动；新的个人心得保存在对应资料详情。',
   },
   {
     path: '/reviews',
