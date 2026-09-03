@@ -19,7 +19,10 @@ test('real browser loads the honest shell and reaches the backend through the pr
     })
     return { status: response.status, body: await response.json() }
   })
-  expect(denied).toEqual({ status: 403, body: { detail: 'Forbidden' } })
+  expect(denied.status).toBe(403)
+  expect(denied.body.error.code).toBe('LOCAL_TOKEN_REQUIRED')
+  expect(denied.body.error.details).toEqual({})
+  expect(denied.body.error.request_id).toMatch(/^req_[a-f0-9]{32}$/)
 })
 
 test('navigation, history, direct links and keyboard focus work without business requests', async ({

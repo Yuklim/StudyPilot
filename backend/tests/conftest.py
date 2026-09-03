@@ -19,6 +19,8 @@ def runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Runtime
     paths = runtime_paths(tmp_path)
     monkeypatch.chdir(paths.root)
     monkeypatch.setenv("STUDYPILOT_DATABASE_URL", paths.database_url)
+    monkeypatch.setenv("STUDYPILOT_API_PORT", "8000")
+    monkeypatch.setenv("STUDYPILOT_UI_PORT", "5173")
     get_settings.cache_clear()
     try:
         yield paths
@@ -44,5 +46,5 @@ def session_factory(database: Engine) -> sessionmaker[Session]:
 @pytest.fixture
 def client() -> Iterator[TestClient]:
     # No global app/client: dependency overrides, cookies and lifespan stay local.
-    with TestClient(create_app(), base_url="http://127.0.0.1") as instance:
+    with TestClient(create_app(), base_url="http://127.0.0.1:8000") as instance:
         yield instance

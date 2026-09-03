@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-007"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L2"
 risk_reason = "多页面布局、导航与可访问性实现，改变可见界面但不改变公共 API、数据模型、安全策略或业务状态；一次独立 Review 足够。"
 risk_flags = ["business", "tests"]
@@ -50,6 +50,8 @@ checks = ["frontend", "governance"]
 - 限制：现在只能看布局和切换页面，不能管理真实资料；仅 macOS Chromium 实测，不声称已完成跨浏览器、屏幕阅读器或全业务闭环认证。后续接口/令牌接入必须另立任务，不借本次开放。
 
 <!-- EVIDENCE:BEGIN -->
+- 2026-09-03：用户已合并 PR #12，提交 `9e59355fee2aabe741b171e33197b8f96ee6f27a`；当前状态 MERGED，原证据保留。
+
 ## 状态与最终证据
 
 - 2026-09-03：IN_REVIEW；主 Agent完成实现、自检和测试证据核对。只使用一位实际只读独立 Reviewer，沿用用户已授权的临时 GPT-5.4/medium，不更改默认配置；L2 独立 Acceptance N/A。
