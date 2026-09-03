@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
-  "info": {"title": "StudyPilot 第一阶段 API", "version": "1.0.0", "description": "本地单用户 StudyPilot 第一阶段完整 MVP 目标契约，不是当前全部可调用能力清单。TASK-009 的已授权阶段子集及暂未开放输入响应见 x-delivery-profile 和 API与数据契约基线.md 第1.3节；当前运行时可用性以该阶段说明为准。标准 paths/schemas 保留最终要求，不能未经阶段筛选直接生成当前客户端。事务、安全前置顺序、文件对账与删除恢复的含义权威见同一契约文档。"},
+  "info": {"title": "StudyPilot 第一阶段 API", "version": "1.0.0", "description": "本地单用户 StudyPilot 既有接口设计全集，包含后续扩展，不是当前全部可调用能力清单。TASK-018 已将当前核心收敛为资料收集、随手心得与找回；此处完整 MVP/最终要求不表示核心版必须先实现复习与统计，范围解释见 API与数据契约基线.md 第1.0节。已授权阶段子集及暂未开放输入响应见 x-delivery-profile 和第1.3节；当前运行时可用性仍以阶段说明为准。标准 paths/schemas 和安全/事务/时间语义不变，不能未经阶段筛选直接生成当前客户端。"},
   "x-delivery-profile": {
     "stage": "TASK-015",
     "standard_schema_scope": "full-mvp-target",
