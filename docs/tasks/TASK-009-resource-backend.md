@@ -3,21 +3,22 @@
 ```toml
 schema_version = 2
 id = "TASK-009"
-status = "BLOCKED"
+status = "IN_PROGRESS"
 risk = "L3"
-risk_reason = "首次启用资料持久化及原子创建事务，含敏感原文、初始进度和标签关联；复用既定契约但需验证数据完整性及错误不泄露。"
+risk_reason = "首次启用资料持久化及原子创建事务，含敏感原文、初始进度和标签关联；本次续接另含用户授权的阶段契约说明，仍需 L3 独立审查验收。"
 risk_flags = ["critical-data", "sensitive-storage", "public-api", "tests"]
-owner = "resource_worker"
+owner = "architecture_owner"
 base = "910e85b3164704e02664f1420eee65e509467e63"
-allowed_paths = ["backend/src/studypilot/api/resources.py", "backend/src/studypilot/modules/__init__.py", "backend/src/studypilot/modules/resources/**", "backend/src/studypilot/application/__init__.py", "backend/src/studypilot/application/resources.py", "backend/src/studypilot/infrastructure/database/resource_store.py", "backend/src/studypilot/infrastructure/security/local_access.py", "backend/src/studypilot/main.py", "backend/tests/test_resources.py", "frontend/e2e/local-access.spec.ts", "frontend/e2e/resources.spec.ts", "README.md", "docs/tasks/TASK-008-local-access-foundation.md", "docs/tasks/TASK-009-resource-backend.md", "docs/tasks/任务索引.md"]
-checks = ["backend", "frontend", "governance"]
+allowed_paths = ["backend/src/studypilot/api/resources.py", "backend/src/studypilot/modules/__init__.py", "backend/src/studypilot/modules/resources/**", "backend/src/studypilot/application/__init__.py", "backend/src/studypilot/application/resources.py", "backend/src/studypilot/infrastructure/database/resource_store.py", "backend/src/studypilot/infrastructure/security/local_access.py", "backend/src/studypilot/main.py", "backend/tests/test_resources.py", "frontend/e2e/local-access.spec.ts", "frontend/e2e/resources.spec.ts", "README.md", "docs/contracts/API与数据契约基线.md", "docs/contracts/openapi-v1.json", "docs/tasks/TASK-008-local-access-foundation.md", "docs/tasks/TASK-009-resource-backend.md", "docs/tasks/任务索引.md"]
+checks = ["backend", "frontend", "governance", "contracts"]
 ```
 
 ## 需求与范围
 
 - 用户要求“已合并，下一步”；已核实 PR #13 MERGED，合并提交为 base。承接 TASK-008 明确的资料后端下一步。
-- 依据：已批准契约第 2.1～2.3、4.1/4.2/4.4～4.7/4.10、5、7、10 节及 OpenAPI 的 createResource/listResources/getResource；架构 6.1、7.2 添加资料及阶段 B。需求、契约、模型、迁移均不改。
-- 唯一写入者：主 Agent兼任 resource_worker，串行实现资料用例及其必要存储/API 适配；coordinator 同一主 Agent维护任务/索引。没有额外实现 Worker。L3 最后各一位实际只读独立 Reviewer、Integration Owner。
+- 依据：已批准契约第 2.1～2.3、4.1/4.2/4.4～4.7/4.10、5、7、10 节及 OpenAPI 的 createResource/listResources/getResource；架构 6.1、7.2 添加资料及阶段 B。最终需求、schema、模型、迁移不改；下述用户追加授权允许补充阶段性交付条款。
+- 唯一实际写入者始终是主 Agent：此前兼任 resource_worker 完成业务实现；2026-09-03 用户同意补充契约说明后，串行切换 architecture_owner，只修改两份契约的阶段说明、README 和任务控制面，不重做或修改已有业务代码/测试。保留原允许路径仅用于完整候选审计，不表示架构角色可继续业务开发。coordinator 仍由同一主 Agent兼任；按 Git 规则角色切换沿用原分支。没有额外实现 Worker。L3 最后各一位实际只读独立 Reviewer、Integration Owner。
+- 2026-09-03 追加授权：针对“补充分阶段交付说明，明确本阶段网页/粘贴、文件后续，最终需求不变、代码不重做，再复审验收”的提议，用户答复“可以”。新增允许路径为 `docs/contracts/API与数据契约基线.md` 和 `docs/contracts/openapi-v1.json`。只澄清当前可用范围、暂未实现输入的响应及客户端使用限制；不能以阶段说明豁免安全/数据完整性、删除最终 FILE 要求或缩减已稳定功能。
 - 实现 POST JSON WEB/PASTE、GET 列表（既定搜索/筛选/排序/分页）、GET 详情。只保存链接，不抓取网页；粘贴内容原样保留，不解析/执行。支持引用既有 Topic/Tag；不新增分类管理接口。
 - 初始进度仅通过存储适配建立 TASK-005 已定义的默认行（UNREAD/0/version=1），与新资料及标签关联同事务；这是资料创建必要完整性初始化，不实现学习状态转换、进度更新或学习记录。查询仅组合只读投影，不传可变 ORM 对象跨模块；taxonomy 保留分类及关联所有权，resources 只写自己的 topic_id。
 - 安全中间件仅向可信 request state 暴露其生成的 request_id，供业务错误复用；不改既有授权判定。数据库仅在通过安全和输入校验后的业务请求显式打开，始终关闭；不自动建表/迁移，不操作用户已有数据作测试。
@@ -32,6 +33,7 @@ checks = ["backend", "frontend", "governance"]
 3. 列表仅摘要，无 URL/粘贴正文/文件哈希或内部存储键；搜索仅三个批准字段并遵守 Unicode 规范化；AND/OR、默认排除归档、READY 文件可见性、分页稳定决胜和时间/进度边界可验证。详情组合只读进度/标签/复习/原件，不因读取更新版本或时间。
 4. 自动后端/前端/治理检查及真实 Chromium 的保存→刷新→列表→详情通过；仅临时已迁移数据库和合成数据，含令牌的浏览器测试关闭 trace。页面仍明确未接入，不伪装可操作。
 5. README 准确说明后端能力、需显式建库和局限；冻结候选、测试绑定、独立 Review/Acceptance 有真实证据；最终合并由用户执行。
+6. 追加授权的阶段说明在中文契约和 OpenAPI 一致可见；最终接口、字段、枚举、媒体类型目标和响应 schema 保持原样，补充清晰的当前可用子集及 FILE 后续交付门槛。对新增契约说明执行结构/语义检查，复用未改变代码的既有测试证据，同一 Reviewer 复核新的冻结候选。
 
 ## 上下文包
 
