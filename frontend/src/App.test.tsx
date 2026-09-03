@@ -19,7 +19,7 @@ describe('StudyPilot journal shell', () => {
   })
   it('clearly distinguishes the shell from real learning data', () => {
     renderWithRouter(<App />)
-    expect(screen.getByText('网页与粘贴资料已开放')).toBeInTheDocument()
+    expect(screen.getByText('网页、文件与粘贴资料已开放')).toBeInTheDocument()
     expect(screen.getByText('学习数据尚未接入，暂不展示资料或进度。')).toBeInTheDocument()
     const metrics = within(screen.getByRole('region', { name: '统计尚未接入' }))
     expect(metrics.getAllByText('未接入')).toHaveLength(3)
@@ -34,7 +34,7 @@ describe('StudyPilot journal shell', () => {
       const { container } = renderWithRouter(<App />, route)
       expect(screen.getByRole('heading', { name: title, level: 1 })).toBeInTheDocument()
       expect(document.title).toBe(`${title} · StudyPilot`)
-      expect(screen.getByText('网页与粘贴资料已开放')).toBeInTheDocument()
+      expect(screen.getByText('网页、文件与粘贴资料已开放')).toBeInTheDocument()
       expect(screen.queryByRole('button')).not.toBeInTheDocument()
       expect(container.querySelector('input, textarea, select, form')).toBeNull()
       expect(fetchSpy).not.toHaveBeenCalled()
@@ -64,9 +64,10 @@ describe('StudyPilot journal shell', () => {
     fireEvent.click(screen.getByRole('link', { name: '添加资料' }))
     expect(screen.getByRole('heading', { name: '添加资料', level: 1 })).toHaveFocus()
     expect(screen.getByRole('form', { name: '添加资料表单' })).toBeInTheDocument()
-    expect(screen.getAllByRole('radio')).toHaveLength(2)
+    expect(screen.getAllByRole('radio')).toHaveLength(3)
+    expect(screen.getByRole('radio', { name: /上传文件/ })).toBeEnabled()
     expect(
-      screen.getByText('文件上传尚未开放。可先在分类整理中创建主题与标签，再回来选择。'),
+      screen.getByText('原件只保存、不解析。可先在分类整理中创建主题与标签，再回来选择。'),
     ).toBeInTheDocument()
     expect(
       within(screen.getByRole('navigation')).getByRole('link', { name: '资料库' }),

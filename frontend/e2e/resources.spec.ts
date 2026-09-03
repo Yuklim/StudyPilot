@@ -59,5 +59,5 @@ test('real client saves WEB/PASTE and reads persistent summaries/details after r
     persistedToken: 0,
   })
   // Keep direct-client coverage in addition to the user-facing form scenarios.
-  await expect(page.getByText('网页与粘贴资料已开放')).toBeVisible()
+  await expect(page.getByText('网页、文件与粘贴资料已开放')).toBeVisible()
 })

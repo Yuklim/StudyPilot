@@ -874,6 +874,7 @@ p {
   gap: 18px;
 }
 .source-choice {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-bottom: 24px;
 }
 .source-choice label {
@@ -916,6 +917,47 @@ p {
   font-size: 12px;
   line-height: 1.6;
   color: #535f4e;
+}
+.file-collection {
+  border: 1px dashed #bac5a9;
+  border-radius: 18px;
+  background: #f5f6eb;
+  padding: 24px;
+  margin: 4px 0 24px;
+}
+.file-collection .note-tab,
+.file-original .note-tab {
+  display: inline-block;
+  margin-bottom: 16px;
+}
+.selected-file {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  margin-top: 16px;
+}
+.selected-file > span {
+  flex: 1;
+  min-width: 0;
+}
+.selected-file strong,
+.original-file-name {
+  overflow-wrap: anywhere;
+}
+.selected-file small {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+}
+.resource-field input::file-selector-button {
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-right: 10px;
+  background: #e8eddd;
+  color: #41543b;
+  cursor: pointer;
 }
 .resource-field input,
 .resource-field textarea,
