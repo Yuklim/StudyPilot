@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-017"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "实现既定个人笔记写入、版本修改和直接删除，涉及用户文本保护与删除竞争；标准契约和数据库模型不变，保留独立只读 Review/Acceptance。"
 risk_flags = ["business", "critical-data", "tests"]
@@ -38,6 +38,7 @@ checks = ["backend", "contracts", "governance"]
 
 ## 实现与测试
 
+- 实现提交：`2db21a7c8db4dd661300f157e82cd564b73df054`；后续冻结提交仅记录实现 SHA/检查证据及审查状态。
 - 已实现五个笔记操作：严格 JSON/查询/版本输入、按资料归属及 READY 可见性读取、稳定分页、版本修改/删除和提交前回滚。业务模块不含 SQLite 逻辑，存储层只写 Note；同内容不改版本/时间，错误不输出正文/SQL/路径。原件、资料、进度、计划、历史和前端未改。
 - 完整检查命令：`PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-017-notes-backend.md --worktree`。最终在允许访问宿主 uv 缓存的环境执行，整体退出 0；14 文件、`product_fingerprint=402335f045321d8eb6080158a3ce8294fe0f49fe4a0f20d5c17fcd50af123745`。范围/敏感模式/JSON/diff、后端格式/lint/mypy、415 项 pytest（含新增 49 项笔记测试，6.59 秒）、离线 sdist/wheel 构建、OpenAPI/FastAPI 结构校验、治理规则/lint/格式及 23 项治理测试全部 PASS；无依赖安装或配置变更。
 - 新增测试覆盖真实 SQLite 多笔记生命周期、首尾标准化/内部文本/长度边界、只读字段拒绝、空/错误分页和稳定同时间排序、父资料归属、FILE 可见性及归档、旧版本修改/删除拒绝、同内容不刷新时间、原资料/进度/搜索/历史不受影响。注入 flush 后/commit 前故障验证新增/修改/删除回滚且调用仅一次；真实 ORM 旧实例产生 StaleDataError 后只读分类；两线程实际竞争修改/删除只有一次成功，其余受控失败且不覆盖/误删新内容；未授权先于正文/数据库操作，统一错误不泄露合成敏感文本。
@@ -50,4 +51,5 @@ checks = ["backend", "contracts", "governance"]
 ## 状态与最终证据
 
 - 2026-09-03：IN_PROGRESS，稳定依赖已合并，风险与唯一写入者已确定。
+- 2026-09-03：IN_REVIEW，最终检查通过，待独立实际只读 Review；用户独占最终合并。
 <!-- EVIDENCE:END -->
