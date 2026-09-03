@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-012"
-status = "IN_ACCEPTANCE"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "接入既定分类删除与版本保护，并扩展共享客户端的受控版本头及安全错误映射；不改变服务端安全协议或契约。保留独立 Review 与独立验收。"
 risk_flags = ["business", "deletion", "security", "tests"]
@@ -69,4 +69,28 @@ No findings。未发现越权改动、删除确认绕过、`ifMatchVersion` 失�
 剩余风险/未测项：本次未重跑全套检查或浏览器链路，复用已绑定到 `product_fingerprint=398affed...d36942` 的 `check_task` PASS、114 前端/23 治理、14 既有浏览器 PASS + 1 个分页定位场景定向复跑 PASS，以及人工截图结论；在当前个人本机/少量写入场景下，这一证据足以支撑 Review PASS。
 
 - 2026-09-03：IN_ACCEPTANCE。主 Agent只核对范围、输入、测试失败闭环及 Review 结论，没有重新审代码；审查后仅写本任务 status/EVIDENCE 与索引行，交由另一独立只读会话验收。
+
+### 独立 Acceptance 原文
+
+- 独立会话 `01a065e8-d782-7ba1-a36f-ab666702f348`，不同于实现者和 Reviewer；`gpt-5.4 medium`，CLI 实际 `read-only / approval never / agents.enabled=false`，`test -w .` 为 `not_writable`，退出码 0。
+
+PASS
+
+base=`06025c70f460f77a0fb5ca89a36a6676a85b0171` candidate=`9ca3a070aca10390e9cbc2e06f26de91c4d7df57` HEAD=`ee1567b133ec5fd013d9c6f097473a4368445e59`。独立性与权限证据满足：本会话按运行时配置为 `approval never`，仓库根执行 `test -w . && echo writable || echo not_writable` 实际输出 `not_writable`；我未试写、未委派、未重跑全套测试、未做代码复审。
+
+完成条件映射如下，未见缺口：
+1. 分类页能力：任务“实现与测试”已记录分类页空/加载/失败/分页/搜索/排序/创建/修改/删除确认、重名/引用中删除、旧版本保护、失败草稿保留与显式载入最新版的真实浏览器覆盖；独立 Review 也确认这些点无阻断发现。
+2. 契约与客户端安全：任务记录明确只新增受控 `ifMatchVersion`、204 与安全错误映射，未开放任意头、未持久化令牌/正文；独立 Review 已覆盖客户端与关键调用链并给出 No findings。
+3. 资料分类接入：任务记录明确一次保存主题/标签、跨页保留、最多 20 项、组合筛选、详情逐标签增删后重读、不中改正文/进度/主主题；独立 Review 已确认无“跨页丢失/整组覆盖/主题误改/旧异步覆盖新页面”问题。
+4. 测试与界面证据：记录有 RTL/客户端单测、真实 Chromium 15 场景证据、首轮 `14 PASS / 1 FAIL` 的真实失败原因与仅该场景定向复跑 `1 PASS`、以及 320/390/1440 无横溢与截图人工查看结论；表述没有把原整套冒称为 `exit=0`。
+5. 最终检查与最终候选覆盖：`check_task` 最终 `exit=0`，前端 114 / 治理 23 / format / lint / typecheck / build 全绿，fingerprint=`398affed01ccb82ebaa8abbdcf204871794b2268085b31d0504d0c2333d36942`。另外我核对了 `candidate..HEAD`，仅变更 [docs/tasks/TASK-012-taxonomy-pages.md](/Users/yuklimching/Desktop/StudyPilot/docs/tasks/TASK-012-taxonomy-pages.md) 和 [docs/tasks/任务索引.md](/Users/yuklimching/Desktop/StudyPilot/docs/tasks/任务索引.md)，内容仅为 `status`/`EVIDENCE`/索引行更新，符合 `EVIDENCE_ONLY`，未引入产品代码或契约变化。
+
+剩余风险：我复用了已绑定实现与指纹的检查、浏览器和 Review 证据，没有重新执行全套链路；在当前 L3 验收职责和现有范围下，这不是阻断。未发现新的跨模块、数据、契约或安全影响，因此不退回。
+
+最终合并仍由用户本人执行。
+
+### 主 Agent收口
+
+- 2026-09-03：ACCEPTED。只核对任务边界、测试绑定与失败闭环、独立 Review/Acceptance 结论和完成条件，没有第三次代码审查。审查候选 `9ca3a070aca10390e9cbc2e06f26de91c4d7df57` 后仅任务证据、状态与索引行写回；`ee1567b` 已通过 EVIDENCE_ONLY，最终回写提交后再次执行同一窄门禁，不重复产品测试。
+- 无未解决阻断问题；保留个人本机/少量写入、草稿不持久化、主题补查失败可刷新等已知限制。分支供用户最终合并，不向 main 推送或自行合并。合并后下一项拟完成原始文件上传、保存、下载及失败保护，之后接入文件页面。
 <!-- EVIDENCE:END -->
