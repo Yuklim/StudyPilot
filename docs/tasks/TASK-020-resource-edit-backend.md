@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-020"
-status = "IN_REVIEW"
+status = "IN_ACCEPTANCE"
 risk = "L3"
 risk_reason = "实现既定资料修改接口，涉及用户原文、主题归属、版本竞争和事务保存；同步交付清单，保留独立只读审查与验收，不改模型或迁移。"
 risk_flags = ["business", "critical-data", "tests"]
@@ -55,4 +55,18 @@ checks = ["backend", "contracts"]
 - BLOCKED：实现及 466 项测试结果保留；Review 未完成，不能标记 PASS/No findings，Acceptance 未启动。等待用户授权本次使用其他可用模型完成独立只读审查/验收，或等待默认模型额度恢复；不自动更改用户模型偏好，不使用重置额度，不跳过门禁，不创建待合并 PR。
 
 - 2026-09-03 用户明确授权“使用其他模型”。本次审查/验收临时指定 `gpt-5.5`，不修改默认模型配置、不兑换额度；从冻结候选 `536bf9bbc3d8f6ff454f3121fb38387bee671ae5` 继续。上次中断无最终报告，新 Reviewer 须覆盖完整最终 diff；原代码/测试保持不变，恢复 IN_REVIEW。
+
+- 独立 GPT-5.5 Review：会话 `01a0670d-cb7d-7153-89f3-cd7622860ba6`，运行器头确认 `model: gpt-5.5`、`sandbox: read-only`、`approval: never`，退出 0；未改默认配置。报告原文如下（仅去行末空格）：
+
+PASS。
+
+实际权限：sandbox=read-only、approval=never；命令中 `git/xcrun` 尝试写 `/tmp` cache 被 `Operation not permitted` 拒绝，未修改/提交/联网写/委派。
+
+已按 `git diff --unified=3` 分文件完整审查 `base=91350b73b49e91ea0ef07e10038adc4a88d511a8` 到 `candidate=536bf9bbc3d8f6ff454f3121fb38387bee671ae5` 的 12 文件 diff；确认之后 HEAD 仅任务证据写回。覆盖 ResourcePatch 省略/null/原文保留、来源不可变、ORM 版本/事务、非 READY FILE 隐藏、安全门禁先于正文、学习/心得/标签/原件不越界及测试绑定。
+
+证据复用：未重跑 466 后端测试；复用任务中绑定指纹 `37dc8bae8c54883cbb4f3d3c63f09eecdd104cc7fe3071ea6d7a506e1eded6cb` 的 lint/format/mypy/pytest/build/contracts PASS。我实际执行 `--static-only`，结果 `STATIC PASS` 且明确 `PROFILE_TESTS NOT_RUN`。
+
+No findings。限制：未做前端联测，本任务仅后端。
+
+- 主 Agent 核对：Review 对冻结候选完整覆盖且无 findings；实现、检查输入与完成条件未变，已有 466 项测试和构建证据可复用。IN_ACCEPTANCE，交另一独立只读 Agent 核对证据与五项完成条件，不重复代码审查；未宣称页面已接入。
 <!-- EVIDENCE:END -->
