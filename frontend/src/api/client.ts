@@ -1,4 +1,4 @@
-// Shared JSON transport only; feature modules validate their own response data.
+// Shared controlled transports; feature modules validate consumed response fields.
 // Tokens remain private to this page's closure and are never returned to callers.
 type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json }
@@ -7,6 +7,20 @@ interface JsonRequest {
   body?: Json
   ifMatchVersion?: number
 }
+
+export const MAX_FILE_BYTES = 26_214_400
+export const fileMediaTypes: readonly string[] = [
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/markdown; charset=utf-8',
+  'text/plain; charset=utf-8',
+]
+export interface FileDownload {
+  blob: Blob
+  fileName: string
+}
+const fileIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const messages = {
   HOST_FORBIDDEN: '请求地址不受信任，请使用本机页面。',
@@ -27,6 +41,12 @@ const messages = {
   VERSION_REQUIRED: '缺少有效版本，请重新载入后再操作。',
   TAXONOMY_IN_USE: '这个分类仍被资料使用，不能删除；资料不会被连带删除。',
   VALIDATION_ERROR: '输入未通过检查，请检查格式和长度。',
+  FILE_NOT_FOUND: '原始文件已不存在，请刷新资料后再试。',
+  FILE_TOO_LARGE: '文件超过 25 MiB 上限，请选择较小的文件。',
+  FILE_TYPE_UNSUPPORTED: '文件格式不受支持，或内容与扩展名不一致。请检查原件。',
+  FILE_STATE_UNAVAILABLE: '原件尚未保存完成或已经失效，请稍后检查资料库。',
+  FILE_CORRUPTED: '原件缺失或校验不符，已停止下载。请重新添加原件。',
+  STORAGE_PATH_UNAVAILABLE: '原件存储暂不可用，请检查本地存储目录与权限。',
 } as const
 type ErrorCode = keyof typeof messages
 
@@ -93,7 +113,7 @@ async function transport(
   path: string,
   method: Method,
   headers: Headers,
-  body?: string,
+  body?: string | FormData,
 ): Promise<Response> {
   try {
     return await fetch(path, {
@@ -146,6 +166,12 @@ async function failure(response: Response): Promise<ApiError> {
     'VERSION_REQUIRED',
     'TAXONOMY_IN_USE',
     'VALIDATION_ERROR',
+    'FILE_NOT_FOUND',
+    'FILE_TOO_LARGE',
+    'FILE_TYPE_UNSUPPORTED',
+    'FILE_STATE_UNAVAILABLE',
+    'FILE_CORRUPTED',
+    'STORAGE_PATH_UNAVAILABLE',
   ]
   const code =
     typeof error?.code === 'string' && serverCodes.includes(error.code)
@@ -171,6 +197,102 @@ async function failure(response: Response): Promise<ApiError> {
   )
     details[key] = value
   return new ApiError(code, response.status, requestId, details)
+}
+
+function uploadSnapshot(form: FormData): FormData {
+  if (!(form instanceof FormData)) throw new ApiError('INVALID_REQUEST')
+  const copy = new FormData()
+  const allowed = [
+    'source_type',
+    'title',
+    'source_name',
+    'save_reason',
+    'topic_id',
+    'tag_ids',
+    'file',
+  ]
+  for (const [name, value] of form) {
+    if (
+      !allowed.includes(name) ||
+      (name !== 'tag_ids' && copy.has(name)) ||
+      (name === 'file' ? !(value instanceof File) : typeof value !== 'string')
+    )
+      throw new ApiError('INVALID_REQUEST')
+    copy.append(name, value)
+  }
+  const file = copy.get('file')
+  if (
+    copy.get('source_type') !== 'FILE' ||
+    typeof copy.get('title') !== 'string' ||
+    !String(copy.get('title')).trim() ||
+    copy.getAll('tag_ids').length > 20 ||
+    !(file instanceof File) ||
+    file.size < 1 ||
+    file.size > MAX_FILE_BYTES
+  )
+    throw new ApiError('INVALID_REQUEST')
+  return copy // Do not let the caller mutate the form while bootstrap is pending.
+}
+
+function attachmentName(disposition: string): string {
+  const encoded = /(?:^|;)\s*filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1]
+  const fallback = /(?:^|;)\s*filename="([^"]+)"/i.exec(disposition)?.[1]
+  let name: string
+  try {
+    name = encoded ? decodeURIComponent(encoded) : (fallback ?? '')
+  } catch {
+    throw new ApiError('INVALID_RESPONSE')
+  }
+  if (
+    !name ||
+    [...name].length > 255 ||
+    name === '.' ||
+    name === '..' ||
+    /[/\\]/.test(name) ||
+    /\p{C}/u.test(name)
+  )
+    throw new ApiError('INVALID_RESPONSE')
+  return name
+}
+
+async function fileBody(response: Response): Promise<FileDownload> {
+  const mediaType = response.headers.get('content-type')?.toLowerCase().trim() ?? ''
+  const disposition = response.headers.get('content-disposition') ?? ''
+  const length = response.headers.get('content-length') ?? ''
+  const expected = Number(length)
+  if (
+    response.status !== 200 ||
+    !fileMediaTypes.includes(mediaType) ||
+    !/^attachment\s*;/i.test(disposition) ||
+    !/^[1-9]\d*$/.test(length) ||
+    !Number.isSafeInteger(expected) ||
+    expected > MAX_FILE_BYTES ||
+    response.headers.get('x-content-type-options') !== 'nosniff' ||
+    !response.body
+  )
+    throw new ApiError('INVALID_RESPONSE', response.status)
+  const fileName = attachmentName(disposition)
+  const reader = response.body.getReader()
+  const chunks: ArrayBuffer[] = []
+  let received = 0
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      received += value.byteLength
+      if (received > expected || received > MAX_FILE_BYTES) {
+        throw new ApiError('INVALID_RESPONSE', response.status)
+      }
+      chunks.push(new Uint8Array(value).buffer)
+    }
+    if (received !== expected) throw new ApiError('INVALID_RESPONSE', response.status)
+    return { blob: new Blob(chunks, { type: mediaType }), fileName }
+  } catch (error) {
+    await reader.cancel().catch(() => undefined)
+    throw error instanceof ApiError ? error : new ApiError('NETWORK_ERROR')
+  } finally {
+    reader.releaseLock()
+  }
 }
 
 export function createApiClient() {
@@ -202,9 +324,49 @@ export function createApiClient() {
     return pending
   }
 
+  async function checked(response: Response, usedToken: string): Promise<void> {
+    if (response.ok) return
+    const error = await failure(response)
+    if (
+      response.status === 403 &&
+      ['LOCAL_TOKEN_REQUIRED', 'LOCAL_TOKEN_INVALID'].includes(error.code) &&
+      token === usedToken
+    )
+      token = undefined
+    throw error // An explicit later action may reconnect; never replay automatically.
+  }
+
   return {
     async connect(): Promise<void> {
       await acquire()
+    },
+    async uploadResource(form: FormData): Promise<unknown> {
+      const body = uploadSnapshot(form)
+      const usedToken = await acquire()
+      const response = await transport(
+        '/api/v1/resources',
+        'POST',
+        new Headers({ 'X-StudyPilot-Token': usedToken }),
+        body,
+      )
+      // Do not set Content-Type: the browser must generate the multipart boundary.
+      await checked(response, usedToken)
+      if (response.status !== 201) throw new ApiError('INVALID_RESPONSE', response.status)
+      const payload = await json(response)
+      if (!object(payload) || !Object.hasOwn(payload, 'data'))
+        throw new ApiError('INVALID_RESPONSE', response.status)
+      return payload
+    },
+    async downloadOriginal(fileId: string): Promise<FileDownload> {
+      if (!fileIdPattern.test(fileId)) throw new ApiError('INVALID_REQUEST')
+      const usedToken = await acquire()
+      const response = await transport(
+        '/api/v1/files/' + fileId + '/download',
+        'GET',
+        new Headers({ 'X-StudyPilot-Token': usedToken }),
+      )
+      await checked(response, usedToken)
+      return fileBody(response)
     },
     async request(path: string, options: JsonRequest = {}): Promise<unknown> {
       const target = localPath(path)
@@ -239,16 +401,7 @@ export function createApiClient() {
         headers.set('If-Match', `"${options.ifMatchVersion}"`)
       if (body !== undefined) headers.set('Content-Type', 'application/json')
       const response = await transport(target, method, headers, body)
-      if (!response.ok) {
-        const error = await failure(response)
-        if (
-          response.status === 403 &&
-          ['LOCAL_TOKEN_REQUIRED', 'LOCAL_TOKEN_INVALID'].includes(error.code) &&
-          token === usedToken
-        )
-          token = undefined
-        throw error // Never replay a write whose result might be uncertain.
-      }
+      await checked(response, usedToken)
       if (response.status === 204) return undefined
       const payload = await json(response)
       if (!object(payload) || !Object.hasOwn(payload, 'data'))

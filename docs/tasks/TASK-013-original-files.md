@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-013"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "实现既定原始文件敏感存储、两阶段事务、中断恢复和孤儿回收；下载缓存头适配安全中间件。保留独立只读 Review 与独立 Acceptance。"
 risk_flags = ["business", "sensitive-storage", "security", "deletion", "tests"]
@@ -54,6 +54,7 @@ checks = ["backend", "frontend", "contracts", "governance"]
 - 修订验证：Python 精确删句断言、其他完整 JSON 深比较和 FastAPI OpenAPI 模型校验 exit=0；check_task.py --worktree --static-only exit=0 / STATIC PASS，30 文件，product_fingerprint=`579982ac23f0f40112424c674bfa87a93e485ccdf34ba9b15e4542ebc29e1b06`。静态门禁不是另一次全套测试；代码/环境未变的全套结果继承首轮候选。
 
 <!-- EVIDENCE:BEGIN -->
+用户已合并 PR #18（2026-09-03T06:58:05Z），合并提交 `761479459a5895adacb262c5f57862dd8373c2ed`；随 TASK-014 补登，不改历史审查证据。
 ## 状态与最终证据
 
 - 2026-09-03：IN_PROGRESS；L3，稳定依赖已合并。Review / Acceptance 尚未执行。

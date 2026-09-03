@@ -40,7 +40,7 @@ test('real shared client bootstraps through the proxy without exposing or persis
   })
   expect(observed).toEqual(['/api/v1/local-session', '/api/v1/unknown'])
   // Unknown route remains 404 after authentication; resources now has real APIs.
-  await expect(page.getByText('网页与粘贴资料已开放')).toBeVisible()
+  await expect(page.getByText('网页、文件与粘贴资料已开放')).toBeVisible()
 })
 
 test('bootstrap refuses navigation and cross-site context, and allows only approved preflight', async ({

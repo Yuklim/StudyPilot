@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
-import { createResource, failureText, safeWebUrl } from './api'
+import { ApiError } from '../../api/client'
+import { createFileResource, createResource, failureText, safeWebUrl } from './api'
+import { displayBytes, fileAccept, fileIssue } from './files'
 import { ClassificationPicker, type Selection } from '../taxonomy/ClassificationPicker'
 
 export function ResourceForm() {
@@ -9,7 +11,9 @@ export function ResourceForm() {
   const alive = useRef(true)
   const busy = useRef(false)
   const [pending, setPending] = useState(false)
-  const [source, setSource] = useState<'WEB' | 'PASTE'>('WEB')
+  const [source, setSource] = useState<'WEB' | 'PASTE' | 'FILE'>('WEB')
+  const [file, setFile] = useState<File | null>(null)
+  const fileInput = useRef<HTMLInputElement>(null)
   const [title, setTitle] = useState('')
   const [url, setUrl] = useState('')
   const [content, setContent] = useState('')
@@ -38,6 +42,7 @@ export function ResourceForm() {
       invalid = '请填写完整的 http 或 https 网址，不含账号、密码、空格或 # 片段，最多 2048 字。'
     else if (source === 'PASTE' && (!content.trim() || length(content) > 1_000_000))
       invalid = '请粘贴非空原文，最多 100 万字。'
+    else if (source === 'FILE' && fileIssue(file)) invalid = fileIssue(file)
     else if (classification.tags.length > 20) invalid = '最多选择 20 个标签。'
     if (invalid) {
       setError(invalid)
@@ -55,17 +60,20 @@ export function ResourceForm() {
       ...(classification.tags.length ? { tag_ids: classification.tags.map((tag) => tag.id) } : {}),
     }
     try {
-      const saved = await createResource(
-        source === 'WEB'
-          ? { ...common, source_type: 'WEB', source_url: url.trim() }
-          : { ...common, source_type: 'PASTE', pasted_content: content },
-      )
+      const saved =
+        source === 'FILE' && file
+          ? await createFileResource(common, file)
+          : await createResource(
+              source === 'WEB'
+                ? { ...common, source_type: 'WEB', source_url: url.trim() }
+                : { ...common, source_type: 'PASTE', pasted_content: content },
+            )
       if (alive.current) navigate(`/resources/${saved.id}`)
     } catch (cause) {
       if (alive.current) {
         setError(failureText(cause))
         // Even a lost/malformed response may follow a successful save. Never auto-replay.
-        setUncertain(true)
+        setUncertain(!(cause instanceof ApiError && cause.status >= 400 && cause.status < 500))
       }
     } finally {
       busy.current = false
@@ -116,6 +124,18 @@ export function ResourceForm() {
                 <small>原样收好一段文字</small>
               </span>
             </label>
+            <label>
+              <input
+                type="radio"
+                name="source"
+                checked={source === 'FILE'}
+                onChange={() => setSource('FILE')}
+              />
+              <span>
+                03 <strong>上传文件</strong>
+                <small>夹好一份完整的原件</small>
+              </span>
+            </label>
           </div>
           <label className="resource-field">
             标题（必填）
@@ -138,7 +158,7 @@ export function ResourceForm() {
                 placeholder="https://example.com/article"
               />
             </label>
-          ) : (
+          ) : source === 'PASTE' ? (
             <label className="resource-field">
               粘贴原文（必填）
               <textarea
@@ -150,6 +170,47 @@ export function ResourceForm() {
                 placeholder="纯文本或 Markdown 都会原样保存，不会执行其中的代码。"
               />
             </label>
+          ) : (
+            <div className="file-collection">
+              <span className="note-tab">放进资料夹</span>
+              <label className="resource-field">
+                原始文件（必填）
+                <input
+                  ref={fileInput}
+                  type="file"
+                  accept={fileAccept}
+                  aria-describedby="file-guidance"
+                  onChange={(event) => {
+                    const chosen = event.target.files?.[0] ?? null
+                    setFile(chosen)
+                    setError(chosen ? fileIssue(chosen) : '')
+                  }}
+                />
+              </label>
+              <p id="file-guidance" className="resource-hint">
+                PDF、Word（.doc / .docx）、Markdown、UTF-8 TXT；一次一个，最大 25 MiB（约 26 MB）。
+                最终格式由后端检查；只保存原件，不解析正文或扫描病毒。
+              </p>
+              {file && (
+                <div className="selected-file">
+                  <span>
+                    <strong>{file.name}</strong>
+                    <small>{displayBytes(file.size)}</small>
+                  </span>
+                  <button
+                    type="button"
+                    className="journal-button"
+                    onClick={() => {
+                      setFile(null)
+                      setError('')
+                      if (fileInput.current) fileInput.current.value = ''
+                    }}
+                  >
+                    移除文件
+                  </button>
+                </div>
+              )}
+            </div>
           )}
           <div className="resource-form-columns">
             <label className="resource-field">
@@ -172,7 +233,7 @@ export function ResourceForm() {
           </div>
           <ClassificationPicker value={classification} onChange={setClassification} />
           <button className="journal-button primary" type="submit">
-            {pending ? '正在保存…' : '保存到资料库'}
+            {pending ? (source === 'FILE' ? '正在上传并保存…' : '正在保存…') : '保存到资料库'}
           </button>
         </fieldset>
         {pending && (
@@ -188,7 +249,7 @@ export function ResourceForm() {
         )}
       </form>
       <p className="resource-hint feature-boundary">
-        文件上传尚未开放。可先在分类整理中创建主题与标签，再回来选择。
+        原件只保存、不解析。可先在分类整理中创建主题与标签，再回来选择。
       </p>
       <Link className="text-link" to="/resources">
         返回资料库

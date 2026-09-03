@@ -86,8 +86,8 @@ function App() {
         <div className="preview-notice" role="note" aria-label="当前开发阶段">
           <Icon name="info" />
           <p>
-            <strong>网页与粘贴资料已开放</strong>
-            <span>主题与标签可在分类整理中管理；学习记录、文件上传仍在开发中。</span>
+            <strong>网页、文件与粘贴资料已开放</strong>
+            <span>原件可上传与下载；主题和标签可整理。学习记录与正文解析尚未接入。</span>
           </p>
         </div>
         <Screen page={page} />

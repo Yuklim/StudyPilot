@@ -2,6 +2,20 @@
 import type { Resource, ResourcePage } from './api'
 
 export const resourceId = '00000000-0000-4000-8000-000000000001'
+export const fileId = '00000000-0000-4000-8000-000000000002'
+export function sampleFile(overrides: Partial<Resource> = {}): Resource {
+  return sample({
+    source_type: 'FILE',
+    original_file: {
+      id: fileId,
+      status: 'READY',
+      original_name: '合成原件.txt',
+      size_bytes: 8,
+      media_type: 'text/plain; charset=utf-8',
+    },
+    ...overrides,
+  })
+}
 export function sample(overrides: Partial<Resource> = {}): Resource {
   return {
     id: resourceId,

@@ -5,6 +5,7 @@ import { displayTime, getResource, safeWebUrl, sourceLabels } from './api'
 import { ResourceError, ResourceProgress } from './ResourceState'
 import { useResourceQuery } from './useResourceQuery'
 import { ResourceTagEditor } from '../taxonomy/ResourceTagEditor'
+import { FileOriginal } from './FileOriginal'
 
 export function ResourceDetail({ resourceId }: { resourceId: string }) {
   const load = useCallback(() => getResource(resourceId), [resourceId])
@@ -101,16 +102,8 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
               </pre>
             </section>
           )}
-          {item.source_type === 'FILE' && (
-            <section className="resource-original">
-              <h3>原始文件</h3>
-              <p>
-                {item.original_file
-                  ? `${item.original_file.original_name} · ${item.original_file.size_bytes} 字节 · ${item.original_file.media_type}`
-                  : '暂无可显示的文件信息'}
-              </p>
-              <p className="resource-hint">文件上传与打开功能尚未开放。</p>
-            </section>
+          {item.source_type === 'FILE' && item.original_file && (
+            <FileOriginal key={item.original_file.id} file={item.original_file} />
           )}
           <p className="resource-hint feature-boundary">
             资料正文修改、主题重分配、资料删除、学习记录与笔记功能尚未开放。
