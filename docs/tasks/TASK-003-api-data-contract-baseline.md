@@ -2,7 +2,7 @@
 
 ## 1. 基本信息
 
-- 状态：`BLOCKED`
+- 状态：`IN_ACCEPTANCE`
 - 负责人角色：`architecture_owner`
 - 创建人：主协调 Agent
 - 创建日期：2026-09-02
@@ -216,3 +216,4 @@ python3 -m json.tool docs/contracts/openapi-v1.json >/dev/null
 | 2026-09-02 | IN_REVIEW | coordinator | 原 `architecture_owner` 已在提交 `2f41182aadba77bc341687cc2f3f519a05ea82e5` 完成第三轮 2 个 P2 的定点修订：279 个挂载错误示例全部与 operation 错误矩阵对齐；交接专项命令不再依赖临时文件，并覆盖 459 个引用、唯一 operationId、12 个请求体操作、Markdown 双向映射和逐示例交叉验证；待冻结第四轮候选并重新安排完整独立只读复审 |
 | 2026-09-03 | IN_REVIEW | coordinator | 用户已合并 TASK-004 PR #8，目标 main 为 `9b6b21d73752e86a2c89e871222d3705d4dea6c7`。按保全方案从原冻结候选 `fe6196f724cafbb67a30f1479769a57b5affc8d4` 创建证据续接分支；两份契约及 HANDOFF 原样保留，原分支不变；本次只同步状态与决定日志。TASK-003 为 L3，仍完成 V1 完整独立只读复审与独立验收，并按用户最新实际风险/成本原则判断发现，不把理论建议当作阻断。V2 合并事实在此记录，合并后的统一索引状态随下一次已授权控制面工作更新，不另开收尾 PR |
 | 2026-09-03 | BLOCKED | coordinator | 当前冻结候选 `432c23d52e12c9d8b66087f660d14faea37bba5a`；同一个独立 Reviewer 会话 `01a064d3-8992-7d62-bfff-0fb4142365e8` 首次及续接各因 `Selected model is at capacity` 退出 1，未产出最终报告，不能记为审查通过/缺陷退回。运行器实际为 `sandbox: read-only`、`approval: never`，模型继承用户默认 `gpt-5.3-codex-spark`，未擅自切换。暂停验收和 PR，等待模型恢复或用户授权更换；不继续无限重试。本轮治理 30 项/3 单测与 diff 检查已通过；两份契约/HANDOFF 与原候选一致，既有测试证据保留；未声称 Reviewer 已完成专项复现。旧第三轮 REVIEW 仍为历史报告，不覆盖本轮候选 |
+| 2026-09-03 | IN_ACCEPTANCE | coordinator | 用户要求按最新规则高效继续，临时以 GPT-5.4 medium 续接同一只读 Reviewer，仓库默认配置不变。对冻结候选 `432c23d52e12c9d8b66087f660d14faea37bba5a` 完成复审：No findings / READY_FOR_ACCEPTANCE，上轮两问题关闭；直接执行 HANDOFF 原命令通过（20 paths、35 operations、79 schemas、459 refs、279 错误示例，无错误挂载）。最新报告原文追加在 TASK-003-REVIEW 第 7 节，旧报告保留；启动另一个实际只读的 integration_owner 核对条件和证据，不重新完整审代码或默认重跑检查。最新目标 main 仍为 `9b6b21d73752e86a2c89e871222d3705d4dea6c7` |
