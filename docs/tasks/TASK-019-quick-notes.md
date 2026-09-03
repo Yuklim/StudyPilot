@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-019"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "接入个人文本修改/删除与版本冲突恢复，并同步交付注释；不改标准接口或数据库，仍需防止草稿丢失、旧版本覆盖及误删。"
 risk_flags = ["business", "deletion", "tests"]
@@ -51,6 +51,8 @@ checks = ["frontend", "contracts"]
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
+
+- 2026-09-03 用户已合并；GitHub 核实 PR #24 MERGED，mergedAt=2026-09-03T11:13:22Z，mergeCommit=91350b73b49e91ea0ef07e10038adc4a88d511a8。保留原实现与审查/验收证据。
 
 - IN_REVIEW，测试和实现证据已齐备，待独立实际只读 Review；最终候选 SHA 在后续原文证据中绑定，用户保留最终合并权。
 

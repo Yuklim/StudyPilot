@@ -15,6 +15,7 @@ from studypilot.modules.resources.contracts import (
     CreateResource,
     FileCreate,
     ResourceError,
+    ResourcePatch,
     ResourceQuery,
     normalized_search,
 )
@@ -151,7 +152,7 @@ class ResourceStore:
             result.append(row)
         return result
 
-    def detail(self, resource_id: UUID) -> dict[str, Any]:
+    def find(self, resource_id: UUID) -> LearningResource:
         resource = self._session.get(LearningResource, resource_id)
         if resource is None:
             raise ResourceError("RESOURCE_NOT_FOUND", 404)
@@ -163,6 +164,31 @@ class ResourceStore:
             )
             if ready is None:
                 raise ResourceError("RESOURCE_NOT_FOUND", 404)
+        return resource
+
+    @staticmethod
+    def check_version(resource: LearningResource, expected: int) -> None:
+        if resource.version != expected:
+            raise ResourceError("VERSION_CONFLICT", 409, resource.version)
+
+    def update(self, resource_id: UUID, command: ResourcePatch) -> dict[str, Any]:
+        resource = self.find(resource_id)
+        self.check_version(resource, command.expected_version)
+        changes = command.model_dump(exclude_unset=True, exclude={"expected_version"})
+        for field, source in (("source_url", "WEB"), ("pasted_content", "PASTE")):
+            if field in changes and resource.source_type != source:
+                raise ResourceError("SOURCE_TYPE_MISMATCH", 409)
+        if "topic_id" in changes:
+            self.validate_taxonomy(command.topic_id, [])
+        for field, value in changes.items():
+            if getattr(resource, field) != value:
+                setattr(resource, field, value)
+        # Existing ORM version guard also protects the actual UPDATE, not just this read.
+        self._session.flush()
+        return self._projections([resource], detail=True)[0]
+
+    def detail(self, resource_id: UUID) -> dict[str, Any]:
+        resource = self.find(resource_id)
         return self._projections([resource], detail=True)[0]
 
     def page(self, query: ResourceQuery) -> dict[str, Any]:

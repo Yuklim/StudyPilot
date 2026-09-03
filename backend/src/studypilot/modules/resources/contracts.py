@@ -22,11 +22,12 @@ Status = Literal["UNREAD", "IN_PROGRESS", "COMPLETED", "REVIEW_DUE", "ARCHIVED"]
 
 
 class ResourceError(Exception):
-    """Only a stable code and HTTP status, never user content or SQL."""
+    """Stable code/status and optional conflict version, never user content or SQL."""
 
-    def __init__(self, code: str, status: int) -> None:
+    def __init__(self, code: str, status: int, current_version: int | None = None) -> None:
         self.code = code
         self.status = status
+        self.current_version = current_version
         super().__init__(code)
 
 
@@ -89,6 +90,41 @@ CreateResource = WebCreate | PasteCreate
 CREATE_RESOURCE: TypeAdapter[CreateResource] = TypeAdapter(
     Annotated[CreateResource, Field(discriminator="source_type")]
 )
+
+
+class ResourcePatch(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    expected_version: int = Field(ge=1)
+    title: (
+        Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
+        | None
+    ) = None
+    source_name: str | None = Field(default=None, max_length=120)
+    save_reason: str | None = Field(default=None, max_length=1000)
+    topic_id: UUID | None = None
+    source_url: str | None = Field(default=None, max_length=2048)
+    pasted_content: str | None = Field(default=None, min_length=1, max_length=1_000_000)
+
+    @field_validator("title", "source_url", "pasted_content")
+    @classmethod
+    def not_null(cls, value: str | None) -> str:
+        # Defaults represent omission only; explicit null cannot clear these fields.
+        if value is None:
+            raise ValueError("field cannot be null")
+        return value
+
+    @field_validator("source_url")
+    @classmethod
+    def parsed_url(cls, value: str | None) -> str:
+        assert value is not None
+        return WebCreate.parsed_url(value)
+
+    @model_validator(mode="after")
+    def editable_fields(self) -> Self:
+        fields = self.model_fields_set - {"expected_version"}
+        if not fields or {"source_url", "pasted_content"} <= fields:
+            raise ValueError("provide editable fields with only one source field")
+        return self
 
 
 class ResourceQuery(BaseModel):

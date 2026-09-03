@@ -4,9 +4,16 @@ from collections.abc import Callable
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy.orm.exc import StaleDataError
+
 from studypilot.infrastructure.database import create_database_engine, create_session_factory
 from studypilot.infrastructure.database.resource_store import ResourceStore
-from studypilot.modules.resources.contracts import CreateResource, ResourceQuery
+from studypilot.modules.resources.contracts import (
+    CreateResource,
+    ResourceError,
+    ResourcePatch,
+    ResourceQuery,
+)
 
 
 def _transaction(operation: Callable[[ResourceStore], dict[str, Any]]) -> dict[str, Any]:
@@ -38,3 +45,14 @@ def list_resources(query: ResourceQuery) -> dict[str, Any]:
 
 def get_resource(resource_id: UUID) -> dict[str, Any]:
     return _transaction(lambda store: {"data": store.detail(resource_id)})
+
+
+def update_resource(resource_id: UUID, command: ResourcePatch) -> dict[str, Any]:
+    try:
+        return _transaction(lambda store: {"data": store.update(resource_id, command)})
+    except StaleDataError:
+        # Classify a lost race through a fresh read; never replay the mutation.
+        latest = get_resource(resource_id)["data"]
+        if latest["version"] != command.expected_version:
+            raise ResourceError("VERSION_CONFLICT", 409, latest["version"]) from None
+        raise ResourceError("UNKNOWN_ERROR", 500) from None
