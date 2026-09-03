@@ -1,16 +1,12 @@
-import { render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import App from './App'
+import { renderWithRouter } from './test/render'
 
 describe('StudyPilot scaffold page', () => {
   it('states clearly that only the engineering scaffold exists', () => {
-    render(
-      <MemoryRouter>
-        <App />
-      </MemoryRouter>,
-    )
+    renderWithRouter(<App />)
 
     expect(
       screen.getByRole('heading', {
@@ -21,11 +17,7 @@ describe('StudyPilot scaffold page', () => {
   })
 
   it('does not expose fake business actions', () => {
-    render(
-      <MemoryRouter>
-        <App />
-      </MemoryRouter>,
-    )
+    renderWithRouter(<App />)
 
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })

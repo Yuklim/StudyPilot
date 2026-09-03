@@ -6,26 +6,13 @@ import sys
 from pathlib import Path
 
 import pytest
-from alembic import command
 from alembic.autogenerate import compare_metadata
-from alembic.config import Config
 from alembic.migration import MigrationContext
-from sqlalchemy import Engine, inspect, select
+from sqlalchemy import inspect, select
+from support import BACKEND, migrate
 
 from studypilot.infrastructure.database import Base, create_database_engine, create_session_factory
 from studypilot.infrastructure.database.models import Topic
-
-BACKEND = Path(__file__).resolve().parents[1]
-
-
-def migrate(engine: Engine, target: str = "head", *, downgrade: bool = False) -> None:
-    configuration = Config(str(BACKEND / "alembic.ini"))
-    with engine.begin() as connection:
-        configuration.attributes["connection"] = connection
-        if downgrade:
-            command.downgrade(configuration, target)
-        else:
-            command.upgrade(configuration, target)
 
 
 def test_upgrade_is_repeatable_and_matches_models(tmp_path: Path) -> None:

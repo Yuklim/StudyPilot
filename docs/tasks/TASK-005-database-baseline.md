@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-005"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "初始共享数据模型、跨模块外键和数据库迁移会影响数据完整性，保留独立 Review 与独立验收。"
 risk_flags = ["migration", "critical-data", "sensitive-storage"]
@@ -58,6 +58,8 @@ checks = ["backend", "governance"]
 - `check_task.py --task docs/tasks/TASK-005-database-baseline.md --worktree --static-only`：STATIC PASS，20 文件；新 `product_fingerprint=41bcf1d38279615c7f23fd1a72ce261b47826af2cf171bd047380a51f36e3e3e`。`validate_governance.py` exit=0。治理脚本/依赖未变，复用原 23 项治理单测及其格式/lint；不把 static-only 当全套测试。
 
 <!-- EVIDENCE:BEGIN -->
+- 2026-09-03：用户已合并 PR #10，合并提交 `edeb8c1115e6615910f3e93282ffec502a287e04`；当前状态 MERGED。以下实现、审查与验收过程保留为历史证据。
+
 ## 状态与最终证据
 
 - 2026-09-03：IN_PROGRESS。基线已核实为用户合并 TASK-003 的 main；L3，无独立验收豁免。
