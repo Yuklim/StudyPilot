@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-012"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "接入既定分类删除与版本保护，并扩展共享客户端的受控版本头及安全错误映射；不改变服务端安全协议或契约。保留独立 Review 与独立验收。"
 risk_flags = ["business", "deletion", "security", "tests"]
@@ -39,6 +39,7 @@ checks = ["frontend", "governance"]
 
 ## 实现与测试
 
+- 实现提交 `cd0de1d14b83552310cf54e7980b616543f8344d`；下述测试输入指纹与此实现绑定，冻结仅补任务证据/状态。
 - 已实现独立分类整理页、主题/标签分页搜索排序与增删改、删除确认与版本冲突提示；分类选择按需加载、跨页/收起保留、最多 20 个标签；创建资料一次提交分类；组合筛选与主题名补查、详情逐标签操作成功后重新读取。保留主题统计预留，不改变后端、标准契约、模型、依赖或安全配置。
 - 共享客户端只新增分类 DELETE 的正整数 ifMatchVersion 和固定错误代码/安全数值字段；不能传任意 headers 或覆盖令牌。原同源、内存令牌、不自动重放策略保持。新增前端测试 44 项，共 114 项；浏览器新增 3 项，共 15 项。
 - 最终任务检查 `PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-012-taxonomy-pages.md --worktree` exit=0 / CHECKS PASS；范围/敏感模式/Git diff、前端 format/lint/typecheck、Vitest **114 PASS**、生产构建（index-B16M3D_k.js）、治理校验/Ruff/**23 PASS** 全部通过。输入指纹 `398affed01ccb82ebaa8abbdcf204871794b2268085b31d0504d0c2333d36942`，27 文件。实现 SHA 在提交后冻结记录。治理单测中的 missing-tool/fake-test 是对失败检测的合成测试，不是当前失败。
@@ -53,4 +54,5 @@ checks = ["frontend", "governance"]
 ## 状态与最终证据
 
 - 2026-09-03：IN_PROGRESS；按 L3 登记，依赖已合并。
+- 2026-09-03：IN_REVIEW，实现及测试证据冻结；114 前端 / 23 治理通过，浏览器 14 原通过 + 1 定向修复通过，无未解决必要检查失败。待实际只读独立 Review 和 Acceptance。
 <!-- EVIDENCE:END -->
