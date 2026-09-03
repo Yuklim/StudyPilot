@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-008"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "落实已批准的本地令牌、Host/Origin/Fetch Metadata 前置安全协议，并连接浏览器共享客户端；安全及跨模块影响必须独立 Review 与独立验收。"
 risk_flags = ["security", "authentication", "public-api", "tests"]
@@ -40,11 +40,19 @@ checks = ["backend", "frontend", "governance"]
 
 ## 实现与测试
 
-- 进行中，未报告 PASS。
+- 实现 SHA：`a4f6bb26ff843dc48477bd35054425c128672a19`，19 文件。实现进程生命周期令牌、纯 ASGI 头部门禁、bootstrap/安全错误与 no-store/CORS、启动端口配置；共享客户端仅闭包内存缓存/初始化去重/受控错误/显式重试；代理固定 Host 且在改写前限制 UI authority。没有数据库/迁移/业务路由/页面/依赖变化。
+- 环境：macOS arm64、Python 3.13.9/pytest 8.4.2、Node 24.18.0/npm 11.16.0、Vitest 4.1.11、Playwright 1.62.1/Chromium 151.0.7922.34。测试后端沿用 TASK-006 隔离临时目录，15173/18000 端口，不读取真实资料。
+- 最终完整 `check_task.py --task docs/tasks/TASK-008-local-access-foundation.md --worktree`：exit=0/CHECKS PASS，输入指纹 `87aa6b202400f7ece9f72f999ca0e713005068933f27909fd4ab4b82a398607f`；后端 Ruff 格式/lint、mypy（21 文件）、pytest（115 项）、离线源码包/wheel 构建；前端格式/lint/类型、46 项 Vitest、生产构建；治理校验/格式/lint/23 单测全部通过。
+- 后续仅补 UI Host 前置校验与浏览器断言、README：`npm run format` 后 `npm run lint && npm run typecheck && npm run build`、`npm run format:check && npm run test -- --run` 全部 exit=0，仍 46 项。完整 `npm run test:e2e` 最终 7 项全部 PASS（12.5 秒），覆盖新 Host 保护、初始化、实际预检与旧页面回归；后端/治理输入未变，复用有效证据。最终静态检查 exit=0，19 文件，指纹 `c6f52e97dc3ffb6aaa2b3394b39915d08ab910384b02d9b84fb8c7aaaa190743`。
+- 真实失败与修正：初始环境端口严格类型拒绝字符串，改为有范围限制的配置整数；初始 Ruff 的中文逗号与排版已修正。首次完整入口仅 uv 缓存读取被沙箱拒绝（build exit=2），允许访问既有缓存后离线构建及最终完整检查成功，未下载依赖。首次 E2E 6/7 通过，非法 Cookie 预检被 Vite 默认 CORS 提前返回 204；改 `cors:false` 由后端处理后全套通过。没有降低 403 断言或抹去失败。
+- 完成条件 1/2：`test_local_session.py` 60 项（真实生命周期、旧 token、头部矩阵、合法读写/CLI 读、非法来源/重复/转发/绝对目标、预检/上限）；原 4 项安全测试仍验证 receive/路由/文件/数据库哨兵不被触发，正常 Host/上下文下缺 token 的表单仍拒绝。bootstrap 不建库的共用夹具检查、健康精确响应保留。真实临时令牌相关断言仅输出布尔失败，避免失败说明回显凭据。
+- 完成条件 3/4：端口配置/临时启动器断言、46 项前端测试中的 25 项共享客户端测试；危险路径、二次解码、并发初始化、错误净化、重启失效/晚到旧错误不清新令牌、无自动写重试；JSON 返回完整成功信封保留分页元数据，具体业务类型留给对应任务。
+- 完成条件 5：7 项真实浏览器（本机代理+生产客户端，无模拟业务成功；合法 token 到未实现路由为框架 404）；预检还核对后端错误码/请求编号，安全套件关闭 trace，不把真实令牌返回测试进程。原 21 项 UI/错误边界/隔离测试及 4 项浏览器回归不降低，页面未变无需重复设计截图审查。README/.env.example 已说明运行方式和边界。
+- 独立 Review/Acceptance 待执行。已知限制：一个后端进程，macOS Chromium 实测；未实现业务路由/上传下载/公网认证，当前 UI 不自动连接。共享客户端在后续功能导入时使用；不声称当前资料管理已可用。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 2026-09-03：IN_PROGRESS。独立 Review/Acceptance 待执行；沿用用户已授权的临时 GPT-5.4/medium 只读运行器，不改默认配置。
+- 2026-09-03：IN_REVIEW。主 Agent已自检范围与实现，必要自动检查有效通过。独立 Review/Acceptance 待执行；沿用用户已授权的临时 GPT-5.4/medium 只读运行器，不改默认配置。
 - 最终合并仅由用户决定并执行。
 <!-- EVIDENCE:END -->
