@@ -51,7 +51,6 @@ checks = ["backend", "governance"]
 - 开发中发现的失败均已修正：枚举隐式约束导致 Alembic 比较误报，改显式表约束并通过完整结构比对及非法枚举测试；中间生成遗漏约束被同一测试拦截；长行/有意全角测试字符/联合类型标注检查修正。未降低断言或跳过失败测试。
 - 完成条件证据：1/5 对应 `test_cascade_preserves_taxonomy_and_deletion_confirmation`、非法状态/原件/关联与摘要重复测试及冻结迁移；2 对应每连接外键、独立会话与回滚测试；3 对应 UTC/日历日期、名称唯一、版本冲突/无变化测试；4 对应重复升级保留数据/结构一致/空库降级/非空拒绝测试；6 对应启动无副作用 CLI 测试、原 6 项健康/安全回归、上述全部工具结果及后续独立报告。
 
-<!-- EVIDENCE:BEGIN -->
 ### 首轮审查后修订与测试
 
 - 修正 `OriginalFile.media_type` 模型及初始迁移为契约规定的 `text/markdown; charset=utf-8`、`text/plain; charset=utf-8`；新增两项合法值持久化测试、两项缺失 charset 的拒绝测试。仅修复契约漂移，不扩大范围，首版实现 SHA 保留为历史，新修订由下方最终候选 SHA 绑定。
