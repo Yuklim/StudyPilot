@@ -1,7 +1,23 @@
 {
   "openapi": "3.1.0",
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
-  "info": {"title": "StudyPilot 第一阶段 API", "version": "1.0.0", "description": "本地单用户 StudyPilot 第一阶段 HTTP 契约。事务、安全前置顺序、文件对账与删除恢复的含义权威见 API与数据契约基线.md。"},
+  "info": {"title": "StudyPilot 第一阶段 API", "version": "1.0.0", "description": "本地单用户 StudyPilot 第一阶段完整 MVP 目标契约，不是当前全部可调用能力清单。TASK-009 的已授权阶段子集及暂未开放输入响应见 x-delivery-profile 和 API与数据契约基线.md 第1.3节；当前运行时可用性以该阶段说明为准。标准 paths/schemas 保留最终要求，不能未经阶段筛选直接生成当前客户端。事务、安全前置顺序、文件对账与删除恢复的含义权威见同一契约文档。"},
+  "x-delivery-profile": {
+    "stage": "TASK-009",
+    "standard_schema_scope": "full-mvp-target",
+    "contract_section": "1.3",
+    "available_operations": {
+      "bootstrapLocalSession": {},
+      "createResource": {"request_media_types": ["application/json"], "source_types": ["WEB", "PASTE"]},
+      "listResources": {},
+      "getResource": {}
+    },
+    "deferred_inputs": [
+      {"operation_id": "createResource", "request_media_type": "multipart/form-data", "source_type": "FILE", "after_security_gate": true, "status": 415, "error_code": "CONTENT_TYPE_UNSUPPORTED", "reads_body": false, "business_side_effects": false}
+    ],
+    "client_policy": "当前不自动生成客户端；后续生成须先按本清单限制可用操作与媒体类型，不开放 FILE 上传入口。未列出操作没有本阶段可调用承诺。",
+    "completion_gate": "后续原始文件任务实现完整 FILE 契约并通过测试、独立审查和验收后，同步更新中文第1.3节、本清单及README；完整MVP仍须交付FILE，不能仅修改清单解除限制。"
+  },
   "tags": [{"name": "local-session", "description": "本次本地进程访问令牌"}, {"name": "resources", "description": "资料与原始文件"}, {"name": "taxonomy", "description": "主题、标签和资料标签关联"}, {"name": "notes", "description": "个人笔记"}, {"name": "learning", "description": "学习进度与不可变学习记录"}, {"name": "reviews", "description": "复习计划与不可变复习结果"}, {"name": "analytics", "description": "只读实时统计"}],
   "paths": {
     "/api/v1/local-session": {"parameters": [{"$ref": "#/components/parameters/HostHeader"}], "get": {"operationId": "bootstrapLocalSession", "tags": ["local-session"], "summary": "取得本次本地运行令牌", "description": "仅在可信 Host 与同源 Fetch Metadata 下返回；不读取业务数据库。见契约第7节。", "x-contract-section": "7", "security": [], "parameters": [{"$ref": "#/components/parameters/OptionalOriginHeader"}, {"$ref": "#/components/parameters/SecFetchSite"}, {"$ref": "#/components/parameters/SecFetchMode"}, {"$ref": "#/components/parameters/SecFetchDest"}], "responses": {"200": {"description": "令牌仅在此响应出现并在后端重启时失效。", "headers": {"Cache-Control": {"schema": {"type": "string", "const": "no-store"}}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/LocalSessionEnvelope"}, "example": {"data": {"token": "not-a-real-runtime-token-example-000000000000", "expires_on_restart": true}}}}}, "403": {"$ref": "#/components/responses/ForbiddenBootstrap"}, "500": {"$ref": "#/components/responses/ServerError"}}, "x-error-codes": ["HOST_FORBIDDEN", "REQUEST_ORIGIN_FORBIDDEN", "UNKNOWN_ERROR"]}},
@@ -22,7 +38,7 @@
         "operationId": "createResource",
         "tags": ["resources"],
         "summary": "添加网页、文件或粘贴资料",
-        "description": "JSON 使用 WEB/PASTE oneOf；multipart 只用于 FILE。文件达到 READY 才成功。见契约第5、7、8节。",
+        "description": "完整目标：JSON 使用 WEB/PASTE oneOf；multipart 只用于 FILE，文件达到 READY 才成功。当前 TASK-009 仅交付 JSON WEB/PASTE；通过安全门禁的 multipart 请求在读体/业务操作前返回415 CONTENT_TYPE_UNSUPPORTED，FILE仍由后续任务完成。阶段可用性以契约第1.3节及 x-delivery-profile 为准；最终要求见第5、7、8节。",
         "x-contract-section": "5,7,8",
         "security": [{"LocalToken": []}],
         "parameters": [{"$ref": "#/components/parameters/OriginHeader"}, {"$ref": "#/components/parameters/SecFetchSite"}, {"$ref": "#/components/parameters/SecFetchMode"}, {"$ref": "#/components/parameters/SecFetchDest"}],

@@ -201,4 +201,5 @@ class LocalAccessMiddleware:
             await reject("REQUEST_ORIGIN_FORBIDDEN")
             return
 
+        scope.setdefault("state", {})["request_id"] = request_id
         await self.app(scope, receive, protected_send)

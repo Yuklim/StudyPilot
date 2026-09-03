@@ -20,7 +20,7 @@ test('real shared client bootstraps through the proxy without exposing or persis
     const initialized = await Promise.all([api.connect(), api.connect()])
     let rejection: { code: string; status: number } | undefined
     try {
-      await api.request('/api/v1/resources')
+      await api.request('/api/v1/unknown')
     } catch (error) {
       const controlled = error as { code: string; status: number }
       rejection = { code: controlled.code, status: controlled.status }
@@ -38,8 +38,8 @@ test('real shared client bootstraps through the proxy without exposing or persis
     persisted: 0,
     cookie: '',
   })
-  expect(observed).toEqual(['/api/v1/local-session', '/api/v1/resources'])
-  // 404 means authentication passed but the business route is not implemented.
+  expect(observed).toEqual(['/api/v1/local-session', '/api/v1/unknown'])
+  // Unknown route remains 404 after authentication; resources now has real APIs.
   await expect(page.getByText('工程框架已运行，业务功能尚未实现')).toBeVisible()
 })
 

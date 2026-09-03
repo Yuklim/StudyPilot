@@ -1,0 +1,40 @@
+"""Coordinate one atomic resource command; never expose mutable ORM objects."""
+
+from collections.abc import Callable
+from typing import Any
+from uuid import UUID
+
+from studypilot.infrastructure.database import create_database_engine, create_session_factory
+from studypilot.infrastructure.database.resource_store import ResourceStore
+from studypilot.modules.resources.contracts import CreateResource, ResourceQuery
+
+
+def _transaction(operation: Callable[[ResourceStore], dict[str, Any]]) -> dict[str, Any]:
+    # Open only on an explicit, already-authorized and validated API operation.
+    engine = create_database_engine()
+    try:
+        with create_session_factory(engine).begin() as session:
+            result = operation(ResourceStore(session))
+        # Return only after commit succeeded; commit failure cannot look like 201.
+        return result
+    finally:
+        engine.dispose()
+
+
+def create_resource(command: CreateResource) -> dict[str, Any]:
+    def create(store: ResourceStore) -> dict[str, Any]:
+        store.validate_taxonomy(command.topic_id, command.tag_ids)
+        resource_id = store.insert_resource(command)
+        store.initialize_progress(resource_id)
+        store.attach_tags(resource_id, command.tag_ids)
+        return {"data": store.detail(resource_id)}
+
+    return _transaction(create)
+
+
+def list_resources(query: ResourceQuery) -> dict[str, Any]:
+    return _transaction(lambda store: store.page(query))
+
+
+def get_resource(resource_id: UUID) -> dict[str, Any]:
+    return _transaction(lambda store: {"data": store.detail(resource_id)})
