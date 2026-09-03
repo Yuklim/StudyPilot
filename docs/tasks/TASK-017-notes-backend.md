@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-017"
-status = "IN_ACCEPTANCE"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "实现既定个人笔记写入、版本修改和直接删除，涉及用户文本保护与删除竞争；标准契约和数据库模型不变，保留独立只读 Review/Acceptance。"
 risk_flags = ["business", "critical-data", "tests"]
@@ -52,6 +52,7 @@ checks = ["backend", "contracts", "governance"]
 
 - 2026-09-03：IN_PROGRESS，稳定依赖已合并，风险与唯一写入者已确定。
 - 2026-09-03：IN_REVIEW，最终检查通过，待独立实际只读 Review；用户独占最终合并。
+
 ### 独立只读 Review
 
 - 独立 CLI 会话 `01a06674-ebc3-7380-9873-31191e42980a`，沿用已批准临时 gpt-5.4 / medium，启动头 read-only / never，未子派发，进程退出 0。以下为报告原文。
@@ -63,4 +64,16 @@ No findings。已按要求完整读取根/后端规则、review skill、风险�
 覆盖与缺口：复用已记录的后端 415、治理 23、格式/lint/类型/离线构建/契约全绿证据，`product_fingerprint=402335f045321d8eb6080158a3ce8294fe0f49fe4a0f20d5c17fcd50af123745`；无前端改动，复用已合并 TASK-016 的前端 215 / Chromium 22。此次未重跑额外测试，也未见需要补做的只读最小验证点。结论：`PASS`。
 
 - 2026-09-03：IN_ACCEPTANCE，Review PASS / No findings。最终产品候选 `46ea4db0fb7238428c3980e99a124c927072fc25`，指纹 `402335f045321d8eb6080158a3ce8294fe0f49fe4a0f20d5c17fcd50af123745`。主 Agent 仅核对边界、测试绑定、审查结果和完成条件，不第三次审代码；后续只写回合法证据，待另一独立实际只读验收。
+
+### 独立只读 Acceptance
+
+- 独立于实现者和 Reviewer 的 CLI 会话 `01a06677-964f-7013-a648-6a10312c3129`，沿用已批准临时 gpt-5.4 / medium，启动头 read-only / never，未子派发，进程退出 0。以下报告原文。
+
+候选与权限：`base=aaa1b5abfe929117f87d59b70d60040499a1d50f`，已 Review PASS 的最终产品候选 `46ea4db0fb7238428c3980e99a124c927072fc25`，当前 `HEAD=b636e3bede8a013774dfbc09bf10d1d5bea42300`。本运行器实际 `read-only / never`，`test -w .` 退出 `1`；未做试写、提交、合并或提权。已按要求各完整读取一次 `AGENTS.md`、`studypilot-stage-acceptance` skill、风险规则、`TASK-017`。
+
+四项完成条件核对：1. 笔记五接口与隔离/分页/归属/归档可读证据，复用任务内已绑定的后端 `415`（含 `49` 新笔记测试）PASS。2. 正文/版本/查询/并发/回滚/敏感错误收敛，复用同批测试与记录的开发期失败后最终重跑 PASS。3. 成功响应与冻结 `Note schema`、契约/治理/格式/lint/类型/离线构建均 PASS，指纹 `402335f045321d8eb6080158a3ce8294fe0f49fe4a0f20d5c17fcd50af123745`；前端未改，复用已合并 `TASK-016` 的 `215/22` 证据。4. 我执行了唯一一次 `PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-017-notes-backend.md --candidate HEAD --evidence-from 46ea4db0fb7238428c3980e99a124c927072fc25 --static-only`，结果 `EVIDENCE_ONLY PASS`；`git diff --unified=3 candidate..HEAD` 仅见 `TASK-017` 状态/EVIDENCE 与任务索引写回，无产品改动。缺口：无。
+
+剩余限制：仅验收后端；笔记页面/回收站/资料删除/复习 AI/公网仍未开放，SQLite 竞争失败为已记录非阻断限制。结论：`PASS`，可由用户最终合并。
+
+- 2026-09-03：ACCEPTED，独立 Review 和 Acceptance 均 PASS，No findings / 无未解决阻断。最终产品候选仍为 `46ea4db0fb7238428c3980e99a124c927072fc25`，之后仅合法任务状态/原文/索引写回。保留已披露的无回收站、仅后端和 SQLite 写竞争限制；由用户执行最终合并，不预写 MERGED。
 <!-- EVIDENCE:END -->
