@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-021"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "接入已批准的资料编辑接口，包含粘贴原文覆盖、冲突/未知保存结果保护及交付元数据；不改后端、模型或公共协议。"
 risk_flags = ["business", "critical-data", "tests"]
@@ -38,10 +38,17 @@ checks = ["frontend", "contracts"]
 
 ## 实现与测试
 
-- 待实现并记录真实命令、SHA、输入指纹、结果与限制。
+- 实现 SHA：`227342951083f7807ccdeb2682ed555ebf2a6b07`，15 个登记路径；详情页独立挂载资料编辑区，保持心得优先。复用分类搜索分页与受控客户端；新增 version 验证、变更字段 PATCH、冲突/未知结果核对、明确取消和等待/迟到结果保护。只改交付元数据，标准 OpenAPI 和可用操作集合深比较不变，后端/依赖/模型/安全传输未改。
+- 2026-09-03 最终统一命令 `PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-021-resource-edit-pages.md --worktree` 退出 0，CHECKS PASS；输入指纹 `4b3e0742aeb4a6ca8894f0b43e4efbafa45fb254f3395815462ecf8d53ef7521`。15 路径、L3、contracts/frontend；范围/Git/敏感模式/JSON/FastAPI OpenAPI、Prettier、ESLint、TypeScript、Vitest **292/292（15 文件，新增 43 项）**、Vite 构建通过。现有锁定依赖与本机环境，无安装或测试门槛修改。
+- 同一产品输入运行 `cd frontend && npm run test:e2e`：退出 0，**31/31 Chromium 场景通过，26.7 秒**，含新增 5 项真实编辑联测：WEB/PASTE/FILE 保存重开与主题分配/清空，原文/原件/心得/旧历史/进度不受影响，真实版本竞争不覆盖未编辑字段，真实提交后回执丢失只核对后明确重提、无变化不递增版本。测试自动创建隔离临时 DB/文件和 15173/18000 端口服务，结束回收自身服务，不使用真实个人资料。
+- 新增组件/客户端测试覆盖无修改无请求、输入长度/Unicode/网址、null/省略/原文保留、文件不可替换、主题选择、等待防重复、失效版本/404/500/畸形响应、核对读取失败继续禁止写入、当前草稿保留、组件卸载迟到结果丢弃、取消确认和详情刷新心得草稿不丢失。已有 249 前端测试与 26 浏览器场景全部回归；后端未改，复用 TASK-020 的 466 项单元证据，不宣称本次重跑后端全套。
+- 桌面 1440 与手机 320/390 截图已生成并查看 desktop/mobile，真实测试断言无横向溢出、无脚本执行/外联、无持久化草稿/令牌；截图在忽略的 frontend/test-results，不提交。布局延续简约手帐与圆角，没有强制增加记录步骤。
+- 自检：标准 OpenAPI（移除 x-delivery-profile 后）和 available_operations 与 base Node 深比较 PASS；`git diff --check` 退出 0，唯一写入者无越界，未修改需求。测试后只补任务/索引证据，不改变被测产品输入。
+- 过程失败已处理：新增单测误用 Playwright 的 exact 查询参数导致类型检查失败，删该无效参数；一项重渲染测试未保留原 Router 包装导致测试自身卸载，改用组件直接 render 保持真实同一挂载后原断言通过；统一检查首次仅该测试导入格式失败，按现有 Prettier 修正后完整统一检查通过。未降低断言，无遗留失败。
+- 已知边界：资料/心得草稿仅当前页面，刷新/离开不保留；原文覆盖无修订历史，FILE 原件与资料类型不能更换。未知保存结果不盲重试；资料删除、复习/统计/解析/AI 仍未实现。后续仅按基础资料管理需求登记，不代用户合并。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- IN_PROGRESS；未开始独立 Review/Acceptance，不预写通过。
+- IN_REVIEW；实现与最终检查证据齐全，待独立实际只读 Review，随后另一独立 Acceptance 核对；最终合并归用户。
 <!-- EVIDENCE:END -->
