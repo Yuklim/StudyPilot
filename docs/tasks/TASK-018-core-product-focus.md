@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-018"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "用户明确调整基础闭环及优先级，涉及权威需求、背景及架构/契约的阶段说明；不改变运行时、标准接口或数据。按现行路径规则保留独立只读审查和验收。"
 risk_flags = ["documentation", "architecture"]
@@ -38,12 +38,16 @@ checks = ["contracts"]
 
 ## 实现与测试
 
-- 待记录实际文档修改及检查；未执行的检查不标 PASS。
+- 实现 SHA：`68efb5dd96ed42c4127ad29799b8f8a2dd13fdeb`；8 个文档/记录文件，需求与背景改为资料/随手心得/找回优先，旧管理字段退出默认表单，扩展后置；架构与接口说明明确新基础门槛且既有技术/数据约束保留。
+- 自动检查：`PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-018-core-product-focus.md --worktree` 退出 0，STATIC / contracts / CHECKS PASS；8 文件，`product_fingerprint=5176307fcc5f1d74d05d4987f4234b06a9adf7e7cfc6c27a5e1f898ca8be7bb4`，范围/分支/敏感模式/JSON/OpenAPI 结构与 FastAPI 模型解析通过。
+- JSON 深比较退出 0：Node 读取 `git show aaa1b5abfe929117f87d59b70d60040499a1d50f:docs/contracts/openapi-v1.json` 与工作区 JSON，先断言 info.description 不同，再各自删除该字段后 `assert.deepEqual(after,before)`；operations/schema/security/x-delivery-profile 完全不变。
+- `git diff --check` 退出 0；`git diff --name-only -- backend frontend .agents .codex AGENTS.md` 输出为空。运行时/治理未改，不重跑已有功能测试，标记 NOT_RUN（不将旧 PASS 当作本轮功能测试）。
+- 检查环境：隔离 worktree，复用原仓库 Python 3.13/FastAPI 环境，不安装依赖。首轮临时 `.venv` 整体符号链接被范围检查识别为未忽略文件而失败，已移除该临时链接，改用被忽略的实体 `.venv` 目录内链接现有 bin/lib/配置；未删除环境本体。第一次 Node 命令指定了不存在的路径，退出 127；改用已安装的 `node` 重跑通过。没有降低检查规则。
 - 运行时代码、页面和数据不在本任务内；功能实现另立任务。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选、独立 Review/Acceptance：待执行。
-- 当前 IN_PROGRESS；未提交合并，不声明页面已改或 TASK-017 已合并。
+- 候选、独立 Review/Acceptance：待冻结后的实际报告。
+- 当前 IN_REVIEW；不声明页面已改或 TASK-017 已合并。
 <!-- EVIDENCE:END -->
