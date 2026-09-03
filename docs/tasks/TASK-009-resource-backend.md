@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-009"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "首次启用资料持久化及原子创建事务，含敏感原文、初始进度和标签关联；复用既定契约但需验证数据完整性及错误不泄露。"
 risk_flags = ["critical-data", "sensitive-storage", "public-api", "tests"]
@@ -41,10 +41,18 @@ checks = ["backend", "frontend", "governance"]
 
 ## 实现与测试
 
-- 尚未实现/测试，不声称 PASS。
+- 实现 SHA：`66e14bdf31b1fba05c5b032a298cdcfdb030a61b`。16 文件，已自检范围；三个资料接口、纯命令校验、应用事务及私有 SQLAlchemy 适配器，安全中间件仅增加可信 request_id state。无模型/迁移/依赖/页面业务修改。查询先 SQL 筛选，普通列表直接 SQL 计数/分页；Unicode 搜索只加载必要元数据匹配，正文/URL 延迟加载。
+- 环境：macOS arm64，既有 Python 3.13.9/pytest 8.4.2、Node 24/npm 11、Vitest 4.1.11、Playwright/Chromium（TASK-008 同一安装）。pytest 使用自动隔离的临时路径；E2E 使用临时已迁移库与 15173/18000 端口，不读取真实资料。
+- 完整 `PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-009-resource-backend.md --worktree`：exit=0/CHECKS PASS，16 文件，product_fingerprint=`78025e1025ce2c353b04078751e0b9ccc88187ed6e3245bbd3c67805e45dc9ee`。后端 Ruff 格式/lint、mypy（29 文件）、187 项 pytest、离线源码包/wheel 构建；前端格式/lint/类型、46 项 Vitest、生产构建；治理校验及 23 项单测全部通过。治理单测中的 fake-test/missing-tool 是验证失败处理的模拟，不是实际检查失败。
+- 完整 `cd frontend` 后 `npm run test:e2e`：exit=0，8/8 Chromium PASS（11.6 秒）。真实共享客户端经代理保存 WEB/PASTE → 刷新 → 搜索列表 → 详情；原 7 项安全/页面/移动布局测试保留，旧未知路由断言移至 `/api/v1/unknown`。安全和资料套件 trace 关闭，临时令牌只留浏览器内存。未增加页面功能，因此不重复视觉选型/截图评审。
+- 条件 1/2：新增 `test_resources.py` 72 项，创建/读取/应用重启、UUIDv4/UTC/默认进度、主题/标签引用；格式/类型/长度/来源互斥/URL解析/NaN/非法查询在建库前拒绝；故障注入证明资料+进度+标签关联回滚，已有 Tag 保留；错误无敏感回显、request_id 头体一致。既有安全和 health 115 项全部保留通过。
+- 条件 3：Unicode NFKC/大小写/空白规范化搜索，正文/URL不参与搜索且不出摘要；筛选组合与进度/日期边界、缺失筛选ID空页、归档默认隐藏、分页稳定决胜及四种排序正反向、只读时间/版本不变；READY/PENDING/FAILED文件可见性及文件摘要/详情字段隔离。最大 1,000,000 字符原文正常持久化。
+- 条件 4/5：上述完整检查及真实浏览器证据；README 同步后端已实现/界面未接入、显式迁移、单机范围与搜索成本。任务冻结前保留全部测试和完成条件，之后仅写回独立证据。
+- 真实失败与修正：初始 Ruff 将故意测试 NFKC 的全角字母标为歧义字符，精确行注明测试用途；mypy 初始两项类型标注/变量复用问题已修正。定向测试依次 66/67 通过，补充分页输入与最大原文/排序后最终完整 72 项新测通过；没有降低断言、隐藏失败或新增依赖。
+- 已知边界：只完成 JSON WEB/PASTE 创建和三接口，不支持 FILE 创建、元数据修改/删除、分类管理或界面表单。Unicode 搜索内存匹配适合当前个人/低流量场景，不声称适合海量资料。初始默认进度不是学习功能；不自动建表，无公网认证。独立 Review/Acceptance 待执行。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 2026-09-03：IN_PROGRESS；登记完成，独立 Review/Acceptance 待实现后执行。只用主 Agent实现，避免机械交接；保留真实独立判断。
+- 2026-09-03：IN_REVIEW。完整检查通过，主 Agent已完成一次自检；沿用获授权的 GPT-5.4 medium 实际只读运行器，不改默认 Agent 配置。独立 Review/Acceptance 待执行。
 <!-- EVIDENCE:END -->
