@@ -1,49 +1,18 @@
 ---
 name: studypilot-implement-task
-description: Implement one READY StudyPilot task within its assigned paths, validate the change, commit it on the task branch, and produce a handoff. Use only for an authorized implementation task; do not use for intake, independent review, or acceptance.
+description: Implement an authorized StudyPilot task within its paths, run relevant checks once, and return concise implementation evidence; route independent review by risk.
 ---
 
-# StudyPilot Implement Task
+# Implement Task V2
 
-Complete one authorized task without crossing its responsibility or file boundary.
+Read current task, root/applicable module rules and necessary contract sections once. Verify task READY/IN_PROGRESS/RETURNED, writer authority, branch and clean/nonconflicting scope before writing.
 
-## Entry gate
+- Implement the smallest complete authorized change; preserve product/contract boundaries and other work. New behavior needs tests.
+- New security/data/public API impact → ask coordinator to reclassify before proceeding. Worker cannot lower risk.
+- Run check_task.py for actual changed paths plus task-specific commands; no install or mutation hidden in checks. Record commands, input fingerprint/SHA, environment, exits and NOT_RUN/FAIL honestly.
+- Reuse unchanged valid evidence; rerun affected checks after revision. Self-check the final diff once, no repeated whole-repository survey.
+- Return concise result, implementation SHA/paths, test evidence, unresolved risks. Coordinator alone writes task/index. L1/L2 use one TASK record, no separate HANDOFF by default.
+- L1: self-check + automated checks then coordinator completion gate; do not call a Reviewer. L2: one independent read-only Review. L3: Review + independent read-only Acceptance.
+- Do not self-label independent Review, spawn extra agents or merge. Revisions create a new candidate and require the appropriate updated independent conclusion.
 
-Before writing:
-
-1. Read the root and applicable nested `AGENTS.md` files.
-2. Read the complete task file, relevant requirements, approved contracts, and decisions.
-3. Confirm the task status is `READY` or `IN_PROGRESS` and that the current role matches the assigned owner.
-4. Run `git status --short --branch` and confirm the branch/worktree matches the task.
-5. Confirm allowed paths do not overlap another active write task.
-
-If any check fails, remain read-only and report the blocker.
-
-## Implementation
-
-1. Inspect the affected code and tests before editing.
-2. Identify the smallest coherent change that satisfies every acceptance condition.
-3. Change only allowed paths.
-4. Preserve approved contracts and unrelated user or Agent changes.
-5. Add or update tests for changed behavior when the project has an established test mechanism.
-6. Update only documentation directly affected by the behavior and authorized by the task.
-7. Do not fix unrelated failures or refactor unrelated code.
-
-## Self-validation
-
-1. Review the full task diff, not only the last file changed.
-2. Check every changed path against the task allowlist.
-3. Run every required check exactly as documented.
-4. Record commands and real results. Never claim an unrun check passed.
-5. If a check cannot run, record why and the resulting risk.
-6. Verify no secret, local environment file, or unrelated change entered the diff.
-
-## Git and handoff
-
-1. Commit only task-owned files using the repository commit convention.
-2. Do not merge, force-push, or rewrite shared history.
-3. Produce a handoff using `docs/governance/templates/HANDOFF_TEMPLATE.md`; include the comparison base and the pre-handoff implementation commit SHA, then return it to the `coordinator`. The coordinator commits the handoff and freezes that resulting commit as the review candidate; the handoff must not try to reference its own containing commit SHA.
-4. Do not directly edit the shared task status, task index, review report, or acceptance report. The coordinator persists evidence and advances state.
-
-Do not review or approve your own work. The next step is an independent read-only review.
-Any non-evidence change after review creates a new candidate SHA and requires review of the complete merge diff again.
+Full shared safeguards and evidence rules live in root AGENTS.md; do not duplicate them in reports.

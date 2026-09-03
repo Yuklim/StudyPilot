@@ -1,122 +1,34 @@
-# StudyPilot Git 与合并门禁
+# Git 与合并门禁 V2
 
-## 1. 当前可执行规则
+## 一个任务默认一个分支
 
-- `main` 只保存已经验收并由用户确认的稳定内容。
-- 所有开发从独立任务分支开始。
-- 一个写入任务对应一个任务单、分支和 worktree。
-- 开发 Agent 不得合并自己的变更。
-- Reviewer 保持只读。
-- Integration Owner 必须保持实际只读，只能给出是否达到合并门槛的建议；不得修改文件或处理冲突。
-- 最终合并由用户决定。
+从已确认稳定 main 创建 agent/<role>/<task-id>-<name>。任务登记、实现、证据使用同一分支，单个串行任务不强制 worktree。
+取消强制 intake/evidence/closeout PR；不取消写入前的任务授权、路径登记或未合并依赖门禁。并行写入才使用独立 worktree，最多两个。
+角色切换不需要另建分支。进入写入前检查 Git 状态，来源不明修改不覆盖。
 
-仓库必须先有一个用户确认的 `main` 基线提交，才能创建开发 worktree。首次基线提交完成前，治理检查应视为未就绪，任何功能开发不得开始。
+## 合并门槛
 
-## 2. 分支命名
+| 等级 | 必要证据 |
+| --- | --- |
+| L1 | 任务授权 + 最终检查/自检 + 主 Agent完成条件核对 |
+| L2 | L1 + 针对最终候选的独立只读 Review 通过 |
+| L3 | L2 + 独立只读 Integration/Acceptance 通过 |
 
-```text
-agent/<role>/<task-id>-<short-description>
-```
+所有等级都只由用户决定并执行最终合并。Agent 不向 main 提交/推送，不执行合并、强推、破坏性 reset、共享历史重写或删除他人分支。
+ACCEPTED 只表示满足本级门槛，绝不等于 MERGED。未运行的检查写 NOT_RUN；有必要失败/阻断 finding 不得报“可合并”。
 
-示例：
+## 冻结与证据
 
-```text
-agent/resource-worker/TASK-001-resource-create
-agent/learning-worker/TASK-002-progress-tracking
-agent/coordinator/TASK-001-intake
-agent/coordinator/TASK-001-evidence
-agent/coordinator/TASK-001-closeout
-```
+实现与测试记录先提交，再冻结该提交为候选；候选不引用自身。之后主 Agent只写同任务状态、EVIDENCE 区和索引该行；不得更改已审授权、实现或检查。
+`check_task.py --task <task> --candidate HEAD --evidence-from <candidate>` 只校验窄证据写回，不重跑业务测试。它不是独立 Review。
+若产品/治理/契约/测试或授权变化，生成新候选。同一 Reviewer 优先审新增差异和受影响调用链并声明继承覆盖；无法界定影响时完整重审。冲突由原写入者解决，Reviewer/Integration 不能改文件。
+合并前核对 main 是否变化及有无冲突，不未经授权 rebase/cherry-pick/修改目标候选。发生变化说明哪些旧证据仍有效，不能把一个 SHA 的批准当另一个 SHA 的批准。
 
-禁止使用无法追溯任务和负责人的名称，例如 `test`、`temp`、`new-feature`。
+## 合并后
 
-首次基线以后，控制面也必须走分支：任务登记使用 `agent/coordinator/<task-id>-intake`，审查与验收证据使用 `agent/coordinator/<task-id>-evidence`，合并事实登记使用 `agent/coordinator/<task-id>-closeout`。`coordinator` 不得直接在 `main` 提交，所有分支都由用户决定是否合并。
+核实用户实际合并，再登记 MERGED。状态可搭便车写入下一项已授权任务的控制面提交；必须在该任务 allowlist 列明旧任务的纯状态路径，无后续任务不强制制造收尾 PR。历史证据保留；分支/worktree 清理按需由用户授权，不默认删除。
 
-Codex 管理的 worktree 默认可能处于 detached HEAD。创建 worktree 后必须先使用 **Create branch here** 或等价 Git 操作建立符合上述命名规则的分支，然后才能写入和提交。
+## 远程保护
 
-## 3. 提交要求
-
-提交格式：
-
-```text
-<type>(<module>): <summary>
-```
-
-允许的 `type`：
-
-- `feat`：新增用户或系统行为；
-- `fix`：修复缺陷；
-- `test`：只修改测试；
-- `docs`：只修改文档；
-- `refactor`：不改变外部行为的结构调整；
-- `chore`：仓库、工具和维护工作。
-
-每个提交必须：
-
-- 只属于一个任务；
-- 只包含该任务拥有的文件；
-- 可以独立解释和审查；
-- 不包含密钥、临时文件和无关格式化；
-- 在交接报告中提供 SHA。
-
-## 4. 合并前必须具备的证据
-
-- 状态为 `READY` 后开始的任务单；
-- 开发 Agent 交接报告；
-- 完整实际合并 diff；
-- 规定测试和检查的真实结果；
-- 独立只读审查报告；
-- 阶段验收 `PASS`；
-- 用户最终确认。
-
-任一项缺失都不得声称任务可合并。
-
-正式审查锁定一个包含交接报告的冻结候选提交 SHA。Reviewer 与 Integration Owner 均以该 SHA 为对象，并保持实际只读。审查后只允许原样写回同一任务的 `REVIEW`、`ACCEPTANCE`，以及仅更新任务单与索引的状态字段和决定日志；不得修改 HANDOFF、任务目标、范围、允许路径、验收条件、代码、测试、配置、契约或治理规则。验收报告写回本身不要求再次验收。任何超出该白名单的变更都会生成新候选 SHA，使旧报告失效，并要求对新的完整合并差异重新只读审查。冲突只能退回原负责 Agent，验收者不得自行解决。
-
-历史提交 `0b7e269` 是 TASK-000 在控制面分支规则写明前直接写入 `main` 的一次性启动收尾偏差。保留该历史用于审计，不重写，也不作为后续例外。
-
-## 5. 连接 GitHub 后启用的保护
-
-项目建立远程仓库后，在 `main` 的 Ruleset 或 Branch protection 中启用：
-
-1. 禁止直接推送到 `main`；
-2. 所有变更必须通过 Pull Request；
-3. 禁止 force push；
-4. 禁止删除 `main`；
-5. 要求所有会话或审查意见解决后才能合并；
-6. 技术栈确定并建立 CI 后，要求所有必要 status checks 通过；
-7. 如果存在第二位人工协作者，要求至少一位非作者批准最新变更；
-8. 管理员也不应日常绕过以上规则。
-
-个人单独开发时，GitHub 的人工批准规则可能无法满足，因此不要设置一个自己无法完成的强制审批。此时使用：
-
-- 独立只读 Reviewer 报告；
-- CI status checks；
-- 阶段验收报告；
-- 用户本人手动确认合并。
-
-AI Reviewer 是额外证据，不等同于 GitHub 的人工批准，也不能替代自动测试。
-
-## 6. CI 状态检查的添加时机
-
-技术栈确定后，由 `repo_maintainer` 和 `architecture_owner` 共同提出检查清单。至少考虑：
-
-- 格式化检查；
-- 静态分析或 lint；
-- 单元测试；
-- 集成测试；
-- 构建；
-- 密钥扫描；
-- 依赖和锁文件一致性；
-- 公共契约检查。
-
-只有命令已经在本地和 CI 中实际验证后，才能把对应检查设置为 `main` 的 required status check。
-
-## 7. 合并后的处理
-
-- 将任务状态更新为 `MERGED`；
-- 在任务索引中记录最终提交或 PR；
-- 删除或归档已完成 worktree；
-- 保留任务、交接、审查和验收记录；
-- 将真正具有长期价值的经验更新到最近的 `AGENTS.md`；
-- 不要把一次性问题无限扩写为全局规则。
+建议 main 禁止直接推送、强推和删除；使用 PR 与适用 CI 检查。当前规则文件不会自动开启 GitHub 保护；未验证的远程配置不得声称已生效。
+AI Review 不等同 GitHub 人工批准。仅在检查确已在 CI 运行后设置 required checks；不要给单人仓库设置无法完成的第二人工批准门槛。

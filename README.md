@@ -106,9 +106,17 @@ npm run dev
 
 ```bash
 git diff --check
-PYTHONDONTWRITEBYTECODE=1 python3 scripts/governance/validate_governance.py
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest scripts/governance/test_validate_governance.py
+PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/validate_governance.py
+PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python -m unittest discover -s scripts/governance -p 'test_*.py'
 ```
+
+V2 开发时优先按任务一次执行相关检查（不重复跑全部模块）：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-004-governance-v2.md --worktree
+```
+
+该入口检查范围、Git 差异、敏感模式与 JSON/OpenAPI 结构，并自动选择相关 lint、格式检查、测试和构建；不会安装依赖或修改源文件。缺少工具、测试失败和未执行均不会当作通过。详见 [V2 使用指南](docs/governance/多Agent开发制度使用指南.md)。
 
 ### 后端检查
 
