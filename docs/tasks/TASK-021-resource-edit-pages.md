@@ -54,7 +54,7 @@ checks = ["frontend", "contracts"]
 
 - 冻结候选 `d49c22a372690ee56be95ce0f5630df332d5814c`；独立 Reviewer 会话 `01a06725-ac0c-7110-a5dc-dfcc6735aace`，运行器头显示 `model: gpt-5.5`、`sandbox: read-only`、`approval: never`，退出 0；未改默认配置。报告原文如下（仅去行末空格）：
 
-+PASS。
+PASS。
 
 候选：`d49c22a372690ee56be95ce0f5630df332d5814c`；base：`dcbc5d8a97065c6f4802f3b8fb9d22e9a8d70fc0`。HEAD 精确等于候选，merge-base 为 base，范围为登记的 15 个文件。
 
