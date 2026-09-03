@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-012"
-status = "IN_REVIEW"
+status = "IN_ACCEPTANCE"
 risk = "L3"
 risk_reason = "接入既定分类删除与版本保护，并扩展共享客户端的受控版本头及安全错误映射；不改变服务端安全协议或契约。保留独立 Review 与独立验收。"
 risk_flags = ["business", "deletion", "security", "tests"]
@@ -55,4 +55,18 @@ checks = ["frontend", "governance"]
 
 - 2026-09-03：IN_PROGRESS；按 L3 登记，依赖已合并。
 - 2026-09-03：IN_REVIEW，实现及测试证据冻结；114 前端 / 23 治理通过，浏览器 14 原通过 + 1 定向修复通过，无未解决必要检查失败。待实际只读独立 Review 和 Acceptance。
+
+### 独立 Review 原文
+
+- 独立会话 `01a065e5-b13b-7531-a4cd-4f2ed856e74a`，`gpt-5.4 medium`，CLI 实际 `read-only / approval never / agents.enabled=false`，工作目录 `test -w .` 输出 `not_writable`，未试写，退出码 0。
+
+PASS
+
+base=`06025c70f460f77a0fb5ca89a36a6676a85b0171` candidate=`9ca3a070aca10390e9cbc2e06f26de91c4d7df57`。运行环境实际只读：会话权限为 `read-only`、approval=`never`，且在仓库根执行 `test -w .` 返回 `not_writable`。已按要求读取根/前端 `AGENTS.md`、[.agents/skills/studypilot-review-change/SKILL.md](/Users/yuklimching/Desktop/StudyPilot/.agents/skills/studypilot-review-change/SKILL.md)、[docs/tasks/TASK-012-taxonomy-pages.md](/Users/yuklimching/Desktop/StudyPilot/docs/tasks/TASK-012-taxonomy-pages.md)、[docs/governance/风险分级与检查规则.md](/Users/yuklimching/Desktop/StudyPilot/docs/governance/风险分级与检查规则.md)，并审查完整 `base..candidate` 27 文件最终 diff 与关键调用链，重点覆盖 [frontend/src/api/client.ts](/Users/yuklimching/Desktop/StudyPilot/frontend/src/api/client.ts)、[frontend/src/features/taxonomy/api.ts](/Users/yuklimching/Desktop/StudyPilot/frontend/src/features/taxonomy/api.ts)、[frontend/src/features/taxonomy/ClassificationManager.tsx](/Users/yuklimching/Desktop/StudyPilot/frontend/src/features/taxonomy/ClassificationManager.tsx)、[frontend/src/features/taxonomy/ClassificationPicker.tsx](/Users/yuklimching/Desktop/StudyPilot/frontend/src/features/taxonomy/ClassificationPicker.tsx)、[frontend/src/features/taxonomy/ResourceTagEditor.tsx](/Users/yuklimching/Desktop/StudyPilot/frontend/src/features/taxonomy/ResourceTagEditor.tsx) 及资源页接入。
+
+No findings。未发现越权改动、删除确认绕过、`ifMatchVersion` 失控暴露、服务端原文/敏感 details 外泄、离页后旧异步结果覆盖新页面、跨页标签选择丢失、详情页标签整组覆盖或资料主题误改等阻断问题；实现与任务记录描述、既定前端范围及受控错误投影一致。
+
+剩余风险/未测项：本次未重跑全套检查或浏览器链路，复用已绑定到 `product_fingerprint=398affed...d36942` 的 `check_task` PASS、114 前端/23 治理、14 既有浏览器 PASS + 1 个分页定位场景定向复跑 PASS，以及人工截图结论；在当前个人本机/少量写入场景下，这一证据足以支撑 Review PASS。
+
+- 2026-09-03：IN_ACCEPTANCE。主 Agent只核对范围、输入、测试失败闭环及 Review 结论，没有重新审代码；审查后仅写本任务 status/EVIDENCE 与索引行，交由另一独立只读会话验收。
 <!-- EVIDENCE:END -->
