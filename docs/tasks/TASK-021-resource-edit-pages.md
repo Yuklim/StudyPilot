@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-021"
-status = "IN_ACCEPTANCE"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "接入已批准的资料编辑接口，包含粘贴原文覆盖、冲突/未知保存结果保护及交付元数据；不改后端、模型或公共协议。"
 risk_flags = ["business", "critical-data", "tests"]
@@ -70,4 +70,24 @@ PASS。
 No findings。没有发现需阻断或需记录的非阻断缺陷。
 
 - 主 Agent 核对：候选/范围/测试指纹匹配，Review PASS、No findings；IN_ACCEPTANCE，交另一独立只读 Agent 做完成条件到证据的映射，不重审代码或全套测试。产品候选不变，之后只写本任务证据与索引行。
+
+- 独立 Acceptance 会话 `01a06729-8379-7050-a367-ba2975f75799`，与实现者/Reviewer 不同；运行器头显示 `model: gpt-5.5`、`sandbox: read-only`、`approval: never`，退出 0。原文如下（仅去行末空格）：
+
+PASS。
+
+产品候选：`d49c22a372690ee56be95ce0f5630df332d5814c`
+证据 HEAD：`317271a327579e523f9bd8da1e2ae09d6a20df05`
+base：`dcbc5d8a97065c6f4802f3b8fb9d22e9a8d70fc0`
+
+实际权限：当前运行器声明 `sandbox=read-only`、`approval=never`；git 只读命令触发 `/tmp/xcrun_db-* Operation not permitted`，与只读限制一致。全程未写文件、未提交、未委派。
+
+我按要求实际运行：
+
+`PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-021-resource-edit-pages.md --candidate HEAD --evidence-from d49c22a372690ee56be95ce0f5630df332d5814c --static-only`
+
+结果：`EVIDENCE_ONLY PASS d49c22a..317271a; no product tests rerun`。
+
+核对结果：5 项完成条件均有任务记录中的 292/292 前端、31/31 Chromium、统一检查/契约检查、Reviewer PASS 证据覆盖；候选后仅 `TASK-021` 证据和任务索引行写回。已知边界为草稿仅本页、原文无修订历史、FILE 不可替换，均已明示且符合当前个人本机使用风险。未发现验收阻断缺口。最终合并仍由用户决定。
+
+- 主 Agent 最终核对：ACCEPTED；Review 与独立验收均 PASS，无未处置发现，候选后仅状态和证据写回。保持已测指纹与 292/31 证据，不重复全套测试。已明示页面草稿/原文覆盖/FILE 限制；等待用户合并，下一步按核心需求登记资料安全删除后端，不自动开展复习/统计等扩展。
 <!-- EVIDENCE:END -->
