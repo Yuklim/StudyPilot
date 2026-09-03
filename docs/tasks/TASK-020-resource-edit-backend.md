@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-020"
-status = "BLOCKED"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "实现既定资料修改接口，涉及用户原文、主题归属、版本竞争和事务保存；同步交付清单，保留独立只读审查与验收，不改模型或迁移。"
 risk_flags = ["business", "critical-data", "tests"]
@@ -53,4 +53,6 @@ checks = ["backend", "contracts"]
 
 - 2026-09-03 冻结候选：`536bf9bbc3d8f6ff454f3121fb38387bee671ae5`；主 Agent 静态核对通过，最终指纹与上述一致。独立 Reviewer 会话 `01a06706-0c29-7922-b55f-c5a549efb597`，运行器头显示 `model: gpt-5.3-codex-spark`、`sandbox: read-only`、`approval: never`；读取期间因模型额度耗尽退出 1，未生成最终报告。运行器原始错误：`You've hit your usage limit for GPT-5.3-Codex-Spark.`
 - BLOCKED：实现及 466 项测试结果保留；Review 未完成，不能标记 PASS/No findings，Acceptance 未启动。等待用户授权本次使用其他可用模型完成独立只读审查/验收，或等待默认模型额度恢复；不自动更改用户模型偏好，不使用重置额度，不跳过门禁，不创建待合并 PR。
+
+- 2026-09-03 用户明确授权“使用其他模型”。本次审查/验收临时指定 `gpt-5.5`，不修改默认模型配置、不兑换额度；从冻结候选 `536bf9bbc3d8f6ff454f3121fb38387bee671ae5` 继续。上次中断无最终报告，新 Reviewer 须覆盖完整最终 diff；原代码/测试保持不变，恢复 IN_REVIEW。
 <!-- EVIDENCE:END -->
