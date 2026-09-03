@@ -197,6 +197,8 @@ def test_resource_source_is_immutable_in_normal_orm_updates(database: Engine) ->
         {"status": "READY", "staging_key": "pending-file"},
         {"status": "PENDING", "failure_code": "unexpected"},
         {"media_type": "application/executable"},
+        {"media_type": "text/markdown"},
+        {"media_type": "text/plain"},
     ],
 )
 def test_invalid_original_files_rejected(database: Engine, invalid: dict[str, Any]) -> None:
@@ -217,6 +219,28 @@ def test_invalid_original_files_rejected(database: Engine, invalid: dict[str, An
                 | invalid
             )
         )
+
+
+@pytest.mark.parametrize(
+    "media_type",
+    ["text/markdown; charset=utf-8", "text/plain; charset=utf-8"],
+)
+def test_contract_text_media_types_persist(database: Engine, media_type: str) -> None:
+    factory = create_session_factory(database)
+    with factory.begin() as session:
+        parent = resource(session, source_type="FILE", source_url=None)
+        original = OriginalFile(
+            resource_id=parent.id,
+            original_name="example.txt",
+            storage_key="resource/text-file",
+            size_bytes=100,
+            media_type=media_type,
+            sha256="0" * 64,
+        )
+        session.add(original)
+    with factory() as session:
+        loaded = session.get(OriginalFile, original.id)
+        assert loaded is not None and loaded.media_type == media_type
 
 
 def test_duplicate_association_and_confirmation_digest_rejected(database: Engine) -> None:

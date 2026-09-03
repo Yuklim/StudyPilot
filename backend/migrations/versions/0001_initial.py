@@ -288,7 +288,7 @@ def upgrade() -> None:
         sa.CheckConstraint(
             "media_type IN ('application/pdf', 'application/msword', "
             "'application/vnd.openxmlformats-officedocument.wordprocessingml.document', "
-            "'text/markdown', 'text/plain')",
+            "'text/markdown; charset=utf-8', 'text/plain; charset=utf-8')",
             name=op.f("ck_original_files_media_type"),
         ),
         sa.CheckConstraint(

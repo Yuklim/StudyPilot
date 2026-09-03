@@ -138,7 +138,7 @@ class OriginalFile(Identified, Created, Versioned, Base):
         CheckConstraint(
             "media_type IN ('application/pdf', 'application/msword', "
             "'application/vnd.openxmlformats-officedocument.wordprocessingml.document', "
-            "'text/markdown', 'text/plain')",
+            "'text/markdown; charset=utf-8', 'text/plain; charset=utf-8')",
             name="media_type",
         ),
         bounded_length("original_name", 1, 255),
@@ -167,8 +167,8 @@ class OriginalFile(Identified, Created, Versioned, Base):
             "application/pdf",
             "application/msword",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "text/markdown",
-            "text/plain",
+            "text/markdown; charset=utf-8",
+            "text/plain; charset=utf-8",
         )
     )
     sha256: Mapped[str] = mapped_column(String(64))

@@ -52,9 +52,33 @@ checks = ["backend", "governance"]
 - 完成条件证据：1/5 对应 `test_cascade_preserves_taxonomy_and_deletion_confirmation`、非法状态/原件/关联与摘要重复测试及冻结迁移；2 对应每连接外键、独立会话与回滚测试；3 对应 UTC/日历日期、名称唯一、版本冲突/无变化测试；4 对应重复升级保留数据/结构一致/空库降级/非空拒绝测试；6 对应启动无副作用 CLI 测试、原 6 项健康/安全回归、上述全部工具结果及后续独立报告。
 
 <!-- EVIDENCE:BEGIN -->
+### 首轮审查后修订与测试
+
+- 修正 `OriginalFile.media_type` 模型及初始迁移为契约规定的 `text/markdown; charset=utf-8`、`text/plain; charset=utf-8`；新增两项合法值持久化测试、两项缺失 charset 的拒绝测试。仅修复契约漂移，不扩大范围，首版实现 SHA 保留为历史，新修订由下方最终候选 SHA 绑定。
+- 同环境定向复验：后端 `.venv/bin/ruff format --check .`、`.venv/bin/ruff check .`、`.venv/bin/mypy src tests`（16 文件）、`.venv/bin/pytest`（49 项；新增数据库/迁移 43 项）和获准读取 uv 缓存的 `uv build --offline` 均 exit=0。
+- `check_task.py --task docs/tasks/TASK-005-database-baseline.md --worktree --static-only`：STATIC PASS，20 文件；新 `product_fingerprint=41bcf1d38279615c7f23fd1a72ce261b47826af2cf171bd047380a51f36e3e3e`。`validate_governance.py` exit=0。治理脚本/依赖未变，复用原 23 项治理单测及其格式/lint；不把 static-only 当全套测试。
+
+<!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
 - 2026-09-03：IN_PROGRESS。基线已核实为用户合并 TASK-003 的 main；L3，无独立验收豁免。
 - 当前 IN_REVIEW，候选 SHA 将在冻结后由独立报告引用；Review / Acceptance 待完成。
 - 最终合并：仅用户执行；当前未合并本任务。
+### 首次独立 Review 原文
+
+运行器：Codex CLI 0.145.0，GPT-5.4/medium，session `01a064fa-2a88-7b70-a847-485041a59554`；启动头实证 `approval: never`、`sandbox: read-only`，不是只凭项目 TOML。仅本次运行临时模型选择，不改默认配置。
+
+CHANGES_REQUIRED
+
+base `8d8a3b0c3c03e5227bf0f78bb081e9b1bdd4cc43` → candidate `d41b213ee92819bfa7843ea9793f9c540d754be0`。实际只读权限证据：本会话环境声明 `filesystem sandbox: read-only`，且只执行读取命令；`git status` 过程中对 `/tmp/xcrun_db-*` 的写入也收到 `Operation not permitted`，符合只读运行。
+
+Findings
+1. `OriginalFile.media_type` 的冻结模型和初始迁移与已批准契约不一致。[docs/contracts/API与数据契约基线.md:417](/Users/yuklimching/Desktop/StudyPilot/docs/contracts/API与数据契约基线.md:417) 与 [docs/contracts/API与数据契约基线.md:418](/Users/yuklimching/Desktop/StudyPilot/docs/contracts/API与数据契约基线.md:418) 明确 Markdown/TXT 的规范媒体类型分别是 `text/markdown; charset=utf-8`、`text/plain; charset=utf-8`，但候选只允许无 charset 的值，见 [backend/src/studypilot/infrastructure/database/models.py:139](/Users/yuklimching/Desktop/StudyPilot/backend/src/studypilot/infrastructure/database/models.py:139) 和 [backend/migrations/versions/0001_initial.py:288](/Users/yuklimching/Desktop/StudyPilot/backend/migrations/versions/0001_initial.py:288)。触发条件：后续服务按契约写入 Markdown/TXT 原件时。影响：合法契约值会被数据库约束拒绝，形成已批准契约与存储基线漂移。安全修正：把模型与 `0001_initial` 的允许值改成契约规定的规范值，并补正反测试覆盖这两个文本媒体类型；当前测试仅覆盖 `application/pdf` 和一个非法值，未覆盖该契约点，见 [backend/tests/test_database.py:191](/Users/yuklimching/Desktop/StudyPilot/backend/tests/test_database.py:191)。
+
+覆盖与风险
+- 已按首次 Review 要求检查完整 `base..candidate` diff，并核对了 root `AGENTS.md`、[backend/AGENTS.md](/Users/yuklimching/Desktop/StudyPilot/backend/AGENTS.md:1)、[docs/tasks/TASK-005-database-baseline.md](/Users/yuklimching/Desktop/StudyPilot/docs/tasks/TASK-005-database-baseline.md:1)、风险规则实际风险章节、契约第 2-4/6/8-9 节、架构第 5.3/6/12 节。
+- 复用任务内可信机械检查证据：后端 45 项、治理 23 项已通过；未见需要额外重跑的其他具体证据缺口。
+- 除上述契约漂移外，模型/迁移一致性、外键与级联方向、事务入口、UTC/日期边界、版本并发、防普通 ORM 改写历史、初始迁移重复升级与非空降级保护均已覆盖到位。
+
+- 主 Agent处置：接受该阻断结论，修正允许值并补契约正反测试；不修改已批准契约。修订重新冻结，同一 Reviewer 增量复核。
 <!-- EVIDENCE:END -->
