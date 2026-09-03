@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-014"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "接入既定文件接口并扩展共享客户端的受控 multipart/二进制传输与令牌失效处理；不改安全协议。保留独立只读 Review 和独立 Acceptance。"
 risk_flags = ["business", "security", "sensitive-storage", "tests"]
@@ -77,4 +77,5 @@ PASS `candidate=3d0966e0a13c1690b48b3fadd94c5a7416615fcb`，`HEAD=80b762c786e8f7
 
 - coordinator：五项完成条件证据齐备；Review / Acceptance 均 PASS，未遗留阻断项。ACCEPTED，等待用户决定并执行最终合并；未推送 main、未替用户合并。最终证据写回只做窄门禁，不递归验收。
 
+- 2026-09-03：用户确认已合并；GitHub 核实 PR #19 MERGED，时间 2026-09-03T07:25:29Z，合并提交 `94a037f5a3cc279546a3869b2bcec472bb96db76`，原候选/测试/审查历史保留。
 <!-- EVIDENCE:END -->
