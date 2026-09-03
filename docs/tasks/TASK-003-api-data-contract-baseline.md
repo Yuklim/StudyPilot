@@ -2,7 +2,7 @@
 
 ## 1. 基本信息
 
-- 状态：`READY`
+- 状态：`ACCEPTED`
 - 负责人角色：`architecture_owner`
 - 创建人：主协调 Agent
 - 创建日期：2026-09-02
@@ -207,3 +207,14 @@ python3 -m json.tool docs/contracts/openapi-v1.json >/dev/null
 | 日期 | 状态或决定 | 责任人 | 说明 |
 | --- | --- | --- | --- |
 | 2026-09-02 | READY | coordinator | TASK-001、TASK-002 及其收尾均已合并；目标、允许路径、技术决策权限、依赖、检查和验收条件完整，无需用户补充产品决定；等待用户将 intake 分支合并到稳定 `main` 后派发 |
+| 2026-09-02 | IN_REVIEW | coordinator | `architecture_owner` 已完成两份契约和全部规定检查，交接前实现提交为 `0c1ef24a72bdafb6702038ab5cdfb52f22eb7ff3`；交接报告已保存，提交后冻结候选并安排正式独立只读复审 |
+| 2026-09-02 | RETURNED | coordinator | 独立只读 `qa_reviewer` 审查冻结候选 `c5f7acb866ce8eeb7402e1b7cd4b819e3a6066dd` 后结论为 `CHANGES_REQUIRED`；发现 3 个 P1、7 个 P2 和 1 个 P3 问题，详见 `TASK-003-REVIEW.md`，退回原 `architecture_owner` 修订 |
+| 2026-09-02 | IN_REVIEW | coordinator | 原 `architecture_owner` 已在提交 `0e4ec3f29c41f533e30d37d921a86e7b0ad49252` 修复首轮 11 项 findings；更新交接和可复现检查后冻结第二轮候选，重新安排完整独立只读复审 |
+| 2026-09-02 | RETURNED | coordinator | 独立只读 `qa_reviewer` 审查第二轮冻结候选 `f76a97d768dfba7b63616b09576cbf6db8c413f8` 后结论为 `CHANGES_REQUIRED`；无 P0/P1，发现 6 个 P2，其中首轮 2 项未完整修复并新增 4 项契约语义问题，详见 `TASK-003-REVIEW.md`，退回原 `architecture_owner` 定点修订 |
+| 2026-09-02 | IN_REVIEW | coordinator | 原 `architecture_owner` 已在提交 `aa54222d1d2319f40a7f9cf97c97eeb283dc722c` 完成第二轮 6 个 P2 的定点修订；交接加入固定提交的可复现专项命令，待冻结第三轮候选并重新安排完整独立只读复审 |
+| 2026-09-02 | RETURNED | coordinator | 独立只读 `qa_reviewer` 审查第三轮冻结候选 `fa5af8477f1e72a326431dd8e4e674a574394666` 后结论为 `CHANGES_REQUIRED`；第二轮前五项契约问题已关闭，仍有 2 个 P2：共享错误示例与操作矩阵不一致、交接命令无法在强只读环境完整复现，详见 `TASK-003-REVIEW.md` |
+| 2026-09-02 | IN_REVIEW | coordinator | 原 `architecture_owner` 已在提交 `2f41182aadba77bc341687cc2f3f519a05ea82e5` 完成第三轮 2 个 P2 的定点修订：279 个挂载错误示例全部与 operation 错误矩阵对齐；交接专项命令不再依赖临时文件，并覆盖 459 个引用、唯一 operationId、12 个请求体操作、Markdown 双向映射和逐示例交叉验证；待冻结第四轮候选并重新安排完整独立只读复审 |
+| 2026-09-03 | IN_REVIEW | coordinator | 用户已合并 TASK-004 PR #8，目标 main 为 `9b6b21d73752e86a2c89e871222d3705d4dea6c7`。按保全方案从原冻结候选 `fe6196f724cafbb67a30f1479769a57b5affc8d4` 创建证据续接分支；两份契约及 HANDOFF 原样保留，原分支不变；本次只同步状态与决定日志。TASK-003 为 L3，仍完成 V1 完整独立只读复审与独立验收，并按用户最新实际风险/成本原则判断发现，不把理论建议当作阻断。V2 合并事实在此记录，合并后的统一索引状态随下一次已授权控制面工作更新，不另开收尾 PR |
+| 2026-09-03 | BLOCKED | coordinator | 当前冻结候选 `432c23d52e12c9d8b66087f660d14faea37bba5a`；同一个独立 Reviewer 会话 `01a064d3-8992-7d62-bfff-0fb4142365e8` 首次及续接各因 `Selected model is at capacity` 退出 1，未产出最终报告，不能记为审查通过/缺陷退回。运行器实际为 `sandbox: read-only`、`approval: never`，模型继承用户默认 `gpt-5.3-codex-spark`，未擅自切换。暂停验收和 PR，等待模型恢复或用户授权更换；不继续无限重试。本轮治理 30 项/3 单测与 diff 检查已通过；两份契约/HANDOFF 与原候选一致，既有测试证据保留；未声称 Reviewer 已完成专项复现。旧第三轮 REVIEW 仍为历史报告，不覆盖本轮候选 |
+| 2026-09-03 | IN_ACCEPTANCE | coordinator | 用户要求按最新规则高效继续，临时以 GPT-5.4 medium 续接同一只读 Reviewer，仓库默认配置不变。对冻结候选 `432c23d52e12c9d8b66087f660d14faea37bba5a` 完成复审：No findings / READY_FOR_ACCEPTANCE，上轮两问题关闭；直接执行 HANDOFF 原命令通过（20 paths、35 operations、79 schemas、459 refs、279 错误示例，无错误挂载）。最新报告原文追加在 TASK-003-REVIEW 第 7 节，旧报告保留；启动另一个实际只读的 integration_owner 核对条件和证据，不重新完整审代码或默认重跑检查。最新目标 main 仍为 `9b6b21d73752e86a2c89e871222d3705d4dea6c7` |
+| 2026-09-03 | ACCEPTED | coordinator | 独立 integration_owner 会话 `01a064dc-f6c7-7133-9b40-477148bb9dad`（GPT-5.4 medium，运行器实际 read-only/approval never）针对同一候选 `432c23d52e12c9d8b66087f660d14faea37bba5a` 与证据 HEAD `827531395e8f39747fd1921c21c42375ba4238ff` 验收 PASS，12 项条件均有证据；报告原文保存于 TASK-003-ACCEPTANCE.md。复用测试与 Review，不新增重复完整审查。主 Agent核对范围、证据绑定与结论，未重审契约；原分支/两份契约/HANDOFF 均保留，未改默认模型或 V2 规则。剩余已披露限制是缺少专用 Draft 2020-12 CLI、无业务运行测试（本任务不改运行代码）；契约仅限本机单用户，不能直接作为公网身份认证。等待用户合并，尚未 MERGED；合并后下一项是数据库模型与迁移基础，为资料、笔记和学习记录建立可靠存储 |
