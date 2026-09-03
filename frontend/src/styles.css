@@ -1606,6 +1606,48 @@ fieldset:disabled {
   border-radius: 24px;
   background: #f7f8f0;
 }
+.resource-editor {
+  margin: 20px 0;
+  min-width: 0;
+}
+.resource-edit-form {
+  padding: clamp(16px, 3vw, 28px);
+  border: 1px dashed #d5d6c6;
+  border-radius: 24px;
+  background: #fffdf7;
+}
+.resource-topic-edit,
+.resource-source-edit,
+.resource-edit-recovery {
+  margin: 20px 0;
+  min-width: 0;
+}
+.resource-source-edit summary,
+.resource-edit-recovery summary {
+  cursor: pointer;
+}
+.resource-edit-recovery {
+  padding: 16px;
+  border-left: 3px solid #bba78f;
+  background: #f7f6eb;
+  overflow-wrap: anywhere;
+}
+.resource-edit-recovery pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 320px;
+  overflow: auto;
+}
+.resource-edit-recovery dd {
+  margin: 8px 0 16px;
+  white-space: pre-wrap;
+}
+.resource-edit-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
 .note-editor label:not(.note-confirm) {
   display: grid;
   gap: 12px;

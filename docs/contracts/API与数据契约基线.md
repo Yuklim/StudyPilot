@@ -56,7 +56,7 @@ TASK-011/012 已完成分类后端与页面，TASK-013/014 已完成 FILE 后端
 | `bootstrapLocalSession` | 沿用 TASK-008 的本机启动令牌协议 |
 | `createResource` | `application/json` 的 WEB/PASTE 与 `multipart/form-data` 的 FILE；成功为原定 `201 ResourceEnvelope`，FILE 仅落盘并提交 READY 后成功 |
 | `listResources` / `getResource` | 原定列表筛选/摘要与详情读取；FILE 只显示 READY 元数据，不表示已解析 |
-| `updateResource` | TASK-020：按既定 ResourcePatch 修改标题、来源名称、保存原因、主要主题及同类型 WEB/PASTE 来源内容；版本与事务保护，不更换 FILE 原件，不修改学习数据；仅后端，页面另行接入 |
+| `updateResource` | TASK-020 后端、TASK-021 页面：按既定 ResourcePatch 修改标题、来源名称、保存原因、主要主题及同类型 WEB/PASTE 来源内容；版本与事务保护，不更换 FILE 原件，不修改学习数据；页面冲突/未知结果需重读核对后明确重提，心得草稿保留 |
 | `downloadOriginalFile` | 按文件 ID 下载 READY 原件；大小/hash 校验、附件头及失败保护遵守第 8 节 |
 | `listTopics` / `createTopic` / `getTopic` / `updateTopic` / `deleteTopic` | TASK-011：既定主题创建/读/改/删除未使用项；保留版本、规范化唯一与引用保护 |
 | `listTags` / `createTag` / `getTag` / `updateTag` / `deleteTag` | TASK-011：既定标签创建/读/改/删除未使用项；不增加颜色字段或级联资料删除 |
@@ -67,7 +67,7 @@ TASK-011/012 已完成分类后端与页面，TASK-013/014 已完成 FILE 后端
 - TASK-009～012 对 multipart 的临时 `415 CONTENT_TYPE_UNSUPPORTED` 限制由 TASK-013 的实际文件实现解除；合法 FILE 表单按第 5/8 节处理，其他媒体类型仍拒绝。缺失令牌或非法来源仍优先按第 7 节返回对应 `403`，不读正文或操作文件/数据库。
 - JSON 请求的 FILE 不属于 WEB/PASTE JSON schema，仍为 `422 VALIDATION_ERROR`。已开放的 WEB/PASTE 校验、错误、事务和只读投影必须完整符合其契约，不能借分阶段交付降低这些要求。
 - OpenAPI 顶层 `x-delivery-profile` 是本阶段机器可读清单；其余标准 operation/schema 保留为完整目标。当前不启用自动生成；以后若生成客户端，必须先按该清单限制可用操作/请求媒体类型，不能直接将完整目标文档当作当前运行时契约或生成已可上传的界面。该清单是版本说明，不新增运行时能力查询接口。其他未列入操作不因存在 schema 就获得本阶段可调用承诺。
-- TASK-013～017 及 TASK-019/020 的单任务证据记录相应实现、测试、独立 Review 和验收；上述交付元数据与代码一起审查，不能仅改清单就声称实现。TASK-020 资料修改后端随测试、独立审查/验收通过并由用户合并后交付；页面编辑入口、资料删除、复习、统计等未列能力仍未开放。交付完整接口全集时才验该完整目标，当前核心验收以 1.0 和产品需求为准。本节不授权回退已交付能力或改变 schema。
+- TASK-013～017 及 TASK-019～021 的单任务证据记录相应实现、测试、独立 Review 和验收；上述交付元数据与代码一起审查，不能仅改清单就声称实现。TASK-021 资料编辑页面随测试、独立审查/验收通过并由用户合并后交付；资料删除、复习、统计等未列能力仍未开放。交付完整接口全集时才验该完整目标，当前核心验收以 1.0 和产品需求为准。本节不授权回退已交付能力或改变 schema。
 
 ## 2. 通用 HTTP 约定
 

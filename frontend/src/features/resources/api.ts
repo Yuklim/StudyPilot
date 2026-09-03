@@ -21,6 +21,7 @@ export type Source = keyof typeof sourceLabels
 export type Status = keyof typeof statusLabels
 export interface Resource {
   id: string
+  version: number
   title: string
   source_type: Source
   source_name: string | null
@@ -55,6 +56,15 @@ type ResourceMetadata = {
 }
 export type CreateResource = ResourceMetadata &
   ({ source_type: 'WEB'; source_url: string } | { source_type: 'PASTE'; pasted_content: string })
+
+export type ResourceChanges = Partial<{
+  title: string
+  source_name: string | null
+  save_reason: string | null
+  topic_id: string | null
+  source_url: string
+  pasted_content: string
+}>
 
 function invalid(): never {
   throw new ApiError('INVALID_RESPONSE')
@@ -108,6 +118,7 @@ function resource(value: unknown, detail: boolean): Resource {
     return invalid()
   const result: Resource = {
     id: id(item.id),
+    version: integer(item.version, 1),
     title: string(item.title),
     source_type: source as Source,
     source_name: nullableString(item.source_name),
@@ -185,6 +196,34 @@ export async function getResource(resourceId: string): Promise<Resource> {
 export async function createResource(body: CreateResource): Promise<Resource> {
   const envelope = object(await api.request('/api/v1/resources', { method: 'POST', body }))
   return resource(envelope.data, true)
+}
+
+export async function updateResource(
+  original: Resource,
+  changes: ResourceChanges,
+  expectedVersion: number,
+): Promise<Resource> {
+  if (
+    !isResourceId(original.id) ||
+    !Number.isSafeInteger(expectedVersion) ||
+    expectedVersion < 1 ||
+    !Object.keys(changes).length
+  )
+    throw new ApiError('INVALID_REQUEST')
+  const envelope = object(
+    await api.request(`/api/v1/resources/${original.id}`, {
+      method: 'PATCH',
+      body: { ...changes, expected_version: expectedVersion },
+    }),
+  )
+  const saved = resource(envelope.data, true)
+  if (
+    saved.id !== original.id ||
+    saved.source_type !== original.source_type ||
+    saved.version < expectedVersion
+  )
+    return invalid()
+  return saved
 }
 
 export async function createFileResource(

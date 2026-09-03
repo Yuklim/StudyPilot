@@ -52,6 +52,7 @@ const messages = {
   NOTE_NOT_FOUND: '这条心得已不存在，请重新读取心得列表。',
   VERSION_CONFLICT: '内容已被修改，本次操作未执行。请载入最新版本后重新确认。',
   VERSION_REQUIRED: '缺少有效版本，请重新载入后再操作。',
+  SOURCE_TYPE_MISMATCH: '资料来源类型不匹配，请重新读取资料；不能更换资料类型或文件原件。',
   STATE_CONFLICT: '当前进度或复习计划不满足要求，请读取最新资料后重新确认。',
   INVALID_STATE_TRANSITION: '无法切换到这个学习状态，请检查当前状态。',
   TAXONOMY_IN_USE: '这个分类仍被资料使用，不能删除；资料不会被连带删除。',

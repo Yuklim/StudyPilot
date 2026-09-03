@@ -19,6 +19,7 @@ export function sampleFile(overrides: Partial<Resource> = {}): Resource {
 export function sample(overrides: Partial<Resource> = {}): Resource {
   return {
     id: resourceId,
+    version: 1,
     title: '合成阅读资料',
     source_type: 'WEB',
     source_name: '示例书屋',
