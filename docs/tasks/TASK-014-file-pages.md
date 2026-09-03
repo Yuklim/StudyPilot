@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-014"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "接入既定文件接口并扩展共享客户端的受控 multipart/二进制传输与令牌失效处理；不改安全协议。保留独立只读 Review 和独立 Acceptance。"
 risk_flags = ["business", "security", "sensitive-storage", "tests"]
@@ -42,7 +42,7 @@ checks = ["frontend", "contracts", "governance"]
 
 - 已实现：固定入口的 FormData 快照上传、受控附件流下载和旧令牌失效处理；三来源共用元数据/分类表单；文件选择/移除/防重入/失败保留/离页保护；READY 详情按显式操作下载、核对大小/类型、安全名称和短期 URL 清理。未扩展后端协议或依赖。
 - 已同步页面/README 与契约的页面交付注释。针对 base 的结构比较通过：OpenAPI 标准内容完全未变，交付扩展仅 client_policy 变化；中文契约仅 1.3 变化。TASK-013 仅登记真实合并。
-- 实现提交：待本次实现提交后记录；所有下列检查针对同一最终产品内容。
+- 实现提交：`cc066a60cbd7c6a40475ca9a6dda94d06f0c5e76`；所有下列检查针对同一最终产品内容。
 - 2026-09-03，macOS 本机已安装工具；`PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-014-file-pages.md --worktree` 退出 0 / CHECKS PASS。base 为本任务基线；24 个文件，product_fingerprint=`e86f25a636b98b370c707fc788037c71ff3613cb478656d7d1d6a9fd6d5dc385`。范围/敏感模式/JSON/diff、OpenAPI/FastAPI 结构、前端格式/lint/类型/构建全部通过；前端 168 项、治理 23 项通过。治理测试内故意构造的失败命令是被测夹具，不是本任务失败。
 - `cd frontend && npm run test:e2e` 退出 0：Chromium 19 项通过（19.4 秒，原 16 + 文件 3）；真实临时后端 18000/前端 15173，单 Worker、无重试、trace 关闭。覆盖上传→刷新→FILE 筛选→键盘下载，浏览器下载名称及实际落盘字节相同；伪造格式拒绝、上传断网不重放与保留输入、下载受控错误/显式重试；既有网页/粘贴/分类/访问保护回归通过。临时服务正常退出，无真实用户数据。
 - 自动测试覆盖受控路径/表单字段/重复字段与快照、浏览器 multipart boundary、不泄露或持久化令牌、有界流/附件/名称/类型/大小验证、固定中文错误、上传与下载防重入/迟到结果、URL 释放及不内联内容。无后端改动，未重复 TASK-013 已合并的 273 项后端测试；本次浏览器测试实际使用该后端。
@@ -54,4 +54,5 @@ checks = ["frontend", "contracts", "governance"]
 ## 状态与最终证据
 
 - 2026-09-03：IN_PROGRESS；L3，已合并依赖可用。
+- 2026-09-03：IN_REVIEW；实现与测试记录固定，等待独立实际只读 Review。未提前声称审查或验收通过。
 <!-- EVIDENCE:END -->
