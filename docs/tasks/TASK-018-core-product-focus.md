@@ -44,10 +44,22 @@ checks = ["contracts"]
 - `git diff --check` 退出 0；`git diff --name-only -- backend frontend .agents .codex AGENTS.md` 输出为空。运行时/治理未改，不重跑已有功能测试，标记 NOT_RUN（不将旧 PASS 当作本轮功能测试）。
 - 检查环境：隔离 worktree，复用原仓库 Python 3.13/FastAPI 环境，不安装依赖。首轮临时 `.venv` 整体符号链接被范围检查识别为未忽略文件而失败，已移除该临时链接，改用被忽略的实体 `.venv` 目录内链接现有 bin/lib/配置；未删除环境本体。第一次 Node 命令指定了不存在的路径，退出 127；改用已安装的 `node` 重跑通过。没有降低检查规则。
 - 运行时代码、页面和数据不在本任务内；功能实现另立任务。
+- 后续修订 SHA：`cd65d816253862fecfe6524ef5b2d79026ed84da`；只移动 README 产品方向与索引新任务行，避免与待合并 TASK-017 在相邻位置冲突，README “以下内容”相应改成“本文其余内容”。产品要求未变。首轮只读三路比较发现 README/索引文字冲突，移动后以 `git merge-tree base cd65d81 e36fcbe` 检查无冲突标记，Node 断言退出 0；此为模拟，不执行合并，不改变两分支。
+- 修订后同一 `check_task --worktree` 命令退出 0，STATIC / contracts / CHECKS PASS；新 `product_fingerprint=92e94b7096f24719066548c83b9ea0fa6c9b26248e82c3b3dd48eab95a6f0bb2`，`git diff --check` 退出 0。OpenAPI 文件未再变，继承上一轮深比较证据。基线/产品范围不变，同一 Reviewer 只需增量复核。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选、独立 Review/Acceptance：待冻结后的实际报告。
+- 首轮候选：`2b66862b28c488f0c0d2460e2e1ea5ee29a18ada`，Reviewer 会话 `01a06692-43cc-7361-a5a5-f05e4c7d96e4`，运行器头 sandbox=read-only、approval=never，未改模型默认设置，进程退出 0。原文如下（仅去掉行末空格）：
+
+PASS
+
+- 基线/候选：`aaa1b5abfe929117f87d59b70d60040499a1d50f` → `2b66862b28c488f0c0d2460e2e1ea5ee29a18ada`（8 文件）
+- 权限证据：`test -w .` 返回 `1`（不可写）；当前运行上下文用户 `yuklimching`（`uid=501`），实际按只读环境执行，无任何尝试写入操作。
+- 覆盖：已审阅 `git diff` 的完整基线到候选差异（8 文件）及必要上下文，重点核对《项目需求说明》/《项目背景与介绍》/架构提案/契约文档/任务记录/索引。
+- 结论：未发现阻断性问题。`docs/contracts/openapi-v1.json` 仅 `info.description` 有改动，`paths/schemas/security/x-delivery-profile` 未改；未出现页面代码、接口变更、数据模型变更、测试/治理规则改动或虚构时间/时长/状态默认值写入。
+- 剩余风险（非阻断）：TASK-018仍处 `IN_REVIEW`，当前仅文档级收敛，功能是否可用仍依赖后续实现任务（尤其 `TASK-017` 相关后续页能力）。
+
+- 最终增量 Review/Acceptance：待新候选报告；首轮 PASS 不直接代表修订后的候选。
 - 当前 IN_REVIEW；不声明页面已改或 TASK-017 已合并。
 <!-- EVIDENCE:END -->
