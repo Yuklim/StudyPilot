@@ -3,7 +3,7 @@
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "info": {"title": "StudyPilot 第一阶段 API", "version": "1.0.0", "description": "本地单用户 StudyPilot 第一阶段完整 MVP 目标契约，不是当前全部可调用能力清单。TASK-009 的已授权阶段子集及暂未开放输入响应见 x-delivery-profile 和 API与数据契约基线.md 第1.3节；当前运行时可用性以该阶段说明为准。标准 paths/schemas 保留最终要求，不能未经阶段筛选直接生成当前客户端。事务、安全前置顺序、文件对账与删除恢复的含义权威见同一契约文档。"},
   "x-delivery-profile": {
-    "stage": "TASK-015",
+    "stage": "TASK-017",
     "standard_schema_scope": "full-mvp-target",
     "contract_section": "1.3",
     "available_operations": {
@@ -26,11 +26,16 @@
       "detachResourceTag": {},
       "listResourceStudyRecords": {},
       "createResourceStudyRecord": {},
-      "listStudyRecords": {}
+      "listStudyRecords": {},
+      "listResourceNotes": {},
+      "createResourceNote": {},
+      "getResourceNote": {},
+      "updateResourceNote": {},
+      "deleteResourceNote": {}
     },
     "deferred_inputs": [],
-    "client_policy": "当前不自动生成客户端；后续生成须先按本清单限制可用操作与媒体类型。FILE 后端及页面已接入；JSON 不接受 FILE。TASK-015 提供学习记录后端，TASK-016 接入学习表单和历史页面；复习动作另行交付。未列出操作没有本阶段可调用承诺。",
-    "completion_gate": "TASK-015 候选实现三个学习记录操作及进度/历史事务；本清单随测试、独立审查和验收通过后交用户合并生效，不表示笔记、复习、资料删除等完整 MVP 已交付。"
+    "client_policy": "当前不自动生成客户端；后续生成须先按本清单限制可用操作与媒体类型。FILE 和学习记录后端及页面已接入；JSON 不接受 FILE。TASK-017 提供个人笔记后端，笔记页面尚未接入；复习动作另行交付。未列出操作没有本阶段可调用承诺。",
+    "completion_gate": "TASK-017 候选实现五个个人笔记操作；本清单随测试、独立审查和验收通过后交用户合并生效，不表示笔记页面、复习、资料删除等完整 MVP 已交付。"
   },
   "tags": [{"name": "local-session", "description": "本次本地进程访问令牌"}, {"name": "resources", "description": "资料与原始文件"}, {"name": "taxonomy", "description": "主题、标签和资料标签关联"}, {"name": "notes", "description": "个人笔记"}, {"name": "learning", "description": "学习进度与不可变学习记录"}, {"name": "reviews", "description": "复习计划与不可变复习结果"}, {"name": "analytics", "description": "只读实时统计"}],
   "paths": {
