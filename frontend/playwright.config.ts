@@ -14,7 +14,8 @@ export default defineConfig({
   outputDir: './test-results',
   use: {
     baseURL: 'http://127.0.0.1:15173',
-    trace: 'retain-on-failure',
+    // Real resource pages exchange ephemeral credentials; never record network traces.
+    trace: 'off',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: [

@@ -26,13 +26,12 @@ export const pages: ShellPage[] = [
     caption: '好内容值得收藏，也值得再次打开。',
     icon: 'library',
     emptyTitle: '给想学的内容，留一个位置',
-    description:
-      '资料接口尚未接入。之后，你可以在这里整理网页、文件与粘贴内容，按主题和标签再次找到它们。',
+    description: '收藏网页和粘贴内容，按来源、学习状态和关键词再次找到它们。',
   },
   {
     path: '/resources/new',
     title: '添加资料',
-    caption: '从一篇网页、一份文件，或一段文字开始。',
+    caption: '从一篇网页，或一段值得留下的文字开始。',
     icon: 'plus',
     emptyTitle: '',
     description: '',
@@ -42,9 +41,8 @@ export const pages: ShellPage[] = [
     title: '资料详情',
     caption: '原始资料与自己的理解，各有一个位置。',
     icon: 'library',
-    emptyTitle: '资料详情将在这里展开',
-    description:
-      '资料读取接口尚未接入。本页不展示示例资料；之后会呈现原始内容入口、学习状态、个人笔记与学习记录。',
+    emptyTitle: '打开收藏的这一页',
+    description: '原始内容与收藏原因已可查看，学习记录和笔记仍待接入。',
   },
   {
     path: '/study-records',
