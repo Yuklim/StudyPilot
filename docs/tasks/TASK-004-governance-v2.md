@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-004"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "治理权限、风险门禁与自动检查变化，不能因为文件是文档就判为 L1。"
 risk_flags = ["governance"]
@@ -68,6 +68,8 @@ acceptance_exception = "V2_USER_REQUEST_2026-09-03"
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
+
+- 2026-09-03：用户已合并 PR #8，合并提交 `9b6b21d73752e86a2c89e871222d3705d4dea6c7`；当前状态 MERGED。以下原验收记录保留为历史证据。
 
 - 2026-09-03 追加修订完成：ACCEPTED；最新最终候选为 `0021895a96d0e725b08dd2ea60f9edd66538bac7`。同一 Reviewer `01a062f8-bb34-7032-80f8-ec811697bc71` 增量复核 PASS，无新增阻断/非阻断问题；以下旧候选记录保留为历史证据，最新报告见末尾。
 - 本次主 Agent证据验收 PASS（仍仅用户已授权的一次性例外）：新增规则与当前需求相符，23 项测试通过且候选静态指纹与本次被测指纹一致；实际只读 Review 覆盖新增 10 文件、继承旧覆盖；TASK-003 指针仍为 `fe6196f724cafbb67a30f1479769a57b5affc8d4`。没有放宽必要检查、改变已确认契约或遗留阻断问题。

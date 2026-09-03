@@ -2,7 +2,7 @@
 
 ## 1. 基本信息
 
-- 状态：`ACCEPTED`
+- 状态：`MERGED`
 - 负责人角色：`architecture_owner`
 - 创建人：主协调 Agent
 - 创建日期：2026-09-02
@@ -203,6 +203,8 @@ python3 -m json.tool docs/contracts/openapi-v1.json >/dev/null
 ## 13. 决策与状态记录
 
 只有 `coordinator` 可以维护本节状态；其他角色只能返回状态建议和证据。
+
+2026-09-03：用户已合并 PR #9，合并提交 `8d8a3b0c3c03e5227bf0f78bb081e9b1bdd4cc43`；当前状态 MERGED。以下审查/验收过程记录原样保留。
 
 | 日期 | 状态或决定 | 责任人 | 说明 |
 | --- | --- | --- | --- |
