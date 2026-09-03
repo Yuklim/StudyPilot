@@ -58,7 +58,9 @@ test('navigation, history, direct links and keyboard focus use only approved res
   await page.getByRole('link', { name: '添加资料', exact: true }).click()
   await expect(page).toHaveURL(/\/resources\/new$/)
   await expect(page.getByRole('form', { name: '添加资料表单' })).toBeVisible()
-  await expect(page.getByText('文件上传、主题与标签管理尚未开放。')).toBeVisible()
+  await expect(
+    page.getByText('文件上传尚未开放。可先在分类整理中创建主题与标签，再回来选择。'),
+  ).toBeVisible()
   await expect(nav.getByRole('link', { name: '资料库' })).toHaveAttribute('aria-current', 'page')
   await page.goBack()
   await expect(page.getByRole('heading', { name: '资料库', level: 1 })).toBeFocused()

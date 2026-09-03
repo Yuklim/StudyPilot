@@ -1,4 +1,5 @@
 import { api, ApiError } from '../../api/client'
+import { getClassification } from '../taxonomy/api'
 
 export const sourceLabels = { WEB: '网页', PASTE: '粘贴内容', FILE: '文件' } as const
 export const statusLabels = {
@@ -20,6 +21,8 @@ export interface Resource {
   updated_at: string
   progress: { status: Status; progress_percent: number }
   tags: { id: string; name: string }[]
+  topic_id: string | null
+  topic_name?: string
   source_url?: string
   pasted_content?: string
   original_file: { original_name: string; size_bytes: number; media_type: string } | null
@@ -38,6 +41,8 @@ export type CreateResource = {
   title: string
   source_name?: string
   save_reason?: string
+  topic_id?: string
+  tag_ids?: string[]
 } & ({ source_type: 'WEB'; source_url: string } | { source_type: 'PASTE'; pasted_content: string })
 
 function invalid(): never {
@@ -95,6 +100,7 @@ function resource(value: unknown, detail: boolean): Resource {
       const row = object(tag)
       return { id: id(row.id), name: string(row.name) }
     }),
+    topic_id: item.topic_id === null ? null : id(item.topic_id),
     original_file:
       file === null
         ? null
@@ -109,13 +115,34 @@ function resource(value: unknown, detail: boolean): Resource {
   return result
 }
 
+// The approved resource projection contains topic_id, not a joined topic name.
+// Resolve each distinct topic once per read; a failed label lookup must not hide the resource.
+async function withTopics(items: Resource[]): Promise<Resource[]> {
+  const ids = [...new Set(items.flatMap((item) => (item.topic_id ? [item.topic_id] : [])))]
+  const names = new Map(
+    await Promise.all(
+      ids.map(async (topicId) => {
+        try {
+          return [topicId, (await getClassification('topics', topicId)).name] as const
+        } catch {
+          return [topicId, undefined] as const
+        }
+      }),
+    ),
+  )
+  return items.map((item) => ({
+    ...item,
+    topic_name: item.topic_id ? names.get(item.topic_id) : undefined,
+  }))
+}
+
 export async function listResources(query: string): Promise<ResourcePage> {
   const envelope = object(await api.request(`/api/v1/resources?${query}`))
   if (!Array.isArray(envelope.data)) return invalid()
   const page = object(envelope.page)
   if (typeof page.has_more !== 'boolean') return invalid()
   return {
-    data: envelope.data.map((row) => resource(row, false)),
+    data: await withTopics(envelope.data.map((row) => resource(row, false))),
     page: {
       number: integer(page.number, 1),
       size: integer(page.size, 1),
@@ -130,7 +157,7 @@ export async function getResource(resourceId: string): Promise<Resource> {
   const envelope = object(await api.request(`/api/v1/resources/${resourceId}`))
   const result = resource(envelope.data, true)
   if (result.id !== resourceId) return invalid()
-  return result
+  return (await withTopics([result]))[0]
 }
 export async function createResource(body: CreateResource): Promise<Resource> {
   const envelope = object(await api.request('/api/v1/resources', { method: 'POST', body }))
@@ -153,6 +180,7 @@ export function safeWebUrl(value: string): string | null {
 }
 export function failureText(error: unknown): string {
   if (!(error instanceof ApiError)) return '暂时无法完成请求，请稍后重试。'
+  if (error.code === 'TOPIC_NOT_FOUND' || error.code === 'TAG_NOT_FOUND') return error.message
   if (error.status === 404) return '没有找到这份资料。它可能已不存在，或地址有误。'
   if (error.status === 422) return '资料内容未通过检查，请检查输入的格式和长度。'
   if (error.code === 'INVALID_RESPONSE') return '收到的数据格式不正确，暂时无法显示。'

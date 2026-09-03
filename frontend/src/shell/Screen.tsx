@@ -3,6 +3,7 @@ import { Link, useMatch } from 'react-router-dom'
 import { ResourceDetail } from '../features/resources/ResourceDetail'
 import { ResourceForm } from '../features/resources/ResourceForm'
 import { ResourceLibrary } from '../features/resources/ResourceLibrary'
+import { ClassificationManager } from '../features/taxonomy/ClassificationManager'
 
 import { BookSketch, Icon } from './Icon'
 import type { ShellPage } from './pages'
@@ -104,6 +105,7 @@ function Overview() {
 export function Screen({ page }: { page: ShellPage }) {
   const match = useMatch('/resources/:resourceId')
   if (page.path === '/') return <Overview />
+  if (page.path === '/classifications') return <ClassificationManager />
   if (page.path === '/resources/new') return <ResourceForm />
   if (page.path === '/resources') return <ResourceLibrary />
   if (page.path === '/resources/:resourceId' && match?.params.resourceId) {

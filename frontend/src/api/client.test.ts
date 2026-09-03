@@ -26,6 +26,72 @@ beforeEach(() => {
 })
 
 describe('memory-only local API client', () => {
+  const tagPath = '/api/v1/tags/00000000-0000-4000-8000-000000000001'
+  it('sends only a strong integer version for taxonomy deletion, keeping token controls private', async () => {
+    fetchMock
+      .mockResolvedValueOnce(session())
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+    await expect(
+      createApiClient().request(tagPath, { method: 'DELETE', ifMatchVersion: 3 }),
+    ).resolves.toBeUndefined()
+    const [path, init] = fetchMock.mock.calls[1]
+    expect(path).toBe(tagPath)
+    expect(new Headers(init?.headers).get('If-Match')).toBe('"3"')
+    expect(new Headers(init?.headers).get('X-StudyPilot-Token')).toBe(token)
+    expect(init).toMatchObject({
+      method: 'DELETE',
+      credentials: 'omit',
+      redirect: 'error',
+      body: undefined,
+    })
+  })
+  it.each([0, -1, 1.2, Infinity, Number.MAX_SAFE_INTEGER + 1, '2', '*', 'W/"2"', null])(
+    'rejects invalid version %s before even bootstrapping',
+    async (version) => {
+      await expect(
+        createApiClient().request(tagPath, { method: 'DELETE', ifMatchVersion: version } as never),
+      ).rejects.toMatchObject({ code: 'INVALID_REQUEST' })
+      expect(fetchMock).not.toHaveBeenCalled()
+    },
+  )
+  it.each([
+    [tagPath, { method: 'PATCH', ifMatchVersion: 1 }],
+    [tagPath, { method: 'DELETE', ifMatchVersion: 1, body: {} }],
+    [tagPath + '?extra=1', { method: 'DELETE', ifMatchVersion: 1 }],
+    [
+      '/api/v1/resources/00000000-0000-4000-8000-000000000001',
+      { method: 'DELETE', ifMatchVersion: 1 },
+    ],
+    [tagPath, { method: 'DELETE', headers: { 'X-StudyPilot-Token': 'override' } }],
+  ])('rejects unsupported version/header use before network', async (path, options) => {
+    await expect(createApiClient().request(path as string, options as never)).rejects.toMatchObject(
+      { code: 'INVALID_REQUEST' },
+    )
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+  it.each([
+    ['VERSION_CONFLICT', { current_version: 4, secret: 'private' }, { current_version: 4 }],
+    ['TAXONOMY_IN_USE', { resource_count: 2, secret: 'private' }, { resource_count: 2 }],
+    ['TAXONOMY_IN_USE', { resource_count: 'private' }, {}],
+    ['VERSION_CONFLICT', { current_version: -1 }, {}],
+    ['DUPLICATE_TOPIC', { current_version: 2 }, {}],
+  ])(
+    'projects only safe numeric details for %s and never retries',
+    async (code, details, expected) => {
+      fetchMock
+        .mockResolvedValueOnce(session())
+        .mockResolvedValueOnce(
+          Response.json({ error: { code, details, message: 'private payload' } }, { status: 409 }),
+        )
+      const error = await createApiClient()
+        .request(tagPath, { method: 'DELETE', ifMatchVersion: 1 })
+        .catch((value: unknown) => value)
+      expect(error).toMatchObject({ code, status: 409, details: expected })
+      expect(JSON.stringify(error)).not.toContain('private')
+      expect(String(error)).not.toContain('private')
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    },
+  )
   it('bootstraps once for parallel callers, exposes no token, and never persists', async () => {
     const store = vi.spyOn(Storage.prototype, 'setItem')
     const log = vi.spyOn(console, 'log')

@@ -87,7 +87,7 @@ function App() {
           <Icon name="info" />
           <p>
             <strong>网页与粘贴资料已开放</strong>
-            <span>学习记录、文件上传等功能仍在开发中。</span>
+            <span>主题与标签可在分类整理中管理；学习记录、文件上传仍在开发中。</span>
           </p>
         </div>
         <Screen page={page} />

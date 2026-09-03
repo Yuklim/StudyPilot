@@ -46,7 +46,7 @@ describe('StudyPilot journal shell', () => {
   it('navigates between sections and moves keyboard focus to the new heading', () => {
     renderWithRouter(<App />)
     const nav = within(screen.getByRole('navigation', { name: '主要导航' }))
-    expect(nav.getAllByRole('link')).toHaveLength(5)
+    expect(nav.getAllByRole('link')).toHaveLength(6)
     for (const title of ['资料库', '学习记录', '复习安排', '主题统计', '学习概览']) {
       const link = nav.getByRole('link', { name: title })
       fireEvent.click(link)
@@ -65,7 +65,9 @@ describe('StudyPilot journal shell', () => {
     expect(screen.getByRole('heading', { name: '添加资料', level: 1 })).toHaveFocus()
     expect(screen.getByRole('form', { name: '添加资料表单' })).toBeInTheDocument()
     expect(screen.getAllByRole('radio')).toHaveLength(2)
-    expect(screen.getByText('文件上传、主题与标签管理尚未开放。')).toBeInTheDocument()
+    expect(
+      screen.getByText('文件上传尚未开放。可先在分类整理中创建主题与标签，再回来选择。'),
+    ).toBeInTheDocument()
     expect(
       within(screen.getByRole('navigation')).getByRole('link', { name: '资料库' }),
     ).toHaveAttribute('aria-current', 'page')

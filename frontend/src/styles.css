@@ -682,6 +682,162 @@ p {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+.classification-intro {
+  border-bottom: 1px dashed var(--line);
+  padding: 8px 0 24px;
+  margin-bottom: 20px;
+}
+.classification-intro h2 {
+  font:
+    600 24px/1.8 'Songti SC',
+    serif;
+  margin: 10px 0;
+  overflow-wrap: anywhere;
+}
+.classification-tabs {
+  width: fit-content;
+  margin-bottom: 16px;
+}
+.classification-browser {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.classification-search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+  margin: 20px 0;
+}
+.classification-search .resource-field {
+  flex: 1 1 120px;
+  margin: 0;
+}
+.classification-list {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0;
+  display: grid;
+  gap: 12px;
+}
+.classification-card {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: #f8f8f0;
+}
+.classification-card > div:first-child {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+.classification-card h3,
+.classification-card span {
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.classification-card p {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.classification-editor {
+  margin: 22px 0;
+  padding: 22px;
+  border: 1px solid #dbcdaa;
+  border-radius: 16px;
+  background: #faf5e7;
+}
+.classification-editor h2 {
+  font-size: 18px;
+  margin: 16px 0;
+  overflow-wrap: anywhere;
+}
+.classification-editor .resource-actions {
+  margin-top: 20px;
+}
+.journal-button.danger {
+  color: #8b493a;
+  border-color: #d3b6aa;
+  background: #fff9f4;
+}
+.classification-empty {
+  padding: 32px 10px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+.classification-picker {
+  grid-column: 1 / -1;
+  margin: 12px 0 24px;
+  padding: 18px 0;
+  border-top: 1px dashed var(--line);
+  border-bottom: 1px dashed var(--line);
+  min-width: 0;
+}
+.classification-picker > .resource-hint {
+  margin: 10px 0;
+  overflow-wrap: anywhere;
+}
+.classification-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  margin-top: 24px;
+}
+.classification-picker-grid > section {
+  min-width: 0;
+}
+.classification-picker-grid h3 {
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+.classification-choice {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.classification-choice input {
+  accent-color: var(--green);
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+.selection-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0;
+}
+.selection-chips button {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+@media (max-width: 760px) {
+  .classification-picker-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .classification-editor {
+    padding: 16px;
+  }
+  .classification-card {
+    padding: 14px;
+  }
+}
 .resource-sheet,
 .resource-filters {
   min-width: 0;

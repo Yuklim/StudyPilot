@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { displayTime, getResource, safeWebUrl, sourceLabels } from './api'
 import { ResourceError, ResourceProgress } from './ResourceState'
 import { useResourceQuery } from './useResourceQuery'
+import { ResourceTagEditor } from '../taxonomy/ResourceTagEditor'
 
 export function ResourceDetail({ resourceId }: { resourceId: string }) {
   const load = useCallback(() => getResource(resourceId), [resourceId])
@@ -31,6 +32,12 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
           </div>
           <ResourceProgress resource={item} />
           <dl className="resource-metadata">
+            <div>
+              <dt>主要主题</dt>
+              <dd>
+                {item.topic_id ? (item.topic_name ?? '暂无法读取名称，请重新加载') : '未分配'}
+              </dd>
+            </div>
             <div>
               <dt>来源名称</dt>
               <dd>{item.source_name || '未填写'}</dd>
@@ -60,6 +67,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
               </dd>
             </div>
           </dl>
+          <ResourceTagEditor resource={item} refreshed={retry} />
           <section className="save-reason-note" aria-label="保存原因">
             <span className="note-tab">为什么收下这一页</span>
             <p>{item.save_reason || '还没有填写保存原因。'}</p>
@@ -104,7 +112,9 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
               <p className="resource-hint">文件上传与打开功能尚未开放。</p>
             </section>
           )}
-          <p className="resource-hint feature-boundary">修改、删除、学习记录与笔记功能尚未开放。</p>
+          <p className="resource-hint feature-boundary">
+            资料正文修改、主题重分配、资料删除、学习记录与笔记功能尚未开放。
+          </p>
         </>
       )}
     </section>

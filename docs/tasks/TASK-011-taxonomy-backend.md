@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-011"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "实现既定分类修改、版本前置条件、删除未使用分类及资料标签关联，涉及删除与事务一致性；仅同步发布能力清单，不改变接口字段或已确认语义。保留独立 Review 与独立验收。"
 risk_flags = ["business", "deletion", "sensitive-storage", "tests"]
@@ -108,4 +108,5 @@ No findings。
 - 证据排版：独立报告的三个 Markdown 行末双空格触发 Git diff 空白检查；仅去除行末空格，报告文字、结论、标识未改，不影响审查候选与测试证据。此为证据格式修复，不是产品修改。
 - 2026-09-03：ACCEPTED。只核对任务边界、测试输入/失败恢复、Review PASS、独立 Acceptance PASS 及完成条件；没有第三次代码审查。冻结候选 `4981e9274969c6cf1119c6a904bcb6d6c323c121` 之后仅窄证据回写；`d3ba70d` 已通过 EVIDENCE_ONLY，最终写回提交后再次执行同一窄门禁，不重跑产品测试。
 - 当前无未解决阻断问题；已知少量 SQLite 写入及分类页面未接入限制保留。提交本任务分支供用户最终合并，不向 main 推送或自行合并。合并后的下一项为主题/标签管理页面及资料表单选择、列表筛选接入。
+- 2026-09-03：用户已合并 PR #16，GitHub 核实 MERGED，合并时间 2026-09-03T05:48:24Z，提交 `06025c70f460f77a0fb5ca89a36a6676a85b0171`；状态 MERGED。
 <!-- EVIDENCE:END -->

@@ -13,6 +13,7 @@ export function sample(overrides: Partial<Resource> = {}): Resource {
     updated_at: '2026-09-03T00:00:00Z',
     progress: { status: 'UNREAD', progress_percent: 0 },
     tags: [],
+    topic_id: null,
     original_file: null,
     source_url: 'https://example.com/article',
     ...overrides,

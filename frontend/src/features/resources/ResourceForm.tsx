@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import { createResource, failureText, safeWebUrl } from './api'
+import { ClassificationPicker, type Selection } from '../taxonomy/ClassificationPicker'
 
 export function ResourceForm() {
   const navigate = useNavigate()
@@ -16,6 +17,7 @@ export function ResourceForm() {
   const [reason, setReason] = useState('')
   const [error, setError] = useState('')
   const [uncertain, setUncertain] = useState(false)
+  const [classification, setClassification] = useState<Selection>({ topic: null, tags: [] })
   useEffect(() => {
     alive.current = true
     return () => {
@@ -36,6 +38,7 @@ export function ResourceForm() {
       invalid = '请填写完整的 http 或 https 网址，不含账号、密码、空格或 # 片段，最多 2048 字。'
     else if (source === 'PASTE' && (!content.trim() || length(content) > 1_000_000))
       invalid = '请粘贴非空原文，最多 100 万字。'
+    else if (classification.tags.length > 20) invalid = '最多选择 20 个标签。'
     if (invalid) {
       setError(invalid)
       return
@@ -48,6 +51,8 @@ export function ResourceForm() {
       title: cleanTitle,
       ...(sourceName ? { source_name: sourceName } : {}),
       ...(reason ? { save_reason: reason } : {}),
+      ...(classification.topic ? { topic_id: classification.topic.id } : {}),
+      ...(classification.tags.length ? { tag_ids: classification.tags.map((tag) => tag.id) } : {}),
     }
     try {
       const saved = await createResource(
@@ -165,6 +170,7 @@ export function ResourceForm() {
               />
             </label>
           </div>
+          <ClassificationPicker value={classification} onChange={setClassification} />
           <button className="journal-button primary" type="submit">
             {pending ? '正在保存…' : '保存到资料库'}
           </button>
@@ -181,7 +187,9 @@ export function ResourceForm() {
           </div>
         )}
       </form>
-      <p className="resource-hint feature-boundary">文件上传、主题与标签管理尚未开放。</p>
+      <p className="resource-hint feature-boundary">
+        文件上传尚未开放。可先在分类整理中创建主题与标签，再回来选择。
+      </p>
       <Link className="text-link" to="/resources">
         返回资料库
       </Link>
