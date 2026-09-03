@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-005"
-status = "IN_REVIEW"
+status = "IN_ACCEPTANCE"
 risk = "L3"
 risk_reason = "初始共享数据模型、跨模块外键和数据库迁移会影响数据完整性，保留独立 Review 与独立验收。"
 risk_flags = ["migration", "critical-data", "sensitive-storage"]
@@ -80,4 +80,21 @@ Findings
 - 除上述契约漂移外，模型/迁移一致性、外键与级联方向、事务入口、UTC/日期边界、版本并发、防普通 ORM 改写历史、初始迁移重复升级与非空降级保护均已覆盖到位。
 
 - 主 Agent处置：接受该阻断结论，修正允许值并补契约正反测试；不修改已批准契约。修订重新冻结，同一 Reviewer 增量复核。
+### 最终独立 Review 原文
+
+同一 Reviewer session `01a064fa-2a88-7b70-a847-485041a59554`，运行头再次验证 `sandbox: read-only`、`approval: never`。最终候选静态指纹与修订测试一致，`41bcf1d38279615c7f23fd1a72ce261b47826af2cf171bd047380a51f36e3e3e`。
+
+PASS
+
+最终候选 `6dee1d061b84fa4b0dc63ef9f6d331d1fb46dec2`。继承范围：继续有效的是我上轮对 `8d8a3b0c3c03e5227bf0f78bb081e9b1bdd4cc43..d41b213ee92819bfa7843ea9793f9c540d754be0` 其余未改部分的完整审查结论；本轮仅增量检查 `d41b213ee92819bfa7843ea9793f9c540d754be0..6dee1d061b84fa4b0dc63ef9f6d331d1fb46dec2` 及其必要影响。
+
+实际只读权限证据：本会话仍处于 `read-only` 沙箱；且 `git status` 运行时对 `/tmp/xcrun_db-*` 的写入继续收到 `Operation not permitted`，符合独立只读运行。
+
+上轮唯一 finding 已关闭。`OriginalFile.media_type` 模型与冻结迁移现已改为契约要求的 `text/markdown; charset=utf-8` / `text/plain; charset=utf-8`，见 [models.py](/Users/yuklimching/Desktop/StudyPilot/backend/src/studypilot/infrastructure/database/models.py:139) 和 [0001_initial.py](/Users/yuklimching/Desktop/StudyPilot/backend/migrations/versions/0001_initial.py:288)；并补了两个合法值持久化正例与两个裸类型反例，见 [test_database.py](/Users/yuklimching/Desktop/StudyPilot/backend/tests/test_database.py:191)。
+
+新 findings：No findings。
+
+覆盖与风险：已核对本轮仅涉及的模型、初始迁移、数据库测试、任务证据更新；后端 49 项、Ruff format/lint、mypy、离线构建和静态治理检查的复用/更新证据与本次修订一致，未见新的契约漂移或未覆盖影响。
+
+- 当前 IN_ACCEPTANCE；主 Agent只核对边界、测试指纹、Review 结论和剩余风险，未重复完整代码审查；首轮阻断已关闭。等待与实现者/Reviewer 分离的只读验收。
 <!-- EVIDENCE:END -->
