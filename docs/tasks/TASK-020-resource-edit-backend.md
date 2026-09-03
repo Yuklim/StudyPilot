@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-020"
-status = "IN_ACCEPTANCE"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "实现既定资料修改接口，涉及用户原文、主题归属、版本竞争和事务保存；同步交付清单，保留独立只读审查与验收，不改模型或迁移。"
 risk_flags = ["business", "critical-data", "tests"]
@@ -69,4 +69,14 @@ PASS。
 No findings。限制：未做前端联测，本任务仅后端。
 
 - 主 Agent 核对：Review 对冻结候选完整覆盖且无 findings；实现、检查输入与完成条件未变，已有 466 项测试和构建证据可复用。IN_ACCEPTANCE，交另一独立只读 Agent 核对证据与五项完成条件，不重复代码审查；未宣称页面已接入。
+
+- 独立 GPT-5.5 Acceptance：会话 `01a06711-b208-7280-bd13-b77d1e3042c7`，独立于实现者和 Reviewer；运行器头确认 `model: gpt-5.5`、`sandbox: read-only`、`approval: never`，退出 0。原文如下（仅去行末空格）：
+
+PASS。
+
+产品候选：`536bf9bbc3d8f6ff454f3121fb38387bee671ae5`；证据 HEAD：`f2ec4d8e42a833f8a3a8f49b0c7e26bccdac9dc2`。本次运行环境为只读、approval `never`；未写文件、未提交、未委派，且独立于实现者和 Reviewer 会话 `01a0670d-cb7d-7153-89f3-cd7622860ba6`。
+
+已实际运行指定静态命令一次，退出 0：`EVIDENCE_ONLY PASS 536bf9...f2ec4d...; no product tests rerun`。五项条件映射成立：更新语义、校验与安全、回滚/竞争/主题联动、466 后端/构建/契约证据复用、独立 Review 与本验收均齐。剩余风险为已声明边界：前端编辑入口尚未接入，需后续任务处理；最终合并仍由用户决定。
+
+- 主 Agent 最终核对：ACCEPTED，无未处置的审查问题；沿用已验证的 466 项测试及构建，未重复开发或全套测试，默认模型配置未改。产品候选仍为 `536bf9bbc3d8f6ff454f3121fb38387bee671ae5`，后续仅状态与证据写回。保留仅后端、无前端编辑入口、无原文修订历史/回收站、SQLite 写竞争可能受控失败需重读等已声明限制。待用户合并，下一任务接入资料编辑页面；Agent 不代合并。
 <!-- EVIDENCE:END -->
