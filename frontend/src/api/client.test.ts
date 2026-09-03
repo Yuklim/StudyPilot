@@ -45,6 +45,27 @@ beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock)
 })
 
+it.each(['STATE_CONFLICT', 'INVALID_STATE_TRANSITION'])(
+  'maps %s without exposing server content or replaying',
+  async (code) => {
+    fetchMock.mockResolvedValueOnce(session()).mockResolvedValueOnce(
+      Response.json(
+        {
+          error: { code, message: 'private raw SQL and note', details: { note: 'private' } },
+        },
+        { status: 409 },
+      ),
+    )
+    const outcome = createApiClient().request('/api/v1/resources/id/study-records', {
+      method: 'POST',
+      body: {},
+    })
+    await expect(outcome).rejects.toMatchObject({ code, status: 409, details: {} })
+    await expect(outcome).rejects.not.toThrow('private')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  },
+)
+
 describe('controlled original-file transports', () => {
   const fileId = '00000000-0000-4000-8000-000000000002'
   it('sends a snapshot of multipart only to the fixed upload endpoint without setting boundary', async () => {

@@ -30,13 +30,15 @@ test('navigation, history, direct links and keyboard focus use only approved res
 }, testInfo) => {
   const unexpectedRequests: string[] = []
   let resourcePageOpened = false
+  let learningPageOpened = false
   page.on('request', (request) => {
     const url = new URL(request.url())
     const isApi = url.pathname.startsWith('/api/')
     const approvedRead =
-      resourcePageOpened &&
       request.method() === 'GET' &&
-      ['/api/v1/local-session', '/api/v1/resources'].includes(url.pathname)
+      ((resourcePageOpened &&
+        ['/api/v1/local-session', '/api/v1/resources'].includes(url.pathname)) ||
+        (learningPageOpened && url.pathname === '/api/v1/study-records'))
     if (url.origin !== 'http://127.0.0.1:15173' || (isApi && !approvedRead)) {
       unexpectedRequests.push(url.origin + url.pathname)
     }
@@ -73,6 +75,7 @@ test('navigation, history, direct links and keyboard focus use only approved res
   await expect(page).toHaveTitle('资料详情 · StudyPilot')
   await page.getByRole('link', { name: '返回资料库' }).click()
   for (const title of ['学习记录', '复习安排', '主题统计']) {
+    if (title === '学习记录') learningPageOpened = true
     await nav.getByRole('link', { name: title }).click()
     await expect(page.getByRole('heading', { name: title, level: 1 })).toBeFocused()
   }

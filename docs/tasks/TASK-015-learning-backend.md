@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-015"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "实现既定学习写接口，涉及当前进度与不可变历史的原子保存、版本冲突及状态/时间不变量。标准契约与数据库结构不变，保留独立只读 Review 和 Acceptance。"
 risk_flags = ["business", "critical-data", "public-api", "tests"]
@@ -78,4 +78,5 @@ PASS。验收候选 `3453af065c0688242e30c910b66d8e9085f6cdbd`，当前 `HEAD=75
 
 - coordinator：五项完成条件证据齐备，366 项后端已包含 93 项新增测试；Review / Acceptance 均 PASS、无待修复 findings。首次构建失败与成功补跑完整保留，最终必要检查均完成。ACCEPTED，等待用户最终合并；未推送 main、未代为合并。最终仅证据写回与窄门禁，不递归验收。
 
+- 2026-09-03：用户已合并，GitHub 核实 PR #20 MERGED，2026-09-03T07:56:06Z，合并 SHA `cd348e9d9935a69902e24223b1e5421bba6821bd`；保留原有实现/检查/审查历史。
 <!-- EVIDENCE:END -->

@@ -1,6 +1,13 @@
 import { api, ApiError, fileMediaTypes, MAX_FILE_BYTES } from '../../api/client'
 import { getClassification } from '../taxonomy/api'
 import { fileIssue, type OriginalFile } from './files'
+import {
+  progress as parseProgress,
+  reviewPlan,
+  validateProgressPlan,
+  type Progress,
+  type ReviewPlan,
+} from '../learning/model'
 
 export const sourceLabels = { WEB: '网页', PASTE: '粘贴内容', FILE: '文件' } as const
 export const statusLabels = {
@@ -20,7 +27,8 @@ export interface Resource {
   save_reason: string | null
   created_at: string
   updated_at: string
-  progress: { status: Status; progress_percent: number }
+  progress: Progress
+  review_plan: ReviewPlan | null
   tags: { id: string; name: string }[]
   topic_id: string | null
   topic_name?: string
@@ -106,7 +114,8 @@ function resource(value: unknown, detail: boolean): Resource {
     save_reason: nullableString(item.save_reason),
     created_at: instant(item.created_at),
     updated_at: instant(item.updated_at),
-    progress: { status: status as Status, progress_percent: percent },
+    progress: parseProgress(item.progress, id(item.id)),
+    review_plan: reviewPlan(item.review_plan),
     tags: item.tags.map((tag) => {
       const row = object(tag)
       return { id: id(row.id), name: string(row.name) }
@@ -123,6 +132,7 @@ function resource(value: unknown, detail: boolean): Resource {
             media_type: string(file.media_type),
           },
   }
+  validateProgressPlan(result.progress, result.review_plan)
   if (detail && source === 'WEB') result.source_url = string(item.source_url)
   if (detail && source === 'PASTE') result.pasted_content = string(item.pasted_content)
   return result

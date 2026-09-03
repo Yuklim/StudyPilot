@@ -7,7 +7,6 @@ import { renderWithRouter } from './test/render'
 
 const routes = [
   ['/', '学习概览'],
-  ['/study-records', '学习记录'],
   ['/reviews', '复习安排'],
   ['/topics', '主题统计'],
   ['/unknown-page', '没有找到这个页面'],
@@ -20,7 +19,9 @@ describe('StudyPilot journal shell', () => {
   it('clearly distinguishes the shell from real learning data', () => {
     renderWithRouter(<App />)
     expect(screen.getByText('网页、文件与粘贴资料已开放')).toBeInTheDocument()
-    expect(screen.getByText('学习数据尚未接入，暂不展示资料或进度。')).toBeInTheDocument()
+    expect(
+      screen.getByText('概览统计尚未接入。可以在资料详情记录学习，或在学习记录中查看历史。'),
+    ).toBeInTheDocument()
     const metrics = within(screen.getByRole('region', { name: '统计尚未接入' }))
     expect(metrics.getAllByText('未接入')).toHaveLength(3)
     expect(metrics.queryByText(/\d/)).not.toBeInTheDocument()
