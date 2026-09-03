@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-014"
-status = "IN_ACCEPTANCE"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "接入既定文件接口并扩展共享客户端的受控 multipart/二进制传输与令牌失效处理；不改安全协议。保留独立只读 Review 和独立 Acceptance。"
 risk_flags = ["business", "security", "sensitive-storage", "tests"]
@@ -65,5 +65,16 @@ PASS `base=761479459a5895adacb262c5f57862dd8373c2ed` `candidate=3d0966e0a13c1690
 No findings。已完整审阅 `base..candidate` 24 文件 diff，并定点核查 `frontend/src/api/client.ts`、`frontend/src/features/resources/api.ts`、`ResourceForm.tsx`、`FileOriginal.tsx` 及相关测试。上传固定到受控 `/api/v1/resources`、不允许自带 boundary/任意头、不暴露或持久化令牌；403 失效令牌清理且不自动重放。下载仅按文件 UUID，请求后校验附件、`nosniff`、媒体类型、长度和文件名；迟到结果、离页清理、无假成功提示。WEB/PASTE 既有路径保持，TASK-013 仅补合并事实。覆盖/证据缺口：复用同指纹 `e86f25…dc385` 的 168 前端 / 23 治理 / 19 Chromium 通过证据，未见需定向重跑的具体缺口。
 
 - coordinator：Review PASS，No findings，无需修订产品；进入 IN_ACCEPTANCE。后续仅本任务 status/EVIDENCE 与本行索引写回，验收不重新审整份代码。
+
+
+### 独立只读 Acceptance
+
+- 2026-09-03：不同于实现/Reviewer 的独立 CLI 会话 `01a06626-360f-7112-b35f-8dc44d91518a`，沿用已批准临时 `gpt-5.4 / medium`，read-only / never、禁子派发，进程退出 0。以下为报告原文。
+
+PASS `candidate=3d0966e0a13c1690b48b3fadd94c5a7416615fcb`，`HEAD=80b762c786e8f71dc6844f715c9bc7968d4941ed`。独立性/只读证据：本会话仅做 Acceptance；运行约束为 read-only、`approval=never`；仓库内 `test -w .` 返回 1；未写入、提交、推送、合并、派发或联网。`git status --short --branch` 仅见 `## agent/frontend_worker/TASK-014-file-pages`，无脏改。`candidate..HEAD` 仅改 `docs/tasks/TASK-014-file-pages.md` 与 `docs/tasks/任务索引.md`：任务状态由 `IN_REVIEW`→`IN_ACCEPTANCE`、登记 Review 原文与索引行，属合法窄证据写回；`check_task.py --candidate HEAD --evidence-from 3d0966e... --static-only` 返回 `EVIDENCE_ONLY PASS`，不代表重跑全测。
+
+完成条件证据齐备：1 有上传/清除/提示/防重入/失败保留/离页保护与单一 multipart 请求证据；2 有固定同源入口、无令牌泄露/持久化、无任意 headers、403 清理且不自动重放证据；3 有 READY 显式下载、附件/类型/大小/文件名校验、字节比对一致、迟到结果不保存与 URL 清理证据；4 有 168 前端 + 23 治理全检 0、19 项真实 Chromium 回归 0、320/390/1440 与键盘验证、标准契约结构比较 0；后端未改，273 项已合并证据可合法复用；5 README/页面说明、独立只读 Review PASS、当前独立只读 Acceptance 均到位。未见未解决阻断或新增缺口；剩余边界仍为已确认的本机个人/低流量/不做正文解析与病毒扫描。最终合并仍仅由用户决定。
+
+- coordinator：五项完成条件证据齐备；Review / Acceptance 均 PASS，未遗留阻断项。ACCEPTED，等待用户决定并执行最终合并；未推送 main、未替用户合并。最终证据写回只做窄门禁，不递归验收。
 
 <!-- EVIDENCE:END -->
