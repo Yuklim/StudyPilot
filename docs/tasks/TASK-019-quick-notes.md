@@ -47,9 +47,21 @@ checks = ["frontend", "contracts"]
 - JSON 深比较相对 base 只允许 `x-delivery-profile.client_policy` 差异，退出 0；paths/schemas/security/运行时清单均未变。后端未改，复用已合并 TASK-017 的 415 项后端测试，不冒称本次重跑。
 - 开发中失败与修复：类型检查曾发现测试选项不受支持；单元测试曾因旧入口名称、文本归一化、异步等候、分类夹具缺 notes 响应、重渲染测试遗漏外层包装而失败，已定向修正并保留原安全断言。集成检查另发现标签刷新会卸载草稿，已修复并加组件/真实浏览器覆盖。首轮浏览器 25/26，响应丢失夹具未实际提交，改为浏览器真实 fetch 收到 201 后抛连接异常，继续断言数据库仅一条；最终 26/26。末轮统一检查仅格式失败一处，格式化该测试文件后完整重跑通过。无未处置失败、未降低断言或安全协议。
 - 已知边界：草稿仅当前页面内存，刷新/离开前须保存；删除无回收站且需预览确认；未知写入结果需用户核对后显式决定，不承诺自动去重或自动重试；不含跨资料心得汇总/全文搜索、自动保存、资料基本信息编辑、复习/统计/AI。
+- 首轮审查后，主 Agent 在汇总下一阶段说明时发现 README 历史段仍写“页面随后接入”，已统一三个段落的交付措辞；仅 README 与本任务证据改变，运行时代码、测试、契约、依赖和配置均未变，249/26 等执行结果继续复用，不重复跑全套。作为新候选交同一 Reviewer 增量核对，其余继承首轮覆盖。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
 - IN_REVIEW，测试和实现证据已齐备，待独立实际只读 Review；最终候选 SHA 在后续原文证据中绑定，用户保留最终合并权。
+
+- 首轮独立 Reviewer：会话 `01a066b5-18cc-73f1-bcbf-d5e94ce06679`，运行器头 `sandbox: read-only`、`approval: never`，退出 0。以下原文只去行末空格；后续 README 校正须增量绑定新候选。
+
+PASS
+
+- base=4b760010c8476ccda7e57f7a835a6cd21c547b84，candidate=6f560559f3f3eefa9bce5dd9d07170f070b5b7cf，实现=5a44a9a6fce2c6d1a6de3bb58a368357a2319b32。`git diff --name-only` 仅覆盖 26 个文件，均在 TASK-019 allowed_paths 内，已完成 base..candidate 全量审读并核验关键调用链（NotesPanel → notes/api → api.request，ResourceDetail/Screen/App 入口挂载）。
+- 权限证据：会话上下文明确 `sandboxing` 为 `read-only`、`approval=never`；我只执行了读取与校验命令（`git status --short --branch`, `check_task.py --static-only`、`sed/git show`），未触发任何写库/提交/上传动作。
+- 覆盖与测试复用：执行了 `PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-019-quick-notes.md --candidate 6f560559f3f3eefa9bce5dd9d07170f070b5b7cf --static-only`，输出 `STATIC PASS ... files=26 product_fingerprint=089b14fab25aff1dd9407c5027a089309c1dea1c2f5be378426296c954e7f2a4`，`PROFILE_TESTS NOT_RUN (--static-only)`；任务文档中记录的 249 单元/组件与 26 Chromium 在本轮未重跑，按复用规则采信既有证据。
+- findings / No findings：No findings。
+  - 关键风险项（版本安全、不可重复写入、只打可控删除、旧历史与归档不抢占、草稿仅内存/同资源标签刷新保留）在实现与测试中均有对应行为和断言闭环。
+- 剩余风险（非阻断）：未在本次 Review 中重跑前端完整 check/test/e2e，仅复核静态与范围/合规；需由主流程在下一步或验收阶段确认既有 249/26 的持续复测结果仍可复现。
 <!-- EVIDENCE:END -->
