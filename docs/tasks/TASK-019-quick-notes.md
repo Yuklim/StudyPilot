@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-019"
-status = "IN_ACCEPTANCE"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "接入个人文本修改/删除与版本冲突恢复，并同步交付注释；不改标准接口或数据库，仍需防止草稿丢失、旧版本覆盖及误删。"
 risk_flags = ["business", "deletion", "tests"]
@@ -77,4 +77,23 @@ PASS
 - findings：无新增问题（No findings）。
 
 - 主 Agent 核对：运行时、测试、配置与契约自被测版本无变化；差异只有 README 及任务文档，故复用 249/26 与构建结果，静态校验不冒称新一轮功能测试。审查无未处置 findings。IN_ACCEPTANCE，交另一独立只读 Agent 核对五项完成条件；不再重复代码审查。
+
+- 独立 Acceptance：会话 `01a066e0-ef9c-71d2-81c9-c8da96d9e2f1`，与 Reviewer/实现者不同；两次运行器头均为 `sandbox: read-only`、`approval: never`，退出 0。首份报告将核验 candidate 与 evidence-from 写成同值，未直接据此完成；已要求同一验收者定向执行正确区间。两份原文如下（仅去行末空格）：
+
+PASS
+
+- 运行器权限核验：当前会话上下文与 [TASK-019 证据原文](docs/tasks/TASK-019-quick-notes.md)一致，标注为 `sandbox: read-only` / `approval: never`（首次与增量 Review 均如此），且我本轮仅执行只读核验命令，无文件写入，满足前置要求。
+- 候选核验命令：`PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-019-quick-notes.md --candidate 2a76b5bf9023a696efe2fc7e8b92ea36466ba493 --evidence-from 2a76b5bf9023a696efe2fc7e8b92ea36466ba493 --static-only`
+  输出：`EVIDENCE_ONLY PASS ... no product tests rerun`。
+- 基线：`4b760010c8476ccda7e57f7a835a6cd21c547b84`；候选：`2a76b5bf9023a696efe2fc7e8b92ea36466ba493`；Reviewer 会话 `01a066b5-18cc-73f1-bcbf-d5e94ce06679`（两轮 PASS，后续 README 仅增量）。
+- 条件1/2/3/4 证据可对齐到 `TASK-019` 记录中的实现与测试段落（新增→刷新→编辑→确认删除真实浏览器覆盖；标签重读保留草稿；版本冲突/断网/重复写防护；旧历史与状态入口保留；前端+契约+e2e 已通过且后续仅 README/证据改写）。
+- 条件5 具备：独立只读 Reviewer 与独立只读 Acceptance 串联，且本次验收仅做静态证据复核、未重复全量测试。
+- findings：无。风险：仅剩“未在本轮重跑 249/26，仅复用既有动态证据”这一非阻断说明（按静态复核要求可接受）。
+
+### 验收定向勘误原文
+
+已执行指定命令，实际输出为：`EVIDENCE_ONLY PASS 2a76b5bf... .. a3e50e14...; no product tests rerun`。该结果已勘误旧报告“--candidate 与 --evidence-from 同值”的表述，确认当前核验是基于新 evidence-from 的 2a76b5b 到候选 a3e50e 的静态追踪。实际运行环境沿用只读 `read-only/never`，未发生写入。结合既有记录，五项完成条件映射关系仍成立：产品边界仍保留“页面内存草稿、无回收站”；测试结果为复用，不是重复执行。结论：PASS。
+
+- 主 Agent 最终核对：五项完成条件齐全、无未处置阻断；实际验收追踪区间为 `2a76b5bf9023a696efe2fc7e8b92ea36466ba493..a3e50e14e262c97c51458175e1534f389eb98b31`，返回 EVIDENCE_ONLY PASS。保留前述页面内存草稿、删除无回收站与未知结果手动核对限制；既有测试复用不等于本轮重跑。ACCEPTED，仅待用户合并，Agent 不合并 main。
+
 <!-- EVIDENCE:END -->
