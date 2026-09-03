@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-016"
-status = "IN_REVIEW"
+status = "IN_ACCEPTANCE"
 risk = "L3"
 risk_reason = "页面接入关键进度的版本写入和冲突/不确定结果恢复，同时同步权威交付注释；不改变后端模型或标准契约。保留各一次独立只读 Review/Acceptance。"
 risk_flags = ["business", "critical-data", "tests"]
@@ -77,4 +77,17 @@ checks = ["frontend", "contracts", "governance"]
 覆盖：已完整审阅首轮 `base..candidate` 的 27 文件 diff，并补核学习页核心调用链、共享客户端错误映射、资源投影、路由接入、契约 1.3/2.3/4.4/4.9/6 与相关 OpenAPI 片段。按要求复用现有机械检查证据，未全量重跑；除上述问题外，未再发现需要阻断的缺陷。
 
 - 处置：首轮 RETURNED；当前正常后端事务不会产生这种中间状态，未观察到正常使用的数据丢失。为兑现异常快照拒绝且修正成本较低，主 Agent 限于既有前端路径补联合校验，不改后端或标准契约：有效（含归档记忆）REVIEW_DUE 当且仅当计划 SCHEDULED；学习中不能有当前完成时间；恢复前进度也验证。删除学习选项中依赖半更新计划的分支，安排/暂停计划仍归后续复习功能。将由同一 Reviewer 增量复核，继承首轮其余覆盖。
+### R1 独立只读增量 Review
+
+- 同一 CLI 会话 `01a0665a-541c-79d1-b683-270b90103b26`，read-only / never、临时 gpt-5.4 / medium，进程退出 0；只复核 6 文件增量并继承首轮覆盖。以下报告原文。
+
+`PASS`
+
+权限仍满足独立只读：运行器为 `read-only / never`，`test -w .` 退出 `1`，未试写。`base=cd348e9d9935a69902e24223b1e5421bba6821bd`，旧候选 `7ed35e9e4b76918fd21748373942d2bc91fec929`，新最终候选 `80e3eb6abeb54fc90f24898d8a57776804c38c34`；当前 `HEAD=80e3eb6abeb54fc90f24898d8a57776804c38c34`，`git status --short --branch` 仅见分支 `ahead 4`，无工作区改动。
+
+No findings。已按要求完整读取 `7ed35e9..80e3eb6` 的 6 文件增量 diff。首轮唯一问题已解决：`progress()` 现在对归档记忆态也校验未开始/完成/学习中的时间与进度不变量，[frontend/src/features/learning/model.ts](/Users/yuklimching/Desktop/StudyPilot/frontend/src/features/learning/model.ts:70) 新增 `validateProgressPlan()`，并在资源解析、状态选项和写成功响应处统一 fail-closed 使用，[frontend/src/features/resources/api.ts](/Users/yuklimching/Desktop/StudyPilot/frontend/src/features/resources/api.ts:135) 与 [frontend/src/features/learning/api.ts](/Users/yuklimching/Desktop/StudyPilot/frontend/src/features/learning/api.ts:84) 已移除对 `REVIEW_DUE+PAUSED`、`IN_PROGRESS/COMPLETED+SCHEDULED` 半更新快照的依赖。新增测试覆盖矛盾快照拒绝、合法 `REVIEW_DUE+SCHEDULED` / 归档恢复可用，以及写成功返回矛盾状态时拒绝报成功，和修复目标一致。
+
+继承首轮其余覆盖不变；本次结论绑定新最终候选 `80e3eb6abeb54fc90f24898d8a57776804c38c34`。## agent/frontend_worker/TASK-016-learning-pages...origin/main [ahead 4]
+
+- 2026-09-03：IN_ACCEPTANCE。首轮唯一发现已修正且复审 PASS；最终产品候选 `80e3eb6abeb54fc90f24898d8a57776804c38c34`，最终指纹 `338dfef65831aaba597aedde9a5c250adc29cab87ccc578ce750ce8241483c12`。主 Agent 仅核对边界、测试绑定与审查结果，不进行第三次代码审查；后续仅窄证据写回，待另一独立只读验收。
 <!-- EVIDENCE:END -->
