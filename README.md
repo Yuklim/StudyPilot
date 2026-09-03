@@ -11,8 +11,9 @@ StudyPilot 是一个面向个人学习者的资料与学习过程管理助手。
 - React + TypeScript + Vite 前端应用壳、基础路由、全局错误边界和脚手架状态页；
 - Ruff、mypy、pytest、Prettier、ESLint、TypeScript、Vitest 和正式前端构建检查；
 - uv 与 npm 锁文件，用来在不同机器安装同一组依赖版本。
+- SQLAlchemy 数据模型和 Alembic 初始迁移：前者让 Python 操作数据库，后者按版本创建或升级表结构；目前只支持 SQLite。
 
-当前**没有**资料库、添加资料、进度、笔记、复习、统计、数据库表、文件上传、登录或 AI 功能。页面也不会展示假的业务数据或无效的业务按钮。
+当前已具备数据库建表能力，但**没有**可操作的资料库、添加资料、进度、笔记、复习、统计、文件上传、登录或 AI 功能。页面也不会展示假的业务数据或无效的业务按钮。
 
 ## 需要先安装的软件
 
@@ -113,7 +114,7 @@ PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python -m unittest discover -s scrip
 V2 开发时优先按任务一次执行相关检查（不重复跑全部模块）：
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-004-governance-v2.md --worktree
+PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-005-database-baseline.md --worktree
 ```
 
 该入口检查范围、Git 差异、敏感模式与 JSON/OpenAPI 结构，并自动选择相关 lint、格式检查、测试和构建；不会安装依赖或修改源文件。缺少工具、测试失败和未执行均不会当作通过。详见 [V2 使用指南](docs/governance/多Agent开发制度使用指南.md)。
@@ -157,7 +158,31 @@ npm run build
 
 ## 配置与本地数据
 
-`.env.example` 只展示未来数据库配置的安全占位写法。TASK-002 不会读取或创建数据库；后续默认本地数据库将使用 SQLite，并且数据库访问必须放在后端基础设施层、通过 SQLAlchemy 完成。
+应用导入和启动仍然不连接、创建或迁移数据库。`.env.example` 只是配置示例，程序**不会自动加载 `.env`**；需要时在当前终端用 `export STUDYPILOT_DATABASE_URL=...` 显式设置。
+
+只查看当前脚手架页面，无需建库。需要建立本地开发数据库时，在仓库根目录执行：
+
+```bash
+cd backend
+uv sync --locked
+uv run alembic upgrade head
+uv run alembic current
+uv run alembic check
+```
+
+`upgrade head` 将数据库升级到最新版本；重复执行不会清空已有数据。`current` 显示版本，`check` 比较模型与数据库是否存在待迁移的结构差异，但不能代替迁移审查。初始版本是 `0001_initial`，包括 11 张业务表和 1 张版本表。
+
+默认 URL 为 `sqlite:///./var/studypilot.db`，相对路径基于**命令运行目录**：按上述步骤得到 `backend/var/studypilot.db`。切换目录时请使用绝对 URL（例如 `sqlite:////绝对路径/studypilot.db`），避免误建另一个库。只有显式调用连接工厂或迁移命令才创建所需目录；连接工厂不自行建表。
+
+每次对已有数据迁移前，先停止应用和所有数据库写入进程，备份数据库及关联文件，并确认目标路径。初始迁移的降级只允许业务表全空的开发库；只要任一业务表有数据，就在删除任何表之前拒绝执行。不要对真实资料库运行降级或依赖它作为备份替代品。
+
+数据库访问统一通过 `infrastructure.database` 的连接工厂、会话工厂和 `session_scope` 事务入口。事务即“一组写入全部成功才保存，失败则全部撤销”；每次使用独立会话，不共享可变 Session。每个 SQLite 连接开启外键、设置 5 秒锁等待；测试只在临时目录执行迁移，不触碰默认库。
+
+字段范围、枚举、唯一性和外键由数据库约束；Python 对象映射（ORM）负责时区转换、名称规范化、版本冲突以及普通对象写入保护。时间点必须带时区，按 UTC 保存和读取，日历日期不转换。正常无变化更新不会增加版本。ORM 钩子和版本保护**不覆盖直接 SQL 或批量更新**；后续应用服务须走普通 ORM 写入，不得绕过这些保护。插入关联对象时先保存并 `flush` 父对象；本阶段只有外键，未引入自动关联保存。
+
+初始模型位于共享基础设施，表的 `info.owner` 保留 resources/taxonomy/learning/notes/reviews 的原有职责。历史学习/复习记录拒绝普通 ORM 修改或直接删除；资料删除可通过数据库级联删除关联记录，但不会删除主题、标签或删除确认记录。确认表只存令牌摘要，不存原始令牌。**文件状态流转、完整 URL 校验、跨表状态一致性、删除确认和保留期清理仍由后续业务任务实现**，数据库基础不表示这些操作已获准开放。当前未安装或验证 PostgreSQL 驱动，不承诺只改 URL 就能切换。
+
+枚举采用显式表约束，使 Alembic 能可靠比较；迁移版本不导入可变模型。连接与时间处理参考 [SQLAlchemy SQLite 说明](https://docs.sqlalchemy.org/en/20/dialects/sqlite.html) 和 [UTC 时间存储示例](https://docs.sqlalchemy.org/en/20/core/custom_types.html#store-timezone-aware-timestamps-as-timezone-naive-utc)。
 
 未来的数据库、上传原件和回收站等运行数据统一放在 `var/` 或由配置指定的本地目录。以下内容都不会进入 Git：
 
@@ -205,4 +230,4 @@ npm ci --cache ../.npm-cache
 
 ## 下一阶段边界
 
-后续任务会先冻结 API、数据字段、错误、安全和数据库契约，再实现真实业务模块。内容解析、模型 API Key、AI、RAG 和学习 Agent 仍然属于更晚阶段，不能因为目录已经存在就提前加入。
+TASK-003 已冻结 API、数据字段、错误、安全和数据库契约；TASK-005 仅落实数据库基础。后续先补充共享契约测试基线，再按批准边界实现真实业务模块与前端页面。内容解析、模型 API Key、AI、RAG 和学习 Agent 仍然属于更晚阶段，不能因为目录已经存在就提前加入。

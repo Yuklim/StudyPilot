@@ -9,8 +9,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     """StudyPilot process settings.
 
-    TASK-002 stores the database URL only as a future infrastructure input. It does
-    not create an engine, a session, a database file, or any business table.
+    Constructing settings never opens or migrates a database. Relative SQLite
+    paths follow the working directory; documented backend commands run here.
     """
 
     model_config = SettingsConfigDict(env_prefix="STUDYPILOT_", extra="ignore")
