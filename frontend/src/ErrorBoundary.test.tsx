@@ -1,7 +1,7 @@
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { act, StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { ErrorBoundary } from './ErrorBoundary'
 
@@ -40,11 +40,6 @@ function allLoggedArguments(consoleSpies: ReturnType<typeof spyOnConsole>): stri
 }
 
 describe('ErrorBoundary', () => {
-  afterEach(() => {
-    cleanup()
-    vi.restoreAllMocks()
-  })
-
   it('shows a controlled recovery message instead of a blank page', () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
 

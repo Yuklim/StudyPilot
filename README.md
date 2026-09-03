@@ -114,7 +114,7 @@ PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python -m unittest discover -s scrip
 V2 开发时优先按任务一次执行相关检查（不重复跑全部模块）：
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-005-database-baseline.md --worktree
+PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-006-shared-test-foundation.md --worktree
 ```
 
 该入口检查范围、Git 差异、敏感模式与 JSON/OpenAPI 结构，并自动选择相关 lint、格式检查、测试和构建；不会安装依赖或修改源文件。缺少工具、测试失败和未执行均不会当作通过。详见 [V2 使用指南](docs/governance/多Agent开发制度使用指南.md)。
@@ -157,6 +157,45 @@ npm run build
 - `npm run build` 生成正式发布所需的静态文件到 `frontend/dist/`。该目录是生成物，不会提交到 Git。
 
 ## 配置与本地数据
+
+### 共用测试工具
+
+测试夹具（fixture）是可重复使用的“测试准备和收尾”。新后端测试直接声明需要的参数，不要从别的 `test_*.py` 文件导入辅助函数：
+
+| 入口 | 提供什么 |
+| --- | --- |
+| `runtime`（自动启用） | 每测试独立临时工作目录、SQLite URL、`runtime.files` 文件目录；设置并清理配置缓存 |
+| `database` | 使用已提交 Alembic 迁移创建的临时 SQLite Engine，退出时释放连接池 |
+| `session_factory` | 该测试独有的会话工厂；用 `with session_factory.begin() as session` 保证提交/异常回滚/关闭 |
+| `client` | 每测试新建应用的 FastAPI TestClient，自动启动/结束生命周期，不复用全局应用或 Cookie |
+| `backend/tests/support.py` | 共用 `migrate`、合成资料 `resource` 和临时路径定义，不属于生产代码 |
+
+测试不会沿用终端中指向真实数据库的 `STUDYPILOT_DATABASE_URL`；配置缓存、环境变量和工作目录在测试间隔离，夹具本身也有隔离/回滚回归测试。pytest 会按自身策略保留少量临时目录用于排错，不代表写入正式运行目录。当前 API 仍不访问数据库；`client` 与 `database` 的共用入口不是已经实现业务连接。
+
+前端组件测试使用 `src/test/render.tsx` 的 `renderWithRouter(<组件 />, '/路径')`，不用逐文件重复包路由。`src/test/setup.ts` 在每项测试后清理 DOM、mock（替代真实行为的测试对象）、全局变量替身和环境变量替身。Vitest 只收集 `src/**/*.test.ts(x)`；浏览器测试由 Playwright 单独执行，不混进组件测试。
+
+### 最小浏览器联通测试（TASK-006）
+
+端到端测试（E2E）是在真实浏览器里检查多个部分能否连起来工作。首次安装需先完成后端 `uv sync --locked`，然后从仓库根目录执行：
+
+```bash
+cd frontend
+npm ci
+npm run test:e2e:install
+npm run test:e2e
+```
+
+浏览器下载只需首次或 Playwright 版本更新后执行。测试不会隐式下载浏览器；缺少浏览器会明确失败。此启动方式已在 macOS 验证；Linux 还可能需要 Playwright 官方系统依赖，Windows 的虚拟环境路径与信号停止流程尚未适配。
+
+测试自动启动 **127.0.0.1:15173** 的前端与 **127.0.0.1:18000** 的后端；常规开发的 5173/8000 保持不变。后端运行在本次新建的系统临时目录，先执行既有初始迁移；结束时停止本次自启进程并回收其临时数据。若端口已被占用会明确失败，不复用或结束已有服务，也不允许两个浏览器套件并行抢占固定端口。
+
+当前只验证：真实页面显示“业务功能尚未实现”，浏览器同源请求经过 Vite 代理到 FastAPI 后按现有规则返回 403。**没有模拟业务成功，也不代表添加、学习、复习等主闭环已经通过。**只跑 Chromium、单 Worker、零自动重试；失败需要修正或说明原因，不能靠重试掩盖。
+
+运行器在结束后释放测试服务器；失败记录/浏览器 trace（可回放的执行记录）位于 `frontend/test-results/`，已被 Git 忽略，只用于合成测试数据。报浏览器缺失时运行上方安装命令；报端口占用时检查是否有自己启动的测试，不要结束不明进程。项目完整任务检查入口目前不自动运行 E2E，涉及联通变化的任务必须像 TASK-006 一样显式把 `npm run test:e2e` 列入必要检查，不能用组件测试冒充。
+
+参考：[pytest 临时目录](https://docs.pytest.org/en/stable/how-to/tmp_path.html)、[Testing Library 共用测试设置](https://testing-library.com/docs/react-testing-library/setup/)、[Playwright 测试服务器](https://playwright.dev/docs/test-webserver)。
+
+### 数据库运行配置
 
 应用导入和启动仍然不连接、创建或迁移数据库。`.env.example` 只是配置示例，程序**不会自动加载 `.env`**；需要时在当前终端用 `export STUDYPILOT_DATABASE_URL=...` 显式设置。
 
@@ -230,4 +269,4 @@ npm ci --cache ../.npm-cache
 
 ## 下一阶段边界
 
-TASK-003 已冻结 API、数据字段、错误、安全和数据库契约；TASK-005 仅落实数据库基础。后续先补充共享契约测试基线，再按批准边界实现真实业务模块与前端页面。内容解析、模型 API Key、AI、RAG 和学习 Agent 仍然属于更晚阶段，不能因为目录已经存在就提前加入。
+TASK-003 已冻结 API、数据字段、错误、安全和数据库契约；TASK-005 落实数据库基础，TASK-006 补充共用测试与浏览器联通骨架。下一步按批准边界实现真实业务模块与前端应用壳；开放业务接口之前仍需完成既定本地访问安全策略。内容解析、模型 API Key、AI、RAG 和学习 Agent 仍然属于更晚阶段，不能因为目录已经存在就提前加入。

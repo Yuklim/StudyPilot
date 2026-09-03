@@ -1,17 +1,14 @@
 """Persistence and constraint tests against isolated, Alembic-migrated SQLite files."""
 
-from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta, timezone
-from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 import pytest
 from sqlalchemy import Engine, func, select, text
 from sqlalchemy.exc import IntegrityError, StatementError
-from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
-from test_migrations import migrate
+from support import resource
 
 from studypilot.infrastructure.database import (
     Base,
@@ -34,26 +31,6 @@ from studypilot.infrastructure.database.models import (
 )
 
 NOW = datetime(2026, 9, 3, 10, 0, tzinfo=UTC)
-
-
-@pytest.fixture
-def database(tmp_path: Path) -> Iterator[Engine]:
-    engine = create_database_engine(f"sqlite:///{tmp_path / 'test.db'}")
-    migrate(engine)
-    try:
-        yield engine
-    finally:
-        engine.dispose()
-
-
-def resource(session: Session, **values: Any) -> LearningResource:
-    record = LearningResource(
-        **{"title": "Test resource", "source_type": "WEB", "source_url": "https://example.test"}
-        | values
-    )
-    session.add(record)
-    session.flush()
-    return record
 
 
 def test_foreign_keys_enabled_on_every_new_connection(database: Engine) -> None:
