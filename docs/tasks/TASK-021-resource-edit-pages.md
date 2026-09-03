@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-021"
-status = "IN_REVIEW"
+status = "IN_ACCEPTANCE"
 risk = "L3"
 risk_reason = "接入已批准的资料编辑接口，包含粘贴原文覆盖、冲突/未知保存结果保护及交付元数据；不改后端、模型或公共协议。"
 risk_flags = ["business", "critical-data", "tests"]
@@ -51,4 +51,23 @@ checks = ["frontend", "contracts"]
 ## 状态与最终证据
 
 - IN_REVIEW；实现与最终检查证据齐全，待独立实际只读 Review，随后另一独立 Acceptance 核对；最终合并归用户。
+
+- 冻结候选 `d49c22a372690ee56be95ce0f5630df332d5814c`；独立 Reviewer 会话 `01a06725-ac0c-7110-a5dc-dfcc6735aace`，运行器头显示 `model: gpt-5.5`、`sandbox: read-only`、`approval: never`，退出 0；未改默认配置。报告原文如下（仅去行末空格）：
+
++PASS。
+
+候选：`d49c22a372690ee56be95ce0f5630df332d5814c`；base：`dcbc5d8a97065c6f4802f3b8fb9d22e9a8d70fc0`。HEAD 精确等于候选，merge-base 为 base，范围为登记的 15 个文件。
+
+实际权限证明：运行上下文为 `sandbox=read-only`、`approval=never`；`git/xcrun` 尝试写 `/tmp` cache 被 `Operation not permitted` 拒绝。全程未写文件、未提交、未委派。
+
+覆盖：完整审查 `base..candidate` 15 文件 diff 与必要调用链，重点核对 ResourcePatch 版本/局部字段、冲突/未知结果重读确认、草稿保全、同源客户端、FILE 原件边界、心得/历史/标签/进度不越界。复用任务绑定的 292 前端测试、31 Chromium 场景、统一检查/构建 PASS 证据。
+
+我实际运行：
+`PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-021-resource-edit-pages.md --candidate d49c22a372690ee56be95ce0f5630df332d5814c --static-only`
+
+结果：`STATIC PASS`，指纹 `4b3e0742aeb4a6ca8894f0b43e4efbafa45fb254f3395815462ecf8d53ef7521`，并明确 `PROFILE_TESTS NOT_RUN`。
+
+No findings。没有发现需阻断或需记录的非阻断缺陷。
+
+- 主 Agent 核对：候选/范围/测试指纹匹配，Review PASS、No findings；IN_ACCEPTANCE，交另一独立只读 Agent 做完成条件到证据的映射，不重审代码或全套测试。产品候选不变，之后只写本任务证据与索引行。
 <!-- EVIDENCE:END -->
