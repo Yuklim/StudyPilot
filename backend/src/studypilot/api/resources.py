@@ -9,7 +9,7 @@ from fastapi import APIRouter, Request
 from fastapi.encoders import jsonable_encoder
 from pydantic import ValidationError
 from starlette.concurrency import run_in_threadpool
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 
 from studypilot.api.file_upload import create_file
 from studypilot.application import resources
@@ -28,6 +28,11 @@ MESSAGES = {
     "VERSION_REQUIRED": "请先读取资料的当前版本。",
     "VERSION_CONFLICT": "资料已发生变化。请重新读取后核对内容。",
     "SOURCE_TYPE_MISMATCH": "来源内容与资料类型不匹配。不能更换资料类型或文件原件。",
+    "DELETION_TOKEN_REQUIRED": "请先预览删除影响, 并在确认后执行删除。",
+    "DELETION_TOKEN_INVALID": "删除确认已失效。请重新预览后再确认。",
+    "DELETION_TOKEN_REPLAYED": "这次删除确认已经使用, 请重新预览。",
+    "DELETION_IMPACT_CHANGED": "删除影响已经变化, 请重新确认。",
+    "DELETION_TOKEN_EXPIRED": "删除确认已经过期, 请重新预览。",
     "VALIDATION_ERROR": "输入不符合要求。请检查字段、筛选条件与取值范围。",
     "MALFORMED_REQUEST": "请求内容无法解析。",
     "CONTENT_TYPE_UNSUPPORTED": "请使用规定的 JSON 或文件表单格式。",
@@ -46,15 +51,16 @@ def reject_json_constant(value: str) -> None:
 
 
 def failure(request: Request, error: ResourceError) -> JSONResponse:
+    details = error.details or {}
+    if error.code == "VERSION_CONFLICT" and error.current_version is not None:
+        details = {"current_version": error.current_version}
     return JSONResponse(
         status_code=error.status,
         content={
             "error": {
                 "code": error.code,
                 "message": MESSAGES[error.code],
-                "details": {"current_version": error.current_version}
-                if error.code == "VERSION_CONFLICT" and error.current_version is not None
-                else {},
+                "details": details,
                 "request_id": request.state.request_id,
             }
         },
@@ -138,6 +144,15 @@ def get_resource(request: Request, resource_id: str) -> JSONResponse:
     return respond(request, lambda: resources.get_resource(identity))
 
 
+@router.post("/{resource_id}/deletion-preview")
+def preview_resource_deletion(request: Request, resource_id: str) -> JSONResponse:
+    try:
+        identity = UUID(resource_id)
+    except ValueError:
+        return failure(request, ResourceError("RESOURCE_NOT_FOUND", 404))
+    return respond(request, lambda: resources.preview_resource_deletion(identity))
+
+
 @router.patch("/{resource_id}")
 async def update_resource(request: Request, resource_id: str) -> JSONResponse:
     if (
@@ -163,3 +178,35 @@ async def update_resource(request: Request, resource_id: str) -> JSONResponse:
     return await run_in_threadpool(
         respond, request, lambda: resources.update_resource(identity, command)
     )
+
+
+def deletion_token(request: Request) -> str:
+    values: list[str] = []
+    for key, value in request.scope.get("headers", []):
+        if key.lower() == b"x-studypilot-deletion-token":
+            values.append(value.decode("latin-1"))
+    if not values or values == [""]:
+        raise ResourceError("DELETION_TOKEN_REQUIRED", 403)
+    if len(values) != 1:
+        raise ResourceError("DELETION_TOKEN_INVALID", 403)
+    return values[0]
+
+
+@router.delete("/{resource_id}")
+async def delete_resource(request: Request, resource_id: str) -> Response:
+    try:
+        token = deletion_token(request)
+        identity = UUID(resource_id)
+    except ValueError:
+        return failure(request, ResourceError("RESOURCE_NOT_FOUND", 404))
+    except ResourceError as error:
+        return failure(request, error)
+    result = await run_in_threadpool(
+        respond,
+        request,
+        lambda: resources.delete_resource(
+            identity, token, request.app.state.files.lock, request.app.state.files.storage
+        ),
+        204,
+    )
+    return Response(status_code=204) if result.status_code == 204 else result

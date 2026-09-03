@@ -1,6 +1,7 @@
 """Coordinate one atomic resource command; never expose mutable ORM objects."""
 
 from collections.abc import Callable
+from contextlib import AbstractContextManager
 from typing import Any
 from uuid import UUID
 
@@ -14,6 +15,7 @@ from studypilot.modules.resources.contracts import (
     ResourcePatch,
     ResourceQuery,
 )
+from studypilot.modules.resources.files import FileStorage
 
 
 def _transaction(operation: Callable[[ResourceStore], dict[str, Any]]) -> dict[str, Any]:
@@ -56,3 +58,19 @@ def update_resource(resource_id: UUID, command: ResourcePatch) -> dict[str, Any]
         if latest["version"] != command.expected_version:
             raise ResourceError("VERSION_CONFLICT", 409, latest["version"]) from None
         raise ResourceError("UNKNOWN_ERROR", 500) from None
+
+
+def preview_resource_deletion(resource_id: UUID) -> dict[str, Any]:
+    return _transaction(lambda store: {"data": store.preview_deletion(resource_id)})
+
+
+def delete_resource(
+    resource_id: UUID, token: str, lock: AbstractContextManager[object], storage: FileStorage
+) -> dict[str, Any]:
+    with lock:
+        result = _transaction(lambda store: store.delete_resource(resource_id, token, storage))
+    if result.get("error") == "DELETION_IMPACT_CHANGED":
+        raise ResourceError(
+            "DELETION_IMPACT_CHANGED", 409, details={"current_impact": result["current_impact"]}
+        )
+    return {}
