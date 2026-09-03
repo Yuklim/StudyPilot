@@ -87,7 +87,7 @@ checks = ["frontend", "contracts", "governance"]
 
 No findings。已按要求完整读取 `7ed35e9..80e3eb6` 的 6 文件增量 diff。首轮唯一问题已解决：`progress()` 现在对归档记忆态也校验未开始/完成/学习中的时间与进度不变量，[frontend/src/features/learning/model.ts](/Users/yuklimching/Desktop/StudyPilot/frontend/src/features/learning/model.ts:70) 新增 `validateProgressPlan()`，并在资源解析、状态选项和写成功响应处统一 fail-closed 使用，[frontend/src/features/resources/api.ts](/Users/yuklimching/Desktop/StudyPilot/frontend/src/features/resources/api.ts:135) 与 [frontend/src/features/learning/api.ts](/Users/yuklimching/Desktop/StudyPilot/frontend/src/features/learning/api.ts:84) 已移除对 `REVIEW_DUE+PAUSED`、`IN_PROGRESS/COMPLETED+SCHEDULED` 半更新快照的依赖。新增测试覆盖矛盾快照拒绝、合法 `REVIEW_DUE+SCHEDULED` / 归档恢复可用，以及写成功返回矛盾状态时拒绝报成功，和修复目标一致。
 
-继承首轮其余覆盖不变；本次结论绑定新最终候选 `80e3eb6abeb54fc90f24898d8a57776804c38c34`。## agent/frontend_worker/TASK-016-learning-pages...origin/main [ahead 4]
+继承首轮其余覆盖不变；本次结论绑定新最终候选 `80e3eb6abeb54fc90f24898d8a57776804c38c34`。
 
 - 2026-09-03：IN_ACCEPTANCE。首轮唯一发现已修正且复审 PASS；最终产品候选 `80e3eb6abeb54fc90f24898d8a57776804c38c34`，最终指纹 `338dfef65831aaba597aedde9a5c250adc29cab87ccc578ce750ce8241483c12`。主 Agent 仅核对边界、测试绑定与审查结果，不进行第三次代码审查；后续仅窄证据写回，待另一独立只读验收。
 <!-- EVIDENCE:END -->
