@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-012"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "接入既定分类删除与版本保护，并扩展共享客户端的受控版本头及安全错误映射；不改变服务端安全协议或契约。保留独立 Review 与独立验收。"
 risk_flags = ["business", "deletion", "security", "tests"]
@@ -51,6 +51,7 @@ checks = ["frontend", "governance"]
 - 已知边界：只承诺个人本机/少量 SQLite 写入和 Chromium；分类说明/草稿在离开页面或切换类型时不持久化；主题名称补查失败不隐藏资料，刷新可恢复。分类删除不代表资料删除；主要主题后补/重分配、文件、学习/笔记/统计/AI 仍待后续。下一项为原始文件上传/保存/下载及失败保护，按已批准契约另行登记。
 
 <!-- EVIDENCE:BEGIN -->
+用户已合并 PR #17（2026-09-03T06:19:16Z），合并提交 `ff03d8bb7660fd327e55be8ffbd122f5da491517`；本记录随下一授权任务补登，历史审查证据保持。
 ## 状态与最终证据
 
 - 2026-09-03：IN_PROGRESS；按 L3 登记，依赖已合并。

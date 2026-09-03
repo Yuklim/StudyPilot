@@ -158,7 +158,6 @@ def test_malformed_and_unsupported_before_database(
     for media in (
         "text/plain",
         "application/x-www-form-urlencoded",
-        "multipart/form-data; boundary=x",
     ):
         result = authorized.post(
             "/api/v1/resources", content="synthetic", headers={"Content-Type": media}

@@ -10,6 +10,10 @@ requires-python = ">=3.13,<3.14"
 dependencies = [
   "alembic>=1.16,<2",
   "fastapi>=0.116,<1",
+  "defusedxml>=0.7.1,<1",
+  "olefile>=0.47,<1",
+  "pypdf>=6.16.2,<7",
+  "python-multipart>=0.0.20,<1",
   "pydantic-settings>=2.10,<3",
   "sqlalchemy>=2.0,<2.1",
   "uvicorn[standard]>=0.35,<1",

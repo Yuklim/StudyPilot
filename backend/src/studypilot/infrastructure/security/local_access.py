@@ -78,6 +78,9 @@ class LocalAccessMiddleware:
 
         async def protected_send(message: Message) -> None:
             if message["type"] == "http.response.start":
+                # Preserve only the approved stricter download policy; all other
+                # callers still receive forced no-store, never arbitrary caching.
+                private = (b"cache-control", b"private, no-store") in message.get("headers", [])
                 response_headers = [
                     (k, v)
                     for k, v in message.get("headers", [])
@@ -85,7 +88,7 @@ class LocalAccessMiddleware:
                 ]
                 response_headers.extend(
                     [
-                        (b"cache-control", b"no-store"),
+                        (b"cache-control", b"private, no-store" if private else b"no-store"),
                         (b"x-request-id", request_id.encode("ascii")),
                     ]
                 )

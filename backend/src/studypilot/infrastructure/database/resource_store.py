@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, defer
 
 from studypilot.modules.resources.contracts import (
     CreateResource,
+    FileCreate,
     ResourceError,
     ResourceQuery,
     normalized_search,
@@ -78,7 +79,7 @@ class ResourceStore:
         if found != set(tag_ids):
             raise ResourceError("TAG_NOT_FOUND", 404)
 
-    def insert_resource(self, command: CreateResource) -> UUID:
+    def insert_resource(self, command: CreateResource | FileCreate) -> UUID:
         resource = LearningResource(**command.model_dump(exclude={"tag_ids"}))
         self._session.add(resource)
         self._session.flush()

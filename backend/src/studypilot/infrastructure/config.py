@@ -1,6 +1,7 @@
 """Environment-backed settings without opening a database connection."""
 
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -16,6 +17,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="STUDYPILOT_", extra="ignore")
 
     database_url: str = Field(default="sqlite:///./var/studypilot.db")
+    files_root: Path = Field(default=Path("./var/files"))
     api_port: int = Field(default=8000, ge=1, le=65535)
     ui_port: int = Field(default=5173, ge=1, le=65535)
 
