@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-009"
-status = "IN_ACCEPTANCE"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "首次启用资料持久化及原子创建事务，含敏感原文、初始进度和标签关联；本次续接另含用户授权的阶段契约说明，仍需 L3 独立审查验收。"
 risk_flags = ["critical-data", "sensitive-storage", "public-api", "tests"]
@@ -118,4 +118,19 @@ base `910e85b3164704e02664f1420eee65e509467e63` → candidate `e33f989c4bb7c376c
 - 2026-09-03：IN_ACCEPTANCE。冻结候选 `56c6941f325b3ae2a0dde5859e55c3b3ed5091d0` 独立 Review PASS；旧阻断经用户授权的明确阶段契约处置，而不是主 Agent推翻审查或擅自实现文件功能。主 Agent仅核对授权边界、测试绑定及审查结果，无第三次全量代码审查。
 - 非阻断风险处置：完整 OpenAPI 仍含未来 FILE，调用方若忽略阶段清单会得到已声明的暂不支持响应。当前无自动生成/上传入口，新增动态能力接口或删减目标 schema 会增加维护成本且超出本次说明授权，因此接受已披露边界。责任角色 architecture_owner / frontend_worker；接入新页面、启用客户端生成或完成文件任务时必须依据阶段清单复核，同步更新契约/清单/README。此处不表示 FILE 已完成。
 - 已核实 origin/main 仍为 `910e85b3164704e02664f1420eee65e509467e63`，无基线漂移；远程没有同分支 PR。独立 Acceptance 待执行；最终合并仍由用户决定。
+
+### 独立 Acceptance 原文
+
+Integration Owner session `01a0657f-772a-77b3-8a72-7eb5945c1f40`，不同于实现者和 Reviewer；Codex CLI 0.145.0/GPT-5.4 medium，实际启动头 read-only / approval never，`test -w .` exit=1。仅核对完成条件和证据，没有重审代码/重跑业务测试。报告来自 /private/tmp/studypilot-task009-review.32wcsz/acceptance.md。
+
+PASS。独立只读 Integration/Acceptance，独立于实现者与 Reviewer session `01a06570-7368-7482-83de-88f3080584c2`；实际权限已重验，`test -w .` 为 `exit=1`，未写文件、未委派、未提交。验收候选为 `56c6941f325b3ae2a0dde5859e55c3b3ed5091d0`，当前证据 HEAD 为 `39bfdf82a42d74cab1d5e4ecc55bb32edb5060cd`。
+
+6 项完成条件与证据可绑定：1/2/3 由既有 backend `187`、新增资源相关 `72`、安全/health `115` 与事务/校验证据覆盖；4/5 由 `check_task.py` 全量通过、frontend `46`、Chromium `8/8`、README 说明和冻结候选/Review 记录覆盖；6 由契约 1.3、OpenAPI `x-delivery-profile`、Node 语义断言、治理 `23` 项及同一 Reviewer 对新候选 PASS 覆盖。`56c6941..39bfdf8` 仅变更 [docs/tasks/TASK-009-resource-backend.md](/Users/yuklimching/Desktop/StudyPilot/docs/tasks/TASK-009-resource-backend.md) 与 [docs/tasks/任务索引.md](/Users/yuklimching/Desktop/StudyPilot/docs/tasks/任务索引.md)，`backend/frontend/.env.example` diff 为 0，属窄证据写回，无需重开业务测试。
+
+无完成条件缺口。接受的非阻断风险仍是：调用方必须遵守阶段清单，不能把完整 OpenAPI 直接当作当前 FILE 上传能力；后续接入上传入口、自动生成客户端或单独文件任务时必须复核并同步契约。
+
+- 2026-09-03：ACCEPTED。同一 Reviewer 对新候选 `56c6941f325b3ae2a0dde5859e55c3b3ed5091d0` PASS，独立 Acceptance PASS，6 项完成条件有证据。主 Agent只核对证据和范围，未重新全量 Review。
+- `39bfdf82a42d74cab1d5e4ecc55bb32edb5060cd` 的 `check_task.py --candidate HEAD --evidence-from 56c6941f325b3ae2a0dde5859e55c3b3ed5091d0 --static-only` 实际 exit=0/EVIDENCE_ONLY PASS；最终证据提交后继续同一窄门禁，不递归调用 Reviewer。
+- 非阻断风险沿用上文处置：当前阶段只提供 WEB/PASTE；FILE 后续完成，客户端须遵守清单。没有未处置阻断；不声称整套 MVP/页面/文件功能已完成。
+- 用户操作：准备推送本任务分支并建立合并请求，最终合并由用户决定。用户合并后下一项是现有手帐页面接入真实网页/粘贴资料表单、列表与详情；不提前加入 FILE 或 AI。
 <!-- EVIDENCE:END -->
