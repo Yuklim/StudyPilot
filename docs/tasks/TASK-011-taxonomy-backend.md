@@ -63,7 +63,7 @@ checks = ["backend", "frontend", "governance", "contracts"]
 
 **PASS**
 
-`base=706c32732c4b3312acf26694302b43a8800ca2ea`  
+`base=706c32732c4b3312acf26694302b43a8800ca2ea`
 `candidate=4981e9274969c6cf1119c6a904bcb6d6c323c121`
 
 真实只读权限证据：运行时约束为 `read-only / approval never`；在 `/Users/yuklimching/Desktop/StudyPilot` 执行 `test -w .` 结果为 `not_writable`。未做任何试写。
@@ -86,8 +86,8 @@ No findings。
 
 **PASS**
 
-`base=706c32732c4b3312acf26694302b43a8800ca2ea`  
-`candidate=4981e9274969c6cf1119c6a904bcb6d6c323c121`  
+`base=706c32732c4b3312acf26694302b43a8800ca2ea`
+`candidate=4981e9274969c6cf1119c6a904bcb6d6c323c121`
 `current_head=d3ba70db89c40a1745918896ee4d953d257ac514`
 
 独立只读权限证据：本会话运行时受 `read-only / approval never` 约束；在仓库根目录执行 `test -w .` 返回 `not_writable`，未做任何试写。附加旁证是本地 `git` 因 `/tmp` 不可写无法创建缓存文件。独立性方面，我不是实现者，也不是 Reviewer 会话 `01a065c8-feef-7e93-9984-137aeb961d59`。
@@ -105,6 +105,7 @@ No findings。
 
 ### 主 Agent收口
 
+- 证据排版：独立报告的三个 Markdown 行末双空格触发 Git diff 空白检查；仅去除行末空格，报告文字、结论、标识未改，不影响审查候选与测试证据。此为证据格式修复，不是产品修改。
 - 2026-09-03：ACCEPTED。只核对任务边界、测试输入/失败恢复、Review PASS、独立 Acceptance PASS 及完成条件；没有第三次代码审查。冻结候选 `4981e9274969c6cf1119c6a904bcb6d6c323c121` 之后仅窄证据回写；`d3ba70d` 已通过 EVIDENCE_ONLY，最终写回提交后再次执行同一窄门禁，不重跑产品测试。
 - 当前无未解决阻断问题；已知少量 SQLite 写入及分类页面未接入限制保留。提交本任务分支供用户最终合并，不向 main 推送或自行合并。合并后的下一项为主题/标签管理页面及资料表单选择、列表筛选接入。
 <!-- EVIDENCE:END -->
