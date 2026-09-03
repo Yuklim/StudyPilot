@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-016"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "页面接入关键进度的版本写入和冲突/不确定结果恢复，同时同步权威交付注释；不改变后端模型或标准契约。保留各一次独立只读 Review/Acceptance。"
 risk_flags = ["business", "critical-data", "tests"]
@@ -105,4 +105,5 @@ No findings。已按要求完整读取 `7ed35e9..80e3eb6` 的 6 文件增量 dif
 剩余风险：草稿仅页内内存；离页后未撤销请求；网络不确定结果仍需用户核对历史。结论：`PASS`。
 
 - 2026-09-03：ACCEPTED，独立复审及验收均 PASS，首轮唯一发现已关闭；保留已披露的页内草稿/不确定写入核对限制，无未解决阻断。最终产品候选仍为 `80e3eb6abeb54fc90f24898d8a57776804c38c34`，此后只有状态/报告原文/索引证据写回；由用户执行最终合并，不预写 MERGED。
+- 2026-09-03：用户确认且远程核实 PR #21 MERGED，时间 2026-09-03T08:35:56Z，合并提交 `aaa1b5abfe929117f87d59b70d60040499a1d50f`，原 PR head `dadd801c93f8efac025ea0f75e04f5b08e482428`。历史审查/验收原文保留。
 <!-- EVIDENCE:END -->
