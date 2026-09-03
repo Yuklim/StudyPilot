@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-015"
-status = "IN_REVIEW"
+status = "IN_ACCEPTANCE"
 risk = "L3"
 risk_reason = "实现既定学习写接口，涉及当前进度与不可变历史的原子保存、版本冲突及状态/时间不变量。标准契约与数据库结构不变，保留独立只读 Review 和 Acceptance。"
 risk_flags = ["business", "critical-data", "public-api", "tests"]
@@ -56,4 +56,15 @@ checks = ["backend", "contracts", "governance"]
 
 - 2026-09-03：IN_PROGRESS；L3，依赖已合并，边界与必要检查已确认。
 - 2026-09-03：IN_REVIEW；实现及完整检查证据固定，等待独立只读审查，不预写 Review/Acceptance PASS。
+
+### 独立只读 Review
+
+- 2026-09-03：独立 CLI 会话 `01a06636-5a82-7d42-94a3-dc5f4fa06a0f`，沿用用户已批准临时 `gpt-5.4 / medium`，未改默认模型。运行头 read-only / never、禁止子派发，非写入权限检查退出 1，进程退出 0。冻结候选 `3453af065c0688242e30c910b66d8e9085f6cdbd`。以下为报告原文。
+
+PASS。`base=94a037f5a3cc279546a3869b2bcec472bb96db76`，`candidate=3453af065c0688242e30c910b66d8e9085f6cdbd`。运行独立性/只读证据：当前 sandbox=`read-only`、approval=`never`；`test -w .` 退出 `1`，未试写；`HEAD` 即 candidate，`git merge-base(base,candidate)=base`；`git status --short --branch` 仅显示 `agent/learning_worker/TASK-015-learning-backend...origin/main [ahead 2]`，无工作区改动。
+
+No findings。已完整审阅一次 `base..candidate` 15 文件 diff，并补核相关调用链：新路由经既有 `LocalAccessMiddleware` 先做 Host/令牌/Origin/Fetch Metadata 前置判定，再读 body；`learning_store.py` 仅写 `LearningProgress/StudyRecord`，复用既有可见性与版本保护；`state.py` 对应契约第 6 节的 before/version、状态/时间矩阵、归档记忆、`REVIEW_DUE` 只读计划条件；全局/单资源分页、半开时间范围、排序白名单与 `id` 决胜实现一致。已按要求复用指纹 `68c2...0618` 的既有检查证据，未机械重跑全套；覆盖内无阻断缺口。
+
+- coordinator：Review PASS，No findings；无需产品修订，进入 IN_ACCEPTANCE。审查后仅同任务 status/EVIDENCE 与索引行写回；原实现/测试证据不变。
+
 <!-- EVIDENCE:END -->
