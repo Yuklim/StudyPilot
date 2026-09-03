@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-013"
-status = "IN_REVIEW"
+status = "IN_ACCEPTANCE"
 risk = "L3"
 risk_reason = "实现既定原始文件敏感存储、两阶段事务、中断恢复和孤儿回收；下载缓存头适配安全中间件。保留独立只读 Review 与独立 Acceptance。"
 risk_flags = ["business", "sensitive-storage", "security", "deletion", "tests"]
@@ -73,5 +73,16 @@ base `ff03d8bb7660fd327e55be8ffbd122f5da491517`，candidate `6e52d7d42d610e02d12
 其余未见新的可达阻断；单进程/macOS/无病毒扫描/页面未接入均已在契约与证据内披露。结论：`CHANGES_REQUIRED`。
 
 - 2026-09-03：RETURNED → IN_REVIEW。采纳唯一文档阻断，最小删除过期阶段一句，不改变产品契约含义；同步候选范围说明后请同一 Reviewer 增量确认。未重跑代码审查或未变更的测试。
+
+
+### 独立 Review 增量原文
+
+- 同一会话 `01a06603-fb61-7371-89b8-d2bc913b01d6`，再次实际 read-only / approval never，test -w 返回 1，exit=0；仅检查两个文件增量。
+
+权限：实际只读成立，`test -w .` 返回 `1`。增量复审仅查看 `previous_candidate 6e52d7d42d610e02d12e10c7eb79b93f321291a4..new_candidate 8e09b7ca857ee874e39eebda956bc424887ded67`，变更仅 `docs/contracts/openapi-v1.json` 与 `docs/tasks/TASK-013-original-files.md`。
+
+我继承首轮对 `base ff03d8bb7660fd327e55be8ffbd122f5da491517..previous_candidate` 未变范围的完整覆盖；本轮唯一阻断已解决：OpenAPI `createResource.description` 中过期的 TASK-009/415 阶段说明已删除，现与 `x-delivery-profile`、README 和任务证据一致。TASK 同步了该元数据范围、首轮原文报告和静态验证证据；无代码/依赖/配置/测试新增风险。剩余风险不变，仍限已披露的本机单进程/macOS/页面未接入边界。结论覆盖 `new_candidate`：`PASS`。
+
+- 2026-09-03：IN_ACCEPTANCE；最终审查候选 `8e09b7ca857ee874e39eebda956bc424887ded67`。主 Agent只核对范围、测试绑定、唯一阻断闭环和 Review 结论，不重复代码审查。此后仅同任务状态/EVIDENCE 与索引行写回，交另一实际只读会话验收。
 
 <!-- EVIDENCE:END -->
