@@ -125,7 +125,7 @@ describe('resource library', () => {
   it('applies combined queries, resets pagination, shows tags/progress and switches views', async () => {
     const item = sample({
       tags: [{ id: resourceId, name: '合成标签' }],
-      progress: { status: 'IN_PROGRESS', progress_percent: 30 },
+      progress: { ...sample().progress, status: 'IN_PROGRESS', progress_percent: 30 },
     })
     const request = vi
       .spyOn(api, 'request')

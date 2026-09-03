@@ -2,7 +2,8 @@ import { useCallback } from 'react'
 import { Link } from 'react-router-dom'
 
 import { displayTime, getResource, safeWebUrl, sourceLabels } from './api'
-import { ResourceError, ResourceProgress } from './ResourceState'
+import { ResourceError } from './ResourceState'
+import { LearningPanel } from '../learning/LearningPanel'
 import { useResourceQuery } from './useResourceQuery'
 import { ResourceTagEditor } from '../taxonomy/ResourceTagEditor'
 import { FileOriginal } from './FileOriginal'
@@ -31,7 +32,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
             </span>
             <h2>{item.title}</h2>
           </div>
-          <ResourceProgress resource={item} />
+          <LearningPanel resource={item} />
           <dl className="resource-metadata">
             <div>
               <dt>主要主题</dt>
@@ -106,7 +107,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
             <FileOriginal key={item.original_file.id} file={item.original_file} />
           )}
           <p className="resource-hint feature-boundary">
-            资料正文修改、主题重分配、资料删除、学习记录与笔记功能尚未开放。
+            资料正文修改、主题重分配、资料删除、复习安排与笔记功能尚未开放。
           </p>
         </>
       )}

@@ -42,7 +42,7 @@ export const pages: ShellPage[] = [
     caption: '原始资料与自己的理解，各有一个位置。',
     icon: 'library',
     emptyTitle: '打开收藏的这一页',
-    description: '原始内容与收藏原因已可查看，学习记录和笔记仍待接入。',
+    description: '查看原始内容、记录学习与回看历史；笔记仍待接入。',
   },
   {
     path: '/study-records',
@@ -50,8 +50,7 @@ export const pages: ShellPage[] = [
     caption: '留下理解，也留下一点下一次的方向。',
     icon: 'record',
     emptyTitle: '让学习过程有迹可循',
-    description:
-      '学习记录接口尚未接入。之后，每次学习的时长、进度变化与阶段备注会在这里汇集；现在没有示例记录。',
+    description: '按时间回看真实学习时长、状态和进度变化、总结与疑问。',
   },
   {
     path: '/reviews',

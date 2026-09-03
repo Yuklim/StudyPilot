@@ -4,6 +4,7 @@ import { ResourceDetail } from '../features/resources/ResourceDetail'
 import { ResourceForm } from '../features/resources/ResourceForm'
 import { ResourceLibrary } from '../features/resources/ResourceLibrary'
 import { ClassificationManager } from '../features/taxonomy/ClassificationManager'
+import { RecordHistory } from '../features/learning/RecordHistory'
 
 import { BookSketch, Icon } from './Icon'
 import type { ShellPage } from './pages'
@@ -84,7 +85,7 @@ function Overview() {
               <Icon name="record" />
             </span>
             <h3>下一次，从上次停下的地方开始</h3>
-            <p>学习数据尚未接入，暂不展示资料或进度。</p>
+            <p>概览统计尚未接入。可以在资料详情记录学习，或在学习记录中查看历史。</p>
           </div>
         </section>
         <aside className="daily-note" aria-label="学习小记">
@@ -106,6 +107,7 @@ export function Screen({ page }: { page: ShellPage }) {
   const match = useMatch('/resources/:resourceId')
   if (page.path === '/') return <Overview />
   if (page.path === '/classifications') return <ClassificationManager />
+  if (page.path === '/study-records') return <RecordHistory />
   if (page.path === '/resources/new') return <ResourceForm />
   if (page.path === '/resources') return <ResourceLibrary />
   if (page.path === '/resources/:resourceId' && match?.params.resourceId) {

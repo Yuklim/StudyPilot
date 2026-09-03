@@ -23,7 +23,9 @@ describe('resource view adapter', () => {
     {},
     { data: null },
     { data: [sample()], page: {} },
-    samplePage([sample({ progress: { status: 'UNREAD', progress_percent: 101 } })]),
+    samplePage([
+      sample({ progress: { ...sample().progress, status: 'UNREAD', progress_percent: 101 } }),
+    ]),
   ])('rejects malformed envelopes without exposing values', async (payload) => {
     vi.spyOn(api, 'request').mockResolvedValue(payload)
     await expect(listResources('page=1')).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })

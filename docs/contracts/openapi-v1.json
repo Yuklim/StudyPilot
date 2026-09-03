@@ -29,7 +29,7 @@
       "listStudyRecords": {}
     },
     "deferred_inputs": [],
-    "client_policy": "当前不自动生成客户端；后续生成须先按本清单限制可用操作与媒体类型。FILE 后端及页面已接入；JSON 不接受 FILE。TASK-015 提供学习记录后端，页面写入尚未接入；复习动作另行交付。未列出操作没有本阶段可调用承诺。",
+    "client_policy": "当前不自动生成客户端；后续生成须先按本清单限制可用操作与媒体类型。FILE 后端及页面已接入；JSON 不接受 FILE。TASK-015 提供学习记录后端，TASK-016 接入学习表单和历史页面；复习动作另行交付。未列出操作没有本阶段可调用承诺。",
     "completion_gate": "TASK-015 候选实现三个学习记录操作及进度/历史事务；本清单随测试、独立审查和验收通过后交用户合并生效，不表示笔记、复习、资料删除等完整 MVP 已交付。"
   },
   "tags": [{"name": "local-session", "description": "本次本地进程访问令牌"}, {"name": "resources", "description": "资料与原始文件"}, {"name": "taxonomy", "description": "主题、标签和资料标签关联"}, {"name": "notes", "description": "个人笔记"}, {"name": "learning", "description": "学习进度与不可变学习记录"}, {"name": "reviews", "description": "复习计划与不可变复习结果"}, {"name": "analytics", "description": "只读实时统计"}],

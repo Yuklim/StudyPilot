@@ -1585,3 +1585,131 @@ fieldset:disabled {
     scroll-behavior: auto !important;
   }
 }
+
+.learning-panel {
+  margin: 22px 0;
+}
+.learning-form,
+.record-history {
+  min-width: 0;
+  margin-top: 24px;
+  padding: clamp(16px, 3vw, 28px);
+  background: #fffdf7;
+  border: 1px solid #dedfcf;
+  border-radius: 24px;
+}
+.learning-form {
+  background: #f4f5e9;
+  border-style: dashed;
+}
+.learning-form fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.record-fields,
+.record-filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin: 18px 0;
+}
+.learning-form label,
+.record-filters label {
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+  min-width: 0;
+}
+.learning-form input:not([type='checkbox']),
+.learning-form textarea,
+.learning-form select,
+.record-filters input,
+.record-filters select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding: 12px;
+  border: 1px solid #cfd5c3;
+  border-radius: 14px;
+  background: #fffefa;
+  font: inherit;
+  color: inherit;
+}
+.learning-form textarea {
+  min-height: 104px;
+  resize: vertical;
+  margin-bottom: 18px;
+}
+.learning-form .record-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 18px 0;
+  line-height: 1.8;
+}
+.record-confirm input {
+  flex-shrink: 0;
+  margin-top: 5px;
+}
+.record-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  grid-column: 1 / -1;
+}
+.record-list {
+  list-style: none;
+  margin: 24px 0;
+  padding: 0;
+  display: grid;
+  gap: 18px;
+}
+.record-card {
+  min-width: 0;
+  padding: 20px;
+  border-radius: 18px;
+  border: 1px solid #e5e1d3;
+  border-left: 4px solid #afbd9a;
+  background: #fffefa;
+}
+.record-card-heading {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  color: #657455;
+  font-size: 13px;
+}
+.record-card h3 {
+  font-size: 13px;
+  margin: 18px 0 6px;
+}
+.record-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.8;
+}
+.record-history .section-heading {
+  flex-wrap: wrap;
+  gap: 10px;
+}
+@media (max-width: 600px) {
+  .record-fields,
+  .record-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .learning-form,
+  .record-history {
+    padding: 16px;
+    border-radius: 18px;
+  }
+  .record-card {
+    padding: 14px;
+  }
+  .record-history .section-heading h2 {
+    font-size: 21px;
+  }
+}

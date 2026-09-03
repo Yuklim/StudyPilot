@@ -87,13 +87,13 @@ function App() {
           <Icon name="info" />
           <p>
             <strong>网页、文件与粘贴资料已开放</strong>
-            <span>原件可上传与下载；主题和标签可整理。学习记录与正文解析尚未接入。</span>
+            <span>原件、分类与学习记录已接入。复习、笔记、统计及正文解析尚未开放。</span>
           </p>
         </div>
         <Screen page={page} />
         <footer className="workspace-footer">
           <span>为每一次认真学习，留一页空白。</span>
-          <span>资料可用 · 学习功能待接入</span>
+          <span>资料与学习记录可用 · 慢慢积累</span>
         </footer>
       </main>
     </div>
