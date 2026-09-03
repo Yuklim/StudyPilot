@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-014"
-status = "IN_REVIEW"
+status = "IN_ACCEPTANCE"
 risk = "L3"
 risk_reason = "接入既定文件接口并扩展共享客户端的受控 multipart/二进制传输与令牌失效处理；不改安全协议。保留独立只读 Review 和独立 Acceptance。"
 risk_flags = ["business", "security", "sensitive-storage", "tests"]
@@ -55,4 +55,15 @@ checks = ["frontend", "contracts", "governance"]
 
 - 2026-09-03：IN_PROGRESS；L3，已合并依赖可用。
 - 2026-09-03：IN_REVIEW；实现与测试记录固定，等待独立实际只读 Review。未提前声称审查或验收通过。
+
+### 独立只读 Review
+
+- 2026-09-03：独立 CLI 会话 `01a06623-2d87-7702-8bb2-79382f7f1dd2`；沿用已批准临时 `gpt-5.4 / medium`，不更改默认模型。启动头实际为 read-only / never，禁子派发；进程退出 0。固定候选 `3d0966e0a13c1690b48b3fadd94c5a7416615fcb`；以下为报告原文。
+
+PASS `base=761479459a5895adacb262c5f57862dd8373c2ed` `candidate=3d0966e0a13c1690b48b3fadd94c5a7416615fcb`。权限/独立性证据：当前会话按用户指定仅做 Reviewer；运行环境为 `sandbox=read-only`、`approval=never`，仓库内执行 `test -w .` 返回 `exit=1`；未做试写、修改、提交、推送、派发或联网。Git 证据：`git status --short --branch` 仅显示 `## agent/frontend_worker/TASK-014-file-pages`，无未提交改动；`HEAD` 与 candidate 一致。
+
+No findings。已完整审阅 `base..candidate` 24 文件 diff，并定点核查 `frontend/src/api/client.ts`、`frontend/src/features/resources/api.ts`、`ResourceForm.tsx`、`FileOriginal.tsx` 及相关测试。上传固定到受控 `/api/v1/resources`、不允许自带 boundary/任意头、不暴露或持久化令牌；403 失效令牌清理且不自动重放。下载仅按文件 UUID，请求后校验附件、`nosniff`、媒体类型、长度和文件名；迟到结果、离页清理、无假成功提示。WEB/PASTE 既有路径保持，TASK-013 仅补合并事实。覆盖/证据缺口：复用同指纹 `e86f25…dc385` 的 168 前端 / 23 治理 / 19 Chromium 通过证据，未见需定向重跑的具体缺口。
+
+- coordinator：Review PASS，No findings，无需修订产品；进入 IN_ACCEPTANCE。后续仅本任务 status/EVIDENCE 与本行索引写回，验收不重新审整份代码。
+
 <!-- EVIDENCE:END -->
