@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-010"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L2"
 risk_reason = "普通前端业务接入，仅使用已合并的三个资料接口和共享客户端，不改变公共契约、认证策略、事务、数据模型或后端；新行为通过组件与真实浏览器测试验证。"
 risk_flags = ["business", "tests"]
@@ -43,7 +43,7 @@ checks = ["frontend", "governance"]
 
 - 已实现：三个真实资料页面及局部类型适配，复用原共享客户端；表单输入/互斥来源/重复提交保护，列表搜索筛选排序分页/卡片列表，详情元信息/安全外链/纯文本原文，受控错误及过期请求保护。未修改后端、数据库、共享客户端、依赖或契约。主 Agent自检一次完整变更，范围与阶段清单一致；不冒充独立 Review。
 - 原 Shell 中资源页的“无请求/无表单”断言改为业务正向测试，其他未接入页保持无接口/无假数据；原客户端、安全及错误边界测试不删。所有 Playwright trace 关闭，测试只用隔离临时数据库和合成资料。README 更新当前能力、显式建库、两端启动、使用方法和边界。
-- 最终业务/测试输入指纹：`00d46db467e4e0ac8ada23517b9fa46d4228122627a4bb6c1ac500fc0bdc1f5b`。实现提交待本次提交后在冻结候选中记录。
+- 实现提交：`971b0e21a20114b0ee791db27ca65bd1e2c4a35f`；最终业务/测试输入指纹：`00d46db467e4e0ac8ada23517b9fa46d4228122627a4bb6c1ac500fc0bdc1f5b`。冻结候选为之后包含本实现 SHA 与测试记录的提交，精确 SHA 写入独立报告与 EVIDENCE。
 - 2026-09-03（macOS；Node 24.18.0、npm 11.16.0、Python 3.13.9；现有锁文件/依赖未变）：任务检查命令 `PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-010-resource-pages.md --worktree` exit=0。静态范围/敏感模式/Git diff 检查、前端 format/lint/typecheck、70 项 Vitest、生产构建、治理校验/Ruff/23 项治理测试全部 PASS。治理测试中的 fake-test/missing-tool 输出为故障模拟断言，整套实际结果为 23 tests / OK / exit=0。
 - `cd frontend && npm run test:e2e` 最终 exit=0，11 项 Chromium / 单 Worker / 零重试 / 13.0s：原 8 项回归保留；新增实际页面 WEB/PASTE 保存→详情→刷新→搜索筛选，断网读取重试/保存不重放/404，以及 21 条合成资料的真实分页与键盘操作。受影响前端/治理检查在最终修正后重跑；后端源码/配置无变，不重复整套后端测试，以真实临时后端 E2E 验证接口接入。
 - 截图人工检查：`frontend/test-results/resource-pages-real-UI-sav-19a4f--and-safely-reads-originals-chromium/` 中 `desktop-web-form.png`、`desktop-paste-detail.png`、`mobile-320-detail.png`、`library-1440.png`、`library-320.png`（以及 390px 自动布局断言）。表单/卡片/正文可读、无横向溢出；只含合成资料，不提交截图或运行数据。
@@ -54,4 +54,5 @@ checks = ["frontend", "governance"]
 ## 状态与最终证据
 
 - 2026-09-03：IN_PROGRESS。前置合并已核实，按 L2 登记；Review 待实现完成后执行。独立 Acceptance：N/A（L2，由主 Agent按证据完成门禁）。
+- 实现和必要检查完成，转 IN_REVIEW。按 V2 只启动一位实际只读 Reviewer；最终合并仍由用户决定。
 <!-- EVIDENCE:END -->
