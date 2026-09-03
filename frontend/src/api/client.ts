@@ -5,6 +5,7 @@ type Json = null | boolean | number | string | Json[] | { [key: string]: Json }
 interface JsonRequest {
   method?: Method
   body?: Json
+  ifMatchVersion?: number
 }
 
 const messages = {
@@ -17,6 +18,15 @@ const messages = {
   INVALID_RESPONSE: '服务响应无法识别，请重试。',
   INVALID_REQUEST: '请求参数不受支持。',
   REQUEST_FAILED: '请求未能完成，请检查后重试。',
+  DUPLICATE_TOPIC: '已有同名主题，请换一个名称。',
+  DUPLICATE_TAG: '已有同名标签，请换一个名称。',
+  TOPIC_NOT_FOUND: '这个主题已不存在，请重新选择。',
+  TAG_NOT_FOUND: '这个标签已不存在，请重新选择。',
+  RESOURCE_NOT_FOUND: '这份资料已不存在，请重新打开资料库。',
+  VERSION_CONFLICT: '内容已被修改，本次操作未执行。请载入最新版本后重新确认。',
+  VERSION_REQUIRED: '缺少有效版本，请重新载入后再操作。',
+  TAXONOMY_IN_USE: '这个分类仍被资料使用，不能删除；资料不会被连带删除。',
+  VALIDATION_ERROR: '输入未通过检查，请检查格式和长度。',
 } as const
 type ErrorCode = keyof typeof messages
 
@@ -24,13 +34,20 @@ export class ApiError extends Error {
   readonly code: ErrorCode
   readonly status: number
   readonly requestId?: string
+  readonly details: Readonly<{ current_version?: number; resource_count?: number }>
 
-  constructor(code: ErrorCode, status = 0, requestId?: string) {
+  constructor(
+    code: ErrorCode,
+    status = 0,
+    requestId?: string,
+    details: { current_version?: number; resource_count?: number } = {},
+  ) {
     super(messages[code])
     this.name = 'ApiError'
     this.code = code
     this.status = status
     this.requestId = requestId
+    this.details = Object.freeze({ ...details })
   }
 }
 
@@ -120,6 +137,15 @@ async function failure(response: Response): Promise<ApiError> {
     'LOCAL_TOKEN_REQUIRED',
     'LOCAL_TOKEN_INVALID',
     'UNKNOWN_ERROR',
+    'DUPLICATE_TOPIC',
+    'DUPLICATE_TAG',
+    'TOPIC_NOT_FOUND',
+    'TAG_NOT_FOUND',
+    'RESOURCE_NOT_FOUND',
+    'VERSION_CONFLICT',
+    'VERSION_REQUIRED',
+    'TAXONOMY_IN_USE',
+    'VALIDATION_ERROR',
   ]
   const code =
     typeof error?.code === 'string' && serverCodes.includes(error.code)
@@ -129,7 +155,22 @@ async function failure(response: Response): Promise<ApiError> {
     typeof error?.request_id === 'string' && /^req_[a-f0-9]{16,64}$/.test(error.request_id)
       ? error.request_id
       : undefined
-  return new ApiError(code, response.status, requestId)
+  const details: { current_version?: number; resource_count?: number } = {}
+  const key =
+    code === 'VERSION_CONFLICT'
+      ? 'current_version'
+      : code === 'TAXONOMY_IN_USE'
+        ? 'resource_count'
+        : undefined
+  const value = key && object(error?.details) ? error.details[key] : undefined
+  if (
+    key &&
+    typeof value === 'number' &&
+    Number.isSafeInteger(value) &&
+    value >= (key === 'current_version' ? 1 : 0)
+  )
+    details[key] = value
+  return new ApiError(code, response.status, requestId, details)
 }
 
 export function createApiClient() {
@@ -169,11 +210,23 @@ export function createApiClient() {
       const target = localPath(path)
       const method = options.method ?? 'GET'
       if (
+        Object.keys(options).some((key) => !['method', 'body', 'ifMatchVersion'].includes(key)) ||
         !['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(method) ||
         (method === 'GET' && options.body !== undefined)
       ) {
         throw new ApiError('INVALID_REQUEST')
       }
+      if (
+        options.ifMatchVersion !== undefined &&
+        (method !== 'DELETE' ||
+          options.body !== undefined ||
+          !Number.isSafeInteger(options.ifMatchVersion) ||
+          options.ifMatchVersion < 1 ||
+          !/^\/api\/v1\/(topics|tags)\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+            target,
+          ))
+      )
+        throw new ApiError('INVALID_REQUEST')
       let body: string | undefined
       try {
         body = options.body === undefined ? undefined : JSON.stringify(options.body)
@@ -182,6 +235,8 @@ export function createApiClient() {
       }
       const usedToken = await acquire()
       const headers = new Headers({ 'X-StudyPilot-Token': usedToken })
+      if (options.ifMatchVersion !== undefined)
+        headers.set('If-Match', `"${options.ifMatchVersion}"`)
       if (body !== undefined) headers.set('Content-Type', 'application/json')
       const response = await transport(target, method, headers, body)
       if (!response.ok) {

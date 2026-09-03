@@ -5,8 +5,15 @@ import { BookSketch } from '../../shell/Icon'
 import { displayTime, listResources, sourceLabels, statusLabels } from './api'
 import { ResourceError, ResourceProgress } from './ResourceState'
 import { useResourceQuery } from './useResourceQuery'
+import { ClassificationPicker, type Selection } from '../taxonomy/ClassificationPicker'
 
-const initialFilters = { q: '', source: '', status: '', sort: '-created_at' }
+const initialFilters = {
+  q: '',
+  source: '',
+  status: '',
+  sort: '-created_at',
+  classification: { topic: null, tags: [] } as Selection,
+}
 export function ResourceLibrary() {
   const [draft, setDraft] = useState(initialFilters)
   const [filters, setFilters] = useState(initialFilters)
@@ -17,10 +24,19 @@ export function ResourceLibrary() {
   if (filters.q) query.set('q', filters.q)
   if (filters.source) query.set('source_type', filters.source)
   if (filters.status) query.set('learning_status', filters.status)
+  if (filters.classification.topic?.id === 'unassigned') query.set('topic_unassigned', 'true')
+  else if (filters.classification.topic) query.set('topic_id', filters.classification.topic.id)
+  filters.classification.tags.forEach((tag) => query.append('tag_id', tag.id))
   const key = query.toString()
   const load = useCallback(() => listResources(key), [key])
   const { result, retry } = useResourceQuery(key, load)
-  const filtered = Boolean(filters.q || filters.source || filters.status)
+  const filtered = Boolean(
+    filters.q ||
+    filters.source ||
+    filters.status ||
+    filters.classification.topic ||
+    filters.classification.tags.length,
+  )
   const data = result?.data
 
   function search(event: FormEvent) {
@@ -98,6 +114,11 @@ export function ResourceLibrary() {
             ))}
           </select>
         </label>
+        <ClassificationPicker
+          value={draft.classification}
+          onChange={(classification) => setDraft({ ...draft, classification })}
+          filter
+        />
         <div className="resource-actions">
           <button className="journal-button primary" type="submit">
             搜索 / 应用筛选
@@ -167,6 +188,9 @@ export function ResourceLibrary() {
                 <Link to={`/resources/${item.id}`}>{item.title}</Link>
               </h2>
               <p className="resource-reason">{item.save_reason || '留给下一次阅读。'}</p>
+              <p className="resource-hint">
+                主题：{item.topic_id ? (item.topic_name ?? '暂无法读取名称，请重新加载') : '未分配'}
+              </p>
               {item.tags.length > 0 && (
                 <ul className="resource-tags" aria-label="标签">
                   {item.tags.map((tag) => (

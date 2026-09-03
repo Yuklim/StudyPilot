@@ -1,0 +1,96 @@
+# TASK-012：分类管理页面与资料分类接入
+
+```toml
+schema_version = 2
+id = "TASK-012"
+status = "ACCEPTED"
+risk = "L3"
+risk_reason = "接入既定分类删除与版本保护，并扩展共享客户端的受控版本头及安全错误映射；不改变服务端安全协议或契约。保留独立 Review 与独立验收。"
+risk_flags = ["business", "deletion", "security", "tests"]
+owner = "frontend_worker"
+base = "06025c70f460f77a0fb5ca89a36a6676a85b0171"
+allowed_paths = ["frontend/src/features/taxonomy/**", "frontend/src/features/resources/**", "frontend/src/api/client.ts", "frontend/src/api/client.test.ts", "frontend/src/shell/pages.ts", "frontend/src/shell/Screen.tsx", "frontend/src/App.tsx", "frontend/src/App.test.tsx", "frontend/src/styles.css", "frontend/e2e/taxonomy-pages.spec.ts", "frontend/e2e/scaffold.spec.ts", "README.md", "docs/tasks/TASK-011-taxonomy-backend.md", "docs/tasks/TASK-012-taxonomy-pages.md", "docs/tasks/任务索引.md"]
+checks = ["frontend", "governance"]
+```
+
+## 需求与范围
+
+- 用户确认上一项已合并，承接 #16 明确的分类管理页面、资料表单选择与资料库筛选。已核实 PR #16 MERGED（2026-09-03T05:48:24Z），合并提交为 base；初始工作区干净。
+- 依据：需求 5.1～5.4、5.10；架构 6/7/12 节；已批准契约 2.1～2.4、4.5～4.7、7 及 TASK-011 已交付的分类操作。前端 AGENTS 中 TASK-002 脚手架限制属于历史阶段，后续已批准任务与冻结契约授权真实页面。
+- 主 Agent兼任 frontend_worker，唯一实现写入者；coordinator 串行维护任务/索引。无并行写入；L3 各一次独立只读 Review 和独立 Acceptance。使用 intake / implement / review / stage-acceptance Skills，不重复全仓读取或全量测试。
+- 新增独立 `/classifications` 分类整理入口，保留 `/topics` 主题统计预留，不伪装统计已实现。主题与标签切换、真实分页/名称搜索/排序、创建、修改、明确确认后删除未使用项；沿用暖纸色、灰绿、圆角、便签/索引卡的简约手帐风。
+- 名称与描述长度遵守契约；修改携带所见 version，删除强 If-Match。冲突/引用中/重名/不存在/连接失效提示使用固定中文，不回显服务端原文；冲突不能自动改版本并重放。保留失败输入，用户明确放弃草稿、载入最新版本后才能重新决策。不把加载失败当空数据。
+- 共享客户端仅增加受控正整数 `ifMatchVersion` 选项（分类 DELETE、无正文），不开放任意头或凭据访问；安全错误仅增加既定分类代码和经校验的计数/版本字段，不保存原始 details/message。保留同源、内存令牌、不持久化、不自动重放。
+- 添加资料可选一个主要主题及最多 20 个已有标签，通过原 createResource 请求一次保存，不分拆写入。选择器按需加载、可搜索/分页，已选项跨页保留，可清除；不加载全量分类。资料库可主题/未分配主题及多个标签（全部匹配）组合筛选，应用/重置回第一页；列表和详情显示真实主题与标签。
+- 详情页支持逐个添加/解除标签关联，不整组覆盖；明确动作才写入、忙碌防重复、成功后重新读真实详情、失败结果不伪装成功。资料主要主题后补/重分配仍待资料修改接口，本次不开放。
+- 禁止所有未列路径，尤其后端/模型/迁移/契约/治理/安全配置/依赖/锁文件；不做文件上传、资料主体修改/删除、学习/笔记/复习/统计/AI/公网部署。TASK-011 只追加真实合并事实，不重写历史。
+
+## 完成条件
+
+1. 分类页空/加载/失败/分页/搜索/排序/创建/修改/删除确认可用；重名与使用中删除受控，旧版本不覆盖，失败草稿保留，用户明确载入最新版，不自动重放。
+2. 请求路径、字段、正整数版本头、204 和响应校验符合既定契约；令牌与正文不进入持久化或日志；恶意错误原文不显示，禁止任意头绕过，现有客户端安全测试仍通过。
+3. 资料表单可无分类或选择主题/多个标签保存；选择跨页不丢失，最多 20 项；资料库按主题/未分配/多标签全部匹配组合过滤与重置，真实主题展示。详情标签增删后从服务重读，不改正文、进度或主要主题；延迟响应不覆盖新页面。
+4. 新交互有 RTL 与客户端单测；真实 Chromium 临时库覆盖分类管理→分类保存资料→组合筛选→详情标签关联/解除、重名/使用中/旧版本保护、刷新和键盘操作；320/390/1440 布局无横溢，人工查看新页面截图。全套 trace 关闭、只合成数据，不碰用户库。
+5. 自动前端/治理检查、浏览器回归通过；README 与能力一致；独立只读 Review 与独立验收覆盖最终候选，合并权保留给用户。
+
+## 上下文包
+
+根/前端规则、当前任务、上述局部需求/契约、已有 client/resources/shell 与测试；不读取全部历史任务。附加命令：`cd frontend && npm run test:e2e`（既有隔离端口 15173/18000）。任务检查：`PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-012-taxonomy-pages.md --worktree`。无依赖变更。
+
+## 实现与测试
+
+- 实现提交 `cd0de1d14b83552310cf54e7980b616543f8344d`；下述测试输入指纹与此实现绑定，冻结仅补任务证据/状态。
+- 已实现独立分类整理页、主题/标签分页搜索排序与增删改、删除确认与版本冲突提示；分类选择按需加载、跨页/收起保留、最多 20 个标签；创建资料一次提交分类；组合筛选与主题名补查、详情逐标签操作成功后重新读取。保留主题统计预留，不改变后端、标准契约、模型、依赖或安全配置。
+- 共享客户端只新增分类 DELETE 的正整数 ifMatchVersion 和固定错误代码/安全数值字段；不能传任意 headers 或覆盖令牌。原同源、内存令牌、不自动重放策略保持。新增前端测试 44 项，共 114 项；浏览器新增 3 项，共 15 项。
+- 最终任务检查 `PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-012-taxonomy-pages.md --worktree` exit=0 / CHECKS PASS；范围/敏感模式/Git diff、前端 format/lint/typecheck、Vitest **114 PASS**、生产构建（index-B16M3D_k.js）、治理校验/Ruff/**23 PASS** 全部通过。输入指纹 `398affed01ccb82ebaa8abbdcf204871794b2268085b31d0504d0c2333d36942`，27 文件。实现 SHA 在提交后冻结记录。治理单测中的 missing-tool/fake-test 是对失败检测的合成测试，不是当前失败。
+- `cd frontend && npm run test:e2e` 首次 exit=1，**14 PASS / 1 FAIL**：唯一失败为新增分页场景用 getByLabel exact 定位包含选项文本的 select，30 秒超时；浏览器快照确认“标签排序”控件可用。只改为可访问角色 combobox 的精确定位，不改变生产代码/断言或增加超时。随后 `npm run test:e2e -- e2e/taxonomy-pages.spec.ts --grep 'classification search, paging' --output test-results/task012-paging-recheck` exit=0，**1 PASS / 8.7s**；复用未变更的 14 个场景证据，15 场景均有有效通过结果，不冒称原整套 exit=0。原套 46.4s（含唯一定位超时）。配置/依赖不变，单 Worker、零重试、trace off；两个运行的自启测试服务均正常退出。
+- 真实 Chromium 覆盖分类创建/描述清空/重名拒绝/确认取消与删除、带主题双标签保存→刷新→组合筛选与未分配筛选→引用中删除拒绝→资料标签解除/添加、主题旧版修改与删除被拒→显式载入最新版再确认、21 个标签的分页/排序及网络失败草稿保留。已有 12 场景保持。只浏览器内调用共享客户端模拟另一窗口修改，不导出凭据，无外部请求、Cookie/localStorage/sessionStorage 写入。
+- 已查看 `frontend/test-results/taxonomy-pages-classificat-29ef6-urces-with-combined-filters-chromium/` 的 classification-1440/320.png、picker-1440/320.png；暖纸色、灰绿、圆角索引卡、便签风格一致，窄屏单列与换行正常。自动验证 320/390/1440 无横溢，截图合成数据、不入 Git。没有为此生成图像或改视觉方案。
+- 环境：macOS，已有 Python 3.13.9、Node 24.18.0 / npm 11.16.0；后端未改，不重复其 226 项已合并测试，真实浏览器仍运行原后端作集成验证。无新依赖。主 Agent完成一次变更范围与实现自检，不冒充独立 Review。
+- 开发期失败：RTL 测试按钮定位误加 Playwright 的 exact 选项，114 测试运行通过但 tsc 报不支持的字段；删掉该测试选项（字符串默认精确匹配）后 typecheck 与最终检查通过。浏览器定位失败如上，未隐藏、删除或放松断言。
+- 已知边界：只承诺个人本机/少量 SQLite 写入和 Chromium；分类说明/草稿在离开页面或切换类型时不持久化；主题名称补查失败不隐藏资料，刷新可恢复。分类删除不代表资料删除；主要主题后补/重分配、文件、学习/笔记/统计/AI 仍待后续。下一项为原始文件上传/保存/下载及失败保护，按已批准契约另行登记。
+
+<!-- EVIDENCE:BEGIN -->
+## 状态与最终证据
+
+- 2026-09-03：IN_PROGRESS；按 L3 登记，依赖已合并。
+- 2026-09-03：IN_REVIEW，实现及测试证据冻结；114 前端 / 23 治理通过，浏览器 14 原通过 + 1 定向修复通过，无未解决必要检查失败。待实际只读独立 Review 和 Acceptance。
+
+### 独立 Review 原文
+
+- 独立会话 `01a065e5-b13b-7531-a4cd-4f2ed856e74a`，`gpt-5.4 medium`，CLI 实际 `read-only / approval never / agents.enabled=false`，工作目录 `test -w .` 输出 `not_writable`，未试写，退出码 0。
+
+PASS
+
+base=`06025c70f460f77a0fb5ca89a36a6676a85b0171` candidate=`9ca3a070aca10390e9cbc2e06f26de91c4d7df57`。运行环境实际只读：会话权限为 `read-only`、approval=`never`，且在仓库根执行 `test -w .` 返回 `not_writable`。已按要求读取根/前端 `AGENTS.md`、[.agents/skills/studypilot-review-change/SKILL.md](/Users/yuklimching/Desktop/StudyPilot/.agents/skills/studypilot-review-change/SKILL.md)、[docs/tasks/TASK-012-taxonomy-pages.md](/Users/yuklimching/Desktop/StudyPilot/docs/tasks/TASK-012-taxonomy-pages.md)、[docs/governance/风险分级与检查规则.md](/Users/yuklimching/Desktop/StudyPilot/docs/governance/风险分级与检查规则.md)，并审查完整 `base..candidate` 27 文件最终 diff 与关键调用链，重点覆盖 [frontend/src/api/client.ts](/Users/yuklimching/Desktop/StudyPilot/frontend/src/api/client.ts)、[frontend/src/features/taxonomy/api.ts](/Users/yuklimching/Desktop/StudyPilot/frontend/src/features/taxonomy/api.ts)、[frontend/src/features/taxonomy/ClassificationManager.tsx](/Users/yuklimching/Desktop/StudyPilot/frontend/src/features/taxonomy/ClassificationManager.tsx)、[frontend/src/features/taxonomy/ClassificationPicker.tsx](/Users/yuklimching/Desktop/StudyPilot/frontend/src/features/taxonomy/ClassificationPicker.tsx)、[frontend/src/features/taxonomy/ResourceTagEditor.tsx](/Users/yuklimching/Desktop/StudyPilot/frontend/src/features/taxonomy/ResourceTagEditor.tsx) 及资源页接入。
+
+No findings。未发现越权改动、删除确认绕过、`ifMatchVersion` 失控暴露、服务端原文/敏感 details 外泄、离页后旧异步结果覆盖新页面、跨页标签选择丢失、详情页标签整组覆盖或资料主题误改等阻断问题；实现与任务记录描述、既定前端范围及受控错误投影一致。
+
+剩余风险/未测项：本次未重跑全套检查或浏览器链路，复用已绑定到 `product_fingerprint=398affed...d36942` 的 `check_task` PASS、114 前端/23 治理、14 既有浏览器 PASS + 1 个分页定位场景定向复跑 PASS，以及人工截图结论；在当前个人本机/少量写入场景下，这一证据足以支撑 Review PASS。
+
+- 2026-09-03：IN_ACCEPTANCE。主 Agent只核对范围、输入、测试失败闭环及 Review 结论，没有重新审代码；审查后仅写本任务 status/EVIDENCE 与索引行，交由另一独立只读会话验收。
+
+### 独立 Acceptance 原文
+
+- 独立会话 `01a065e8-d782-7ba1-a36f-ab666702f348`，不同于实现者和 Reviewer；`gpt-5.4 medium`，CLI 实际 `read-only / approval never / agents.enabled=false`，`test -w .` 为 `not_writable`，退出码 0。
+
+PASS
+
+base=`06025c70f460f77a0fb5ca89a36a6676a85b0171` candidate=`9ca3a070aca10390e9cbc2e06f26de91c4d7df57` HEAD=`ee1567b133ec5fd013d9c6f097473a4368445e59`。独立性与权限证据满足：本会话按运行时配置为 `approval never`，仓库根执行 `test -w . && echo writable || echo not_writable` 实际输出 `not_writable`；我未试写、未委派、未重跑全套测试、未做代码复审。
+
+完成条件映射如下，未见缺口：
+1. 分类页能力：任务“实现与测试”已记录分类页空/加载/失败/分页/搜索/排序/创建/修改/删除确认、重名/引用中删除、旧版本保护、失败草稿保留与显式载入最新版的真实浏览器覆盖；独立 Review 也确认这些点无阻断发现。
+2. 契约与客户端安全：任务记录明确只新增受控 `ifMatchVersion`、204 与安全错误映射，未开放任意头、未持久化令牌/正文；独立 Review 已覆盖客户端与关键调用链并给出 No findings。
+3. 资料分类接入：任务记录明确一次保存主题/标签、跨页保留、最多 20 项、组合筛选、详情逐标签增删后重读、不中改正文/进度/主主题；独立 Review 已确认无“跨页丢失/整组覆盖/主题误改/旧异步覆盖新页面”问题。
+4. 测试与界面证据：记录有 RTL/客户端单测、真实 Chromium 15 场景证据、首轮 `14 PASS / 1 FAIL` 的真实失败原因与仅该场景定向复跑 `1 PASS`、以及 320/390/1440 无横溢与截图人工查看结论；表述没有把原整套冒称为 `exit=0`。
+5. 最终检查与最终候选覆盖：`check_task` 最终 `exit=0`，前端 114 / 治理 23 / format / lint / typecheck / build 全绿，fingerprint=`398affed01ccb82ebaa8abbdcf204871794b2268085b31d0504d0c2333d36942`。另外我核对了 `candidate..HEAD`，仅变更 [docs/tasks/TASK-012-taxonomy-pages.md](/Users/yuklimching/Desktop/StudyPilot/docs/tasks/TASK-012-taxonomy-pages.md) 和 [docs/tasks/任务索引.md](/Users/yuklimching/Desktop/StudyPilot/docs/tasks/任务索引.md)，内容仅为 `status`/`EVIDENCE`/索引行更新，符合 `EVIDENCE_ONLY`，未引入产品代码或契约变化。
+
+剩余风险：我复用了已绑定实现与指纹的检查、浏览器和 Review 证据，没有重新执行全套链路；在当前 L3 验收职责和现有范围下，这不是阻断。未发现新的跨模块、数据、契约或安全影响，因此不退回。
+
+最终合并仍由用户本人执行。
+
+### 主 Agent收口
+
+- 2026-09-03：ACCEPTED。只核对任务边界、测试绑定与失败闭环、独立 Review/Acceptance 结论和完成条件，没有第三次代码审查。审查候选 `9ca3a070aca10390e9cbc2e06f26de91c4d7df57` 后仅任务证据、状态与索引行写回；`ee1567b` 已通过 EVIDENCE_ONLY，最终回写提交后再次执行同一窄门禁，不重复产品测试。
+- 无未解决阻断问题；保留个人本机/少量写入、草稿不持久化、主题补查失败可刷新等已知限制。分支供用户最终合并，不向 main 推送或自行合并。合并后下一项拟完成原始文件上传、保存、下载及失败保护，之后接入文件页面。
+<!-- EVIDENCE:END -->

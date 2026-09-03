@@ -71,6 +71,14 @@ export const pages: ShellPage[] = [
     description:
       '主题统计接口尚未接入。之后可以查看各主题的资料数量、完成比例与学习投入；现在不展示示例图表或数字。',
   },
+  {
+    path: '/classifications',
+    title: '分类整理',
+    caption: '给每一份好奇，贴上自己的线索。',
+    icon: 'topic',
+    emptyTitle: '',
+    description: '',
+  },
 ]
 
 export const navigation = pages.filter((page) => !page.path.startsWith('/resources/'))
