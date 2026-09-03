@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-010"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L2"
 risk_reason = "普通前端业务接入，仅使用已合并的三个资料接口和共享客户端，不改变公共契约、认证策略、事务、数据模型或后端；新行为通过组件与真实浏览器测试验证。"
 risk_flags = ["business", "tests"]
@@ -78,4 +78,5 @@ No findings。
 - 审查后仅更新本任务 status/EVIDENCE 与索引本任务行；业务代码/测试/配置/授权保持冻结。后续提交使用 `check_task.py --candidate HEAD --evidence-from 52f44dc363d7c6925da6306d5c5a62179687b410 --static-only` 验证证据专用变更。
 - 用户操作：本任务分支准备提交 GitHub 合并请求，最终合并由用户决定。下一项拟继续主题/标签分类管理，让资料能按自己的分类整理；另行登记范围后推进，不自动加入文件或 AI。
 
+- 2026-09-03：用户已合并 PR #15（2026-09-03T05:17:50Z），合并提交 `706c32732c4b3312acf26694302b43a8800ca2ea`，与 origin/main 一致；状态 MERGED，原证据保留。TASK-011 继续分类后端，不重做页面。
 <!-- EVIDENCE:END -->

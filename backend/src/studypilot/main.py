@@ -7,6 +7,7 @@ from fastapi import FastAPI
 
 from studypilot.api.health import router as health_router
 from studypilot.api.resources import router as resources_router
+from studypilot.api.taxonomy import router as taxonomy_router
 from studypilot.infrastructure.config import get_settings
 from studypilot.infrastructure.security import LocalAccessMiddleware
 from studypilot.infrastructure.security.local_access import LocalSession
@@ -35,6 +36,7 @@ def create_app() -> FastAPI:
     application.add_middleware(LocalAccessMiddleware, session=session)
     application.include_router(health_router)
     application.include_router(resources_router)
+    application.include_router(taxonomy_router)
     return application
 
 

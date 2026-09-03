@@ -41,11 +41,16 @@
 
 本文件第 5、8、10 节及 `openapi-v1.json` 的标准 paths/schemas 描述**完整 MVP 目标**，不是当前程序全部已可调用的能力清单。同一操作允许按本节明确的输入子集分阶段交付；TASK-009 当前运行时的可用性及未开放输入响应以本节为准，不能把完整目标中的 FILE 分支视为本阶段已承诺可用。最终字段、媒体类型、成功响应、安全及数据规则仍保留，不删减、不改名，不宣称完整 MVP 已完成。
 
-| 当前可用操作 | TASK-009 交付范围 |
+TASK-011 在原资料子集上新增以下已实现的分类操作；只更新当前可用性，不改变标准契约。TASK-010 页面已接入 WEB/PASTE；分类管理页面仍待后续前端任务接入。
+
+| 当前可用操作 | 交付范围 |
 | --- | --- |
 | `bootstrapLocalSession` | 沿用 TASK-008 的本机启动令牌协议 |
 | `createResource` | 仅 `application/json` 的 WEB/PASTE；成功为原定 `201 ResourceEnvelope` |
 | `listResources` / `getResource` | 原定列表筛选/摘要与详情读取；可读 READY 文件元数据不代表已经提供文件上传/下载 |
+| `listTopics` / `createTopic` / `getTopic` / `updateTopic` / `deleteTopic` | TASK-011：既定主题创建/读/改/删除未使用项；保留版本、规范化唯一与引用保护 |
+| `listTags` / `createTag` / `getTag` / `updateTag` / `deleteTag` | TASK-011：既定标签创建/读/改/删除未使用项；不增加颜色字段或级联资料删除 |
+| `attachResourceTag` / `detachResourceTag` | TASK-011：既定幂等关联/解除；不写资料主要主题、正文或学习状态 |
 
 - 当前阶段，通过安全门禁的 `POST /api/v1/resources` + `multipart/form-data` 返回 `415 CONTENT_TYPE_UNSUPPORTED`，在读取请求体或进行业务数据/文件操作前拒绝。此处是用户批准的**暂未开放**行为，不代表 FILE 被取消或文件格式本身无效；文件上传页面/调用入口不得启用。缺失令牌或非法来源仍优先按第 7 节返回对应 `403`，不能绕过安全检查获得阶段响应。
 - JSON 请求的 FILE 不属于 WEB/PASTE JSON schema，仍为 `422 VALIDATION_ERROR`。已开放的 WEB/PASTE 校验、错误、事务和只读投影必须完整符合其契约，不能借分阶段交付降低这些要求。
