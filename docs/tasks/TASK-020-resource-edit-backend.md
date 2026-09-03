@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-020"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "实现既定资料修改接口，涉及用户原文、主题归属、版本竞争和事务保存；同步交付清单，保留独立只读审查与验收，不改模型或迁移。"
 risk_flags = ["business", "critical-data", "tests"]
@@ -79,4 +79,5 @@ PASS。
 已实际运行指定静态命令一次，退出 0：`EVIDENCE_ONLY PASS 536bf9...f2ec4d...; no product tests rerun`。五项条件映射成立：更新语义、校验与安全、回滚/竞争/主题联动、466 后端/构建/契约证据复用、独立 Review 与本验收均齐。剩余风险为已声明边界：前端编辑入口尚未接入，需后续任务处理；最终合并仍由用户决定。
 
 - 主 Agent 最终核对：ACCEPTED，无未处置的审查问题；沿用已验证的 466 项测试及构建，未重复开发或全套测试，默认模型配置未改。产品候选仍为 `536bf9bbc3d8f6ff454f3121fb38387bee671ae5`，后续仅状态与证据写回。保留仅后端、无前端编辑入口、无原文修订历史/回收站、SQLite 写竞争可能受控失败需重读等已声明限制。待用户合并，下一任务接入资料编辑页面；Agent 不代合并。
+- 2026-09-03 用户确认“已合并”；GitHub 核实 PR #25 于 2026-09-03T11:44:31Z 合并，main 提交 `dcbc5d8a97065c6f4802f3b8fb9d22e9a8d70fc0`。MERGED；原实现/测试/审查证据不变，TASK-021 接入编辑页面。
 <!-- EVIDENCE:END -->

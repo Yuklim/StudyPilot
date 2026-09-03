@@ -8,6 +8,7 @@ import { NotesPanel } from '../notes/NotesPanel'
 import { useResourceQuery } from './useResourceQuery'
 import { ResourceTagEditor } from '../taxonomy/ResourceTagEditor'
 import { FileOriginal } from './FileOriginal'
+import { ResourceEditor } from './ResourceEditor'
 
 export function ResourceDetail({ resourceId }: { resourceId: string }) {
   const load = useCallback(() => getResource(resourceId), [resourceId])
@@ -37,7 +38,10 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
         </div>
       )}
       {openedId === resourceId && (
-        <NotesPanel key={resourceId} resourceId={resourceId} available={!!item} />
+        <>
+          <NotesPanel key={resourceId} resourceId={resourceId} available={!!item} />
+          <ResourceEditor key={'editor-' + resourceId} resource={item} refreshed={retry} />
+        </>
       )}
       {item && (
         <>
@@ -115,7 +119,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
             <FileOriginal key={item.original_file.id} file={item.original_file} />
           )}
           <p className="resource-hint feature-boundary">
-            资料正文修改、主题重分配、资料删除、复习安排与正文解析尚未开放。
+            资料删除、复习安排与正文解析尚未开放；文件原件不能替换。
           </p>
           <LearningPanel key={'learning-' + item.id} resource={item} />
         </>
