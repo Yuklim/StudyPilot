@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-008"
-status = "IN_ACCEPTANCE"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "落实已批准的本地令牌、Host/Origin/Fetch Metadata 前置安全协议，并连接浏览器共享客户端；安全及跨模块影响必须独立 Review 与独立验收。"
 risk_flags = ["security", "authentication", "public-api", "tests"]
@@ -74,5 +74,33 @@ Findings：No findings。启动令牌生命周期、Host/Origin/Fetch Metadata �
 
 - 已对冻结候选 `260d9fc6c42716aea1bebfb75a74c38e38c642f0` 执行静态范围/指纹核对，exit=0，指纹与最终测试输入一致。独立 Review PASS，No findings。
 - 2026-09-03：IN_ACCEPTANCE。仅写回本任务证据和索引，不改产品输入；安排不同身份、实际只读的 Integration Owner 核对五项完成条件与证据，不重复全量 Review/测试。
+
+
+### 独立 Acceptance 原文
+
+Integration Owner session `01a06554-1fdd-76b2-8816-42e4c99596b3`，独立于实现者和 Reviewer；Codex CLI 0.145.0/GPT-5.4 medium，实际启动头 `sandbox: read-only`、`approval: never`。仅核对完成条件、候选和证据，未重跑整套测试或重审代码。下文仅将 Markdown 行尾双空格换行改为空行分段以通过 Git 空白检查，报告文字不变。
+
+PASS
+
+实际只读证明：本会话运行器约束为 `sandbox read-only`、`approval never`；实测 `test -w .` 退出码 `1`。读取 Git 时还出现 `/tmp/... Operation not permitted`，与只读沙箱一致，独立性可确认。
+
+`base=9e59355fee2aabe741b171e33197b8f96ee6f27a`，已审 `candidate=260d9fc6c42716aea1bebfb75a74c38e38c642f0`，当前证据 `HEAD=9f2d7a8c2f52616b1a97fe0d36b880e19e303e0e`。我核对了 `candidate..HEAD`，仅变更 [docs/tasks/TASK-008-local-access-foundation.md](/Users/yuklimching/Desktop/StudyPilot/docs/tasks/TASK-008-local-access-foundation.md) 的 `status/EVIDENCE` 与 [docs/tasks/任务索引.md](/Users/yuklimching/Desktop/StudyPilot/docs/tasks/任务索引.md) 对应索引行，无产品输入变化；Review PASS 仍覆盖冻结候选。
+
+条件 1：任务证据已绑定 `test_local_session.py` 生命周期/no-store/健康检查/旧 token/无持久化与无前置副作用哨兵。
+
+条件 2：同组后端安全矩阵覆盖非法来源、Host/绝对目标、缺失/错误/旧 token、非法预检、恶意表单，且合法读写仅到受控测试路由。
+
+条件 3：证据记录白名单 CORS、预检 `204`、异常端口失败、无 wildcard/credentials。
+
+条件 4：46 项前端中 25 项共享客户端测试覆盖同源 `/api/v1/`、并发去重、403 旧令牌作废、不自动重放写请求、错误净化。
+
+条件 5：`115 backend / 46 frontend / 23 governance / 7 Chromium` 通过，Reviewer `01a06551-1bfc-74b2-97af-af1bbc1ea4f0` 已 PASS；任务记录注明 `check_task --candidate HEAD --evidence-from 260d... --static-only` 为 `EVIDENCE_ONLY PASS`，且指纹仍为 `c6f52e97dc3ffb6aaa2b3394b39915d08ab910384b02d9b84fb8c7aaaa190743`。
+
+未见未处置阻断。剩余风险仅为已声明边界：证据适用于单机单进程、macOS Chromium、本地安全连接基础；不代表业务功能完成，也不代表公网认证能力。
+
+- 主 Agent工具证据：`check_task.py --task docs/tasks/TASK-008-local-access-foundation.md --candidate HEAD --evidence-from 260d9fc6c42716aea1bebfb75a74c38e38c642f0 --static-only` 对 `9f2d7a8c2f52616b1a97fe0d36b880e19e303e0e` 实际返回 EVIDENCE_ONLY PASS（exit=0）。本条补记原工具事实，不把静态检查称为重新运行测试。
+- 2026-09-03：ACCEPTED。已审候选仍为 `260d9fc6c42716aea1bebfb75a74c38e38c642f0`，独立 Review PASS/No findings、独立 Acceptance PASS；五项条件全部满足。主 Agent仅做证据完成门禁，没有第三次从头审查代码。
+- 剩余边界：单机单进程/macOS Chromium 已验证；安全连接基础不是公开身份认证，业务/上传下载/实际资料界面仍待后续任务。没有需要另行处置的遗留缺陷。
+- 用户操作：待用户决定并执行合并；Agent 不合并或推送 main。下一步拟实现资料管理后端，先保存网页链接和粘贴内容、读取资料列表与详情，再按任务接入页面；文件上传/学习/AI 不提前扩大到本任务。
 
 <!-- EVIDENCE:END -->
