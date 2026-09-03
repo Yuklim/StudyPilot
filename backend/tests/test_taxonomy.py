@@ -467,7 +467,12 @@ def test_delivery_catalog_matches_taxonomy_routes_and_preserves_resource_limits(
     }
     available = set(profile["available_operations"])
     assert expected <= available
-    assert len(available) == 17 and "downloadOriginalFile" in available
+    assert len(available) == 20 and "downloadOriginalFile" in available
+    assert {
+        "listResourceStudyRecords",
+        "createResourceStudyRecord",
+        "listStudyRecords",
+    } <= available
     assert profile["available_operations"]["createResource"]["source_types"] == [
         "WEB",
         "PASTE",
