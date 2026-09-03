@@ -85,7 +85,7 @@ function Overview() {
               <Icon name="record" />
             </span>
             <h3>下一次，从上次停下的地方开始</h3>
-            <p>概览统计尚未接入。可以在资料详情记录学习，或在学习记录中查看历史。</p>
+            <p>打开一份资料，随手记下理解或疑问。旧学习历史仍可查看，复习与详细统计后续再做。</p>
           </div>
         </section>
         <aside className="daily-note" aria-label="学习小记">

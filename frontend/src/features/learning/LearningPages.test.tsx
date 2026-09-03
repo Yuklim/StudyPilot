@@ -13,7 +13,8 @@ function change(label: string, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } })
 }
 function open() {
-  fireEvent.click(screen.getByRole('button', { name: '记录学习 / 查看历史' }))
+  fireEvent.click(screen.getByRole('button', { name: '查看旧学习历史' }))
+  fireEvent.click(screen.getByRole('button', { name: '更多：状态与归档管理' }))
 }
 function submit() {
   fireEvent.submit(screen.getByRole('form', { name: '记录学习表单' }))
@@ -160,7 +161,7 @@ describe('learning form', () => {
     open()
     fill()
     submit()
-    fireEvent.click(screen.getByRole('button', { name: '收起学习手帐' }))
+    fireEvent.click(screen.getByRole('button', { name: '收起旧学习历史' }))
     const command = request.mock.calls.find(([, init]) => init?.method === 'POST')![1]!
       .body as unknown as StudyCommand
     await act(async () => pending.resolve(result(command)))

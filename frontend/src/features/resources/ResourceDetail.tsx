@@ -1,9 +1,10 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { displayTime, getResource, safeWebUrl, sourceLabels } from './api'
 import { ResourceError } from './ResourceState'
 import { LearningPanel } from '../learning/LearningPanel'
+import { NotesPanel } from '../notes/NotesPanel'
 import { useResourceQuery } from './useResourceQuery'
 import { ResourceTagEditor } from '../taxonomy/ResourceTagEditor'
 import { FileOriginal } from './FileOriginal'
@@ -12,6 +13,9 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
   const load = useCallback(() => getResource(resourceId), [resourceId])
   const { result, retry } = useResourceQuery(resourceId, load)
   const item = result?.data
+  // Keep the editor mounted during same-resource metadata refreshes (for example, tag edits).
+  const [openedId, setOpenedId] = useState<string | null>(null)
+  if (item && openedId !== resourceId) setOpenedId(resourceId)
   const link = item?.source_url ? safeWebUrl(item.source_url) : null
   return (
     <section className="resource-sheet resource-detail" aria-label="资料内容">
@@ -25,14 +29,18 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
       )}
       {result?.error !== undefined && <ResourceError error={result.error} retry={retry} />}
       {item && (
+        <div className="resource-sheet-heading">
+          <span className={`source-chip ${item.source_type.toLowerCase()}`}>
+            {sourceLabels[item.source_type]}
+          </span>
+          <h2>{item.title}</h2>
+        </div>
+      )}
+      {openedId === resourceId && (
+        <NotesPanel key={resourceId} resourceId={resourceId} available={!!item} />
+      )}
+      {item && (
         <>
-          <div className="resource-sheet-heading">
-            <span className={`source-chip ${item.source_type.toLowerCase()}`}>
-              {sourceLabels[item.source_type]}
-            </span>
-            <h2>{item.title}</h2>
-          </div>
-          <LearningPanel resource={item} />
           <dl className="resource-metadata">
             <div>
               <dt>主要主题</dt>
@@ -107,8 +115,9 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
             <FileOriginal key={item.original_file.id} file={item.original_file} />
           )}
           <p className="resource-hint feature-boundary">
-            资料正文修改、主题重分配、资料删除、复习安排与笔记功能尚未开放。
+            资料正文修改、主题重分配、资料删除、复习安排与正文解析尚未开放。
           </p>
+          <LearningPanel key={'learning-' + item.id} resource={item} />
         </>
       )}
     </section>

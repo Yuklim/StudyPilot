@@ -41,7 +41,7 @@ export function RecordHistory({ resourceId }: { resourceId?: string }) {
         <span className="note-tab">一点一滴，留下痕迹</span>
       </div>
       <p className="resource-hint">
-        记录只能追加，不能修改或删除。按浏览器本地时区显示；时间筛选的结束点不包含在内。
+        这里保留旧的学习活动记录，不能修改或删除。新的心得请到资料详情直接记录；本页不汇总个人心得。按浏览器本地时区显示，筛选结束点不包含在内。
       </p>
       <form className="record-filters" onSubmit={apply} aria-label="筛选学习历史">
         <label>
@@ -115,7 +115,7 @@ export function RecordHistory({ resourceId }: { resourceId?: string }) {
           {!result.data.data.length && (
             <div className="quiet-empty">
               <h3>这一页还没有学习记录</h3>
-              <p>从资料详情展开学习手帐，留下第一次记录；也可以调整筛选条件。</p>
+              <p>还没有旧学习记录，或当前筛选没有结果。想随手记心得，请打开对应资料详情。</p>
               {!resourceId && (
                 <Link className="text-link" to="/resources">
                   去资料库选择资料

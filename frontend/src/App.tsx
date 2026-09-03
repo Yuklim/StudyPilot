@@ -87,7 +87,7 @@ function App() {
           <Icon name="info" />
           <p>
             <strong>网页、文件与粘贴资料已开放</strong>
-            <span>原件、分类与学习记录已接入。复习、笔记、统计及正文解析尚未开放。</span>
+            <span>可以收藏资料、随手写心得并回看旧记录。复习、统计及正文解析留待后续。</span>
           </p>
         </div>
         <Screen page={page} />

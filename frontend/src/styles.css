@@ -1598,6 +1598,60 @@ fieldset:disabled {
   border: 1px solid #dedfcf;
   border-radius: 24px;
 }
+.notes-panel {
+  min-width: 0;
+  margin: 24px 0;
+  padding: clamp(16px, 3vw, 28px);
+  border: 1px solid #dce1d4;
+  border-radius: 24px;
+  background: #f7f8f0;
+}
+.note-editor label:not(.note-confirm) {
+  display: grid;
+  gap: 12px;
+}
+.note-editor textarea {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 144px;
+  padding: 16px;
+  border: 1px solid #cfd5c3;
+  border-radius: 18px;
+  background: #fffefa;
+  font: inherit;
+  line-height: 1.85;
+  color: inherit;
+  resize: vertical;
+}
+.note-card {
+  padding: 20px;
+  border: 1px solid #e0dfd1;
+  border-radius: 18px;
+  background: #fffefa;
+}
+.notes-panel .section-heading {
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 20px;
+}
+.notes-panel .section-heading:first-child {
+  margin-top: 0;
+}
+.note-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 16px 0;
+}
+.note-saved {
+  color: #496248;
+}
+.note-delete-preview {
+  padding: 16px;
+  border-left: 3px solid #bba78f;
+  background: #fffefa;
+}
 .learning-form {
   background: #f4f5e9;
   border-style: dashed;

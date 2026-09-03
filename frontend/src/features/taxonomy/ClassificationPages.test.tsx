@@ -274,12 +274,20 @@ describe('classification selection and resource integration', () => {
         }
       }
       if (options?.method === 'DELETE') throw new ApiError('NETWORK_ERROR')
+      if (path.startsWith(`/api/v1/resources/${resourceId}/notes?`))
+        return {
+          data: [],
+          page: { number: 1, size: 20, total_items: 0, total_pages: 0, has_more: false },
+        }
       if (path === `/api/v1/resources/${resourceId}`)
         return { data: sample({ tags: attached ? [tag] : [] }) }
       return reads(path)
     })
     renderWithRouter(<App />, `/resources/${resourceId}`)
     await screen.findByText('合成阅读资料')
+    fireEvent.change(screen.getByLabelText('这次想记下什么？'), {
+      target: { value: '修改标签也要保留这份草稿' },
+    })
     click('管理这份资料的标签')
     await screen.findByText('合成标签')
     click('添加标签 合成标签')
@@ -287,6 +295,7 @@ describe('classification selection and resource integration', () => {
       expect(screen.getByRole('button', { name: '管理这份资料的标签' })).toBeInTheDocument(),
     )
     expect(screen.getByText('合成标签')).toBeInTheDocument()
+    expect(screen.getByLabelText('这次想记下什么？')).toHaveValue('修改标签也要保留这份草稿')
     click('管理这份资料的标签')
     await screen.findByRole('button', { name: '已添加 合成标签' })
     click('解除标签 合成标签')
