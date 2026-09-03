@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-006"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L2"
 risk_reason = "仅整理共用测试设施、补浏览器联通验证，不改变生产接口、安全策略、数据模型或迁移；测试可靠性需一次独立 Review。"
 risk_flags = ["tests", "tooling", "internal-refactor"]
@@ -50,6 +50,8 @@ checks = ["backend", "frontend", "governance"]
 - 限制：只承诺 macOS 已验证的 Chromium 脚手架联通；Linux 系统依赖和 Windows 启动路径/信号需另行验证/适配。E2E 非全业务闭环，未启用远程 CI；README 明确需独立运行 E2E 命令。L2，独立 Acceptance N/A。
 
 <!-- EVIDENCE:BEGIN -->
+- 2026-09-03：用户已合并 PR #11，提交 `04c340f6b7b2320ed505672b985b6f912187d4d6`；当前状态 MERGED，以下旧流程证据保留。
+
 ## 状态与最终证据
 
 - 2026-09-03：IN_REVIEW；TASK-005 合并已核实。L2，独立验收 N/A；主 Agent完成范围/断言自检，独立 Review 待执行。

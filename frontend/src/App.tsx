@@ -1,96 +1,104 @@
-import { Route, Routes } from 'react-router-dom'
+import { useEffect, useRef } from 'react'
+import { Link, NavLink, useLocation } from 'react-router-dom'
 
-function LeafSketch() {
-  return (
-    <svg aria-hidden="true" className="leaf-sketch" viewBox="0 0 120 150">
-      <path d="M61 143C55 98 60 55 89 13" />
-      <path d="M68 92C37 80 24 57 25 35C48 39 67 55 68 92Z" />
-      <path d="M73 70C96 60 108 44 108 25C88 28 75 43 73 70Z" />
-      <path d="M61 116C39 111 25 97 19 79C39 78 56 91 61 116Z" />
-    </svg>
-  )
-}
+import { Icon } from './shell/Icon'
+import { navigation, pageAt } from './shell/pages'
+import { Screen } from './shell/Screen'
 
-function BookSketch() {
-  return (
-    <svg aria-hidden="true" className="book-sketch" viewBox="0 0 180 90">
-      <path d="M10 22C42 15 67 19 88 34V77C67 64 42 61 10 68V22Z" />
-      <path d="M170 22C138 15 113 19 92 34V77C113 64 138 61 170 68V22Z" />
-      <path d="M90 33V80" />
-      <path d="M27 34C44 31 59 34 72 42" />
-      <path d="M108 42C121 34 136 31 153 34" />
-    </svg>
-  )
-}
+function App() {
+  const { pathname } = useLocation()
+  const page = pageAt(pathname)
+  const heading = useRef<HTMLHeadingElement>(null)
+  const previousPath = useRef(pathname)
 
-function ScaffoldPage() {
+  useEffect(() => {
+    document.title = `${page.title} · StudyPilot`
+    if (previousPath.current !== pathname) {
+      heading.current?.focus()
+      previousPath.current = pathname
+    }
+  }, [page.title, pathname])
+
   return (
-    <main className="page-shell">
-      <div aria-hidden="true" className="paper-grain" />
-      <header className="topbar">
-        <a className="brand" href="/" aria-label="StudyPilot 首页">
-          <span className="brand-mark">S</span>
-          <span>
-            <strong>StudyPilot</strong>
-            <small>personal learning companion</small>
+    <div className="app-shell">
+      <a className="skip-link" href="#main-content">
+        跳到主要内容
+      </a>
+      <aside className="sidebar" aria-label="学习空间导航">
+        <Link className="brand" to="/" aria-label="StudyPilot 学习概览">
+          <span className="brand-mark" aria-hidden="true">
+            S<span>·</span>
           </span>
-        </a>
-        <span className="phase-tag">工程脚手架</span>
-      </header>
-
-      <section className="welcome-card" aria-labelledby="page-title">
-        <span aria-hidden="true" className="washi-tape" />
-        <span className="eyebrow">A quiet place to begin</span>
-        <h1 id="page-title">工程框架已运行，业务功能尚未实现</h1>
-        <p className="intro">
-          StudyPilot
-          的前后端基础已经准备就绪。这个页面只用于确认工程可以启动、构建和测试，不代表资料管理或学习功能已经完成。
-        </p>
-
-        <div className="status-note">
-          <span className="status-dot" aria-hidden="true" />
-          <div>
-            <strong>当前状态：基础环境就绪</strong>
-            <p>下一步将在正式任务和契约批准后，逐项实现真实功能。</p>
-          </div>
+          <span className="brand-copy">
+            <strong>StudyPilot</strong>
+            <span>个人学习手帐</span>
+          </span>
+        </Link>
+        <div className="nav-section">
+          <p className="nav-label">我的学习</p>
+          <nav className="primary-nav" aria-label="主要导航">
+            {navigation.map((item) => (
+              <NavLink key={item.path} to={item.path} end={item.path !== '/resources'}>
+                <Icon name={item.icon} />
+                <span>{item.title}</span>
+                <span className="nav-dot" aria-hidden="true" />
+              </NavLink>
+            ))}
+          </nav>
         </div>
-
-        <div className="foundation-grid" aria-label="当前工程基础">
-          <article>
-            <span className="note-number">01</span>
-            <h2>前端应用壳</h2>
-            <p>React 路由、错误保护和自动检查已经建立。</p>
-          </article>
-          <article>
-            <span className="note-number">02</span>
-            <h2>后端健康检查</h2>
-            <p>FastAPI 进程可通过最小接口确认运行状态。</p>
-          </article>
-          <article>
-            <span className="note-number">03</span>
-            <h2>安全默认边界</h2>
-            <p>业务接口在完整安全契约建立前保持默认拒绝。</p>
-          </article>
+        <Link className="add-link" to="/resources/new" aria-label="添加资料页面预览">
+          <Icon name="plus" />
+          <span>添加资料</span>
+          <span className="preview-label">预览</span>
+        </Link>
+        <div className="sidebar-note" aria-hidden="true">
+          <span className="note-pin" />
+          <p>
+            慢慢积累，
+            <br />
+            也是一种前进。
+          </p>
+          <span>one page at a time</span>
         </div>
+        <div className="sidebar-footer">
+          <span className="space-marker" />
+          本机个人空间
+        </div>
+      </aside>
 
-        <p className="scope-note">此处没有示例资料、进度或统计数据，因为这些业务能力尚未开发。</p>
-        <LeafSketch />
-        <BookSketch />
-      </section>
-
-      <footer>
-        <span>StudyPilot</span>
-        <span aria-hidden="true">·</span>
-        <span>先管理，再智能</span>
-      </footer>
-    </main>
+      <main className="workspace" id="main-content" tabIndex={-1}>
+        <div className="workspace-topbar">
+          <span>
+            我的学习空间
+            <span className="breadcrumb-separator" aria-hidden="true">
+              /
+            </span>
+            {page.title}
+          </span>
+          <span className="workspace-badge">界面预览</span>
+        </div>
+        <header className="page-heading">
+          <span className="eyebrow">STUDYPILOT / YOUR LEARNING JOURNAL</span>
+          <h1 ref={heading} tabIndex={-1}>
+            {page.title}
+          </h1>
+          <p>{page.caption}</p>
+        </header>
+        <div className="preview-notice" role="note" aria-label="当前开发阶段">
+          <Icon name="info" />
+          <p>
+            <strong>工程框架已运行，业务功能尚未实现</strong>
+            <span>当前可浏览页面，暂不读取或保存学习数据。</span>
+          </p>
+        </div>
+        <Screen page={page} />
+        <footer className="workspace-footer">
+          <span>为每一次认真学习，留一页空白。</span>
+          <span>导航可用 · 业务未接入</span>
+        </footer>
+      </main>
+    </div>
   )
 }
 
-export default function App() {
-  return (
-    <Routes>
-      <Route path="*" element={<ScaffoldPage />} />
-    </Routes>
-  )
-}
+export default App
