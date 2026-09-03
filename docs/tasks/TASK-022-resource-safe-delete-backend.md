@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-022"
-status = "IN_REVIEW"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "实现资料整体删除，涉及不可逆数据删除、删除确认令牌、数据库级联、文件 trash 隔离和公共 API 可用能力清单。"
 risk_flags = ["business", "critical-data", "security", "sensitive-storage", "public-api", "deletion", "tests"]
@@ -49,7 +49,7 @@ checks = ["backend", "contracts"]
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- IN_REVIEW；实现与统一检查证据齐全，待独立实际只读 Review，随后另一独立 Acceptance 核对完成条件。
+- ACCEPTED；实现、统一检查、独立实际只读 Review 与另一独立只读 Acceptance 均通过。最终合并仍由用户决定。
 <!-- EVIDENCE:END -->
 
 ## Review Evidence
@@ -62,3 +62,12 @@ checks = ["backend", "contracts"]
 - Result: PASS
 - Findings: No findings.
 - Residual risk noted by reviewer: tests do not individually cover every "same count, changed revision" scenario, but manifest binds resource/file/learning/note/study-plan/review/tag versions or identifiers, so this is non-blocking.
+
+## Acceptance Evidence
+
+- Acceptance kind: independent read-only Codex Acceptance
+- Runtime proof: `filesystem=read-only`, `approval=never`; acceptance reported `/tmp/xcrun_db-*` writes denied with `Operation not permitted`, no writes/commits/pushes/fixes/delegation, and final status showed no worktree changes.
+- Scope: product candidate `ac5e604a6107e304a2d426424fabd111d73b0346` on base `2df99dc44399db053f30653cf7803f2cedced108`; evidence commit `061615e0f6c1a227a999fe533585a1b3189904cc` only appended Review evidence.
+- Static identity check: PASS, product fingerprint `253c3edf59148d68374caa417a24e22bbf20bc73169a894a97d3beb8f7887616`, 12 allowed paths, profiles backend/contracts.
+- Result: ACCEPTED
+- Residual risk accepted: tests do not individually cover every same-count revision-change combination; manifest binds the relevant versions, identifiers, timestamps, and association versions, so this remains non-blocking.
