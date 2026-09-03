@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-007"
-status = "IN_REVIEW"
+status = "ACCEPTED"
 risk = "L2"
 risk_reason = "多页面布局、导航与可访问性实现，改变可见界面但不改变公共 API、数据模型、安全策略或业务状态；一次独立 Review 足够。"
 risk_flags = ["business", "tests"]
@@ -54,4 +54,37 @@ checks = ["frontend", "governance"]
 
 - 2026-09-03：IN_REVIEW；主 Agent完成实现、自检和测试证据核对。只使用一位实际只读独立 Reviewer，沿用用户已授权的临时 GPT-5.4/medium，不更改默认配置；L2 独立 Acceptance N/A。
 - 最终合并仅由用户决定并执行。
+
+### 独立 Review 原文
+
+Reviewer session `01a06532-0e3f-7d31-bbf5-a5fa07c51d2d`，独立于主 Agent实现者；Codex CLI 0.145.0 启动头实际为 `sandbox: read-only`、`approval: never`、GPT-5.4/medium。本次仅一位 Reviewer，未改默认 Agent 配置。
+
+`PASS`
+
+- `base`: `04c340f6b7b2320ed505672b985b6f912187d4d6`
+- `candidate`: `750a43ae4258257048f7691f2597c1d0e4da3fa2`
+
+只读证明：
+- 运行环境声明为受限只读；实际执行 `test -w .` 返回不可写。
+- 只读读取 Git 时多次出现 `/tmp/... Operation not permitted`，未进行任何写入探针、编辑、提交、推送或委派。
+
+审查范围：
+- 已完整阅读 `.agents/skills/studypilot-review-change/SKILL.md`、根 `AGENTS.md`、`frontend/AGENTS.md`、`docs/tasks/TASK-007-journal-app-shell.md`、`docs/governance/风险分级与检查规则.md`。
+- 已读取 `项目需求说明.md` 的 `5.1`、`5.10`，以及 `docs/architecture/MVP架构与技术选型提案.md` 中阶段 B 的前端应用壳段落。
+- 已完整审查 `base..candidate` 的 12 文件最终 diff，并补查相关调用链 `frontend/src/main.tsx`、`frontend/src/ErrorBoundary.tsx`、`frontend/src/test/setup.ts`。
+
+Findings：
+- No findings.
+
+证据与限制：
+- 核对了候选 SHA、12 文件范围、任务记录中的 `product_fingerprint=0964124a...6949a`、TASK-006 合并事实登记、README/测试源码/调用链一致性。
+- 复核了前端壳实现满足本次范围：5 个主导航、添加来源预览、资料详情空页、404、全局保留“工程框架已运行，业务功能尚未实现”，且未引入业务 API、令牌或持久化。
+- 组件/E2E/构建未由我重新执行；本次按规则复用了绑定到候选的既有证据，并确认补丁仅为 `frontend/e2e/scaffold.spec.ts` 的 DOM lib 类型声明，不改变运行逻辑。
+- 已查看现有桌面与 `320px` 截图产物，未见文字遮挡或明显裁切。
+
+- 最终候选：`750a43ae4258257048f7691f2597c1d0e4da3fa2`；冻结候选静态检查 exit=0，指纹仍为 `0964124aeb9e47d7a8997f1601f81108aa509a8bfbf3877dd253f9b9b076949a`。独立 Review PASS，No findings。
+- 2026-09-03：ACCEPTED。主 Agent只核对任务边界、五项完成条件、测试绑定和独立结论，全部满足；没有第三次从头审代码。独立 Acceptance N/A，未额外调用 Agent。
+- 剩余边界：界面/导航可用，业务未接入；只验证 macOS Chromium，其他浏览器和完整业务闭环未承诺。未发现需要另行处置的遗留缺陷。
+- 用户操作：待用户决定并执行合并，Agent 不合并或推送 main。之后拟进入本机访问保护与共享 API 调用基础，让界面能按已批准契约安全连接后端，为真实资料管理准备；涉及安全，另立 L3 任务，不扩展本任务。
+
 <!-- EVIDENCE:END -->
