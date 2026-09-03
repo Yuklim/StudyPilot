@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-016"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "页面接入关键进度的版本写入和冲突/不确定结果恢复，同时同步权威交付注释；不改变后端模型或标准契约。保留各一次独立只读 Review/Acceptance。"
 risk_flags = ["business", "critical-data", "tests"]
@@ -40,6 +40,7 @@ checks = ["frontend", "contracts", "governance"]
 
 ## 实现与测试
 
+- 实现提交：`de66a981f9cb40bce4daa9f820cd37ac0c2edc47`；后续冻结提交仅绑定此实现及测试证据。
 - 已实现资料详情按需学习手帐、真实版本/前值提交、归档恢复确认，以及全局/单资料历史的本地时间筛选、排序、分页。既有 API/存储/授权协议不变；资源投影补当前 UI 消费的进度/计划验证。总结/疑问按纯文本显示，无浏览器持久化。
 - 冲突与不确定保存保留草稿并锁定重发，必须显式重读最新进度/历史并确认；失败重读继续锁定，迟到响应不更新卸载表单。保存后只消费已验证的服务端进度，并刷新历史；用独立组件键避免保存后表单重复。
 - 最终全检：`PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-016-learning-pages.md --worktree`，整体退出 0；27 文件、`product_fingerprint=41326293e4a6f48bf81ff1de2693b7d7f58d49d03a9772e6eb7ce0bffeba522f`。范围/敏感模式/JSON/Git diff、OpenAPI/FastAPI 结构、前端格式/lint/类型/构建、203 项前端测试（12 文件）、治理规则/lint/格式/23 项治理测试均 PASS。治理测试中的 missing-tool/fake-test 是验证失败报告能力的受控夹具，测试整体退出 0。
@@ -52,4 +53,5 @@ checks = ["frontend", "contracts", "governance"]
 ## 状态与最终证据
 
 - 2026-09-03：IN_PROGRESS，依赖已合并，L3 边界已确认。
+- 2026-09-03：IN_REVIEW，实现和必要检查已完成；待独立实际只读 Review。用户仍独占最终合并。
 <!-- EVIDENCE:END -->
