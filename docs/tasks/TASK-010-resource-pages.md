@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-010"
-status = "IN_REVIEW"
+status = "ACCEPTED"
 risk = "L2"
 risk_reason = "普通前端业务接入，仅使用已合并的三个资料接口和共享客户端，不改变公共契约、认证策略、事务、数据模型或后端；新行为通过组件与真实浏览器测试验证。"
 risk_flags = ["business", "tests"]
@@ -55,4 +55,27 @@ checks = ["frontend", "governance"]
 
 - 2026-09-03：IN_PROGRESS。前置合并已核实，按 L2 登记；Review 待实现完成后执行。独立 Acceptance：N/A（L2，由主 Agent按证据完成门禁）。
 - 实现和必要检查完成，转 IN_REVIEW。按 V2 只启动一位实际只读 Reviewer；最终合并仍由用户决定。
+
+### 独立只读 Review（原文）
+
+- Reviewer：独立 Codex CLI session `01a065ac-186d-74b3-ab47-12036c088d77`，沿用此前用户同意的临时 `gpt-5.4 / medium`，不改变默认配置。运行器 `sandbox: read-only`、`approval: never`，实际 `test -w .` exit=1；未写仓库、未派子 Agent。进程 exit=0。
+- 审查候选：`52f44dc363d7c6925da6306d5c5a62179687b410`，base：`6ff2aace02d527dce1a9acb2144c4e00e57a4636`；静态候选检查 exit=0，业务/测试指纹与已测工作区一致。报告临时原件：`/private/tmp/studypilot-task010-review.tsiTJQ/review.md`。
+
+PASS
+
+只读权限已确认：运行器声明 `filesystem sandboxing = read-only`，且在仓库根执行 `test -w .` 返回 `1`。Git 身份一致：`HEAD=52f44dc363d7c6925da6306d5c5a62179687b410`，`merge-base(6ff2aace02d527dce1a9acb2144c4e00e57a4636,candidate)=6ff2aace02d527dce1a9acb2144c4e00e57a4636`；`git status --short --branch` 仅显示分支 `ahead 2`，无工作区改动。已完成一次 `base..candidate` 全量 diff 审查（23 文件），并补读了 `frontend/src/api/client.ts`、`backend/src/studypilot/modules/resources/contracts.py`、契约 1.3/三接口相关段落、根/前端 `AGENTS.md`、`TASK-010`。
+
+No findings。
+
+覆盖结论：本次实现保持在 TASK-010 边界内，只接入 WEB/PASTE 的创建、列表、详情；未越权触碰后端、共享客户端、安全协议或未开放功能。表单做了前端校验、提交去重、晚返回不误导航；列表查询用 key/attempt 隔离旧响应，详情与外链显示满足“仅 http/https、`noopener noreferrer`、`no-referrer`、原文纯文本展示”；README、阶段提示与测试断言均与当前阶段一致，没有用假数据或弱化既有安全断言来放行。
+
+剩余风险：我复用了任务中已绑定到输入指纹 `00d46db467e4e0ac8ada23517b9fa46d4228122627a4bb6c1ac500fc0bdc1f5b` 的 `70` 前端、`23` 治理、`11` Chromium 通过证据，未重跑整套测试；跨浏览器兼容性仍不在本次结论覆盖内。
+
+### 主 Agent完成门禁
+
+- 范围、实现/测试指纹、独立 Review 与完成条件逐项核对通过；没有第三次重审代码或重复运行未变化的全套测试。结论 ACCEPTED，独立 Acceptance 为 N/A（L2）。
+- 没有未处置阻断；已知边界沿用实现段，仅本机 WEB/PASTE 页面可用、未验证跨浏览器，不声称完整 MVP 或公网可用。
+- 审查后仅更新本任务 status/EVIDENCE 与索引本任务行；业务代码/测试/配置/授权保持冻结。后续提交使用 `check_task.py --candidate HEAD --evidence-from 52f44dc363d7c6925da6306d5c5a62179687b410 --static-only` 验证证据专用变更。
+- 用户操作：本任务分支准备提交 GitHub 合并请求，最终合并由用户决定。下一项拟继续主题/标签分类管理，让资料能按自己的分类整理；另行登记范围后推进，不自动加入文件或 AI。
+
 <!-- EVIDENCE:END -->
