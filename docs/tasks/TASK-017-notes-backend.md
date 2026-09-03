@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-017"
-status = "IN_REVIEW"
+status = "IN_ACCEPTANCE"
 risk = "L3"
 risk_reason = "实现既定个人笔记写入、版本修改和直接删除，涉及用户文本保护与删除竞争；标准契约和数据库模型不变，保留独立只读 Review/Acceptance。"
 risk_flags = ["business", "critical-data", "tests"]
@@ -52,4 +52,15 @@ checks = ["backend", "contracts", "governance"]
 
 - 2026-09-03：IN_PROGRESS，稳定依赖已合并，风险与唯一写入者已确定。
 - 2026-09-03：IN_REVIEW，最终检查通过，待独立实际只读 Review；用户独占最终合并。
+### 独立只读 Review
+
+- 独立 CLI 会话 `01a06674-ebc3-7380-9873-31191e42980a`，沿用已批准临时 gpt-5.4 / medium，启动头 read-only / never，未子派发，进程退出 0。以下为报告原文。
+
+候选/权限核验：`base=aaa1b5abfe929117f87d59b70d60040499a1d50f`，`candidate=46ea4db0fb7238428c3980e99a124c927072fc25`；当前 `HEAD` 等于 candidate。运行器实际只读，`test -w .` 退出 `1`。`git status --short --branch` 显示分支 `ahead 2`，但无未提交改动，工作区干净。
+
+No findings。已按要求完整读取根/后端规则、review skill、风险规则、TASK-017，并完成 `base..candidate` 的 14 文件首轮完整 diff 审阅，补读了 `Note` 模型、版本映射、安全前置、notes 两个路径与 `Note` 相关 schema。实现与冻结契约一致：五个 notes 操作都复用既有本机安全前置；正文、媒体类型、分页/排序、归属隔离、`expected_version` / `If-Match`、无变化不升版、单事务回滚、`StaleDataError` 分类、敏感错误收敛、标准契约不变，都有对应代码和测试约束；旧测试只精确扩展交付操作清单，没有放宽既有断言。
+
+覆盖与缺口：复用已记录的后端 415、治理 23、格式/lint/类型/离线构建/契约全绿证据，`product_fingerprint=402335f045321d8eb6080158a3ce8294fe0f49fe4a0f20d5c17fcd50af123745`；无前端改动，复用已合并 TASK-016 的前端 215 / Chromium 22。此次未重跑额外测试，也未见需要补做的只读最小验证点。结论：`PASS`。
+
+- 2026-09-03：IN_ACCEPTANCE，Review PASS / No findings。最终产品候选 `46ea4db0fb7238428c3980e99a124c927072fc25`，指纹 `402335f045321d8eb6080158a3ce8294fe0f49fe4a0f20d5c17fcd50af123745`。主 Agent 仅核对边界、测试绑定、审查结果和完成条件，不第三次审代码；后续只写回合法证据，待另一独立实际只读验收。
 <!-- EVIDENCE:END -->
