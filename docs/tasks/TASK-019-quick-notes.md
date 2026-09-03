@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-019"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "接入个人文本修改/删除与版本冲突恢复，并同步交付注释；不改标准接口或数据库，仍需防止草稿丢失、旧版本覆盖及误删。"
 risk_flags = ["business", "deletion", "tests"]
@@ -40,10 +40,16 @@ checks = ["frontend", "contracts"]
 
 ## 实现与测试
 
-- 待实际实现/检查；NOT_RUN 不等于 PASS。
+- 实现提交：`5a44a9a6fce2c6d1a6de3bb58a368357a2319b32`；26 文件，唯一写入者为主 Agent。实现一个正文框、20 条分页、读取最新后编辑、版本确认删除与失败核对恢复；资料/学习写入协议和后端不改。心得纯文本；同资料标签刷新保留草稿，资料暂不可确认时暂停写入。旧历史与原管理表单分别折叠保留。
+- 2026-09-03 最终统一检查：`PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-019-quick-notes.md --worktree`，退出 0、CHECKS PASS；26 文件、L3、contracts/frontend，product_fingerprint=`089b14fab25aff1dd9407c5027a089309c1dea1c2f5be378426296c954e7f2a4`。OpenAPI 模型校验、format、lint、typecheck、14 文件 249 项单元/组件测试、生产构建均通过。`git diff --check` 退出 0。
+- 同日 `cd frontend && npm run test:e2e`：实际 Chromium 26/26 通过（既有 22 + 新增 4，25.7 秒、退出 0）。覆盖真实新增→刷新→编辑→确认删除、版本竞争、实际 201 提交后模拟响应丢失且数据库仅一条、断网重读不解锁写入、21 条翻页保留草稿、实际标签更新保留心得草稿、原学习快照/历史不被心得改变、旧入口与 320/390/1440 布局及键盘保存。使用临时数据库/目录和 18000/15173 测试端口，trace 关闭，服务随测试结束退出；未触碰真实数据。其后仅调整单元测试夹具格式和文档，浏览器测试与运行时代码未变，复用有效结果。
+- 已人工查看测试生成的 1440 与 320 截图（390 宽度断言也通过）：`frontend/test-results/notes-pages-quick-notes-sa-b2fa0-ponsive-and-keyboard-usable-chromium/quick-notes-1440.png`、同目录 `quick-notes-320.png`；无横向溢出，暖纸/灰绿圆角、一框心得与旧入口清楚。截图为合成测试内容、忽略产物，不提交仓库。
+- JSON 深比较相对 base 只允许 `x-delivery-profile.client_policy` 差异，退出 0；paths/schemas/security/运行时清单均未变。后端未改，复用已合并 TASK-017 的 415 项后端测试，不冒称本次重跑。
+- 开发中失败与修复：类型检查曾发现测试选项不受支持；单元测试曾因旧入口名称、文本归一化、异步等候、分类夹具缺 notes 响应、重渲染测试遗漏外层包装而失败，已定向修正并保留原安全断言。集成检查另发现标签刷新会卸载草稿，已修复并加组件/真实浏览器覆盖。首轮浏览器 25/26，响应丢失夹具未实际提交，改为浏览器真实 fetch 收到 201 后抛连接异常，继续断言数据库仅一条；最终 26/26。末轮统一检查仅格式失败一处，格式化该测试文件后完整重跑通过。无未处置失败、未降低断言或安全协议。
+- 已知边界：草稿仅当前页面内存，刷新/离开前须保存；删除无回收站且需预览确认；未知写入结果需用户核对后显式决定，不承诺自动去重或自动重试；不含跨资料心得汇总/全文搜索、自动保存、资料基本信息编辑、复习/统计/AI。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- IN_PROGRESS，独立审查/验收待实现后执行。
+- IN_REVIEW，测试和实现证据已齐备，待独立实际只读 Review；最终候选 SHA 在后续原文证据中绑定，用户保留最终合并权。
 <!-- EVIDENCE:END -->
