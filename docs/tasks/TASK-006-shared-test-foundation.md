@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-006"
-status = "IN_REVIEW"
+status = "ACCEPTED"
 risk = "L2"
 risk_reason = "仅整理共用测试设施、补浏览器联通验证，不改变生产接口、安全策略、数据模型或迁移；测试可靠性需一次独立 Review。"
 risk_flags = ["tests", "tooling", "internal-refactor"]
@@ -54,4 +54,16 @@ checks = ["backend", "frontend", "governance"]
 
 - 2026-09-03：IN_REVIEW；TASK-005 合并已核实。L2，独立验收 N/A；主 Agent完成范围/断言自检，独立 Review 待执行。
 - 用户独占最终合并权限。
+### 独立 Review 原文
+
+Reviewer session `01a06517-51e2-7b30-bd8c-d397314cc4e2`，独立于主 Agent实现者；Codex CLI 0.145.0 启动头实际为 `sandbox: read-only`、`approval: never`。临时沿用已获授权的 GPT-5.4/medium，只启动这一名 Reviewer，不修改默认 Agent 配置。
+
+候选 `3c86f20cabf6540297bc17570d70a3132226ad59`（base `edeb8c1115e6615910f3e93282ffec502a287e04`）。只读证明：对工作区执行 `test -w` 返回 `read-only`，本轮运行器策略为 `approval never`，且 `git` 在该 sandbox 下连 `/tmp/xcrun_db-*` 缓存都无法创建。结论：`PASS`。
+
+我已完成首次完整 `base..candidate` 审查，覆盖 25 文件、552 行新增；范围与 TASK-006 一致，未见越权改动生产代码、迁移、安全策略或页面承诺。后端夹具把 runtime/SQLite/TestClient 收敛到每测试独立实例并保留原断言，前端统一清理 DOM/mock/global/env，Playwright 通过固定本机端口、`strictPort: true` 与 `reuseExistingServer: false` 避免误连已有服务，E2E 断言仍是“真实浏览器 + 同源代理 + 403 默认拒绝”，没有伪造业务成功或落到真实数据。`No findings`。复用任务内已绑定的 `55` 后端、`8` 组件、`23` 治理、`1` Chromium 及端口占用负例/释放证据，未见需要定向复跑的缺口。剩余风险：当前 E2E 仍只是单 Chromium 冒烟，固定端口冲突与 Linux/Windows 适配仍需后续环境验证。
+
+- 最终候选：`3c86f20cabf6540297bc17570d70a3132226ad59`，静态指纹 `b90e107330882f6d17510e566f7e66ab26ee08ecbdd61838a0c9d6fb413133b0` 与对应测试/配置补验一致。独立 Review PASS，No findings。
+- 2026-09-03：ACCEPTED。主 Agent按 L2 只核对任务边界、五项完成条件、测试证据与独立结论，全部满足；没有再从头审查代码。独立 Acceptance：N/A，不调用额外 Agent，不冒称独立验收。
+- 剩余边界：已验证 macOS/Chromium 的最小联通，未承诺跨平台和业务闭环；固定端口冲突明确失败。上述不是未处置缺陷；后续由 repo_maintainer 在需要新平台/并行浏览器套件时评估，不在本次扩展。
+- 用户操作：待用户决定并执行合并；Agent 不合并或推送 main。合并后的下一步计划是前端应用壳（布局、导航和页面骨架），将已确认的简约手帐视觉方向落实到界面；仍不伪装尚未实现的业务操作。
 <!-- EVIDENCE:END -->
