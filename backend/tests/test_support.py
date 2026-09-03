@@ -75,6 +75,8 @@ def test_browser_launcher_reclaims_only_its_own_runtime(
     monkeypatch.setattr("run_browser_server.subprocess.Popen", start)
     assert run_browser_server.main() == (0 if interrupted else 7)
     assert captured["env"]["STUDYPILOT_DATABASE_URL"] != f"sqlite:///{existing}"
+    assert captured["env"]["STUDYPILOT_API_PORT"] == "18000"
+    assert captured["env"]["STUDYPILOT_UI_PORT"] == "15173"
     assert not captured["cwd"].exists()
     assert existing.read_bytes() == b"synthetic sentinel"
     assert server.terminate.call_count == (1 if interrupted else 0)

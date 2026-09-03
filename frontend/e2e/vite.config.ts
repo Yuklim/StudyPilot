@@ -7,6 +7,6 @@ export default mergeConfig(baseConfig, {
     host: '127.0.0.1',
     port: 15173,
     strictPort: true,
-    proxy: { '/api': { target: 'http://127.0.0.1:18000', changeOrigin: false } },
+    proxy: { '/api': { target: 'http://127.0.0.1:18000', changeOrigin: true, xfwd: false } },
   },
 })
