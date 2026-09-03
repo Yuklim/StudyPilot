@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-016"
-status = "IN_ACCEPTANCE"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "页面接入关键进度的版本写入和冲突/不确定结果恢复，同时同步权威交付注释；不改变后端模型或标准契约。保留各一次独立只读 Review/Acceptance。"
 risk_flags = ["business", "critical-data", "tests"]
@@ -90,4 +90,19 @@ No findings。已按要求完整读取 `7ed35e9..80e3eb6` 的 6 文件增量 dif
 继承首轮其余覆盖不变；本次结论绑定新最终候选 `80e3eb6abeb54fc90f24898d8a57776804c38c34`。
 
 - 2026-09-03：IN_ACCEPTANCE。首轮唯一发现已修正且复审 PASS；最终产品候选 `80e3eb6abeb54fc90f24898d8a57776804c38c34`，最终指纹 `338dfef65831aaba597aedde9a5c250adc29cab87ccc578ce750ce8241483c12`。主 Agent 仅核对边界、测试绑定与审查结果，不进行第三次代码审查；后续仅窄证据写回，待另一独立只读验收。
+### 独立只读 Acceptance
+
+- 独立于实现者和 Reviewer 的 CLI 会话 `01a06662-e779-7603-a06d-bac2d06d60ab`，沿用已批准临时 gpt-5.4 / medium，启动头 read-only / never，未子派发，进程退出 0。以下为验收报告原文。
+
+候选与运行权限：独立会话实际为 `read-only / never`，`test -w .` 退出 `1`；当前 `HEAD=f0351299dee486417fcc00d9c7c9385a1dc9a252`。`check_task --candidate HEAD --evidence-from 80e3eb6... --static-only` 返回 `EVIDENCE_ONLY PASS`；`80e3eb6..HEAD` 仅见 [TASK-016-learning-pages.md](/Users/yuklimching/Desktop/StudyPilot/docs/tasks/TASK-016-learning-pages.md) 与 [任务索引.md](/Users/yuklimching/Desktop/StudyPilot/docs/tasks/任务索引.md) 的状态/EVIDENCE写回。
+
+1. 条件1：任务记录已绑定最终产品候选 `80e3eb6...`、指纹 `338dfef...`，前端真实联通与纯文本展示证据齐备，无缺口。
+2. 条件2：215 前端测试与 22 Chromium 证据覆盖冲突重读、锁定、防重入、迟到保护、空错态，无缺口。
+3. 条件3：单测/E2E已覆盖适配层、错误映射、历史筛选分页、320/390/1440 布局与键盘，无缺口。
+4. 条件4：23 治理、契约/类型/构建 PASS；标准契约仅页面交付注释，后端复用 TASK-015 的 366 证据，无缺口。
+5. 条件5：同一 Reviewer 对增量修正复审 PASS，当前 HEAD 仅证据写回，候选身份未漂移，无缺口。
+
+剩余风险：草稿仅页内内存；离页后未撤销请求；网络不确定结果仍需用户核对历史。结论：`PASS`。
+
+- 2026-09-03：ACCEPTED，独立复审及验收均 PASS，首轮唯一发现已关闭；保留已披露的页内草稿/不确定写入核对限制，无未解决阻断。最终产品候选仍为 `80e3eb6abeb54fc90f24898d8a57776804c38c34`，此后只有状态/报告原文/索引证据写回；由用户执行最终合并，不预写 MERGED。
 <!-- EVIDENCE:END -->
