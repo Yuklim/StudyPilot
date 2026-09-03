@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-009"
-status = "IN_REVIEW"
+status = "IN_ACCEPTANCE"
 risk = "L3"
 risk_reason = "首次启用资料持久化及原子创建事务，含敏感原文、初始进度和标签关联；本次续接另含用户授权的阶段契约说明，仍需 L3 独立审查验收。"
 risk_flags = ["critical-data", "sensitive-storage", "public-api", "tests"]
@@ -100,4 +100,22 @@ base `910e85b3164704e02664f1420eee65e509467e63` → candidate `e33f989c4bb7c376c
 - 本次后端已可工作、界面尚未接入；目前未创建合并请求，不请求用户在阻断状态下合并。
 
 - 2026-09-03：用户答复“可以”，明确授权上述最小阶段契约说明并继续复审验收。已完成授权路径/角色登记和契约增量检查，状态 IN_REVIEW。保留之前暂停记录；新的候选待同一独立只读 Reviewer 判断，不能由主 Agent覆盖原阻断。
+
+### 用户授权后的独立 Review 原文
+
+同一 Reviewer session `01a06570-7368-7482-83de-88f3080584c2`，Codex CLI 0.145.0/GPT-5.4 medium；续接启动头为 read-only / approval never，独立性与实际权限重验。报告来自 /private/tmp/studypilot-task009-review.32wcsz/authorized-review.md。
+
+**PASS**
+
+候选：`56c6941f325b3ae2a0dde5859e55c3b3ed5091d0`，base 仍为 `910e85b3164704e02664f1420eee65e509467e63`。只读证明已重验：`test -w .` 返回 `exit=1`。
+
+继承首轮覆盖：我完整继承此前对原 16 文件 `base..e33f989c4bb7c376cae9cb199e3165fff74e00ab` 的审查结论，本次只定向复核 `4f371be84b42caf5595d74520dd7bd1e2bc99e7c..56c6941f325b3ae2a0dde5859e55c3b3ed5091d0` 的 5 文件契约/说明增量；同时核对 `git diff --exit-code e33f989... 56c6941... -- backend frontend .env.example = 0`，确认业务代码、安全实现、测试与运行配置未变。
+
+原唯一 finding 已处置：新增中文契约 1.3 节、OpenAPI `x-delivery-profile`、`createResource` description 与 README 现在一致地区分了“完整 MVP 目标”与“TASK-009 当前已授权子集”。这使当前 `POST /api/v1/resources` 仅开放 JSON WEB/PASTE、而 multipart FILE 在通过安全前置后暂返回 `415 CONTENT_TYPE_UNSUPPORTED` 的行为，已被明确纳入阶段契约说明；同时标准 paths/schemas/媒体类型/枚举/版本未变，也未新增运行时接口或削弱既有安全前置和已开放行为。基于这次授权后的新候选，我不再把 FILE 暂未开放视为阻断。
+
+剩余风险：当前仍依赖调用方遵守阶段说明，不应直接把完整 OpenAPI 当作“当前可上传 FILE”的客户端来源；但该边界已在契约、OpenAPI 和 README 明确披露，按本任务场景属可接受非阻断风险。
+
+- 2026-09-03：IN_ACCEPTANCE。冻结候选 `56c6941f325b3ae2a0dde5859e55c3b3ed5091d0` 独立 Review PASS；旧阻断经用户授权的明确阶段契约处置，而不是主 Agent推翻审查或擅自实现文件功能。主 Agent仅核对授权边界、测试绑定及审查结果，无第三次全量代码审查。
+- 非阻断风险处置：完整 OpenAPI 仍含未来 FILE，调用方若忽略阶段清单会得到已声明的暂不支持响应。当前无自动生成/上传入口，新增动态能力接口或删减目标 schema 会增加维护成本且超出本次说明授权，因此接受已披露边界。责任角色 architecture_owner / frontend_worker；接入新页面、启用客户端生成或完成文件任务时必须依据阶段清单复核，同步更新契约/清单/README。此处不表示 FILE 已完成。
+- 已核实 origin/main 仍为 `910e85b3164704e02664f1420eee65e509467e63`，无基线漂移；远程没有同分支 PR。独立 Acceptance 待执行；最终合并仍由用户决定。
 <!-- EVIDENCE:END -->
