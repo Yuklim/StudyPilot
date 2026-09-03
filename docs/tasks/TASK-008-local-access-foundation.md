@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-008"
-status = "IN_REVIEW"
+status = "IN_ACCEPTANCE"
 risk = "L3"
 risk_reason = "落实已批准的本地令牌、Host/Origin/Fetch Metadata 前置安全协议，并连接浏览器共享客户端；安全及跨模块影响必须独立 Review 与独立验收。"
 risk_flags = ["security", "authentication", "public-api", "tests"]
@@ -55,4 +55,24 @@ checks = ["backend", "frontend", "governance"]
 
 - 2026-09-03：IN_REVIEW。主 Agent已自检范围与实现，必要自动检查有效通过。独立 Review/Acceptance 待执行；沿用用户已授权的临时 GPT-5.4/medium 只读运行器，不改默认配置。
 - 最终合并仅由用户决定并执行。
+
+### 独立 Review 原文
+
+Reviewer session `01a06551-1bfc-74b2-97af-af1bbc1ea4f0`，Codex CLI 0.145.0/GPT-5.4 medium；启动头为 `sandbox: read-only`、`approval: never`。独立于主 Agent实现者，未改默认配置。
+
+PASS
+
+`base=9e59355fee2aabe741b171e33197b8f96ee6f27a` `candidate=260d9fc6c42716aea1bebfb75a74c38e38c642f0`
+
+只读证明：运行器为 `sandbox: read-only`、`approval: never`；实际执行 `test -w .` 退出码 `1`，`stat -f '%Sp %N' .` 为 `drwxr-xr-x .`；读取 Git 时还出现 `/tmp/... Operation not permitted`，可确认未具写权限。
+
+覆盖：已完整读取 `.agents/skills/studypilot-review-change/SKILL.md`、根/`backend`/`frontend` `AGENTS.md`、`docs/tasks/TASK-008-local-access-foundation.md`、`docs/governance/风险分级与检查规则.md`、契约 `38-104` 与 `367-404` 行；已完成 19 文件 `base..candidate` diff 首次完整审查，并补查 [backend/src/studypilot/infrastructure/security/local_access.py](/Users/yuklimching/Desktop/StudyPilot/backend/src/studypilot/infrastructure/security/local_access.py:1)、[backend/src/studypilot/main.py](/Users/yuklimching/Desktop/StudyPilot/backend/src/studypilot/main.py:14)、[frontend/src/api/client.ts](/Users/yuklimching/Desktop/StudyPilot/frontend/src/api/client.ts:1)、[frontend/vite.config.ts](/Users/yuklimching/Desktop/StudyPilot/frontend/vite.config.ts:1) 等必要调用链。
+
+Findings：No findings。启动令牌生命周期、Host/Origin/Fetch Metadata 前置判定、OPTIONS/CORS、Vite Host 重写前校验、bootstrap 不泄漏、共享客户端内存保存且不自动重放写请求、业务路由仍未开放，和任务/契约一致。
+
+证据与限制：复用任务中已绑定候选的 `115 backend / 46 frontend / 23 governance / 7 Chromium` 通过证据与指纹 `c6f52e97dc3ffb6aaa2b3394b39915d08ab910384b02d9b84fb8c7aaaa190743`；按规则未重跑，也未读取浏览器 trace。限制仅在当前单机单进程、macOS Chromium 已验证范围内成立。
+
+- 已对冻结候选 `260d9fc6c42716aea1bebfb75a74c38e38c642f0` 执行静态范围/指纹核对，exit=0，指纹与最终测试输入一致。独立 Review PASS，No findings。
+- 2026-09-03：IN_ACCEPTANCE。仅写回本任务证据和索引，不改产品输入；安排不同身份、实际只读的 Integration Owner 核对五项完成条件与证据，不重复全量 Review/测试。
+
 <!-- EVIDENCE:END -->
