@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-008"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "落实已批准的本地令牌、Host/Origin/Fetch Metadata 前置安全协议，并连接浏览器共享客户端；安全及跨模块影响必须独立 Review 与独立验收。"
 risk_flags = ["security", "authentication", "public-api", "tests"]
@@ -103,4 +103,5 @@ PASS
 - 剩余边界：单机单进程/macOS Chromium 已验证；安全连接基础不是公开身份认证，业务/上传下载/实际资料界面仍待后续任务。没有需要另行处置的遗留缺陷。
 - 用户操作：待用户决定并执行合并；Agent 不合并或推送 main。下一步拟实现资料管理后端，先保存网页链接和粘贴内容、读取资料列表与详情，再按任务接入页面；文件上传/学习/AI 不提前扩大到本任务。
 
+- 2026-09-03：用户确认合并，GitHub PR #13 已核实 MERGED（2026-09-03T03:41:56Z），merge commit `910e85b3164704e02664f1420eee65e509467e63`；origin/main 已获取一致。状态 MERGED，历史审查/验收不变；TASK-009 承接资料后端。
 <!-- EVIDENCE:END -->
