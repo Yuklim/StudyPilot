@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-011"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "实现既定分类修改、版本前置条件、删除未使用分类及资料标签关联，涉及删除与事务一致性；仅同步发布能力清单，不改变接口字段或已确认语义。保留独立 Review 与独立验收。"
 risk_flags = ["business", "deletion", "sensitive-storage", "tests"]
@@ -43,7 +43,7 @@ checks = ["backend", "frontend", "governance", "contracts"]
 
 - 已实现 12 个既定操作：Topic/Tag 创建、分页/名称搜索/排序、详情、带版本修改、删除未使用分类，以及 ResourceTag 幂等关联/解除。SQLAlchemy 适配器只写三类 taxonomy 对象；读取资料 ID/主题引用，不修改资料主体、主要主题或学习状态。独立会话提交后才返回成功；唯一/FK/版本冲突用新只读事务分类，不解析或泄漏数据库异常，不重放写入。
 - 新增 39 项分类后端测试、1 项实际浏览器分类联通测试，保留原测试和前端页面实现。能力清单由 4 个增至 16 个既定操作；Node 深比较（去除 x-delivery-profile）证明完整标准 OpenAPI 内容与 base 一致，exit=0；中文仅 1.3 交付清单改变。README 明确“分类后端可用，页面仍待接入”；不新增模型、迁移、依赖或安全策略。
-- 实现提交待本次提交后在冻结候选记录；最终输入指纹 `fa99765c2fc37ce98db7ddb6be9bef2208bd637019907a3bf4a6d1dff142b546`。主 Agent完成一次变更自检与边界核对，不冒充独立审查。
+- 实现提交 `789e303ce32598fb252da19a50d08c0f951193b9`；最终输入指纹 `fa99765c2fc37ce98db7ddb6be9bef2208bd637019907a3bf4a6d1dff142b546`。主 Agent完成一次变更自检与边界核对，不冒充独立审查。
 - 环境：macOS、Python 3.13.9 / pytest 8.4.2、Node 24.18.0 / npm 11.16.0；已有锁文件与依赖未改。全部测试使用既有隔离临时目录/数据库，不读取或修改正式运行资料。
 - 任务检查命令 `PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-011-taxonomy-backend.md --worktree`：静态/范围/敏感模式/Git diff PASS；Ruff format/lint、mypy（35 源文件）、pytest **226 PASS**、OpenAPI/FastAPI 结构、前端 format/lint/typecheck/Vitest **70 PASS**/生产构建、治理校验/Ruff/**23 PASS** 均 exit=0。脚本总 exit=1，**唯一失败是 uv build --offline 无权读既有缓存（exit=2）**；随后只对同输入在获准权限下重跑 `cd backend && uv build --offline`，exit=0，成功构建 sdist/wheel。其他已通过证据复用，不冒称第一次脚本全绿；必要检查的唯一失败已消除。
 - `cd frontend && npm run test:e2e` exit=0：**12 Chromium PASS / 13.9s**、单 Worker、零重试。新增真实链路：建主题/标签→创建引用主题的资料→标签重复关联→修改主题→旧版本/使用中删除拒绝与未使用标签删除→刷新读取→实际详情显示标签→重复解除不改资料/进度。If-Match 测试仅在浏览器内使用原安全协议，不导出令牌；全套 trace 关闭，前端现有接口客户端未改。
@@ -55,4 +55,5 @@ checks = ["backend", "frontend", "governance", "contracts"]
 ## 状态与最终证据
 
 - 2026-09-03：IN_PROGRESS，依赖已合并，按 L3 登记。Review / Acceptance 待完成；最终合并由用户执行。
+- 2026-09-03：IN_REVIEW，实现与测试证据冻结；226 后端、70 前端、23 治理、12 Chromium 测试通过，唯一缓存权限构建失败已针对性重跑通过。等待实际只读独立审查与验收。
 <!-- EVIDENCE:END -->
