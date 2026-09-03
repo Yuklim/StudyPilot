@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-015"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "实现既定学习写接口，涉及当前进度与不可变历史的原子保存、版本冲突及状态/时间不变量。标准契约与数据库结构不变，保留独立只读 Review 和 Acceptance。"
 risk_flags = ["business", "critical-data", "public-api", "tests"]
@@ -42,7 +42,7 @@ checks = ["backend", "contracts", "governance"]
 ## 实现与测试
 
 - 已实现三个 study-records 操作：严格输入与查询、纯状态规则、单次事务追加历史与更新进度、只读稳定分页；复用统一令牌/来源检查，错误只含固定码/说明与安全版本。只写 LearningProgress/StudyRecord；复习计划、资料本体、文件、旧历史不修改，无模型/迁移/依赖变化。
-- 实现 SHA：待实现提交后登记。base 为任务基线；15 个文件，最终 product_fingerprint=`68c2b314879d2c6afc0d7174bdcd9a566eda177b22b5d8703a58b3feb4a70618`。
+- 实现 SHA：`f40e0a518b2c0762db7e4c7375d4e49d28d5b0ba`。base 为任务基线；15 个文件，最终 product_fingerprint=`68c2b314879d2c6afc0d7174bdcd9a566eda177b22b5d8703a58b3feb4a70618`。
 - 2026-09-03，macOS、Python 3.13.9，已安装锁定依赖。开发定向 `.venv/bin/pytest tests/test_learning.py -q --tb=short` 最终退出 0：93 项通过；`.venv/bin/mypy src tests` 退出 0，52 源文件；Ruff 通过。
 - 全检命令 `PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-015-learning-backend.md --worktree`：范围/敏感模式/JSON/diff 静态 PASS；后端格式/lint/类型、366 项 pytest（5.09 秒）、契约/FastAPI 结构、治理规则/lint/格式和 23 项治理测试均退出 0。脚本整体退出 1，仅 `uv build --offline` 因宿主 uv 缓存访问权限退出 2；没有隐藏这次失败。
 - 随后只为受阻构建开放已有缓存访问，原命令 `cd backend && uv build --offline` 退出 0，产出 sdist/wheel；离线、未安装/改依赖/改配置、产品输入未变，因此复用上述其他检查，不重复整套。最终所有必要检查项均有成功证据，不把首次脚本退出 1 改写成 CHECKS PASS。生成包不提交。
@@ -55,4 +55,5 @@ checks = ["backend", "contracts", "governance"]
 ## 状态与最终证据
 
 - 2026-09-03：IN_PROGRESS；L3，依赖已合并，边界与必要检查已确认。
+- 2026-09-03：IN_REVIEW；实现及完整检查证据固定，等待独立只读审查，不预写 Review/Acceptance PASS。
 <!-- EVIDENCE:END -->
