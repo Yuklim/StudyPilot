@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-009"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "首次启用资料持久化及原子创建事务，含敏感原文、初始进度和标签关联；本次续接另含用户授权的阶段契约说明，仍需 L3 独立审查验收。"
 risk_flags = ["critical-data", "sensitive-storage", "public-api", "tests"]
@@ -53,6 +53,15 @@ checks = ["backend", "frontend", "governance", "contracts"]
 - 真实失败与修正：初始 Ruff 将故意测试 NFKC 的全角字母标为歧义字符，精确行注明测试用途；mypy 初始两项类型标注/变量复用问题已修正。定向测试依次 66/67 通过，补充分页输入与最大原文/排序后最终完整 72 项新测通过；没有降低断言、隐藏失败或新增依赖。
 - 已知边界：只完成 JSON WEB/PASTE 创建和三接口，不支持 FILE 创建、元数据修改/删除、分类管理或界面表单。Unicode 搜索内存匹配适合当前个人/低流量场景，不声称适合海量资料。初始默认进度不是学习功能；不自动建表，无公网认证。独立 Review/Acceptance 待执行。
 
+### 用户授权续接：阶段契约说明
+
+- 说明实现 SHA：`c186962fb26d79b10e1a7344aaa2b49e7d6b4da8`，本次仅 5 文件（中文契约、OpenAPI、README、TASK-009 与索引）。最终任务相对 base 共 18 文件。新增契约第 1.3 节与 `x-delivery-profile`，明确同一 createResource 操作在 TASK-009 仅开放 JSON WEB/PASTE，multipart 安全前置后暂 415，后续文件任务完成后同步清单；保留最终 FILE schema、安全规则及完整 MVP 验收要求。
+- 本次静态检查：`check_task.py --task docs/tasks/TASK-009-resource-backend.md --worktree --static-only` exit=0，18 文件，product_fingerprint=`dca4403e2c9f3f21a528fa1a4b2afb591ad242665a4eeba01339b862a1d38ddf`。指纹变化来自文档/契约，不冒称旧指纹仍覆盖全部输入。
+- 增量检查命令：`PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python -c 'from scripts.governance.check_task import commands, run_command; results=[run_command(directory, command) for group in ("contracts", "governance") for directory, command in commands(group)]; raise SystemExit(any(results))'` exit=0。实际运行既有契约检查组（FastAPI OpenAPI 结构解析）及治理校验/lint/format/23 项单测，不修改检查脚本、不删除其他必要检查。
+- 证据复用：`git diff --exit-code e33f989c4bb7c376cae9cb199e3165fff74e00ab -- backend frontend .env.example` exit=0；业务源码、测试、依赖、构建/运行配置没有变化，环境未变，复用上文 187 后端/46 前端/8 Chromium、两端构建及各自格式/类型/lint 证据，不重跑。最终完成证明为原有效测试 + 本次契约增量检查，不称只读静态校验为完整测试。
+- 一次性 Node 语义断言 exit=0：与 `e33f989...:docs/contracts/openapi-v1.json` 的 JSON 比较，剔除新增 `x-delivery-profile`、恢复 info.description 与 createResource.description 后深比较完全相等；所有标准 paths/请求响应 schemas/枚举/媒体类型/版本未改。额外断言可用 operationId 均存在且恰为四项、createResource 只开放 JSON WEB/PASTE、暂缓 FILE 的 415/error_code/安全前置/无读体副作用与中文说明一致、FILE 目标仍保留，README 含相同阶段引用。静态检查同时验证 JSON 引用/结构、允许路径、敏感模式和 Git 空白。
+- 本次无代码重做/测试失败。待同一 Reviewer 审新候选并显式继承原完整审查覆盖；之前 CHANGES_REQUIRED 原文保留为历史，不作为新候选已通过的证明。
+
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
@@ -90,4 +99,5 @@ base `910e85b3164704e02664f1420eee65e509467e63` → candidate `e33f989c4bb7c376c
 - 请求用户授权的最小下一步：在保持最终 MVP 功能契约不变的前提下，补充明确的阶段性接口可用范围/兼容说明（本阶段 WEB/PASTE，可见且暂不支持 FILE，后续单独文件任务完成），登记新增契约文档允许路径后再按实际改动复核。若用户选择本阶段完成 FILE，需另行明确扩大范围和完成条件，不能由 Worker自行加入。
 - 本次后端已可工作、界面尚未接入；目前未创建合并请求，不请求用户在阻断状态下合并。
 
+- 2026-09-03：用户答复“可以”，明确授权上述最小阶段契约说明并继续复审验收。已完成授权路径/角色登记和契约增量检查，状态 IN_REVIEW。保留之前暂停记录；新的候选待同一独立只读 Reviewer 判断，不能由主 Agent覆盖原阻断。
 <!-- EVIDENCE:END -->
