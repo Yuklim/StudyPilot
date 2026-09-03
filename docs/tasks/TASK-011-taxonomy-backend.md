@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-011"
-status = "IN_REVIEW"
+status = "IN_ACCEPTANCE"
 risk = "L3"
 risk_reason = "实现既定分类修改、版本前置条件、删除未使用分类及资料标签关联，涉及删除与事务一致性；仅同步发布能力清单，不改变接口字段或已确认语义。保留独立 Review 与独立验收。"
 risk_flags = ["business", "deletion", "sensitive-storage", "tests"]
@@ -56,4 +56,27 @@ checks = ["backend", "frontend", "governance", "contracts"]
 
 - 2026-09-03：IN_PROGRESS，依赖已合并，按 L3 登记。Review / Acceptance 待完成；最终合并由用户执行。
 - 2026-09-03：IN_REVIEW，实现与测试证据冻结；226 后端、70 前端、23 治理、12 Chromium 测试通过，唯一缓存权限构建失败已针对性重跑通过。等待实际只读独立审查与验收。
+
+### 独立 Review 原文
+
+- 会话：`01a065c8-feef-7e93-9984-137aeb961d59`；独立 CLI，`gpt-5.4 medium`，实际 `read-only / approval never / agents.enabled=false`。退出码 0；只读检查输出 `not_writable`。
+
+**PASS**
+
+`base=706c32732c4b3312acf26694302b43a8800ca2ea`  
+`candidate=4981e9274969c6cf1119c6a904bcb6d6c323c121`
+
+真实只读权限证据：运行时约束为 `read-only / approval never`；在 `/Users/yuklimching/Desktop/StudyPilot` 执行 `test -w .` 结果为 `not_writable`。未做任何试写。
+
+**Findings**
+
+No findings。
+
+已完整审查 `base..candidate` 最终 diff（14 文件），并补读了根与后端规则、`studypilot-review-change` skill、任务记录、风险规则，以及 taxonomy 相关实现/模型/安全/契约/测试局部。未发现会阻断本任务的新增问题；重点核对的版本前置条件、删除引用保护、事务回滚、资源标签幂等关联/解除、未授权请求在读 body/连库前拒绝，和任务声明一致。
+
+**检查证据与剩余风险**
+
+复用已绑定候选的有效证据，未重复全套回归：`check_task.py` 的静态/范围检查 PASS；后端 `226 PASS`、前端 `70 PASS`、治理 `23 PASS`、Chromium `12 PASS`，输入指纹 `fa99765c2fc37ce98db7ddb6be9bef2208bd637019907a3bf4a6d1dff142b546`，与实现提交 `789e303ce32598fb252da19a50d08c0f951193b9` 绑定。已知未测/剩余风险维持任务原披露边界：仅承诺本机个人与少量 SQLite 写入场景，分类页面尚未接入，不扩展到更高并发或未授权的资料删除/主题重分配能力。
+
+- 2026-09-03：IN_ACCEPTANCE。主 Agent只核对候选、范围及测试/Review 证据；本次仅回写本任务证据、状态及索引行，交由独立于实现者和 Reviewer 的验收会话核对完成条件。
 <!-- EVIDENCE:END -->
