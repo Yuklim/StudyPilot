@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-024"
-status = "IN_ACCEPTANCE"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "新增根规则入口 CLAUDE.md、settings 权限门禁与只读 Agent，触及治理规则如何被 Claude 读取与执行，属治理/门禁改动。"
 risk_flags = ["governance"]
@@ -65,8 +65,9 @@ checks = ["governance"]
 
 - 候选 SHA：`9562b76`（完整候选；`304c1e1` + `9562b76` 合并；基线 `51b427f`）。
 - Review：独立只读 Reviewer 审查候选 `304c1e1`（base..candidate 完整 diff）→ PASS，附 2 项非阻断（checkout main deny 过度、字符串规则边界）；修订 `9562b76` 后同一 Reviewer 复核增量 `304c1e1..9562b76` → PASS，确认 checkout main 落 ask、其余 deny 未误伤、JSON 合法。两轮均真实只读、未修改文件。
-- Acceptance：待独立只读 Acceptance 补记。
-- 非阻断遗留项：暂无。
+- Acceptance：独立只读 Acceptance（真实只读运行器 Explore，运行器层排除全部写工具）核对候选 `9562b76` 与 6 条完成条件：CLAUDE.md @引用无双源、settings deny 覆盖 push/merge main/reset --hard/强推且 checkout main 落 ask、reviewer.md tools 仅只读、TASK-024 记录与索引登记、AGENTS.md/.codex/.agents/frontend/backend 零改动、governance 检查证据一致；JSON 经 `python3 -m json.tool` 校验合法。Findings: No findings；结论 `PASS`。Acceptance 全程未修改、提交、推送、合并。
+- 非阻断遗留项：`.claude/settings.json` 的 deny/ask 真实拦截效果需在真实 Claude 会话中确认（端到端触发验证），记录为已知限制；push refspec 变体仅落 ask。
+- 最终状态/风险/用户操作：ACCEPTED；候选 `9562b76`（`304c1e1`+`9562b76`）已通过独立只读 Review 与 Acceptance，等待用户决定是否推送、创建 PR 和合并。合并到 main 后，CLAUDE.md / .claude/settings.json / reviewer Agent 即供 Claude Code 开发使用。
 - 日期与决定日志：2026-09-04，用户授权开始 TASK-024（Claude 治理桥接与系统兜底）。
 
 <!-- EVIDENCE:END -->
