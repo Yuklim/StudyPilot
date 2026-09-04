@@ -58,99 +58,113 @@ export function ResourceLibrary() {
         aria-label="搜索与筛选"
         autoComplete="off"
       >
-        <label className="resource-field search-field">
-          搜索资料
-          <input
-            type="search"
-            placeholder="搜索标题、来源名称或保存原因"
-            value={draft.q}
-            onChange={(e) => setDraft({ ...draft, q: e.target.value })}
-          />
-        </label>
-        <label className="resource-field">
-          资料类型
-          <select
-            value={draft.source}
-            onChange={(e) => setDraft({ ...draft, source: e.target.value })}
-          >
-            <option value="">全部类型</option>
-            {Object.entries(sourceLabels).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="resource-field">
-          学习状态
-          <select
-            value={draft.status}
-            onChange={(e) => setDraft({ ...draft, status: e.target.value })}
-          >
-            <option value="">全部未归档</option>
-            {Object.entries(statusLabels).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="resource-field">
-          排序
-          <select value={draft.sort} onChange={(e) => setDraft({ ...draft, sort: e.target.value })}>
-            {[
-              ['-created_at', '最近添加'],
-              ['created_at', '最早添加'],
-              ['-updated_at', '最近更新'],
-              ['updated_at', '最早更新'],
-              ['title', '标题升序'],
-              ['-title', '标题降序'],
-              ['progress_percent', '进度升序'],
-              ['-progress_percent', '进度降序'],
-            ].map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <ClassificationPicker
-          value={draft.classification}
-          onChange={(classification) => setDraft({ ...draft, classification })}
-          filter
-        />
-        <div className="resource-actions">
-          <button className="journal-button primary" type="submit">
-            搜索 / 应用筛选
-          </button>
-          <button
-            className="journal-button"
-            type="button"
-            onClick={() => {
-              setDraft(initialFilters)
-              setFilters(initialFilters)
-              setPage(1)
-              setValidation('')
-            }}
-          >
-            重置
-          </button>
+        <div className="resource-filter-top">
+          <label className="resource-field search-field">
+            <span className="sr-only">搜索资料</span>
+            <input
+              type="search"
+              placeholder="搜索标题、来源名称或保存原因"
+              value={draft.q}
+              onChange={(e) => setDraft({ ...draft, q: e.target.value })}
+            />
+          </label>
+          <div className="resource-actions">
+            <button className="journal-button primary" type="submit">
+              搜索 / 应用筛选
+            </button>
+            <button
+              className="journal-button"
+              type="button"
+              onClick={() => {
+                setDraft(initialFilters)
+                setFilters(initialFilters)
+                setPage(1)
+                setValidation('')
+              }}
+            >
+              重置
+            </button>
+          </div>
+          <div className="view-switch" role="group" aria-label="显示方式">
+            <button type="button" aria-pressed={view === 'cards'} onClick={() => setView('cards')}>
+              卡片
+            </button>
+            <button type="button" aria-pressed={view === 'list'} onClick={() => setView('list')}>
+              列表
+            </button>
+          </div>
         </div>
-        {validation && <p role="alert">{validation}</p>}
+        <div className="resource-filter-row" aria-label="筛选条件">
+          <label className="resource-field filter-select">
+            <span>类型</span>
+            <select
+              aria-label="资料类型"
+              value={draft.source}
+              onChange={(e) => setDraft({ ...draft, source: e.target.value })}
+            >
+              <option value="">全部类型</option>
+              {Object.entries(sourceLabels).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="resource-field filter-select">
+            <span>状态</span>
+            <select
+              aria-label="学习状态"
+              value={draft.status}
+              onChange={(e) => setDraft({ ...draft, status: e.target.value })}
+            >
+              <option value="">全部未归档</option>
+              {Object.entries(statusLabels).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="resource-field filter-select">
+            <span>排序</span>
+            <select
+              aria-label="排序"
+              value={draft.sort}
+              onChange={(e) => setDraft({ ...draft, sort: e.target.value })}
+            >
+              {[
+                ['-created_at', '最近添加'],
+                ['created_at', '最早添加'],
+                ['-updated_at', '最近更新'],
+                ['updated_at', '最早更新'],
+                ['title', '标题升序'],
+                ['-title', '标题降序'],
+                ['progress_percent', '进度升序'],
+                ['-progress_percent', '进度降序'],
+              ].map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <ClassificationPicker
+            value={draft.classification}
+            onChange={(classification) => setDraft({ ...draft, classification })}
+            filter
+          />
+          {validation && (
+            <span className="resource-filter-note" role="alert">
+              {validation}
+            </span>
+          )}
+        </div>
       </form>
       <div className="resource-toolbar">
         <p aria-live="polite">
           <span>{data ? `共 ${data.page.total_items} 份资料` : '我的收藏'}</span>
           <small>筛选条件离开本页后重置</small>
         </p>
-        <div className="view-switch" role="group" aria-label="显示方式">
-          <button type="button" aria-pressed={view === 'cards'} onClick={() => setView('cards')}>
-            卡片
-          </button>
-          <button type="button" aria-pressed={view === 'list'} onClick={() => setView('list')}>
-            列表
-          </button>
-        </div>
       </div>
       {!result && (
         <p role="status" className="resource-loading">

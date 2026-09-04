@@ -1051,28 +1051,98 @@ fieldset:disabled {
   padding-top: 15px;
 }
 .resource-filters {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 6px;
 }
 .resource-filters .resource-field {
   margin: 0;
 }
-.search-field,
-.resource-actions {
-  grid-column: 1 / -1;
+.resource-filter-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.resource-filter-top .search-field {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.resource-filter-top .search-field .sr-only {
+  display: none;
+}
+.resource-filter-top .resource-actions {
+  flex-shrink: 0;
+}
+.resource-filter-row {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+}
+.resource-filter-row .filter-select {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-size: 12px;
+}
+.resource-filter-row .filter-select > span {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.resource-filter-row select {
+  min-width: 0;
+  width: auto;
+}
+.resource-filter-note {
+  align-self: center;
+  color: #a1503f;
+  font-size: 12px;
+}
+.resource-filter-row .classification-picker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  grid-column: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.resource-filter-row .classification-picker > .resource-hint {
+  margin: 0;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.resource-filter-row .classification-picker .selection-chips {
+  margin: 0;
+}
+.resource-filter-row .classification-picker .selection-chips button {
+  padding: 5px 9px;
 }
 .resource-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
 }
+.resource-filters .resource-field input,
+.resource-filters .resource-field select,
+.resource-filters .journal-button,
+.resource-filters .view-switch button {
+  min-height: 38px;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+.resource-filter-top .search-field input {
+  width: 100%;
+}
 .resource-toolbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 14px;
-  margin: 23px 0 18px;
+  margin: 8px 2px 12px;
   font-size: 13px;
 }
 .resource-toolbar small {
