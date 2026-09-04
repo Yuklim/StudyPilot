@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-024"
-status = "IN_REVIEW"
+status = "IN_ACCEPTANCE"
 risk = "L3"
 risk_reason = "新增根规则入口 CLAUDE.md、settings 权限门禁与只读 Agent，触及治理规则如何被 Claude 读取与执行，属治理/门禁改动。"
 risk_flags = ["governance"]
@@ -52,20 +52,20 @@ checks = ["governance"]
 
 ## 实现与测试
 
-- 实现 SHA/变更摘要：提交 `304c1e1`（完整候选；分支领先 origin/main 1）。新增根 `CLAUDE.md`（`@AGENTS.md` 桥接）、`.claude/settings.json`（deny/ask 权限兜底）、`.claude/agents/reviewer.md`（tools 白名单只读 Agent）、`docs/tasks/TASK-024-claude-governance-bridge.md` 记录与 `任务索引.md` 登记。
+- 实现 SHA/变更摘要：候选 `9562b76`（提交 "fix(governance): allow git checkout main via ask not deny"，上一产品候选 `304c1e1` "feat(governance): add Claude Code rule bridge and system guardrails"；两者合为最终候选）。新增根 `CLAUDE.md`（`@AGENTS.md` 桥接）、`.claude/settings.json`（deny/ask 权限兜底）、`.claude/agents/reviewer.md`（tools 白名单只读 Agent）、`docs/tasks/TASK-024-claude-governance-bridge.md` 记录与 `任务索引.md` 登记。`9562b76` 仅删 `.claude/settings.json` 中 deny 的 `Bash(git checkout main)` 一行，将其落回 ask 层。
 - 命令与真实退出结果（2026-09-04，TASK-024 分支工作树，base `51b427f`）：
   - `python3 -m json.tool .claude/settings.json` → 合法 JSON，exit 0。
   - `check_task.py --task docs/tasks/TASK-024-claude-governance-bridge.md --worktree` → `STATIC PASS`，profile=governance，`Governance V2 PASS`（validate_governance exit 0）、ruff check/format 通过、治理单测 23 tests OK，`CHECKS PASS`，exit 0。（输出中 `missing-tool`/`fake-test` 两行是该脚本自带的负向回归演示，设计上验证"工具缺失会如实报错"，非真实失败。）
   - product_fingerprint：`302acf6a946dde1bade7d014cbd05dec9bcacb5956d5e44a9aa57eef6349dbd9`。
   - `git diff --check` 无空白错误；确认无 frontend/src、backend/src、AGENTS.md、.codex、.agents 改动。
-- 已知限制/未完成项：`.claude/settings.json` 的 `permissions.deny` 依赖 Claude 对规则字符串的匹配；本任务只在配置层建立，未做端到端"真实触发"验证（需在真实 Claude 会话中验证 deny 是否拦截越界 git/write）。不改 AGENTS.md 正文是刻意为之（避免双源）；后续调整根规则应单独治理任务。
+- 已知限制/未完成项：`.claude/settings.json` 的 `permissions.deny/ask` 依赖 Claude 对规则字符串的匹配；本任务只在配置层建立，未做端到端"真实触发"验证（需在真实 Claude 会话中确认 deny 是否拦截越界 git/write，push refspec 变体如 `HEAD:main` 仅落 ask）。不改 AGENTS.md 正文是刻意为之（避免双源）；后续调整根规则应单独治理任务。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：`304c1e1`（`304c1e1434f1a6ef78c76fd0f910f452d8c397f88` 完整值待核）。
-- Review/Acceptance：L3 治理改动，需独立只读 Review 与 Acceptance。待补。
-- 最终状态/风险/用户操作：IN_REVIEW；等待独立只读 Review 结论。
+- 候选 SHA：`9562b76`（完整候选；`304c1e1` + `9562b76` 合并；基线 `51b427f`）。
+- Review：独立只读 Reviewer 审查候选 `304c1e1`（base..candidate 完整 diff）→ PASS，附 2 项非阻断（checkout main deny 过度、字符串规则边界）；修订 `9562b76` 后同一 Reviewer 复核增量 `304c1e1..9562b76` → PASS，确认 checkout main 落 ask、其余 deny 未误伤、JSON 合法。两轮均真实只读、未修改文件。
+- Acceptance：待独立只读 Acceptance 补记。
 - 非阻断遗留项：暂无。
 - 日期与决定日志：2026-09-04，用户授权开始 TASK-024（Claude 治理桥接与系统兜底）。
 
