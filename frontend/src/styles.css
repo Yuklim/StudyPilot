@@ -194,14 +194,27 @@ p {
   justify-content: center;
   gap: 9px;
   min-height: 46px;
-  background: var(--paper);
-  border: 1px solid #adb8a2;
+  background: var(--green);
+  border: 1px solid var(--green);
   border-radius: 12px;
-  color: var(--green);
-  font-size: 13px;
+  color: #fbfaf4;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 2px 0 #3c4f3a;
+  transition:
+    background-color 0.15s,
+    transform 0.05s;
 }
 .add-link:hover {
-  background: #e7ecde;
+  background: #445c40;
+}
+.add-link:active {
+  transform: translateY(1px);
+  box-shadow: 0 1px 0 #3c4f3a;
+}
+.add-link .icon {
+  width: 18px;
+  height: 18px;
 }
 .preview-label {
   font-size: 10px;
@@ -1284,6 +1297,33 @@ fieldset:disabled {
 }
 .resource-detail > .text-link {
   margin: 0 0 10px;
+}
+.detail-block {
+  margin-top: 18px;
+  padding: 20px 22px 22px;
+  border: 1px solid #e5e5da;
+  border-radius: 6px 20px 20px 20px;
+  background: var(--paper);
+}
+.detail-block + .detail-block {
+  margin-top: 22px;
+}
+.detail-block-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed #dfe2d6;
+}
+.detail-block-heading .note-tab {
+  letter-spacing: 2px;
+}
+.detail-block .notes-panel,
+.detail-block .resource-metadata {
+  margin-top: 4px;
 }
 .resource-detail .resource-progress {
   max-width: 380px;

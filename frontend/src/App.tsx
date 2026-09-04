@@ -34,6 +34,10 @@ function App() {
             <span>个人学习手帐</span>
           </span>
         </Link>
+        <Link className="add-link" to="/resources/new" aria-label="添加资料">
+          <Icon name="plus" />
+          <span>添加资料</span>
+        </Link>
         <div className="nav-section">
           <p className="nav-label">我的学习</p>
           <nav className="primary-nav" aria-label="主要导航">
@@ -60,10 +64,6 @@ function App() {
             </nav>
           </div>
         )}
-        <Link className="add-link" to="/resources/new" aria-label="添加资料">
-          <Icon name="plus" />
-          <span>添加资料</span>
-        </Link>
         <div className="sidebar-note" aria-hidden="true">
           <span className="note-pin" />
           <p>

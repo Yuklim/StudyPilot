@@ -40,13 +40,21 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
         </div>
       )}
       {openedId === resourceId && (
-        <>
+        <section className="detail-block" aria-label="记录与理解">
+          <div className="detail-block-heading">
+            <span className="note-tab">记录与理解</span>
+            <span className="resource-hint">写下此刻的想法，时间自动记录。</span>
+          </div>
           <NotesPanel key={resourceId} resourceId={resourceId} available={!!item} />
           <ResourceEditor key={'editor-' + resourceId} resource={item} refreshed={retry} />
-        </>
+        </section>
       )}
       {item && (
-        <>
+        <section className="detail-block" aria-label="资料信息">
+          <div className="detail-block-heading">
+            <span className="note-tab">资料信息</span>
+            <span className="resource-hint">这份收藏本身的内容与来源。</span>
+          </div>
           <dl className="resource-metadata">
             <div>
               <dt>主要主题</dt>
@@ -125,7 +133,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
             复习安排与正文解析尚未开放；文件原件不能替换。
           </p>
           <LearningPanel key={'learning-' + item.id} resource={item} />
-        </>
+        </section>
       )}
     </section>
   )
