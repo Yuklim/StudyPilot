@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-023"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "接入不可逆资料删除的用户确认流程，涉及删除令牌在前端的短时内存保管、专用请求头、安全错误处理和用户可见的数据删除边界。"
 risk_flags = ["business", "critical-data", "security", "public-api", "deletion", "tests"]
@@ -57,17 +57,18 @@ checks = ["frontend"]
 
 ## 实现与测试
 
-- 实现 SHA/变更摘要：待实现。
-- 命令、真实退出结果、product_fingerprint、环境、未运行原因：待实现。
+- 实现 SHA：`213604b`（完整候选在证据区记录）。新增资料详情删除入口、删除影响预览、内存令牌状态、专用删除头客户端能力、影响变化/令牌错误处理及前端测试；不改后端或公共契约。
+- 2026-09-04 统一命令 `PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-023-resource-safe-delete-pages.md --worktree` 退出 0，`CHECKS PASS`；product_fingerprint `cceba2c12e7fd7b2282899df3df591b3a7fc59a61f21d6d225d981564c66d5ec`。前端 format:check、lint、typecheck、pytest/vitest **314/314 PASS**、build 均成功。
+- 使用 Vitest/jsdom 隔离合成资料与令牌；未触碰真实用户资料、运行数据库或后端存储。
 - 已知限制/未完成项：本任务不提供回收站、撤销、批量删除或离线删除；文件 trash 回收仍由后端既有对账负责。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：待实现。
+- 候选 SHA：待独立审查冻结。
 - Review：待 L3 独立实际只读 Review。
 - Acceptance：待 L3 独立实际只读 Acceptance。
-- 最终状态/风险/用户操作：READY；实现与审查完成后仍由用户决定合并。
+- 最终状态/风险/用户操作：IN_REVIEW；L3 审查/验收完成后仍由用户决定合并。
 - 非阻断遗留项：暂无。
 - 日期与决定日志：2026-09-04，用户授权开始 TASK-023 页面接入计划。
 
