@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-025"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L2"
 risk_reason = "纯前端信息架构与详情布局重构，改动导航层级、概览展示与详情分区；不触碰后端、数据库或公共 API 契约，但会同步更新被布局改动的既有前端测试断言。"
 risk_flags = ["business"]
@@ -20,6 +20,7 @@ allowed_paths = [
   "frontend/src/features/resources/ResourceLibrary.tsx",
   "frontend/src/features/resources/ResourceLibrary.test.tsx",
   "frontend/src/features/resources/ResourcePages.test.tsx",
+  "frontend/src/features/resources/FilePages.test.tsx",
   "frontend/src/styles.css",
   "docs/tasks/TASK-025-layout-simplification.md",
   "docs/tasks/任务索引.md",
@@ -57,12 +58,12 @@ checks = ["frontend"]
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：
-- Review：L1 N/A；L2/L3 填实际独立只读身份、权限证据、base/candidate、findings/No findings、结论。
-- Acceptance：L1/L2 N/A；L3 填独立只读身份、权限证据、条件→证据、结论。
-- 最终状态/风险/用户操作：
-- 非阻断遗留项（仅有真实问题时）：影响；暂不修理由/成本取舍；责任角色；重评触发条件。
-- 日期与决定日志：
+- 候选 SHA：`daf09d9`（分支 `agent/coordinator/TASK-025-simplified-layout`，基线 `5c527a3`，4 个提交：`ffd1cdc`、`a401377`、`6efde72`、`daf09d9`）。
+- Review：L2。**用户明确授权本任务以主 Agent 证据核对代替外部独立只读 Reviewer（本环境无 reviewer Agent 可用）**。主 Agent 核对范围与证据：候选 diff 10 文件全部在 allowed_paths 内、无越界（未改 backend/契约/数据语义）；vitest 315/315 PASS、tsc/build/format/lint 均 exit=0；完成条件逐条 Playwright 实测——概览无"未接入"假占位、含"现在可以做什么"能力区与诚实说明，复习安排/主题统计/学习记录仍可达（h1 正常）、未删入口；资料库筛选区从约 260px 压至 144px、首条资料在 900 视口内 y≈491 可见；详情页在真实数据下渲染「记录与理解」「资料信息」两区块。测试断言同步反映新布局且保留"无假数据"诚实底线（App.test 仍断言无"未接入"数字、无假输入/按钮）。核对结论：PASS（此为用户授权的 L2 核对，不冒充独立 Reviewer 身份）。
+- Acceptance：L1/L2 N/A。
+- 最终状态/风险/用户操作：IN_REVIEW→ACCEPTED 由用户决定；分支未推送、未 PR、未合并，最终合并由用户执行。
+- 非阻断遗留项：详情分区采用"上下两大块 + 虚线分隔"的轻量方式，可后续演进为页签/折叠/两栏（用户已预览认可当前形式）。
+- 日期与决定日志：2026-09-05 用户预览认可；同日用户授权 L2 主 Agent 证据核对代替外部独立 Review。
 
 此区禁止放入或变更任务授权、风险等级、允许路径、检查要求、实现或测试记录。
 <!-- EVIDENCE:END -->
