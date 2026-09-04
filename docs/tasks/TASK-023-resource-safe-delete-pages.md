@@ -57,18 +57,18 @@ checks = ["frontend"]
 
 ## 实现与测试
 
-- 实现 SHA：`213604b`（完整提交：`213604ba582cc98db98b94a4b91b8142154f8df3`）。新增资料详情删除入口、删除影响预览、内存令牌状态、专用删除头客户端能力、影响变化/令牌错误处理及前端测试；不改后端或公共契约。
-- 2026-09-04 统一命令 `PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-023-resource-safe-delete-pages.md --worktree` 退出 0，`CHECKS PASS`；product_fingerprint `cceba2c12e7fd7b2282899df3df591b3a7fc59a61f21d6d225d981564c66d5ec`。前端 format:check、lint、typecheck、pytest/vitest **314/314 PASS**、build 均成功。
+- 实现 SHA：`213604b`（完整提交：`213604ba582cc98db98b94a4b91b8142154f8df3`）及修正 `e7576b4`。新增资料详情删除入口、删除影响预览、内存令牌状态、专用删除头客户端能力、影响变化/令牌错误处理、严格 204 响应校验及前端测试；不改后端或公共契约。
+- 2026-09-04 统一命令 `PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-023-resource-safe-delete-pages.md --worktree` 退出 0，`CHECKS PASS`；product_fingerprint `1fe1c67703bf3fa52d35e487de67b19240d5c458c5e203ec9fa016f780e8d47e`。前端 format:check、lint、typecheck、pytest/vitest **315/315 PASS**、build 均成功。
 - 使用 Vitest/jsdom 隔离合成资料与令牌；未触碰真实用户资料、运行数据库或后端存储。
 - 已知限制/未完成项：本任务不提供回收站、撤销、批量删除或离线删除；文件 trash 回收仍由后端既有对账负责。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：`79d553b`（完整提交：`79d553b8c75a5cc3f26480563ccda9b24b3e31db`）。
-- Review：待 L3 独立实际只读 Review。
-- Acceptance：待 L3 独立实际只读 Acceptance。
-- 最终状态/风险/用户操作：IN_REVIEW；L3 审查/验收完成后仍由用户决定合并。
+- 候选 SHA：`e7576b4`（完整实现候选；本任务证据提交后仍需重新冻结最终候选）。
+- Review：独立 Review 复核候选 `e7576b4`；运行器报告源码目录可写、无法证明实际 `read-only`，按规则结论为 `BLOCKED`，不能作为有效 PASS。静态核查未见令牌进入 URL/JSON/持久化/日志，且确认非 204 响应缺口已修正并有测试；无其他明显缺陷。
+- Acceptance：未启动；L3 独立 Review 尚未取得有效 PASS，按前置条件暂停。
+- 最终状态/风险/用户操作：IN_REVIEW（独立只读审查运行器权限阻塞）；需具备可验证只读运行器后继续 Review → Acceptance，最终仍由用户决定合并。
 - 非阻断遗留项：暂无。
 - 日期与决定日志：2026-09-04，用户授权开始 TASK-023 页面接入计划。
 
