@@ -49,7 +49,7 @@ checks = ["backend", "contracts"]
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- ACCEPTED；实现、统一检查、独立实际只读 Review 与另一独立只读 Acceptance 均通过。最终合并仍由用户决定。
+- MERGED；实现、统一检查、独立实际只读 Review、另一独立只读 Acceptance 均通过，用户已合并 PR #27，合并提交 `51b427f5722427246b4ebc460f3aa6f2e0585338`。
 <!-- EVIDENCE:END -->
 
 ## Review Evidence
