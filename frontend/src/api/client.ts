@@ -6,6 +6,22 @@ interface JsonRequest {
   method?: Method
   body?: Json
   ifMatchVersion?: number
+  deletionToken?: string
+}
+
+export interface DeletionImpact {
+  original_file_count: number
+  note_count: number
+  study_record_count: number
+  active_review_plan_count: number
+  review_record_count: number
+  resource_tag_count: number
+}
+export interface DeletionCurrentImpact {
+  resource_id: string
+  resource_version: number
+  impact_revision: string
+  impact: DeletionImpact
 }
 
 export const MAX_FILE_BYTES = 26_214_400
@@ -32,6 +48,11 @@ function versionedDeleteTarget(target: string): boolean {
       parts[5] === 'notes' &&
       fileIdPattern.test(parts[6]))
   )
+}
+
+function resourceDeleteTarget(target: string): boolean {
+  const parts = target.split('/')
+  return parts.length === 5 && parts[3] === 'resources' && fileIdPattern.test(parts[4])
 }
 
 const messages = {
@@ -63,6 +84,11 @@ const messages = {
   FILE_STATE_UNAVAILABLE: '原件尚未保存完成或已经失效，请稍后检查资料库。',
   FILE_CORRUPTED: '原件缺失或校验不符，已停止下载。请重新添加原件。',
   STORAGE_PATH_UNAVAILABLE: '原件存储暂不可用，请检查本地存储目录与权限。',
+  DELETION_TOKEN_REQUIRED: '请先完成删除预览，再确认删除。',
+  DELETION_TOKEN_INVALID: '删除确认已失效，请重新预览。',
+  DELETION_TOKEN_REPLAYED: '这次删除确认已经使用，请重新预览。',
+  DELETION_IMPACT_CHANGED: '删除影响已经变化，请重新预览并确认。',
+  DELETION_TOKEN_EXPIRED: '删除确认已过期，请重新预览。',
 } as const
 type ErrorCode = keyof typeof messages
 
@@ -70,13 +96,21 @@ export class ApiError extends Error {
   readonly code: ErrorCode
   readonly status: number
   readonly requestId?: string
-  readonly details: Readonly<{ current_version?: number; resource_count?: number }>
+  readonly details: Readonly<{
+    current_version?: number
+    resource_count?: number
+    current_impact?: DeletionCurrentImpact
+  }>
 
   constructor(
     code: ErrorCode,
     status = 0,
     requestId?: string,
-    details: { current_version?: number; resource_count?: number } = {},
+    details: {
+      current_version?: number
+      resource_count?: number
+      current_impact?: DeletionCurrentImpact
+    } = {},
   ) {
     super(messages[code])
     this.name = 'ApiError'
@@ -89,6 +123,51 @@ export class ApiError extends Error {
 
 function object(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function deletionImpact(value: unknown): DeletionImpact | undefined {
+  if (!object(value)) return undefined
+  const keys = [
+    'original_file_count',
+    'note_count',
+    'study_record_count',
+    'active_review_plan_count',
+    'review_record_count',
+    'resource_tag_count',
+  ] as const
+  const result = {} as DeletionImpact
+  for (const key of keys) {
+    const count = value[key]
+    if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0) return undefined
+    result[key] = count
+  }
+  if (result.original_file_count > 1 || result.active_review_plan_count > 1) return undefined
+  return result
+}
+
+function currentImpact(value: unknown): DeletionCurrentImpact | undefined {
+  if (!object(value)) return undefined
+  const resourceId = value.resource_id
+  const resourceVersion = value.resource_version
+  const revision = value.impact_revision
+  const impact = deletionImpact(value.impact)
+  if (
+    typeof resourceId !== 'string' ||
+    !fileIdPattern.test(resourceId) ||
+    typeof resourceVersion !== 'number' ||
+    !Number.isSafeInteger(resourceVersion) ||
+    resourceVersion < 1 ||
+    typeof revision !== 'string' ||
+    !/^[a-f0-9]{64}$/.test(revision) ||
+    !impact
+  )
+    return undefined
+  return {
+    resource_id: resourceId,
+    resource_version: resourceVersion,
+    impact_revision: revision,
+    impact,
+  }
 }
 
 function localPath(path: string): string {
@@ -191,6 +270,11 @@ async function failure(response: Response): Promise<ApiError> {
     'FILE_STATE_UNAVAILABLE',
     'FILE_CORRUPTED',
     'STORAGE_PATH_UNAVAILABLE',
+    'DELETION_TOKEN_REQUIRED',
+    'DELETION_TOKEN_INVALID',
+    'DELETION_TOKEN_REPLAYED',
+    'DELETION_IMPACT_CHANGED',
+    'DELETION_TOKEN_EXPIRED',
   ]
   const code =
     typeof error?.code === 'string' && serverCodes.includes(error.code)
@@ -200,7 +284,11 @@ async function failure(response: Response): Promise<ApiError> {
     typeof error?.request_id === 'string' && /^req_[a-f0-9]{16,64}$/.test(error.request_id)
       ? error.request_id
       : undefined
-  const details: { current_version?: number; resource_count?: number } = {}
+  const details: {
+    current_version?: number
+    resource_count?: number
+    current_impact?: DeletionCurrentImpact
+  } = {}
   const key =
     code === 'VERSION_CONFLICT'
       ? 'current_version'
@@ -215,6 +303,10 @@ async function failure(response: Response): Promise<ApiError> {
     value >= (key === 'current_version' ? 1 : 0)
   )
     details[key] = value
+  if (code === 'DELETION_IMPACT_CHANGED' && object(error?.details)) {
+    const impact = currentImpact(error.details.current_impact)
+    if (impact) details.current_impact = impact
+  }
   return new ApiError(code, response.status, requestId, details)
 }
 
@@ -391,12 +483,22 @@ export function createApiClient() {
       const target = localPath(path)
       const method = options.method ?? 'GET'
       if (
-        Object.keys(options).some((key) => !['method', 'body', 'ifMatchVersion'].includes(key)) ||
+        Object.keys(options).some(
+          (key) => !['method', 'body', 'ifMatchVersion', 'deletionToken'].includes(key),
+        ) ||
         !['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(method) ||
         (method === 'GET' && options.body !== undefined)
       ) {
         throw new ApiError('INVALID_REQUEST')
       }
+      if (
+        options.deletionToken !== undefined &&
+        (method !== 'DELETE' ||
+          options.body !== undefined ||
+          !resourceDeleteTarget(target) ||
+          !/^[A-Za-z0-9_-]{43,256}$/.test(options.deletionToken))
+      )
+        throw new ApiError('INVALID_REQUEST')
       if (
         options.ifMatchVersion !== undefined &&
         (method !== 'DELETE' ||
@@ -416,6 +518,8 @@ export function createApiClient() {
       const headers = new Headers({ 'X-StudyPilot-Token': usedToken })
       if (options.ifMatchVersion !== undefined)
         headers.set('If-Match', `"${options.ifMatchVersion}"`)
+      if (options.deletionToken !== undefined)
+        headers.set('X-StudyPilot-Deletion-Token', options.deletionToken)
       if (body !== undefined) headers.set('Content-Type', 'application/json')
       const response = await transport(target, method, headers, body)
       await checked(response, usedToken)

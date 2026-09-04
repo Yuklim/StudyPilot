@@ -214,6 +214,72 @@ describe('controlled original-file transports', () => {
 })
 describe('memory-only local API client', () => {
   const tagPath = '/api/v1/tags/00000000-0000-4000-8000-000000000001'
+  const resourcePath = '/api/v1/resources/00000000-0000-4000-8000-000000000001'
+  const deletionToken = 'd'.repeat(43)
+  const currentImpact = {
+    resource_id: '00000000-0000-4000-8000-000000000001',
+    resource_version: 2,
+    impact_revision: 'b'.repeat(64),
+    impact: {
+      original_file_count: 1,
+      note_count: 2,
+      study_record_count: 3,
+      active_review_plan_count: 0,
+      review_record_count: 1,
+      resource_tag_count: 2,
+    },
+  }
+  it('sends deletion confirmation only in the dedicated header and never as body or query', async () => {
+    fetchMock
+      .mockResolvedValueOnce(session())
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+    await expect(
+      createApiClient().request(resourcePath, { method: 'DELETE', deletionToken }),
+    ).resolves.toBeUndefined()
+    const [path, init] = fetchMock.mock.calls[1]
+    expect(path).toBe(resourcePath)
+    expect(new Headers(init?.headers).get('X-StudyPilot-Deletion-Token')).toBe(deletionToken)
+    expect(new Headers(init?.headers).get('X-StudyPilot-Token')).toBe(token)
+    expect(init).toMatchObject({ method: 'DELETE', body: undefined })
+  })
+  it.each([
+    [resourcePath, { method: 'DELETE', deletionToken: 'short' }],
+    [resourcePath + '?token=bad', { method: 'DELETE', deletionToken }],
+    [tagPath, { method: 'DELETE', deletionToken }],
+    [resourcePath, { method: 'POST', deletionToken }],
+    [resourcePath, { method: 'DELETE', deletionToken, body: {} }],
+  ])('rejects unsafe deletion token use before bootstrap: %s', async (path, options) => {
+    await expect(createApiClient().request(path as string, options as never)).rejects.toMatchObject(
+      {
+        code: 'INVALID_REQUEST',
+      },
+    )
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+  it('projects only the safe current impact when deletion detects a concurrent change', async () => {
+    fetchMock.mockResolvedValueOnce(session()).mockResolvedValueOnce(
+      Response.json(
+        {
+          error: {
+            code: 'DELETION_IMPACT_CHANGED',
+            message: 'private note and path',
+            details: { current_impact: currentImpact, token: deletionToken },
+          },
+        },
+        { status: 409 },
+      ),
+    )
+    const error = await createApiClient()
+      .request(resourcePath, { method: 'DELETE', deletionToken })
+      .catch((cause: unknown) => cause)
+    expect(error).toMatchObject({
+      code: 'DELETION_IMPACT_CHANGED',
+      status: 409,
+      details: { current_impact: currentImpact },
+    })
+    expect(JSON.stringify(error)).not.toContain('private')
+    expect(JSON.stringify(error)).not.toContain(deletionToken)
+  })
   it('sends only a strong integer version for taxonomy deletion, keeping token controls private', async () => {
     fetchMock
       .mockResolvedValueOnce(session())

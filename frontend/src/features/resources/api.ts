@@ -1,4 +1,10 @@
-import { api, ApiError, fileMediaTypes, MAX_FILE_BYTES } from '../../api/client'
+import {
+  api,
+  ApiError,
+  fileMediaTypes,
+  MAX_FILE_BYTES,
+  type DeletionImpact,
+} from '../../api/client'
 import { getClassification } from '../taxonomy/api'
 import { fileIssue, type OriginalFile } from './files'
 import {
@@ -66,6 +72,15 @@ export type ResourceChanges = Partial<{
   pasted_content: string
 }>
 
+export interface DeletionPreview {
+  resource_id: string
+  resource_version: number
+  impact_revision: string
+  expires_at: string
+  confirmation_token: string
+  impact: DeletionImpact
+}
+
 function invalid(): never {
   throw new ApiError('INVALID_RESPONSE')
 }
@@ -96,6 +111,49 @@ function instant(value: unknown): string {
   const result = string(value)
   if (!/(Z|[+-]\d{2}:\d{2})$/.test(result) || !Number.isFinite(Date.parse(result))) return invalid()
   return result
+}
+
+function deletionImpact(value: unknown): DeletionImpact {
+  const row = object(value)
+  const keys = [
+    'original_file_count',
+    'note_count',
+    'study_record_count',
+    'active_review_plan_count',
+    'review_record_count',
+    'resource_tag_count',
+  ] as const
+  const result = {} as DeletionImpact
+  for (const key of keys) {
+    const count = row[key]
+    if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0) return invalid()
+    result[key] = count
+  }
+  if (result.original_file_count > 1 || result.active_review_plan_count > 1) return invalid()
+  return result
+}
+
+function deletionPreview(value: unknown, resourceId: string): DeletionPreview {
+  const row = object(value)
+  if (
+    id(row.resource_id) !== resourceId ||
+    typeof row.resource_version !== 'number' ||
+    !Number.isSafeInteger(row.resource_version) ||
+    row.resource_version < 1 ||
+    typeof row.impact_revision !== 'string' ||
+    !/^[a-f0-9]{64}$/.test(row.impact_revision) ||
+    typeof row.confirmation_token !== 'string' ||
+    !/^[A-Za-z0-9_-]{43,256}$/.test(row.confirmation_token)
+  )
+    return invalid()
+  return {
+    resource_id: resourceId,
+    resource_version: row.resource_version,
+    impact_revision: row.impact_revision,
+    expires_at: instant(row.expires_at),
+    confirmation_token: row.confirmation_token,
+    impact: deletionImpact(row.impact),
+  }
 }
 
 // Validate only fields consumed by these pages, not the entire future API schema.
@@ -226,6 +284,24 @@ export async function updateResource(
   return saved
 }
 
+export async function previewResourceDeletion(resourceId: string): Promise<DeletionPreview> {
+  if (!isResourceId(resourceId)) throw new ApiError('INVALID_REQUEST')
+  const envelope = object(
+    await api.request(`/api/v1/resources/${resourceId}/deletion-preview`, { method: 'POST' }),
+  )
+  return deletionPreview(envelope.data, resourceId)
+}
+
+export async function deleteResource(resourceId: string, confirmationToken: string): Promise<void> {
+  if (!isResourceId(resourceId) || !/^[A-Za-z0-9_-]{43,256}$/.test(confirmationToken))
+    throw new ApiError('INVALID_REQUEST')
+  const result = await api.request(`/api/v1/resources/${resourceId}`, {
+    method: 'DELETE',
+    deletionToken: confirmationToken,
+  })
+  if (result !== undefined) throw new ApiError('INVALID_RESPONSE')
+}
+
 export async function createFileResource(
   metadata: ResourceMetadata,
   file: File,
@@ -263,6 +339,11 @@ export function failureText(error: unknown): string {
   if (error.code.startsWith('FILE_') || error.code === 'STORAGE_PATH_UNAVAILABLE')
     return error.message
   if (error.code === 'TOPIC_NOT_FOUND' || error.code === 'TAG_NOT_FOUND') return error.message
+  if (error.code === 'DELETION_IMPACT_CHANGED') return '删除影响已经变化，请重新预览并确认。'
+  if (error.code === 'DELETION_TOKEN_REPLAYED') return '这次删除确认已经使用，请重新预览。'
+  if (error.code === 'DELETION_TOKEN_EXPIRED') return '删除确认已过期，请重新预览。'
+  if (error.code === 'DELETION_TOKEN_REQUIRED' || error.code === 'DELETION_TOKEN_INVALID')
+    return '删除确认已失效，请重新预览。'
   if (error.status === 404) return '没有找到这份资料。它可能已不存在，或地址有误。'
   if (error.status === 422) return '资料内容未通过检查，请检查输入的格式和长度。'
   if (error.code === 'INVALID_RESPONSE') return '收到的数据格式不正确，暂时无法显示。'

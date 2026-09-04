@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
 import { displayTime, getResource, safeWebUrl, sourceLabels } from './api'
 import { ResourceError } from './ResourceState'
@@ -9,8 +9,10 @@ import { useResourceQuery } from './useResourceQuery'
 import { ResourceTagEditor } from '../taxonomy/ResourceTagEditor'
 import { FileOriginal } from './FileOriginal'
 import { ResourceEditor } from './ResourceEditor'
+import { ResourceDeletion } from './ResourceDeletion'
 
 export function ResourceDetail({ resourceId }: { resourceId: string }) {
+  const navigate = useNavigate()
   const load = useCallback(() => getResource(resourceId), [resourceId])
   const { result, retry } = useResourceQuery(resourceId, load)
   const item = result?.data
@@ -118,8 +120,9 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
           {item.source_type === 'FILE' && item.original_file && (
             <FileOriginal key={item.original_file.id} file={item.original_file} />
           )}
+          <ResourceDeletion resource={item} deleted={() => navigate('/resources')} />
           <p className="resource-hint feature-boundary">
-            资料删除、复习安排与正文解析尚未开放；文件原件不能替换。
+            复习安排与正文解析尚未开放；文件原件不能替换。
           </p>
           <LearningPanel key={'learning-' + item.id} resource={item} />
         </>

@@ -998,6 +998,11 @@ p {
   color: #fffdf8;
   border-color: var(--green);
 }
+.journal-button.danger {
+  background: #9a5e4d;
+  color: #fffdf8;
+  border-color: #9a5e4d;
+}
 .journal-button:hover:not(:disabled),
 .view-switch button:hover {
   box-shadow: 0 2px 7px #303a3217;
@@ -1019,6 +1024,59 @@ fieldset:disabled {
 }
 .resource-error .journal-button {
   margin-top: 12px;
+}
+.resource-deletion {
+  margin-top: 28px;
+  padding-top: 22px;
+  border-top: 1px dashed var(--line);
+}
+.deletion-confirmation {
+  padding: 22px;
+  border: 1px solid #dec5b3;
+  border-radius: 16px;
+  background: #fff8ef;
+}
+.deletion-confirmation .note-tab {
+  display: inline-block;
+  margin-bottom: 13px;
+}
+.deletion-confirmation h3 {
+  margin: 0 0 12px;
+  font:
+    600 19px/1.5 'Songti SC',
+    serif;
+  color: #6f4939;
+}
+.deletion-warning {
+  margin: 0;
+  color: #7c4f35;
+  font-size: 13px;
+  line-height: 1.9;
+}
+.deletion-impact {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  list-style: none;
+  padding: 0;
+  margin: 18px 0;
+}
+.deletion-impact li {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 11px 12px;
+  border-radius: 10px;
+  background: #f5eadc;
+  color: #785c4b;
+  font-size: 11px;
+}
+.deletion-impact strong {
+  font-size: 18px;
+  color: #6f4939;
+}
+.deletion-error {
+  margin-bottom: 0;
 }
 .feature-boundary {
   margin-top: 24px;
