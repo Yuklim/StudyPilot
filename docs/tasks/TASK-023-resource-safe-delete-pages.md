@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-023"
-status = "IN_ACCEPTANCE"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "接入不可逆资料删除的用户确认流程，涉及删除令牌在前端的短时内存保管、专用请求头、安全错误处理和用户可见的数据删除边界。"
 risk_flags = ["business", "critical-data", "security", "public-api", "deletion", "tests"]
@@ -68,7 +68,8 @@ checks = ["frontend"]
 - 候选 SHA：`e7576b4`（完整实现候选；本任务证据提交后仍需重新冻结最终候选）。
 - Review：独立只读 Review，候选 `e7576b4416ea5b0520d6a3c986d502310bcb7b35`，基线 `51b427f5722427246b4ebc460f3aa6f2e0585338`；验证 `frontend/src`、`backend/src` 均不可写，完整 diff/删除 API 调用链/令牌传递/错误处理/路由与测试均核对；`git diff --check` 通过；Findings: No findings；结论 `PASS`。Reviewer 未修改、提交、推送、合并或委派。
 - Acceptance：独立只读 Codex CLI Acceptance 已核对候选 `e7576b4416ea5b0520d6a3c986d502310bcb7b35` 与全部完成条件；通过 `read_thread` 核实其运行时 `frontend/src`、`backend/src` 均不可写，候选与 Review 一致，完成条件均有对应实现/测试证据；结论待写回。
-- 最终状态/风险/用户操作：IN_ACCEPTANCE；Acceptance 结论写回后仍由用户决定是否推送、创建 PR 和合并。
+- Acceptance（Claude 实测，2026-09-04）：以真实只读运行器（Claude Code Explore 子代理，运行器层排除全部写工具）执行独立只读 Acceptance；候选 `e7576b4416ea5b0520d6a3c986d502310bcb7b35`、基线 `51b427f5722427246b4ebc460f3aa6f2e0585338`；7 条完成条件逐条映射到候选真实实现与测试证据（删除入口首次仅 preview、令牌仅存组件内存、确认仅经 `X-StudyPilot-Deletion-Token` 专用头且严格 204 空响应、影响变化/重放/过期受控提示、WEB/PASTE/FILE 测试覆盖），确认候选后 `e7576b4..HEAD` 仅 3 个 docs 窄证据写回、`frontend/src`/`backend/src` 零变化；Findings: No findings；结论 `PASS`。Acceptance 全程未修改、未提交、未推送、未合并。
+- 最终状态/风险/用户操作：ACCEPTED；候选 `e7576b4416ea5b0520d6a3c986d502310bcb7b35` 已通过独立只读 Review 与 Acceptance，等待用户决定是否推送、创建 PR 和合并。
 - 非阻断遗留项：暂无。
 - 日期与决定日志：2026-09-04，用户授权开始 TASK-023 页面接入计划。
 
