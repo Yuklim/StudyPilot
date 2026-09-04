@@ -18,7 +18,7 @@ export function ResourceLibrary() {
   const [draft, setDraft] = useState(initialFilters)
   const [filters, setFilters] = useState(initialFilters)
   const [page, setPage] = useState(1)
-  const [view, setView] = useState<'cards' | 'list'>('cards')
+  const [view, setView] = useState<'cards' | 'list'>('list')
   const [validation, setValidation] = useState('')
   const query = new URLSearchParams({ page: String(page), page_size: '20', sort: filters.sort })
   if (filters.q) query.set('q', filters.q)
@@ -176,32 +176,65 @@ export function ResourceLibrary() {
       )}
       {data && data.data.length > 0 && (
         <ul className={`resource-collection ${view}`} aria-label="资料结果">
-          {data.data.map((item) => (
-            <li key={item.id} className="resource-card">
-              <div className="resource-card-heading">
-                <span className={`source-chip ${item.source_type.toLowerCase()}`}>
-                  {sourceLabels[item.source_type]}
-                </span>
-                <span>{item.source_name || '未填写来源名称'}</span>
-              </div>
-              <h2>
-                <Link to={`/resources/${item.id}`}>{item.title}</Link>
-              </h2>
-              <p className="resource-reason">{item.save_reason || '留给下一次阅读。'}</p>
-              <p className="resource-hint">
-                主题：{item.topic_id ? (item.topic_name ?? '暂无法读取名称，请重新加载') : '未分配'}
-              </p>
-              {item.tags.length > 0 && (
-                <ul className="resource-tags" aria-label="标签">
-                  {item.tags.map((tag) => (
-                    <li key={tag.id}>{tag.name}</li>
-                  ))}
-                </ul>
-              )}
-              <ResourceProgress resource={item} />
-              <time dateTime={item.created_at}>{displayTime(item.created_at)} 收藏</time>
-            </li>
-          ))}
+          {data.data.map((item) =>
+            view === 'list' ? (
+              <li key={item.id} className="resource-row">
+                <div className="resource-row-main">
+                  <span className={`source-chip ${item.source_type.toLowerCase()}`}>
+                    {sourceLabels[item.source_type]}
+                  </span>
+                  <h2>
+                    <Link to={`/resources/${item.id}`}>{item.title}</Link>
+                  </h2>
+                  <span className="resource-row-source">
+                    {item.source_name || '未填写来源名称'}
+                  </span>
+                  {item.tags.length > 0 && (
+                    <ul className="resource-tags" aria-label="标签">
+                      {item.tags.map((tag) => (
+                        <li key={tag.id}>{tag.name}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <div className="resource-row-side">
+                  <span className="resource-row-topic">
+                    主题：{item.topic_id ? (item.topic_name ?? '未命名主题') : '未分配'}
+                  </span>
+                  <span className="resource-row-status">
+                    {statusLabels[item.progress.status]} · {item.progress.progress_percent}%
+                  </span>
+                  <time dateTime={item.created_at}>{displayTime(item.created_at)}</time>
+                </div>
+              </li>
+            ) : (
+              <li key={item.id} className="resource-card">
+                <div className="resource-card-heading">
+                  <span className={`source-chip ${item.source_type.toLowerCase()}`}>
+                    {sourceLabels[item.source_type]}
+                  </span>
+                  <span>{item.source_name || '未填写来源名称'}</span>
+                </div>
+                <h2>
+                  <Link to={`/resources/${item.id}`}>{item.title}</Link>
+                </h2>
+                <p className="resource-reason">{item.save_reason || '留给下一次阅读。'}</p>
+                <p className="resource-hint">
+                  主题：
+                  {item.topic_id ? (item.topic_name ?? '暂无法读取名称，请重新加载') : '未分配'}
+                </p>
+                {item.tags.length > 0 && (
+                  <ul className="resource-tags" aria-label="标签">
+                    {item.tags.map((tag) => (
+                      <li key={tag.id}>{tag.name}</li>
+                    ))}
+                  </ul>
+                )}
+                <ResourceProgress resource={item} />
+                <time dateTime={item.created_at}>{displayTime(item.created_at)} 收藏</time>
+              </li>
+            ),
+          )}
         </ul>
       )}
       {data && (

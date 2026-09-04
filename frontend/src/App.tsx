@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
 
 import { Icon } from './shell/Icon'
-import { navigation, pageAt } from './shell/pages'
+import { moreNavigation, pageAt, primaryNavigation } from './shell/pages'
 import { Screen } from './shell/Screen'
 
 function App() {
@@ -37,7 +37,7 @@ function App() {
         <div className="nav-section">
           <p className="nav-label">我的学习</p>
           <nav className="primary-nav" aria-label="主要导航">
-            {navigation.map((item) => (
+            {primaryNavigation.map((item) => (
               <NavLink key={item.path} to={item.path} end={item.path !== '/resources'}>
                 <Icon name={item.icon} />
                 <span>{item.title}</span>
@@ -46,6 +46,20 @@ function App() {
             ))}
           </nav>
         </div>
+        {moreNavigation.length > 0 && (
+          <div className="nav-section nav-section-more">
+            <p className="nav-label">后续能力</p>
+            <nav className="primary-nav" aria-label="更多能力">
+              {moreNavigation.map((item) => (
+                <NavLink key={item.path} to={item.path} end>
+                  <Icon name={item.icon} />
+                  <span>{item.title}</span>
+                  <span className="nav-dot" aria-hidden="true" />
+                </NavLink>
+              ))}
+            </nav>
+          </div>
+        )}
         <Link className="add-link" to="/resources/new" aria-label="添加资料">
           <Icon name="plus" />
           <span>添加资料</span>

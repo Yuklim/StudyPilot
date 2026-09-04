@@ -126,7 +126,7 @@ describe('file upload form', () => {
     selectFile()
     submit()
     fireEvent.click(
-      within(screen.getByRole('navigation', { name: '主要导航' })).getByRole('link', {
+      within(screen.getByRole('navigation', { name: '更多能力' })).getByRole('link', {
         name: '学习记录',
       }),
     )
