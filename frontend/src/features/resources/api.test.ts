@@ -1,10 +1,74 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { api, ApiError } from '../../api/client'
-import { createResource, getResource, listResources, safeWebUrl, updateResource } from './api'
+import {
+  createResource,
+  deleteResource,
+  getResource,
+  listResources,
+  previewResourceDeletion,
+  safeWebUrl,
+  updateResource,
+} from './api'
 import { resourceId, sample, samplePage } from './fixtures'
 
 describe('resource view adapter', () => {
+  const deletion = {
+    resource_id: resourceId,
+    resource_version: 2,
+    impact_revision: 'a'.repeat(64),
+    expires_at: '2026-09-04T04:00:00Z',
+    confirmation_token: 't'.repeat(43),
+    impact: {
+      original_file_count: 1,
+      note_count: 2,
+      study_record_count: 3,
+      active_review_plan_count: 1,
+      review_record_count: 4,
+      resource_tag_count: 2,
+    },
+  }
+
+  it('previews deletion and sends the opaque token only in the dedicated delete header', async () => {
+    const request = vi
+      .spyOn(api, 'request')
+      .mockResolvedValueOnce({ data: deletion })
+      .mockResolvedValueOnce(undefined)
+    await expect(previewResourceDeletion(resourceId)).resolves.toEqual(deletion)
+    await expect(deleteResource(resourceId, deletion.confirmation_token)).resolves.toBeUndefined()
+    expect(request).toHaveBeenNthCalledWith(1, `/api/v1/resources/${resourceId}/deletion-preview`, {
+      method: 'POST',
+    })
+    expect(request).toHaveBeenNthCalledWith(2, `/api/v1/resources/${resourceId}`, {
+      method: 'DELETE',
+      deletionToken: deletion.confirmation_token,
+    })
+  })
+
+  it.each([
+    { ...deletion, resource_id: '00000000-0000-4000-8000-000000000009' },
+    { ...deletion, impact_revision: 'broken' },
+    { ...deletion, confirmation_token: 'short' },
+    { ...deletion, expires_at: 'broken' },
+    { ...deletion, impact: { ...deletion.impact, note_count: -1 } },
+  ])('rejects unsafe deletion preview responses', async (payload) => {
+    vi.spyOn(api, 'request').mockResolvedValue({ data: payload })
+    await expect(previewResourceDeletion(resourceId)).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    })
+  })
+
+  it('rejects invalid deletion ids and tokens before requesting', async () => {
+    const request = vi.spyOn(api, 'request')
+    await expect(previewResourceDeletion('../escape')).rejects.toMatchObject({
+      code: 'INVALID_REQUEST',
+    })
+    await expect(deleteResource(resourceId, 'short')).rejects.toMatchObject({
+      code: 'INVALID_REQUEST',
+    })
+    expect(request).not.toHaveBeenCalled()
+  })
+
   it('updates only requested fields with the resource version in the JSON body', async () => {
     const request = vi.spyOn(api, 'request').mockResolvedValue({ data: sample({ version: 2 }) })
     await updateResource(sample(), { source_name: null, title: '新标题' }, 1)

@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-023"
-status = "READY"
+status = "IN_PROGRESS"
 risk = "L3"
 risk_reason = "接入不可逆资料删除的用户确认流程，涉及删除令牌在前端的短时内存保管、专用请求头、安全错误处理和用户可见的数据删除边界。"
 risk_flags = ["business", "critical-data", "security", "public-api", "deletion", "tests"]
