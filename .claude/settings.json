@@ -11,7 +11,6 @@
       "Bash(git merge main)",
       "Bash(git merge origin/main)",
       "Bash(git reset --hard *)",
-      "Bash(git checkout main)",
       "Bash(git branch -D main)",
       "Bash(git branch --delete main)"
     ],
