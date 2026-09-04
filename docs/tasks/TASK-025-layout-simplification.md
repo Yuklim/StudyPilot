@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-025"
-status = "IN_REVIEW"
+status = "ACCEPTED"
 risk = "L2"
 risk_reason = "纯前端信息架构与详情布局重构，改动导航层级、概览展示与详情分区；不触碰后端、数据库或公共 API 契约，但会同步更新被布局改动的既有前端测试断言。"
 risk_flags = ["business"]
