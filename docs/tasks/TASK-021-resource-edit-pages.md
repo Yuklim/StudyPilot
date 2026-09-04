@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-021"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "接入已批准的资料编辑接口，包含粘贴原文覆盖、冲突/未知保存结果保护及交付元数据；不改后端、模型或公共协议。"
 risk_flags = ["business", "critical-data", "tests"]
@@ -90,4 +90,5 @@ base：`dcbc5d8a97065c6f4802f3b8fb9d22e9a8d70fc0`
 核对结果：5 项完成条件均有任务记录中的 292/292 前端、31/31 Chromium、统一检查/契约检查、Reviewer PASS 证据覆盖；候选后仅 `TASK-021` 证据和任务索引行写回。已知边界为草稿仅本页、原文无修订历史、FILE 不可替换，均已明示且符合当前个人本机使用风险。未发现验收阻断缺口。最终合并仍由用户决定。
 
 - 主 Agent 最终核对：ACCEPTED；Review 与独立验收均 PASS，无未处置发现，候选后仅状态和证据写回。保持已测指纹与 292/31 证据，不重复全套测试。已明示页面草稿/原文覆盖/FILE 限制；等待用户合并，下一步按核心需求登记资料安全删除后端，不自动开展复习/统计等扩展。
+- 用户已合并 PR #26，2026-09-03T12:22:01Z，合并提交 `2df99dc44399db053f30653cf7803f2cedced108`。TASK-021 状态补记为 MERGED；后续从该主线登记 TASK-022。
 <!-- EVIDENCE:END -->

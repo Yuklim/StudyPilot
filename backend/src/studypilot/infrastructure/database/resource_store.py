@@ -5,12 +5,17 @@ tags. Learning bootstrap inserts ONLY the already-approved database defaults;
 there is deliberately no progress/state mutation method here.
 """
 
+import hashlib
+import json
+import secrets
+from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, defer
 
+from studypilot.infrastructure.database.types import utc_now
 from studypilot.modules.resources.contracts import (
     CreateResource,
     FileCreate,
@@ -19,13 +24,18 @@ from studypilot.modules.resources.contracts import (
     ResourceQuery,
     normalized_search,
 )
+from studypilot.modules.resources.files import FileStorage
 
 from .models import (
     ActiveReviewPlan,
+    DeletionConfirmation,
     LearningProgress,
     LearningResource,
+    Note,
     OriginalFile,
     ResourceTag,
+    ReviewRecord,
+    StudyRecord,
     Tag,
     Topic,
 )
@@ -62,6 +72,14 @@ FILE_FIELDS = (
     "version",
     "created_at",
     "updated_at",
+)
+DELETION_IMPACT_KEYS = (
+    "original_file_count",
+    "note_count",
+    "study_record_count",
+    "active_review_plan_count",
+    "review_record_count",
+    "resource_tag_count",
 )
 
 
@@ -190,6 +208,171 @@ class ResourceStore:
     def detail(self, resource_id: UUID) -> dict[str, Any]:
         resource = self.find(resource_id)
         return self._projections([resource], detail=True)[0]
+
+    @staticmethod
+    def _stamp(value: datetime) -> str:
+        return value.isoformat().replace("+00:00", "Z")
+
+    @staticmethod
+    def _digest_token(token: str) -> str:
+        return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _revision(manifest: dict[str, Any]) -> str:
+        payload = json.dumps(manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    def _deletion_snapshot(self, resource_id: UUID) -> dict[str, Any]:
+        resource = self.find(resource_id)
+        originals = list(
+            self._session.scalars(
+                select(OriginalFile)
+                .where(OriginalFile.resource_id == resource_id)
+                .order_by(OriginalFile.id)
+            )
+        )
+        notes = list(
+            self._session.scalars(
+                select(Note).where(Note.resource_id == resource_id).order_by(Note.id)
+            )
+        )
+        progress = self._session.get(LearningProgress, resource_id)
+        study_records = list(
+            self._session.scalars(
+                select(StudyRecord)
+                .where(StudyRecord.resource_id == resource_id)
+                .order_by(StudyRecord.created_at, StudyRecord.id)
+            )
+        )
+        plan = self._session.get(ActiveReviewPlan, resource_id)
+        review_records = list(
+            self._session.scalars(
+                select(ReviewRecord)
+                .where(ReviewRecord.resource_id == resource_id)
+                .order_by(ReviewRecord.created_at, ReviewRecord.id)
+            )
+        )
+        tags = list(
+            self._session.scalars(
+                select(ResourceTag)
+                .where(ResourceTag.resource_id == resource_id)
+                .order_by(ResourceTag.tag_id)
+            )
+        )
+        manifest = {
+            "resource": {"id": str(resource.id), "version": resource.version},
+            "original_files": [
+                {
+                    "id": str(row.id),
+                    "version": row.version,
+                    "status": row.status,
+                    "storage_key": row.storage_key,
+                }
+                for row in originals
+            ],
+            "learning_progress": []
+            if progress is None
+            else [{"resource_id": str(progress.resource_id), "version": progress.version}],
+            "notes": [{"id": str(row.id), "version": row.version} for row in notes],
+            "study_records": [
+                {"id": str(row.id), "created_at": self._stamp(row.created_at)}
+                for row in study_records
+            ],
+            "active_review_plans": []
+            if plan is None
+            else [{"resource_id": str(plan.resource_id), "version": plan.version}],
+            "review_records": [
+                {"id": str(row.id), "created_at": self._stamp(row.created_at)}
+                for row in review_records
+            ],
+            "resource_tags": [
+                {"tag_id": str(row.tag_id), "association_version": row.association_version}
+                for row in tags
+            ],
+        }
+        impact = {key: 0 for key in DELETION_IMPACT_KEYS}
+        impact.update(
+            original_file_count=len(originals),
+            note_count=len(notes),
+            study_record_count=len(study_records),
+            active_review_plan_count=0 if plan is None else 1,
+            review_record_count=len(review_records),
+            resource_tag_count=len(tags),
+        )
+        revision = self._revision(manifest)
+        current_impact = {
+            "resource_id": str(resource.id),
+            "resource_version": resource.version,
+            "impact_revision": revision,
+            "impact": impact,
+        }
+        return {
+            "resource": resource,
+            "manifest": manifest,
+            "revision": revision,
+            "impact": impact,
+            "current_impact": current_impact,
+            "storage_keys": [row.storage_key for row in originals if row.status == "READY"],
+        }
+
+    def preview_deletion(self, resource_id: UUID) -> dict[str, Any]:
+        snapshot = self._deletion_snapshot(resource_id)
+        token = secrets.token_urlsafe(32)
+        expires = utc_now() + timedelta(minutes=5)
+        self._session.add(
+            DeletionConfirmation(
+                resource_id=resource_id,
+                resource_version=snapshot["resource"].version,
+                token_digest=self._digest_token(token),
+                impact_manifest=snapshot["manifest"],
+                impact_revision=snapshot["revision"],
+                expires_at=expires,
+                used_at=None,
+            )
+        )
+        self._session.flush()
+        return {
+            "resource_id": str(resource_id),
+            "resource_version": snapshot["resource"].version,
+            "impact_revision": snapshot["revision"],
+            "expires_at": expires,
+            "confirmation_token": token,
+            "impact": snapshot["impact"],
+        }
+
+    def delete_resource(
+        self, resource_id: UUID, token: str, storage: FileStorage
+    ) -> dict[str, Any]:
+        confirmation = self._session.scalar(
+            select(DeletionConfirmation).where(
+                DeletionConfirmation.token_digest == self._digest_token(token)
+            )
+        )
+        if confirmation is None or confirmation.resource_id != resource_id:
+            raise ResourceError("DELETION_TOKEN_INVALID", 403)
+        if confirmation.used_at is not None:
+            raise ResourceError("DELETION_TOKEN_REPLAYED", 409)
+        now = utc_now()
+        if confirmation.expires_at <= now:
+            raise ResourceError("DELETION_TOKEN_EXPIRED", 410)
+        snapshot = self._deletion_snapshot(resource_id)
+        if (
+            confirmation.resource_version != snapshot["resource"].version
+            or confirmation.impact_revision != snapshot["revision"]
+            or confirmation.impact_manifest != snapshot["manifest"]
+        ):
+            confirmation.used_at = now
+            self._session.flush()
+            return {
+                "error": "DELETION_IMPACT_CHANGED",
+                "current_impact": snapshot["current_impact"],
+            }
+        for key in snapshot["storage_keys"]:
+            storage.quarantine(key)
+        confirmation.used_at = now
+        self._session.delete(snapshot["resource"])
+        self._session.flush()
+        return {}
 
     def page(self, query: ResourceQuery) -> dict[str, Any]:
         statement = (

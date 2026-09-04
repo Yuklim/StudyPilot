@@ -3,7 +3,7 @@
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "info": {"title": "StudyPilot 第一阶段 API", "version": "1.0.0", "description": "本地单用户 StudyPilot 既有接口设计全集，包含后续扩展，不是当前全部可调用能力清单。TASK-018 已将当前核心收敛为资料收集、随手心得与找回；此处完整 MVP/最终要求不表示核心版必须先实现复习与统计，范围解释见 API与数据契约基线.md 第1.0节。已授权阶段子集及暂未开放输入响应见 x-delivery-profile 和第1.3节；当前运行时可用性仍以阶段说明为准。标准 paths/schemas 和安全/事务/时间语义不变，不能未经阶段筛选直接生成当前客户端。"},
   "x-delivery-profile": {
-    "stage": "TASK-021",
+    "stage": "TASK-022",
     "standard_schema_scope": "full-mvp-target",
     "contract_section": "1.3",
     "available_operations": {
@@ -12,6 +12,8 @@
       "listResources": {},
       "getResource": {},
       "updateResource": {},
+      "previewResourceDeletion": {},
+      "deleteResource": {},
       "downloadOriginalFile": {},
       "listTopics": {},
       "createTopic": {},
@@ -35,8 +37,8 @@
       "deleteResourceNote": {}
     },
     "deferred_inputs": [],
-    "client_policy": "当前不自动生成客户端；后续生成须先按本清单限制可用操作与媒体类型。FILE 和旧学习记录已接入，JSON 不接受 FILE。TASK-019 心得页面仅填写正文，旧学习管理收起保留。TASK-020/021 提供既定资料修改后端与页面，默认收起编辑区；冲突/未知结果需重读核对、明确确认后重提，不清空心得草稿，不改资料类型或替换文件原件。复习与统计后置，未列操作不承诺可用。",
-    "completion_gate": "TASK-021 候选接入既定 updateResource 页面；交付元数据随测试、独立审查和验收通过后交用户合并生效，不表示复习、资料删除等完整目标已交付。"
+    "client_policy": "当前不自动生成客户端；后续生成须先按本清单限制可用操作与媒体类型。FILE 和旧学习记录已接入，JSON 不接受 FILE。TASK-019 心得页面仅填写正文，旧学习管理收起保留。TASK-020/021 提供既定资料修改后端与页面，默认收起编辑区；冲突/未知结果需重读核对、明确确认后重提，不清空心得草稿，不改资料类型或替换文件原件。TASK-022 提供资料删除后端：先 deletion-preview 返回影响摘要和一次性令牌，确认删除用专用头提交；页面尚未接入。复习与统计后置，未列操作不承诺可用。",
+    "completion_gate": "TASK-022 候选实现既定资料删除后端；交付元数据随测试、独立审查和验收通过后交用户合并生效，不表示删除页面、复习、统计等完整目标已交付。"
   },
   "tags": [{"name": "local-session", "description": "本次本地进程访问令牌"}, {"name": "resources", "description": "资料与原始文件"}, {"name": "taxonomy", "description": "主题、标签和资料标签关联"}, {"name": "notes", "description": "个人笔记"}, {"name": "learning", "description": "学习进度与不可变学习记录"}, {"name": "reviews", "description": "复习计划与不可变复习结果"}, {"name": "analytics", "description": "只读实时统计"}],
   "paths": {

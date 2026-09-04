@@ -1,7 +1,7 @@
 """Validated resource commands; no HTTP, database or network side effects."""
 
 import re
-from typing import Annotated, Literal, Self
+from typing import Annotated, Any, Literal, Self
 from unicodedata import normalize
 from urllib.parse import urlsplit
 from uuid import UUID
@@ -24,10 +24,17 @@ Status = Literal["UNREAD", "IN_PROGRESS", "COMPLETED", "REVIEW_DUE", "ARCHIVED"]
 class ResourceError(Exception):
     """Stable code/status and optional conflict version, never user content or SQL."""
 
-    def __init__(self, code: str, status: int, current_version: int | None = None) -> None:
+    def __init__(
+        self,
+        code: str,
+        status: int,
+        current_version: int | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
         self.code = code
         self.status = status
         self.current_version = current_version
+        self.details = details
         super().__init__(code)
 
 
