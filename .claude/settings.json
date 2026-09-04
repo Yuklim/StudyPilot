@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "deny": [
+      "Write(./var/**)",
+      "Edit(./var/**)",
+      "NotebookEdit(./var/**)",
+      "Bash(git push origin main)",
+      "Bash(git push origin main:*)",
+      "Bash(git push -f *)",
+      "Bash(git push --force *)",
+      "Bash(git merge main)",
+      "Bash(git merge origin/main)",
+      "Bash(git reset --hard *)",
+      "Bash(git checkout main)",
+      "Bash(git branch -D main)",
+      "Bash(git branch --delete main)"
+    ],
+    "ask": [
+      "Bash(git push *)",
+      "Bash(git merge *)",
+      "Bash(git rebase *)",
+      "Bash(git reset *)",
+      "Bash(git checkout *)",
+      "Bash(git branch -D *)",
+      "Bash(git branch --delete *)"
+    ]
+  }
+}
