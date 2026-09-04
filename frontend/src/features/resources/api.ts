@@ -295,10 +295,11 @@ export async function previewResourceDeletion(resourceId: string): Promise<Delet
 export async function deleteResource(resourceId: string, confirmationToken: string): Promise<void> {
   if (!isResourceId(resourceId) || !/^[A-Za-z0-9_-]{43,256}$/.test(confirmationToken))
     throw new ApiError('INVALID_REQUEST')
-  await api.request(`/api/v1/resources/${resourceId}`, {
+  const result = await api.request(`/api/v1/resources/${resourceId}`, {
     method: 'DELETE',
     deletionToken: confirmationToken,
   })
+  if (result !== undefined) throw new ApiError('INVALID_RESPONSE')
 }
 
 export async function createFileResource(

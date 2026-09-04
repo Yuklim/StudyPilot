@@ -69,6 +69,13 @@ describe('resource view adapter', () => {
     expect(request).not.toHaveBeenCalled()
   })
 
+  it('requires the confirmed deletion endpoint to return 204 without a body', async () => {
+    vi.spyOn(api, 'request').mockResolvedValue({ data: {} })
+    await expect(deleteResource(resourceId, deletion.confirmation_token)).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    })
+  })
+
   it('updates only requested fields with the resource version in the JSON body', async () => {
     const request = vi.spyOn(api, 'request').mockResolvedValue({ data: sample({ version: 2 }) })
     await updateResource(sample(), { source_name: null, title: '新标题' }, 1)
