@@ -52,13 +52,13 @@ checks = ["frontend"]
 ## 实现与测试
 
 - 实现 SHA/变更摘要：将 pages 增加 primary/more 分组；侧栏主导航收为「学习概览/资料库/分类整理」，未开放/低活跃的「学习记录/复习安排/主题统计」收进「更多能力」次级区仍可达；概览移除三块"未接入"假指标，改为真实能力清单 + 快速开始按钮 + 诚实说明；资料库默认视图改为高密度行式列表，卡片视图保留；「添加资料」入口提升到侧栏品牌之下、主导航之上并改为实心主按钮；资料详情页按「记录与理解」（心得+编辑）与「资料信息」（元数据/标签/原文/删除/学习面板）分成两个视觉区块。同步更新被布局改动的 App.test/ResourcePages/FilePages 断言。实现 SHA：`ffd1cdc`、`a401377`。
-- 命令、真实退出结果、product_fingerprint、环境、未运行原因：typecheck exit=0；vitest 315/315 PASS；build exit=0；format/lint 通过。product_fingerprint 待提交后回填。
+- 命令、真实退出结果、product_fingerprint、环境、未运行原因：`check_task.py` STATIC PASS + CHECKS PASS（base `5c527a3`，input `528efaa`）；product_fingerprint `96a123d280296660f9d4c5bce6c1b84b0b554e8136d30edbbd4a8b60905ac0e1`。format:check/lint/typecheck/vitest(315/315)/build 均 exit=0。
 - 已知限制/未完成项：详情分区采用"上下两大块 + 虚线分隔"的轻量方式；是否演进为页签/折叠/两栏待用户预览后决定。阶段0 尚未独立 Review。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：`daf09d9`（分支 `agent/coordinator/TASK-025-simplified-layout`，基线 `5c527a3`，4 个提交：`ffd1cdc`、`a401377`、`6efde72`、`daf09d9`）。
+- 候选 SHA：`528efaa`（分支 `agent/coordinator/TASK-025-simplified-layout`，基线 `5c527a3`，5 个提交：`ffd1cdc`、`a401377`、`6efde72`、`daf09d9`、`528efaa`）。
 - Review：L2。**用户明确授权本任务以主 Agent 证据核对代替外部独立只读 Reviewer（本环境无 reviewer Agent 可用）**。主 Agent 核对范围与证据：候选 diff 10 文件全部在 allowed_paths 内、无越界（未改 backend/契约/数据语义）；vitest 315/315 PASS、tsc/build/format/lint 均 exit=0；完成条件逐条 Playwright 实测——概览无"未接入"假占位、含"现在可以做什么"能力区与诚实说明，复习安排/主题统计/学习记录仍可达（h1 正常）、未删入口；资料库筛选区从约 260px 压至 144px、首条资料在 900 视口内 y≈491 可见；详情页在真实数据下渲染「记录与理解」「资料信息」两区块。测试断言同步反映新布局且保留"无假数据"诚实底线（App.test 仍断言无"未接入"数字、无假输入/按钮）。核对结论：PASS（此为用户授权的 L2 核对，不冒充独立 Reviewer 身份）。
 - Acceptance：L1/L2 N/A。
 - 最终状态/风险/用户操作：IN_REVIEW→ACCEPTED 由用户决定；分支未推送、未 PR、未合并，最终合并由用户执行。
