@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-023"
-status = "BLOCKED"
+status = "IN_ACCEPTANCE"
 risk = "L3"
 risk_reason = "接入不可逆资料删除的用户确认流程，涉及删除令牌在前端的短时内存保管、专用请求头、安全错误处理和用户可见的数据删除边界。"
 risk_flags = ["business", "critical-data", "security", "public-api", "deletion", "tests"]
@@ -66,9 +66,9 @@ checks = ["frontend"]
 ## 状态与最终证据
 
 - 候选 SHA：`e7576b4`（完整实现候选；本任务证据提交后仍需重新冻结最终候选）。
-- Review：独立 Review 复核候选 `e7576b4`；运行器报告源码目录可写、无法证明实际 `read-only`，按规则结论为 `BLOCKED`，不能作为有效 PASS。静态核查未见令牌进入 URL/JSON/持久化/日志，且确认非 204 响应缺口已修正并有测试；无其他明显缺陷。
-- Acceptance：未启动；L3 独立 Review 尚未取得有效 PASS，按前置条件暂停。
-- 最终状态/风险/用户操作：BLOCKED（独立只读审查运行器权限阻塞）；需具备可验证只读运行器后继续 Review → Acceptance，最终仍由用户决定合并。
+- Review：独立只读 Review，候选 `e7576b4416ea5b0520d6a3c986d502310bcb7b35`，基线 `51b427f5722427246b4ebc460f3aa6f2e0585338`；验证 `frontend/src`、`backend/src` 均不可写，完整 diff/删除 API 调用链/令牌传递/错误处理/路由与测试均核对；`git diff --check` 通过；Findings: No findings；结论 `PASS`。Reviewer 未修改、提交、推送、合并或委派。
+- Acceptance：待另一独立只读 Acceptance。
+- 最终状态/风险/用户操作：IN_ACCEPTANCE；Acceptance 完成后仍由用户决定是否推送、创建 PR 和合并。
 - 非阻断遗留项：暂无。
 - 日期与决定日志：2026-09-04，用户授权开始 TASK-023 页面接入计划。
 
