@@ -58,7 +58,7 @@ checks = ["frontend"]
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：`528efaa`（分支 `agent/coordinator/TASK-025-simplified-layout`，基线 `5c527a3`，5 个提交：`ffd1cdc`、`a401377`、`6efde72`、`daf09d9`、`528efaa`）。
+- 候选 SHA：`04d6249`（产品改动冻结点；后续 `528efaa`/`46825ff` 仅为任务状态与 EVIDENCE 的 docs 提交，不改变产品实现）。基线 `5c527a3`。产品提交：`ffd1cdc`（导航/概览/列表）、`a401377`（add-link 置顶+详情分区）、`daf09d9`（筛选压缩）、`04d6249`（fingerprint 回填）。
 - Review：L2。**用户明确授权本任务以主 Agent 证据核对代替外部独立只读 Reviewer（本环境无 reviewer Agent 可用）**。主 Agent 核对范围与证据：候选 diff 10 文件全部在 allowed_paths 内、无越界（未改 backend/契约/数据语义）；vitest 315/315 PASS、tsc/build/format/lint 均 exit=0；完成条件逐条 Playwright 实测——概览无"未接入"假占位、含"现在可以做什么"能力区与诚实说明，复习安排/主题统计/学习记录仍可达（h1 正常）、未删入口；资料库筛选区从约 260px 压至 144px、首条资料在 900 视口内 y≈491 可见；详情页在真实数据下渲染「记录与理解」「资料信息」两区块。测试断言同步反映新布局且保留"无假数据"诚实底线（App.test 仍断言无"未接入"数字、无假输入/按钮）。核对结论：PASS（此为用户授权的 L2 核对，不冒充独立 Reviewer 身份）。
 - Acceptance：L1/L2 N/A。
 - 最终状态/风险/用户操作：IN_REVIEW→ACCEPTED 由用户决定；分支未推送、未 PR、未合并，最终合并由用户执行。
