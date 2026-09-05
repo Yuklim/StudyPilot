@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-029"
-status = "IN_PROGRESS"
+status = "IN_ACCEPTANCE"
 risk = "L3"
 risk_reason = "放宽 LearningResource 关键字段 title 为非空到可空，新增 0003 数据库迁移，改动标准 openapi 的 LearningResource 与三个 Create schema 的 required/nullable 及 ResourcePatch 可清空语义，跨后端、数据库、契约文档与前端展示；属架构/契约、迁移、重大跨模块。"
 risk_flags = ["migration", "public-api", "major-cross-module", "business", "tests"]
@@ -110,7 +110,11 @@ checks = ["backend", "frontend", "contracts", "governance"]
 
 （本区仅允许写回状态/EVIDENCE/候选与独立报告原文；目标/风险/路径/检查/实现与测试记录在标记区外。）
 
-- 状态登记：TASK-029 IN_PROGRESS（2026-09-05 与 TASK-025/026/028 MERGED 状态一并写入本分支控制面提交）。
+- 状态登记：TASK-029 IN_PROGRESS→IN_ACCEPTANCE（2026-09-05 与 TASK-025/026/028 MERGED 状态一并写入本分支控制面提交）。
 - 候选 SHA：`6b4f867`（实现+测试冻结，check_task 全 4 profiles `CHECKS PASS`，product_fingerprint=`1d68cdaa…`）。本证据提交为 docs 证据写回，不递归审查。
-- 独立 Review / Acceptance：待独立只读 Reviewer（运行器层只读）出具报告后回填原文；环境若无法真实派发则按 AGENTS §7 停止上报，不以自审充数。
+- 独立 Review（reviewer 子 Agent，2026-09-05，只读 Read/Grep/Glob，报告原文）：
+  > 结论 **PASS** —— 无越界、迁移安全（FK-OFF 仅限迁移连接、运行时 FK 语义不变）、完成条件 1-6 均有实现与测试绑定，已知 e2e 红为 main 基线问题而非本任务回归；仅保留下述非阻断记录项。
+  > 范围合规：40 个改动文件全部落在 allowed_paths（含用户两次批准增补）内，无越界。
+  > 非阻断记录项：① backend FILE 无标题上传缺少一条「multipart 不带 title → 201 且 title=null」后端直测（WEB/PASTE 已覆盖、DB 三源同路径，风险低，建议后续补）；② 0003 downgrade 遇未命名行以原始 IntegrityError 失败（NOT NULL 无法凭空造标题），与 0002 先例一致且在迁移 docstring 声明，结构性限制非缺陷。
+- 独立 Acceptance：待独立只读 Acceptance（第二个 reviewer 型只读实例）核对完成条件与跨模块/运行证据后回填原文；不以自审充数。
 <!-- EVIDENCE:END -->
