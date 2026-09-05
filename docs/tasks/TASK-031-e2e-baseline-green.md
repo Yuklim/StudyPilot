@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-031"
-status = "IN_PROGRESS"
+status = "ACCEPTED"
 risk = "L2"
 risk_reason = "两类改动：(1) 三条 e2e 红是测试与 TASK-025/026 后真实 UI 不同步（导航拆成「主要导航/更多能力」两组、选填字段收进 `<details>` 折叠区），属测试侧修正，必须按真实用户路径补操作而不是删断言；(2) 一条是真实响应式缺陷——`/resources` 在 320px 下 documentElement.scrollWidth=338 横向溢出，源于 `.resource-filter-top` 不换行把 `.view-switch` 挤出视口，需改共享 `styles.css`，影响资料库页在所有断点的筛选行布局。不动后端、公共契约、数据模型与治理门禁；但共享样式 + 测试断言完整性需独立只读 Review，故 L2 而非 L1。"
 risk_flags = ["tests", "small-ui", "business"]
@@ -74,12 +74,30 @@ checks = ["frontend"]
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：（待填）
-- Review：L2 需独立只读 Reviewer（待填身份、权限证据、base..candidate、findings/No findings、结论）。
-- Acceptance：L2 → N/A。
-- 最终状态/风险/用户操作：（待填）
-- 非阻断遗留项：（待填）
-- 日期与决定日志：2026-09-05 用户在 TASK-030 合并后选定本任务；同日在基线 `849dc1f` 实测复现 4 条红并定位根因（3 测试侧 + 1 真实 320px 溢出），登记为 L2。
+- 候选 SHA：`d5f7f56`（含需求、实现与测试证据；实现 SHA `5da7ca2`，`5da7ca2..d5f7f56` 仅为本记录的 docs 证据写回，不含代码改动。`check_task.py --candidate 5da7ca2` CHECKS PASS，base=`849dc1f`、files=8、product_fingerprint=`adb435adfa90a91e8e5912d4ac330e5d2d1e7abfafd675b1f65ff17b0be0d907`、profiles=frontend、risk=L2 stages=(worker, review)）。
+- Review（L2 独立只读，reviewer 实例，仅 Read/Grep/Glob，无 Write/Edit/Bash）：**PASS**（含非阻断记录项）。原文：
+  > ## 结论：PASS（含非阻断记录项）
+  >
+  > **只读与覆盖**：本次仅有 Read/Grep/Glob，无 Write/Edit/Bash，未改任何文件、未提交、未跑测试。核对 base `849dc1f`..candidate `d5f7f56` 全量 diff（8 文件 +117 −8），并逐一读真实文件交叉验证：`frontend/e2e/{scaffold,resource-pages,file-pages}.spec.ts`、`frontend/src/styles.css:1065-1080`、`ResourceForm.tsx:251-272`、`App.tsx:41-66`、`shell/pages.ts`、`ResourceLibrary.tsx:55-97`、任务索引与 TASK-029/030 记录。
+  >
+  > **逐条核查**
+  > 1. 断言完整性：三份 spec 的减号行只有 3 行——两处 `import` 增补 `type Page`、一处 `nav.`→`moreNav.`。无删除/放宽断言，无 `skip`/`grep`/`toBe→toContain`/计数弱化。resource-pages 的 `creates` 计数、原文 `toBe(original)`、`main img/script/iframe` count=0、共 2/1 份资料；file-pages 的 `writes==1`、下载字节 `toEqual(original)`、storage/cookie/external 断言全部原样。
+  > 2. `openOptionalFields` 正确且幂等：`getByText('补充信息（选填）', {exact:true})` 在 DOM 中唯一（`ResourceForm` 仅由 `Screen.tsx:105` 在 `/resources/new` 渲染一次，`<summary>` 为最深匹配元素），无 strict 隐患；已展开时 `open===true` 跳过点击，不会反向关闭。
+  > 3. `更多能力` 与 `App.tsx:56` aria-label 及 `pages.ts` 的 `section:'more'`（学习记录/复习安排/主题统计）完全一致；`aria-current`、焦点链、`unexpectedRequests` 为空、320px 的 44px/transition 循环仍用 `主要导航`，未动。
+  > 4. `flex-wrap: wrap` 修复恰当：`.resource-filter-top` 仅 `ResourceLibrary.tsx:62` 使用，两处媒体查询（760px/1100px）均无冲突声明，无规则依赖其不换行；`.search-field flex:1 1 auto; min-width:0` 保证 ≥390px 仍单行。
+  > 5. 范围合规：8 个文件全在 allowed_paths；TASK-030 只改 toml `status` 与 EVIDENCE 内合并事实行，TASK-029 只改 EVIDENCE 内状态登记句，目标/风险/路径/检查/实现测试记录未动。
+  > 6. 任务记录叙述与代码一致，无夸大。
+  >
+  > **Findings（均非阻断）**
+  > - 索引 `任务索引.md:24` 标 `READY`，记录 toml 为 `IN_PROGRESS`，两处状态不一致；主 Agent 写回 EVIDENCE 时一并校正即可。
+  > - 测试数字（e2e 36 passed、vitest 337、check_task CHECKS PASS）**NOT_RUN**，我未复跑；且这些证据绑定实现 SHA `5da7ca2`，我无 git，无法证明 `5da7ca2..d5f7f56` 仅含 docs 证据写回（代码内容我已按工作树逐行核对与候选一致）。
+  > - 可选建议：`openOptionalFields` 在两 spec 重复；`closest('details') as HTMLDetailsElement` 若结构变动会抛 TypeError 而非清晰断言失败。
+  >
+  > **剩余风险**：低。320px 下 `.view-switch` 换行是预期取舍；未覆盖 320–390px 之间的中间宽度（换行优于溢出，可接受）。
+- Acceptance：L2 → N/A（风险路由不要求独立验收）。
+- 最终状态/风险/用户操作：status=**ACCEPTED**（L2，独立只读 Review PASS）。Reviewer 指出的状态不一致已按其建议在本次写回中校正：记录 toml 与索引行统一为 ACCEPTED。候选 `d5f7f56` 待**用户本人执行合并**（Agent 不合并、不推 main）。合并后按既有做法把记录/索引标 MERGED，可并入下个已授权任务的控制面提交。
+- 非阻断遗留项：① `openOptionalFields` 在 resource-pages 与 file-pages 两份 spec 中重复——e2e 目录尚无共享 helper 模块，为 6 行助手新建一个共享文件的收益不抵结构成本，责任角色 coordinator，若第三份 spec 也需要展开折叠区则抽取；② 助手内 `closest('details')` 若将来折叠区结构被改会抛 TypeError 而非清晰断言失败——触发条件是 `ResourceForm` 折叠区被重构，届时报错仍会指向该行，影响仅是可读性；③ 未覆盖 320–390px 之间的中间宽度——换行策略在该区间只会更宽松，风险低。三项均不阻断交付。
+- 日期与决定日志：2026-09-05 用户在 TASK-030 合并后选定本任务；同日在基线 `849dc1f` 实测复现 4 条红并定位根因（3 测试侧 + 1 真实 320px 溢出），登记为 L2；同日实现 `5da7ca2`、证据写回冻结候选 `d5f7f56`，L2 独立只读 Review PASS，状态置 ACCEPTED 待用户合并。
 
 此区禁止放入或变更任务授权、风险等级、允许路径、检查要求、实现或测试记录。
 <!-- EVIDENCE:END -->
