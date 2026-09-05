@@ -42,9 +42,14 @@ function Overview() {
             <br />
             不必赶路，也可以慢慢向前。
           </p>
-          <Link className="text-link" to="/resources">
-            打开资料库 <Icon name="arrow" />
-          </Link>
+          <div className="overview-actions" aria-label="快速开始">
+            <Link className="journal-button primary" to="/resources">
+              打开资料库 <Icon name="arrow" />
+            </Link>
+            <Link className="journal-button" to="/resources/new">
+              收藏一份内容 <Icon name="plus" />
+            </Link>
+          </div>
         </div>
         <div className="journal-decoration" aria-hidden="true">
           <span className="washi-tape" />
@@ -54,51 +59,38 @@ function Overview() {
         </div>
       </section>
 
-      <section className="metrics" aria-label="统计尚未接入">
-        {[
-          ['library', '收藏的资料', '每一份好奇，都有去处'],
-          ['record', '本周学习时长', '让投入留下痕迹'],
-          ['review', '今日待复习', '在合适的时候，再回看'],
-        ].map(([icon, title, caption]) => (
-          <article className="metric" key={title}>
-            <div className="metric-heading">
-              <Icon name={icon as 'library' | 'record' | 'review'} />
-              <h2>{title}</h2>
-            </div>
-            <div className="metric-value">
-              <span aria-hidden="true">—</span>
-              <span>未接入</span>
-            </div>
-            <p>{caption}</p>
-          </article>
-        ))}
-      </section>
-
-      <div className="overview-bottom">
-        <section className="learning-sheet" aria-labelledby="continue-title">
-          <div className="section-heading">
-            <h2 id="continue-title">继续学习</h2>
-            <span>留给真正的学习记录</span>
-          </div>
-          <div className="quiet-empty">
-            <span className="empty-icon">
-              <Icon name="record" />
+      <section className="overview-capability" aria-label="当前可用能力">
+        <div className="section-heading">
+          <h2>现在可以做什么</h2>
+          <span>诚实标注，不展示假数据</span>
+        </div>
+        <ul className="capability-list">
+          <li>
+            <Icon name="library" />
+            <span>
+              <strong>收藏资料</strong>
+              <small>网页、文件与粘贴内容都已开放。</small>
             </span>
-            <h3>下一次，从上次停下的地方开始</h3>
-            <p>打开一份资料，随手记下理解或疑问。旧学习历史仍可查看，复习与详细统计后续再做。</p>
-          </div>
-        </section>
-        <aside className="daily-note" aria-label="学习小记">
-          <span className="note-tab">写在页边</span>
-          <h2>给知识一点时间。</h2>
-          <p>
-            读到的，不必急着全部记住。
-            <br />
-            真正理解的，会慢慢留下来。
-          </p>
-          <span className="note-signature">Keep a little curiosity.</span>
-        </aside>
-      </div>
+          </li>
+          <li>
+            <Icon name="record" />
+            <span>
+              <strong>随手写心得</strong>
+              <small>在资料详情里记下理解与疑问，时间自动记录。</small>
+            </span>
+          </li>
+          <li>
+            <Icon name="topic" />
+            <span>
+              <strong>整理分类</strong>
+              <small>为主题、标签建立自己的线索。</small>
+            </span>
+          </li>
+        </ul>
+        <p className="overview-future" role="note">
+          复习安排与详细统计尚未开放；已有学习历史仍可在侧栏「后续能力」中查看。
+        </p>
+      </section>
     </>
   )
 }

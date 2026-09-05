@@ -19,14 +19,13 @@ describe('StudyPilot journal shell', () => {
   it('clearly distinguishes the shell from real learning data', () => {
     renderWithRouter(<App />)
     expect(screen.getByText('网页、文件与粘贴资料已开放')).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: '当前可用能力' })).toBeInTheDocument()
     expect(
-      screen.getByText(
-        '打开一份资料，随手记下理解或疑问。旧学习历史仍可查看，复习与详细统计后续再做。',
-      ),
+      screen.getByText('复习安排与详细统计尚未开放；已有学习历史仍可在侧栏「后续能力」中查看。'),
     ).toBeInTheDocument()
-    const metrics = within(screen.getByRole('region', { name: '统计尚未接入' }))
-    expect(metrics.getAllByText('未接入')).toHaveLength(3)
-    expect(metrics.queryByText(/\d/)).not.toBeInTheDocument()
+    // 主界面只展示真实可用的能力入口，不放假数字或假统计。
+    expect(screen.queryByText('未接入')).not.toBeInTheDocument()
+    expect(screen.queryByText('本周学习时长')).not.toBeInTheDocument()
   })
 
   it.each(routes)(
@@ -48,15 +47,28 @@ describe('StudyPilot journal shell', () => {
 
   it('navigates between sections and moves keyboard focus to the new heading', () => {
     renderWithRouter(<App />)
-    const nav = within(screen.getByRole('navigation', { name: '主要导航' }))
-    expect(nav.getAllByRole('link')).toHaveLength(6)
-    for (const title of ['资料库', '学习记录', '复习安排', '主题统计', '学习概览']) {
-      const link = nav.getByRole('link', { name: title })
-      fireEvent.click(link)
-      expect(link).toHaveAttribute('aria-current', 'page')
-      expect(
-        nav.getAllByRole('link').filter((item) => item.hasAttribute('aria-current')),
-      ).toHaveLength(1)
+    const primaryNav = within(screen.getByRole('navigation', { name: '主要导航' }))
+    const moreNav = within(screen.getByRole('navigation', { name: '更多能力' }))
+    expect(primaryNav.getAllByRole('link')).toHaveLength(3)
+    expect(moreNav.getAllByRole('link')).toHaveLength(3)
+    const cases = [
+      { title: '资料库', link: () => primaryNav.getByRole('link', { name: '资料库' }) },
+      { title: '分类整理', link: () => primaryNav.getByRole('link', { name: '分类整理' }) },
+      { title: '学习记录', link: () => moreNav.getByRole('link', { name: '学习记录' }) },
+      { title: '复习安排', link: () => moreNav.getByRole('link', { name: '复习安排' }) },
+      { title: '主题统计', link: () => moreNav.getByRole('link', { name: '主题统计' }) },
+      { title: '学习概览', link: () => primaryNav.getByRole('link', { name: '学习概览' }) },
+    ]
+    for (const { title, link } of cases) {
+      const el = link()
+      fireEvent.click(el)
+      expect(el).toHaveAttribute('aria-current', 'page')
+      const allActive = screen
+        .getAllByRole('navigation')
+        .flatMap((nav) => within(nav).queryAllByRole('link'))
+        .filter((item) => item.hasAttribute('aria-current'))
+      expect(allActive).toHaveLength(1)
+      expect(allActive[0]).toHaveTextContent(title)
       expect(screen.getByRole('heading', { name: title, level: 1 })).toHaveFocus()
       expect(document.title).toBe(`${title} · StudyPilot`)
     }
@@ -73,7 +85,9 @@ describe('StudyPilot journal shell', () => {
       screen.getByText('原件只保存、不解析。可先在分类整理中创建主题与标签，再回来选择。'),
     ).toBeInTheDocument()
     expect(
-      within(screen.getByRole('navigation')).getByRole('link', { name: '资料库' }),
+      within(screen.getByRole('navigation', { name: '主要导航' })).getByRole('link', {
+        name: '资料库',
+      }),
     ).toHaveAttribute('aria-current', 'page')
     fireEvent.click(screen.getByRole('link', { name: '返回资料库' }))
     expect(screen.getByRole('heading', { name: '资料库', level: 1 })).toHaveFocus()
