@@ -91,9 +91,19 @@ checks = ["backend", "frontend", "contracts", "governance"]
 
 ## 实现与测试
 
-- 实现 SHA/变更摘要：实施中（登记后按计划推进）。
-- 命令、真实退出结果、product_fingerprint、环境、未运行原因：待实施后回填。
-- 已知限制/未完成项：待实施后回填。
+- 实现 SHA/变更摘要（base ed36a22 起，均在本任务 allowed_paths 内，含用户批准增补）：
+  - `408f80e` feat(backend)：models.py `LearningResource.title` 列可空 + `bounded_length("title",0,200)` CHECK；contracts.py `CreateBase.title` 可选/显式 null（空白仍 422）、`ResourcePatch` 允许显式 null 清空标题；resource_store.py 按 title 排序时 null 固定排最后（决胜 id asc）；0003 迁移（含 FK-OFF 支撑：connection.py `migration_connection()`、migrations/env.py、database/__init__.py、tests/support.py `migrate()` 接线，运行时连接仍默认 FK ON）。
+  - `922b1cb` docs(contracts)：openapi `LearningResource`/三个 Create/`ResourcePatch` 的 title 变 `["string","null"]` 并移出 required；中文契约 2.3 排序/4.1 字段/5 创建/1.3 交付放宽同步。
+  - `2c90b74` feat(frontend)：api.ts/client.ts title 可空、createFileResource/uploadSnapshot 放空；新增 resourceTitle.ts「未命名资料」占位并应用到 Form/Editor/Library/Detail/Deletion/State；相关单测/e2e 同步并新增 WEB 无标题快存、编辑器清空标题用例。
+  - `15f9929`/`dd01b6e` docs(tasks)：allowed_paths 增补（用户 2026-09-05 两次批准，见上）。
+  - `6b4f867` test(backend)：ruff format test_migrations（第 125 行包装）。
+- 检查（命令均真实运行、输出见 check 记录）：`check_task.py --candidate` 在候选 `6b4f867` 全绿——backend ruff format/check、mypy 60 源文件、pytest **484 passed**、`uv build`、openapi 快照校验、frontend prettier/eslint/tsc/**331 vitest**/vite build、governance validate + ruff + 23 单测。product_fingerprint=`1d68cdaa07a5c79338954f02bfd2d14c7ede634fe726dda6a954a7ddae1b50a6`。环境：本地 macOS/SQLite、候选对应干净工作树（运行前临时移出未跟踪 HANDOFF 件并复位）。
+- e2e（`frontend npm run test:e2e` 定向）：`resource-edit-pages.spec.ts` 6/6 绿（含新增「编辑器清空标题保存未命名资料」）；`resource-pages.spec.ts` 剔除 1 条 main 既有红大测试后 3/3 绿（含新增「WEB 无标题快存→详情与资料库行均显示未命名资料」，按 id 定位避免共享库 strict-mode）。
+- 已知限制/未完成项（与 TASK-029 无关的 **main 基线** e2e 红，已在 frontend=main 复现一致确认，非本任务回归，建议后续独立小任务修复）：
+  1) `resource-pages.spec.ts`「real UI saves WEB and PASTE…」：main 即红——未展开 `<details>` 即填隐藏的 来源名称/保存原因；即便展开到达资料库，另见 320px `.view-switch`（卡片/列表切换）横向溢出（right=338）。本任务只做标签改名所需同步，不改其流程。
+  2) `file-pages.spec.ts`「file page saves an original…」：main 即红——同样填折叠 details 内的 保存原因（选填）。
+  3) `scaffold.spec.ts` 两条：main 即红——主要导航「学习记录」链接点击超时；320px 全页 overflow 断言失败（`.view-switch` 布局族）。
+  ——以上 4 条在「main-frontend + 本任务 backend」与「纯 main-frontend」上复现结果一致，判定为既有基线问题。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
@@ -101,4 +111,6 @@ checks = ["backend", "frontend", "contracts", "governance"]
 （本区仅允许写回状态/EVIDENCE/候选与独立报告原文；目标/风险/路径/检查/实现与测试记录在标记区外。）
 
 - 状态登记：TASK-029 IN_PROGRESS（2026-09-05 与 TASK-025/026/028 MERGED 状态一并写入本分支控制面提交）。
+- 候选 SHA：`6b4f867`（实现+测试冻结，check_task 全 4 profiles `CHECKS PASS`，product_fingerprint=`1d68cdaa…`）。本证据提交为 docs 证据写回，不递归审查。
+- 独立 Review / Acceptance：待独立只读 Reviewer（运行器层只读）出具报告后回填原文；环境若无法真实派发则按 AGENTS §7 停止上报，不以自审充数。
 <!-- EVIDENCE:END -->
