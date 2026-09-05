@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-028"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L1"
 risk_reason = "纯前端小视觉调整：压缩分类整理页搜索框宽度与布局，不改变契约、数据或行为语义。"
 risk_flags = ["small-ui"]
