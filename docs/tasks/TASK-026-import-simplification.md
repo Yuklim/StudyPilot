@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-026"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L2"
 risk_reason = "纯前端「添加资料」表单体验收敛：折叠选填项 + 文件/粘贴自动带出标题占位；不触碰后端、数据库或公共 API 契约，但会同步更新被表单改动的既有前端测试断言。"
 risk_flags = ["business"]
@@ -44,9 +44,9 @@ checks = ["frontend"]
 
 ## 实现与测试
 
-- 实现 SHA/变更摘要：（实现后回填）
-- 命令、真实退出结果、product_fingerprint、环境、未运行原因：（检查后回填）
-- 已知限制/未完成项：URL 来源不做标题自动带出（用户已确认，尊重不抓取边界）。
+- 实现 SHA/变更摘要：ResourceForm 把「来源名称 / 保存原因」收进默认收起的「补充信息（选填）」`<details>` 折叠区，分类（主题+标签）维持既有自折叠按钮；FILE 选文件、PASTE 粘贴正文时，若标题仍为空则分别从「去扩展名文件名」「首个非空文本行（去 Markdown 标题符，截断 ≤200）」自动带出可编辑标题占位；手动输入过标题（非空）后不再自动覆盖；WEB 来源不强自动填标题、不触发网络请求。styles.css 增加 `.resource-more` 折叠样式。同步更新 ResourcePages.test/FilePages.test：操作折叠字段前先展开、新增 5 条断言覆盖「默认收起 / 展开可见 / FILE/PASTE 自动带出 / 不覆盖手动标题」。产品 SHA：`84e2528`。
+- 命令、真实退出结果、product_fingerprint、环境、未运行原因：`check_task.py --task docs/tasks/TASK-026-import-simplification.md --candidate HEAD` STATIC PASS + CHECKS PASS（base `5c527a3`）；product_fingerprint `c3e5b4765bbf2f29a79fef618e39387bdec28071c3fbff56a6e84c659ebbcc36`。format:check/lint/typecheck/vitest(320/320)/build 均 exit=0。真实浏览器（Playwright + dev server 127.0.0.1:5173）验证：补充信息默认收起时来源名称不可见、粘贴后标题自动带出、展开后字段可见。
+- 已知限制/未完成项：URL 来源不做标题自动带出（用户已确认，尊重不抓取边界）；分类折叠仍由 ClassificationPicker 既有按钮承担，未并入「补充信息」details（避免嵌套折叠）。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
