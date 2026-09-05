@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-027"
-status = "IN_REVIEW"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "放宽 Note 关键数据模型 resource_id 为非空到可空，新增 0002 数据库迁移，新增公共顶层笔记接口并改动标准 openapi Note schema/paths 与操作清单，跨后端、前端与契约文档；属架构/契约、迁移、重大跨模块。"
 risk_flags = ["migration", "public-api", "major-cross-module", "business", "tests"]
@@ -56,11 +56,27 @@ checks = ["backend", "frontend", "contracts", "governance"]
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 2026-09-05：IN_REVIEW。实现+检查证据齐备，最终产品候选 `2fd040dcf7355a56e057f76603ab3b00ad0f38ff`，product_fingerprint=`138fec800ee367038931df260408b932ed5a36b3988056bc1a7fccc3af263a6d`，base=`a5af2059f9e7b0e20a2ff948b1a92ec5e32caf4f`。CHECKS PASS 与 e2e 6/6 通过记录见「实现与测试」。待独立只读 Review 与 Acceptance；用户独占最终合并。
-- Review：L3 需实际独立只读 Reviewer（.claude/agents/reviewer.md），核 base..candidate 完整 diff + 迁移/契约/删除去留；findings/No findings。
-- Acceptance：L3 需另一独立只读 Acceptance，核对完成条件与证据。
-- 最终状态/风险/用户操作：ACCEPTED 后由用户最终合并，Agent 不合并 main。
-- 非阻断遗留项：后贴资料、心得打标签、跨资料汇总留待后续独立任务。
+- 2026-09-05：IN_REVIEW。实现+检查证据齐备，最终产品候选 `2fd040dcf7355a56e057f76603ab3b00ad0f38ff`，product_fingerprint=`138fec800ee367038931df260408b932ed5a36b3988056bc1a7fccc3af263a6d`，base=`a5af2059f9e7b0e20a2ff948b1a92ec5e32caf4f`。CHECKS PASS 与 e2e 6/6 通过记录见「实现与测试」。
+
+### 独立只读 Review
+
+- 独立 `claude` 只读会话，运行 `--agent reviewer`（reviewer.md 工具白名单 Read/Grep/Glob，无 Bash/写工具），报告原文（节选结论与 findings）：
+
+> 候选 `2fd040d`、基线 `a5af205`。运行器只读证明：工具白名单仅 Read/Grep/Glob，未执行写入/修改/提交。
+> Findings：无必须修复项。可记录后继续（非阻断）：1) 前端概览能力卡与 RecordHistory 文案仍只把心得指向「资料详情」，未提顶层「我的心得」独立入口（说明性）；2) client.test.ts 未给顶层 `/api/v1/notes/{id}` DELETE 白名单分支加单元断言（e2e 已实际覆盖，低风险）；3) 0002 downgrade 对 standalone NULL 行无显式守卫/错误消息，且无 NULL 行 downgrade 测试（本地单用户、低风险）。
+> 结论：PASS（附 3 项非阻断、可记录后继续的问题；均不触及安全底线、必要检查或已确认需求/契约）。
+
+### 独立只读 Acceptance
+
+- 另一独立 `claude` 只读会话，`--agent reviewer`（同上只读白名单），报告原文（节选结论）：
+
+> 候选 `2fd040d`。只读证据：本会话仅 Read/Grep/Glob，未重跑测试、未写文件。
+> 逐条完成条件→证据：1) 迁移无损/可空/顶层可存取/绑定不变——0002 batch alter、models 可空、test_migrations 0001→head、main 注册两 router；2) 顶层只列 IS NULL、分页/校验/版本/不回放——note_store page_standalone/standalone、api standalone_router、mutate_standalone StaleData 分类、test_notes 4 项；3) 资源删除级联绑定保留独立——resource_store snapshot `==resource_id`、test_resource_deletion、e2e；4) openapi nullable+5 操作/中文契约/测试随契约——schema `["string","null"]`、两 path、available_operations 33、中文契约多段、test_notes 三件套+test_taxonomy 33；5) 前端不回归+独立页+白名单——ResourceDetail 绑定、NotesPage/`/notes`、NotesPanel 泛化、notes/api null、client versionedDeleteTarget；6) Chromium e2e 6 passed + 全绿记录。
+> 缺口/剩余风险（均非阻断）：openapi `x-delivery-profile.stage` 仍 TASK-022（client_policy/completion_gate 已提 TASK-027，文档小滞后）；client.test.ts 无顶层 DELETE 白名单单测（e2e 实际穿过）；NotesPanel 独立分页/空态未逐项单测。
+> 结论：PASS。安全底线（版本号不回放、删除隔离、敏感错误收敛、真实只读）未见让渡。候选 `2fd040d`；等待用户独占最终合并。
+
+- 2026-09-05：IN_ACCEPTANCE→ACCEPTED。主 Agent 核对：Review 与 Acceptance 两独立只读均 PASS，6 项完成条件齐全、无未处置阻断；最终产品候选 `2fd040dcf7355a56e057f76603ab3b00ad0f38ff`（product_fingerprint=`138fec…a6d`）。仅合法状态/EVIDENCE/索引写回。ACCEPTED，由用户独占最终合并，Agent 不合并 main。
+- 非阻断遗留（已记录，改任一会形成新候选需重跑+复审，成本高于收益，触发=后续任务顺手）：1) 前端概览/RecordHistory 文案未提「我的心得」独立入口；2) client.test.ts 顶层 notes DELETE 白名单无专门单测（e2e 已实际覆盖）；3) 0002 downgrade 对 standalone NULL 行无显式守卫/单测（本地单用户）；4) openapi `x-delivery-profile.stage` 仍标注 TASK-022。另：后贴资料、心得打标签、跨资料汇总全部心得留待后续独立任务。
 
 此区仅允许写回状态/EVIDENCE/候选与报告原文；目标、风险、路径、检查、实现与测试记录在标记区外。
 <!-- EVIDENCE:END -->
