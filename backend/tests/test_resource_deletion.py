@@ -303,3 +303,39 @@ def test_commit_failure_after_file_quarantine_rolls_back_and_reconciles(
     service(authorized).reconcile()
     assert (runtime.files / storage_key).is_file()
     assert authorized.get(f"/api/v1/resources/{item['id']}").status_code == 200
+
+
+def test_deleting_resource_leaves_standalone_notes(
+    authorized: TestClient,
+    database: Any,
+    session_factory: sessionmaker[Session],
+) -> None:
+    """A confirmed resource deletion cascades its attached notes but keeps any
+    standalone (resource_id NULL) note untouched, and preview counts only attached."""
+    item = create(authorized, "PASTE")
+    resource_id = UUID(item["id"])
+    standalone_id: UUID | None = None
+    with session_factory.begin() as session:
+        resource = session.get(LearningResource, resource_id)
+        assert resource is not None
+        session.add(Note(resource_id=resource.id, content=PRIVATE))
+        standalone = Note(resource_id=None, content="独立心得保留")
+        session.add(standalone)
+        session.flush()
+        standalone_id = standalone.id
+
+    body = preview(authorized, item["id"])
+    assert body["impact"]["note_count"] == 1  # only the attached note
+
+    response = authorized.delete(
+        f"/api/v1/resources/{item['id']}",
+        headers={"X-StudyPilot-Deletion-Token": body["confirmation_token"]},
+    )
+    assert response.status_code == 204 and not response.content
+
+    with session_factory() as session:
+        assert session.get(LearningResource, resource_id) is None
+        remaining = session.scalar(select(Note).where(Note.id == standalone_id))
+        assert remaining is not None
+        assert remaining.resource_id is None and remaining.content == "独立心得保留"
+        assert session.scalar(select(func.count()).select_from(Note)) == 1

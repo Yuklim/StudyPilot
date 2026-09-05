@@ -43,6 +43,18 @@ def test_foreign_keys_enabled_on_every_new_connection(database: Engine) -> None:
         session.add(Note(resource_id=uuid4(), content="No parent"))
 
 
+def test_standalone_note_persists_with_null_resource(database: Engine) -> None:
+    """A note not attached to any resource is allowed and readable."""
+    factory = create_session_factory(database)
+    with factory.begin() as session:
+        session.add(Note(resource_id=None, content="独立心得"))
+    with factory() as session:
+        note = session.scalar(select(Note))
+        assert note is not None
+        assert note.resource_id is None
+        assert note.content == "独立心得"
+
+
 def test_transaction_commit_rollback_and_separate_sessions(database: Engine) -> None:
     factory = create_session_factory(database)
     with session_scope(factory) as first:

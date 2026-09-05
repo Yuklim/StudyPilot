@@ -61,3 +61,44 @@ def delete(resource_id: UUID, note_id: UUID, expected: int) -> None:
     mutate(
         resource_id, note_id, expected, lambda store: store.delete(resource_id, note_id, expected)
     )
+
+
+def create_standalone(command: NoteCreate) -> dict[str, Any]:
+    return {"data": transaction(lambda store: store.create_standalone(command.content))}
+
+
+def detail_standalone(note_id: UUID) -> dict[str, Any]:
+    return {"data": transaction(lambda store: store.detail_standalone(note_id))}
+
+
+def page_standalone(query: NoteQuery) -> dict[str, Any]:
+    return transaction(lambda store: store.page_standalone(query))
+
+
+def mutate_standalone[T](
+    note_id: UUID, expected: int, operation: Callable[[NoteStore], T]
+) -> T:
+    try:
+        return transaction(operation)
+    except StaleDataError:
+        # Fresh read classifies a race but never replays the failed write/delete.
+        transaction(lambda store: store.check_version(store.standalone(note_id), expected))
+        raise NoteError("UNKNOWN_ERROR", 500) from None
+
+
+def update_standalone(note_id: UUID, command: NotePatch) -> dict[str, Any]:
+    return {
+        "data": mutate_standalone(
+            note_id,
+            command.expected_version,
+            lambda store: store.update_standalone(
+                note_id, command.content, command.expected_version
+            ),
+        )
+    }
+
+
+def delete_standalone(note_id: UUID, expected: int) -> None:
+    mutate_standalone(
+        note_id, expected, lambda store: store.delete_standalone(note_id, expected)
+    )

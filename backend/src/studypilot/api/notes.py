@@ -155,3 +155,56 @@ def delete_note(request: Request, resource_id: str, note_id: str) -> Response:
         ),
         204,
     )
+
+
+# Top-level standalone-note collection. These operations only ever touch
+# notes whose resource_id is NULL; attached notes stay under their resource.
+standalone_router = APIRouter(prefix="/api/v1/notes", redirect_slashes=False)
+
+
+@standalone_router.get("")
+def list_standalone_notes(request: Request) -> Response:
+    def operation() -> dict[str, Any]:
+        if any(len(request.query_params.getlist(key)) != 1 for key in request.query_params):
+            raise NoteError("VALIDATION_ERROR", 422)
+        try:
+            query = NoteQuery.model_validate(dict(request.query_params))
+        except ValidationError:
+            raise NoteError("VALIDATION_ERROR", 422) from None
+        return notes.page_standalone(query)
+
+    return respond(request, operation)
+
+
+@standalone_router.post("")
+async def create_standalone_note(request: Request) -> Response:
+    try:
+        command = await command_body(request, patch=False)
+    except NoteError as error:
+        return failure(request, error)
+    return await run_in_threadpool(respond, request, lambda: notes.create_standalone(command), 201)
+
+
+@standalone_router.get("/{note_id}")
+def get_standalone_note(request: Request, note_id: str) -> Response:
+    return respond(request, lambda: notes.detail_standalone(identity(note_id, "note")))
+
+
+@standalone_router.patch("/{note_id}")
+async def update_standalone_note(request: Request, note_id: str) -> Response:
+    try:
+        nid = identity(note_id, "note")
+        command = await command_body(request, patch=True)
+    except NoteError as error:
+        return failure(request, error)
+    assert isinstance(command, NotePatch)
+    return await run_in_threadpool(respond, request, lambda: notes.update_standalone(nid, command))
+
+
+@standalone_router.delete("/{note_id}")
+def delete_standalone_note(request: Request, note_id: str) -> Response:
+    return respond(
+        request,
+        lambda: notes.delete_standalone(identity(note_id, "note"), version_header(request)),
+        204,
+    )
