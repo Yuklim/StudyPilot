@@ -12,7 +12,7 @@ base = "e2ab283df095c82704cd16033fc9fe2c66476f58"
 allowed_paths = [
   "backend/src/studypilot/modules/resources/contracts.py",
   "backend/src/studypilot/infrastructure/database/resource_store.py",
-  "backend/tests/test_resources.py",
+  "backend/tests/test_resource_updates.py",
   "docs/contracts/openapi-v1.json",
   "docs/contracts/API与数据契约基线.md",
   "frontend/src/features/resources/ResourceEditor.tsx",
@@ -49,7 +49,7 @@ checks = []
    - 含未知标签 → `404 TAG_NOT_FOUND`，且**不修改任何数据**（与 `topic_id` 的 `TOPIC_NOT_FOUND` 同处理位置、同事务语义）。
 2. **版本语义**（本任务的关键数据决定，必须显式实现而非依赖 ORM 自动标脏）：标签集合与现值**不同**时，资料 `version` +1；**相同**时按契约 `:164` 不加版本。`tag_ids` 与其他字段在**同一事务、同一次 PATCH** 内生效，`version` 至多 +1（不因「改了标题又改了标签」加 2）。
 3. **共存**：taxonomy 的逐个幂等 `PUT/DELETE .../tags/{tid}` 端点与资料详情页 `ResourceTagEditor` **保持不变**，两条路径共存；契约需写明「幂等关联端点不需版本前置条件，PATCH 批量替换走资料版本」。
-4. **前端**：资料修改页 `ResourceEditor` 增加标签选择，复用 `ResourceForm` 已在用的 `ClassificationPicker`（多选、上限 20、已选 chip 可移除），随 PATCH 一次提交；沿用该页既有的版本冲突/未知结果处理（重读核对后明确重提，不静默重试），冲突时标签选择与其他草稿字段一并保留。
+4. **前端**：资料修改页 `ResourceEditor` 增加标签选择，随 PATCH 一次提交；沿用该页既有的版本冲突/未知结果处理（重读核对后明确重提，不静默重试），冲突时标签选择与其他草稿字段一并保留；冲突核对面板同时展示最新已保存的标签，便于比对。标签区复用只读的 `ClassificationBrowser`（该页既有主题选择已在用），以复选框 + 已选 chip 呈现，上限 20；**不使用 `ClassificationPicker`** —— 该组件把主题与标签绑在一起，而编辑页已有独立的「更改主要主题」控件，套用会出现两套主题控件，属于重构既有交互，超出本任务范围。
 5. **契约文档同步**：`openapi-v1.json` 的 `ResourcePatch` schema 与 `updateResource` 的 `x-error-codes`（补 `TAG_NOT_FOUND`）、`API与数据契约基线.md` 的 `updateResource` 交付行（`:59`）、`ResourcePatch` 字段规则（`:616`）、错误码表（`:556`）、版本规则叙述（`:164`）同步更新，保持中英双份一致。
 
 ### 非目标 / 禁止范围
@@ -115,6 +115,7 @@ checks = []
 - 最终状态/风险/用户操作：待填。
 - 非阻断遗留项：待填。
 - 日期与决定日志：2026-09-05 用户在 PR #36 合并后授权本任务，范围定为 A1+A2；同日主 Agent 在基线 `e2ab283` 亲自复核 6 项现状事实后登记为 L3（放宽公共契约 + 跨模块 + 版本语义决定），并入 TASK-031 的 MERGED 状态收尾。
+- 2026-09-05 实现阶段两处任务记录更正（均在冻结候选之前，非证据写回改授权）：① `allowed_paths` 原写 `backend/tests/test_resources.py`，实测 `updateResource` 的测试在 `backend/tests/test_resource_updates.py`（`test_resources.py` 只测创建与查询），按实际影响改为后者，路径数量不变、不扩大范围；② 目标 4 原写「复用 `ClassificationPicker`」，实现时发现该组件同时承载主题选择，而编辑页已有独立主题控件，套用会产生两套主题 UI，遂改为在编辑页内用只读 `ClassificationBrowser` 自建标签区，`ClassificationPicker.tsx` 保持不改（仍在禁止范围内）。
 
 此区禁止放入或变更任务授权、风险等级、允许路径、检查要求、实现或测试记录。
 <!-- EVIDENCE:END -->

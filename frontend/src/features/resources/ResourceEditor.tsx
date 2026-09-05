@@ -13,6 +13,12 @@ import {
 } from './api'
 import { resourceTitle } from './resourceTitle'
 
+function sameTags(left: Choice[], right: { id: string }[]): boolean {
+  // Order carries no meaning for a tag set, so compare the ids as sets.
+  const ids = new Set(right.map((tag) => tag.id))
+  return left.length === ids.size && left.every((tag) => ids.has(tag.id))
+}
+
 function topicOf(item: Resource): Choice | null {
   return item.topic_id
     ? { id: item.topic_id, name: item.topic_name ?? '当前主题（名称暂不可用）' }
@@ -88,6 +94,8 @@ function EditForm({
   )
   const [topic, setTopic] = useState<Choice | null>(() => topicOf(initial))
   const [chooseTopic, setChooseTopic] = useState(false)
+  const [tags, setTags] = useState<Choice[]>(() => initial.tags.map((tag) => ({ ...tag })))
+  const [chooseTags, setChooseTags] = useState(false)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
   const [recovery, setRecovery] = useState(false)
@@ -110,6 +118,8 @@ function EditForm({
   if (sourceName !== (initial.source_name ?? '')) changes.source_name = sourceName || null
   if (reason !== (initial.save_reason ?? '')) changes.save_reason = reason || null
   if ((topic?.id ?? null) !== initial.topic_id) changes.topic_id = topic?.id ?? null
+  // Send the whole set only when it actually differs; the server treats it as a replacement.
+  if (!sameTags(tags, initial.tags)) changes.tag_ids = tags.map((tag) => tag.id)
   if (initial.source_type === 'WEB' && sourceText.trim() !== initial.source_url)
     changes.source_url = sourceText.trim()
   if (initial.source_type === 'PASTE' && sourceText !== initial.pasted_content)
@@ -135,6 +145,7 @@ function EditForm({
       (length(changes.pasted_content) < 1 || length(changes.pasted_content) > 1_000_000)
     )
       invalid = '粘贴原文须为 1～100 万字，空白和换行会原样保存。'
+    else if (tags.length > 20) invalid = '最多选择 20 个标签。'
     if (invalid) {
       setError(invalid)
       return
@@ -262,6 +273,56 @@ function EditForm({
             </section>
           )}
         </div>
+        {/* Same block styling as the topic section; no new rule needed in styles.css. */}
+        <div className="resource-topic-edit">
+          <p>标签：{tags.length ? tags.map((tag) => tag.name).join('、') : '未添加'}</p>
+          {tags.length > 0 && (
+            <div className="selection-chips" aria-label="已选标签">
+              {tags.map((tag) => (
+                <button
+                  type="button"
+                  className="journal-button"
+                  key={tag.id}
+                  onClick={() => setTags(tags.filter((item) => item.id !== tag.id))}
+                >
+                  移除已选标签 {tag.name} ×
+                </button>
+              ))}
+            </div>
+          )}
+          <button
+            type="button"
+            className="journal-button"
+            aria-expanded={chooseTags}
+            onClick={() => setChooseTags(!chooseTags)}
+          >
+            {chooseTags ? '收起标签选择' : '更改标签'}
+          </button>
+          {chooseTags && (
+            <section aria-label="编辑标签">
+              <p className="resource-hint">最多 20 个；保存时按这里的结果整组替换。</p>
+              <ClassificationBrowser
+                kind="tags"
+                render={(item) => (
+                  <label className="classification-choice">
+                    <input
+                      type="checkbox"
+                      checked={tags.some((tag) => tag.id === item.id)}
+                      onChange={(event) =>
+                        setTags(
+                          event.target.checked
+                            ? [...tags.filter((tag) => tag.id !== item.id), item]
+                            : tags.filter((tag) => tag.id !== item.id),
+                        )
+                      }
+                    />
+                    {item.name}
+                  </label>
+                )}
+              />
+            </section>
+          )}
+        </div>
         {initial.source_type === 'FILE' ? (
           <p className="resource-hint">文件原件不能替换；需要另一份文件时请添加新资料。</p>
         ) : (
@@ -316,6 +377,8 @@ function EditForm({
                   <dd>{latest.save_reason || '未填写'}</dd>
                   <dt>主要主题</dt>
                   <dd>{topicOf(latest)?.name ?? '未分配'}</dd>
+                  <dt>标签</dt>
+                  <dd>{latest.tags.map((tag) => tag.name).join('、') || '未添加'}</dd>
                 </dl>
                 {latest.source_type !== 'FILE' && (
                   <details>

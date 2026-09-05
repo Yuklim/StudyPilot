@@ -18,6 +18,7 @@ from studypilot.infrastructure.database.models import (
     LearningProgress,
     LearningResource,
     OriginalFile,
+    ResourceTag,
 )
 from studypilot.infrastructure.database.resource_store import ResourceStore
 from studypilot.main import create_app
@@ -231,7 +232,9 @@ def test_reassign_and_clear_topic_updates_filters_search_and_reference_protectio
         {"source_name": 3},
         {"source_type": "FILE"},
         {"version": 8},
-        {"tag_ids": []},
+        {"tag_ids": None},
+        {"tag_ids": "not-a-list"},
+        {"tag_ids": ["not-a-uuid"]},
         {"progress": {}},
         {"original_file": {}},
         {"unknown": PRIVATE},
@@ -560,3 +563,107 @@ def test_search_with_untitled_rows_does_not_crash(authorized: TestClient, databa
     rows = authorized.get(f"/api/v1/resources?q={titled['title']}").json()["data"]
     assert [row["id"] for row in rows] == [titled["id"]]
     assert authorized.get("/api/v1/resources?q=不存在").json()["data"] == []
+
+
+def tag_names(payload: dict[str, Any]) -> list[str]:
+    return [tag["name"] for tag in payload["tags"]]
+
+
+def test_patch_replaces_the_whole_tag_set_with_one_version_bump(
+    authorized: TestClient,
+    session_factory: sessionmaker[Session],
+    item: dict[str, Any],
+) -> None:
+    path = url(item)
+    entry, interview, longterm = (
+        authorized.post("/api/v1/tags", json={"name": name}).json()["data"]
+        for name in ("入门", "面试", "长期")
+    )
+
+    added = authorized.patch(
+        path, json={"expected_version": 1, "tag_ids": [entry["id"], interview["id"]]}
+    )
+    assert added.status_code == 200, added.text
+    current = added.json()["data"]
+    assert tag_names(current) == ["入门", "面试"] and current["version"] == 2
+
+    # Same set in another order is not a change, so the contract adds no version.
+    unchanged = authorized.patch(
+        path, json={"expected_version": 2, "tag_ids": [interview["id"], entry["id"]]}
+    )
+    assert unchanged.status_code == 200
+    assert unchanged.json()["data"] == current
+
+    # Replacement, not merge: 入门 goes away because it is absent from the new set.
+    replaced = authorized.patch(
+        path, json={"expected_version": 2, "tag_ids": [interview["id"], longterm["id"]]}
+    )
+    assert replaced.status_code == 200
+    current = replaced.json()["data"]
+    assert tag_names(current) == ["长期", "面试"] and current["version"] == 3
+
+    # Omitting tag_ids leaves the links alone while another field changes.
+    kept = authorized.patch(path, json={"expected_version": 3, "title": "只改标题"})
+    assert kept.status_code == 200
+    current = kept.json()["data"]
+    assert tag_names(current) == ["长期", "面试"] and current["version"] == 4
+
+    # One PATCH carrying both a field and the tag set still bumps the version once.
+    together = authorized.patch(
+        path, json={"expected_version": 4, "title": "标题与标签同改", "tag_ids": [entry["id"]]}
+    )
+    assert together.status_code == 200
+    current = together.json()["data"]
+    assert current["title"] == "标题与标签同改"
+    assert tag_names(current) == ["入门"] and current["version"] == 5
+
+    cleared = authorized.patch(path, json={"expected_version": 5, "tag_ids": []})
+    assert cleared.status_code == 200
+    current = cleared.json()["data"]
+    assert current["tags"] == [] and current["version"] == 6
+    with session_factory() as session:
+        assert session.scalars(select(ResourceTag)).all() == []
+    # Clearing links must not delete the tags themselves.
+    assert authorized.get("/api/v1/tags").json()["page"]["total_items"] == 3
+
+    assert authorized.get(path).json()["data"] == current
+
+
+def test_patch_rejects_unusable_tag_sets_without_touching_the_resource(
+    authorized: TestClient,
+    item: dict[str, Any],
+) -> None:
+    path = url(item)
+    tag = authorized.post("/api/v1/tags", json={"name": "保留"}).json()["data"]
+    assert (
+        authorized.patch(path, json={"expected_version": 1, "tag_ids": [tag["id"]]}).status_code
+        == 200
+    )
+    before = authorized.get(path).json()
+    assert tag_names(before["data"]) == ["保留"] and before["data"]["version"] == 2
+
+    error(
+        authorized.patch(
+            path,
+            json={"expected_version": 2, "title": "不能部分保存", "tag_ids": [str(uuid4())]},
+        ),
+        404,
+        "TAG_NOT_FOUND",
+    )
+    for invalid in (
+        [tag["id"], tag["id"]],
+        [str(uuid4()) for _ in range(21)],
+        None,
+    ):
+        error(
+            authorized.patch(path, json={"expected_version": 2, "tag_ids": invalid}),
+            422,
+            "VALIDATION_ERROR",
+        )
+    error(
+        authorized.patch(path, json={"expected_version": 1, "tag_ids": []}),
+        409,
+        "VERSION_CONFLICT",
+        2,
+    )
+    assert authorized.get(path).json() == before

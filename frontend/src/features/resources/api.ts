@@ -70,6 +70,8 @@ export type ResourceChanges = Partial<{
   topic_id: string | null
   source_url: string
   pasted_content: string
+  // Whole replacement set: omitted leaves tags alone, [] clears them, null is rejected.
+  tag_ids: string[]
 }>
 
 export interface DeletionPreview {

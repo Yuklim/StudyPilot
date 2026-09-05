@@ -222,3 +222,47 @@ test('a real committed update with a lost response is read back before an explic
   expect((await call(page, path)).data.version).toBe(2)
   expect(writes).toBe(2)
 })
+
+test('tags can be filled in later from the edit page, as a whole replacement set', async ({
+  page,
+}) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  const id = await seed(page, 'WEB')
+  const path = '/resources/' + id
+  // Sequential writes: the isolated SQLite backend serialises writers, so parallel
+  // POSTs here would race the write lock instead of testing anything about tags.
+  const kept = (await call(page, '/tags', 'POST', { name: '后补标签 · 保留' })).data
+  const added = (await call(page, '/tags', 'POST', { name: '后补标签 · 新增' })).data
+  const dropped = (await call(page, '/tags', 'POST', { name: '后补标签 · 移除' })).data
+  for (const tag of [kept, dropped])
+    expect(await call(page, `/resources/${id}/tags/${tag.id}`, 'PUT')).toBeTruthy()
+  const before = (await call(page, path)).data
+  expect(before.tags.map((tag: { name: string }) => tag.name).sort()).toEqual([
+    '后补标签 · 保留',
+    '后补标签 · 移除',
+  ])
+
+  await page.goto(path)
+  await page.getByRole('button', { name: '编辑资料', exact: true }).click()
+  const form = page.getByRole('form', { name: '编辑资料表单' })
+  await expect(form.getByText('标签：后补标签 · 保留、后补标签 · 移除')).toBeVisible()
+  await form.getByRole('button', { name: '移除已选标签 后补标签 · 移除 ×' }).click()
+  await form.getByRole('button', { name: '更改标签' }).click()
+  await form.getByRole('checkbox', { name: added.name, exact: true }).check()
+  await form.getByRole('button', { name: '保存资料修改' }).click()
+  await expect(page.getByText('资料修改已保存。')).toBeVisible()
+
+  const after = (await call(page, path)).data
+  expect(after.tags.map((tag: { name: string }) => tag.name).sort()).toEqual([
+    '后补标签 · 保留',
+    '后补标签 · 新增',
+  ])
+  // One PATCH, one version step. Detaching must not delete the tag itself; read it back
+  // by id rather than counting /tags, which the whole suite shares with other specs.
+  expect(after.version).toBe(before.version + 1)
+  expect((await call(page, '/tags/' + dropped.id)).data).toMatchObject({ name: dropped.name })
+  await page.reload()
+  await expect(page.getByText('后补标签 · 新增')).toBeVisible()
+  expect(errors).toEqual([])
+})

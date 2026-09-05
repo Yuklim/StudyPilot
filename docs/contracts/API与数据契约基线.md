@@ -49,14 +49,14 @@
 
 本文件第 5、8、10 节及 `openapi-v1.json` 的标准 paths/schemas 描述**完整 MVP 目标**，不是当前程序全部已可调用的能力清单。同一操作允许按本节明确的输入子集分阶段交付；TASK-009 当前运行时的可用性及未开放输入响应以本节为准，不能把完整目标中的 FILE 分支视为本阶段已承诺可用。最终字段、媒体类型、成功响应、安全及数据规则仍保留，不删减、不改名，不宣称完整 MVP 已完成。
 
-TASK-011/012 已完成分类后端与页面，TASK-013/014 已完成 FILE 后端和上传/下载页面，TASK-015/016 已完成旧学习记录后端与页面，TASK-017 已提供个人笔记后端。TASK-019 接入轻量心得页面：正文新增/回看/修改/确认删除，只自动显示保存时间；不向学习写接口提交虚构的开始时间、时长、进度或状态。旧历史与状态/归档入口收起保留。TASK-027 提供独立心得：`Note.resource_id` 按用户确认放宽为可空并新增顶层 `/api/v1/notes` 集合——独立心得(resource_id 为 null)可不先收藏资料直接记录/回看/修改/删除；绑定资料(resource_id 非空)的心得仍在资料详情。这是本节首次真实放宽标准 Note 契约与操作清单，随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-029 再次放宽标准资源契约：`title` 改为可空（0003 迁移），WEB/PASTE/FILE 创建均可省略或显式 null 标题，`updateResource` 显式 null 清除标题，资料按 title 排序时未命名(null)固定排在有标题之后；界面以「未命名资料」占位展示、不落库。同样随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-030 提供心得后贴/解除：独立心得(resource_id 为 null)可在「我的心得」页经 `attachNote` 后贴绑定到某份可读资料；已绑定心得可在资料详情经 `detachNote` 解除回独立。绑定移动是专用版本化写（`Note.resource_id` 在专用路径上移动、version+1、content 不变、单事务、不回放），`NoteCreate`/`NotePatch` 请求体仍不得直接写 `resource_id`。同样随该任务测试、独立审查、验收通过并由用户合并后交付。
+TASK-011/012 已完成分类后端与页面，TASK-013/014 已完成 FILE 后端和上传/下载页面，TASK-015/016 已完成旧学习记录后端与页面，TASK-017 已提供个人笔记后端。TASK-019 接入轻量心得页面：正文新增/回看/修改/确认删除，只自动显示保存时间；不向学习写接口提交虚构的开始时间、时长、进度或状态。旧历史与状态/归档入口收起保留。TASK-027 提供独立心得：`Note.resource_id` 按用户确认放宽为可空并新增顶层 `/api/v1/notes` 集合——独立心得(resource_id 为 null)可不先收藏资料直接记录/回看/修改/删除；绑定资料(resource_id 非空)的心得仍在资料详情。这是本节首次真实放宽标准 Note 契约与操作清单，随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-029 再次放宽标准资源契约：`title` 改为可空（0003 迁移），WEB/PASTE/FILE 创建均可省略或显式 null 标题，`updateResource` 显式 null 清除标题，资料按 title 排序时未命名(null)固定排在有标题之后；界面以「未命名资料」占位展示、不落库。同样随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-030 提供心得后贴/解除：独立心得(resource_id 为 null)可在「我的心得」页经 `attachNote` 后贴绑定到某份可读资料；已绑定心得可在资料详情经 `detachNote` 解除回独立。绑定移动是专用版本化写（`Note.resource_id` 在专用路径上移动、version+1、content 不变、单事务、不回放），`NoteCreate`/`NotePatch` 请求体仍不得直接写 `resource_id`。同样随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-032 放宽 `ResourcePatch`：新增可选 `tag_ids` 实现「标签可后补」——资料修改页可直接整组替换标签，不必逐个调用幂等关联端点；语义、版本与错误处理见 4.7 与 12 节。既有 `attachResourceTag`/`detachResourceTag` 与资料详情逐个增删路径不变。同样随该任务测试、独立审查、验收通过并由用户合并后交付。
 
 | 当前可用操作 | 交付范围 |
 | --- | --- |
 | `bootstrapLocalSession` | 沿用 TASK-008 的本机启动令牌协议 |
 | `createResource` | `application/json` 的 WEB/PASTE 与 `multipart/form-data` 的 FILE；成功为原定 `201 ResourceEnvelope`，FILE 仅落盘并提交 READY 后成功 |
 | `listResources` / `getResource` | 原定列表筛选/摘要与详情读取；FILE 只显示 READY 元数据，不表示已解析 |
-| `updateResource` | TASK-020 后端、TASK-021 页面：按既定 ResourcePatch 修改标题、来源名称、保存原因、主要主题及同类型 WEB/PASTE 来源内容；版本与事务保护，不更换 FILE 原件，不修改学习数据；页面冲突/未知结果需重读核对后明确重提，心得草稿保留 |
+| `updateResource` | TASK-020 后端、TASK-021 页面：按既定 ResourcePatch 修改标题、来源名称、保存原因、主要主题及同类型 WEB/PASTE 来源内容；版本与事务保护，不更换 FILE 原件，不修改学习数据；页面冲突/未知结果需重读核对后明确重提，心得草稿保留。TASK-032 增补 `tag_ids`：整组替换标签集合，与同一 PATCH 的其他字段同事务生效，`version` 至多加一 |
 | `previewResourceDeletion` / `deleteResource` | TASK-022 后端：按第 9 节先生成删除影响摘要和一次性令牌，再用专用头确认删除；文件进入 trash 后由对账回收。页面接入另行实现 |
 | `downloadOriginalFile` | 按文件 ID 下载 READY 原件；大小/hash 校验、附件头及失败保护遵守第 8 节 |
 | `listTopics` / `createTopic` / `getTopic` / `updateTopic` / `deleteTopic` | TASK-011：既定主题创建/读/改/删除未使用项；保留版本、规范化唯一与引用保护 |
@@ -161,7 +161,7 @@ TASK-011/012 已完成分类后端与页面，TASK-013/014 已完成 FILE 后端
 
 ### 2.4 乐观并发 `[细化]`
 
-可修改对象的 `version` 从 `1` 开始，每次实际修改加一；无变化的幂等请求不加版本。JSON 修改请求携带 `expected_version`。没有请求体的删除使用强版本头 `If-Match: "<整数>"`。缺失返回 `428`，不匹配返回 `409 VERSION_CONFLICT`，`details` 只含 `current_version`。资料删除不使用 `If-Match`，因为专用删除令牌已经绑定完整版本与影响集合。只读、追加历史和幂等标签关联不需要版本前置条件。
+可修改对象的 `version` 从 `1` 开始，每次实际修改加一；无变化的幂等请求不加版本。JSON 修改请求携带 `expected_version`。没有请求体的删除使用强版本头 `If-Match: "<整数>"`。缺失返回 `428`，不匹配返回 `409 VERSION_CONFLICT`，`details` 只含 `current_version`。资料删除不使用 `If-Match`，因为专用删除令牌已经绑定完整版本与影响集合。只读、追加历史和幂等标签关联不需要版本前置条件；但 `updateResource` 的 `tag_ids` 整组替换走资料版本，必须携带 `expected_version`（TASK-032）。
 
 ## 3. 稳定枚举
 
@@ -281,7 +281,7 @@ FILE 创建时不接受 `source_url`/`pasted_content`，并在同一成功响应
 | `created_at` | instant | R | 自动 | 否 | taxonomy |
 | `association_version` | int | R | 固定 1 | 否 | taxonomy；复合唯一 `(resource_id,tag_id)`；删除后重加是新关联 |
 
-PUT 添加与 DELETE 移除是幂等的，避免整组标签覆盖造成并发丢失。
+PUT 添加与 DELETE 移除是幂等的，避免整组标签覆盖造成并发丢失。TASK-032 起另有一条整组替换路径：`updateResource` 的 `tag_ids`。两者并存且防护方式不同——幂等端点无版本前置条件，只增删单个关联；整组替换必须携带 `expected_version`，并发修改会得到 `409 VERSION_CONFLICT` 而不是静默覆盖，因此不重新引入本段要避免的丢失。标签集合实际变化时资料 `version` 加一，集合相同（顺序不计）则按上文不加版本；关联行本身仍是 `association_version` 固定 1，删除后重加是新关联。
 
 ### 4.8 Note（notes 所有）
 
@@ -553,7 +553,7 @@ DELETE review 带 JSON 是契约列明的例外；它仍是写请求并必须先
 | `listResources` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `VALIDATION_ERROR`, `UNKNOWN_ERROR` |
 | `createResource` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `TOPIC_NOT_FOUND`, `TAG_NOT_FOUND`, `FILE_TOO_LARGE`, `CONTENT_TYPE_UNSUPPORTED`, `FILE_TYPE_UNSUPPORTED`, `VALIDATION_ERROR`, `STORAGE_PATH_UNAVAILABLE`, `UNKNOWN_ERROR` |
 | `getResource` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `RESOURCE_NOT_FOUND`, `UNKNOWN_ERROR` |
-| `updateResource` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `RESOURCE_NOT_FOUND`, `TOPIC_NOT_FOUND`, `VERSION_CONFLICT`, `SOURCE_TYPE_MISMATCH`, `CONTENT_TYPE_UNSUPPORTED`, `VALIDATION_ERROR`, `VERSION_REQUIRED`, `UNKNOWN_ERROR` |
+| `updateResource` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `RESOURCE_NOT_FOUND`, `TOPIC_NOT_FOUND`, `TAG_NOT_FOUND`, `VERSION_CONFLICT`, `SOURCE_TYPE_MISMATCH`, `CONTENT_TYPE_UNSUPPORTED`, `VALIDATION_ERROR`, `VERSION_REQUIRED`, `UNKNOWN_ERROR` |
 | `deleteResource` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `RESOURCE_NOT_FOUND`, `DELETION_TOKEN_REQUIRED`, `DELETION_TOKEN_INVALID`, `DELETION_TOKEN_REPLAYED`, `DELETION_IMPACT_CHANGED`, `DELETION_TOKEN_EXPIRED`, `STORAGE_PATH_UNAVAILABLE`, `UNKNOWN_ERROR` |
 | `previewResourceDeletion` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `RESOURCE_NOT_FOUND`, `UNKNOWN_ERROR` |
 | `attachResourceTag` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `RESOURCE_NOT_FOUND`, `TAG_NOT_FOUND`, `UNKNOWN_ERROR` |
@@ -613,7 +613,7 @@ DELETE review 带 JSON 是契约列明的例外；它仍是写请求并必须先
 
 - `ResourceSummary`：使用 `WebResourceSummary` / `PasteResourceSummary` / `FileResourceSummary` 按 `source_type` 判别。WEB/PASTE 的 `original_file` 必须为 null；FILE 必须返回 READY `OriginalFileSummary`。列表、复习和概览不返回 `source_url`、`pasted_content`、`sha256` 或其他原件详情字段。
 - `ResourceDetail`：使用 `source_type` 判别的 `WebResourceDetail`、`PasteResourceDetail`、`FileResourceDetail` 联合；WEB 只额外返回敏感 `source_url`，PASTE 只额外返回敏感 `pasted_content`，FILE 只返回非空且 READY 的 `original_file`，不得出现其他来源字段。
-- `ResourcePatch`：必含 `expected_version`，至少一个可修改字段；`source_url` 与 `pasted_content` 不得同时出现，且只能匹配现有资料的 WEB/PASTE 来源，不匹配返回 `409 SOURCE_TYPE_MISMATCH`；`topic_id/source_name/save_reason` 可显式 null。
+- `ResourcePatch`：必含 `expected_version`，至少一个可修改字段；`source_url` 与 `pasted_content` 不得同时出现，且只能匹配现有资料的 WEB/PASTE 来源，不匹配返回 `409 SOURCE_TYPE_MISMATCH`；`topic_id/source_name/save_reason` 可显式 null。`tag_ids` 是整组替换：省略表示不改标签，`[]` 清空全部标签，显式 null 返回 `422 VALIDATION_ERROR`（清空只用 `[]` 一种写法）；最多 20 个且不得重复，含不存在的标签返回 `404 TAG_NOT_FOUND` 且整个 PATCH 不写入。
 - Topic/Tag/Note PATCH 必含 `expected_version` 和至少一个业务字段。
 - StudyRecordCreate 必含 `expected_progress_version`、`started_at`、`duration_seconds`、`progress_before/after`、`status_before/after`；服务端必须核对 before，不能信任客户端。
 - ReviewScheduleRequest 必含 `expected_progress_version`、可空 `expected_plan_version`（首次为 null）、`due_date`；ARCHIVED 拒绝。

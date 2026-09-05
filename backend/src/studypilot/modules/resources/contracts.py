@@ -116,6 +116,7 @@ class ResourcePatch(BaseModel):
     topic_id: UUID | None = None
     source_url: str | None = Field(default=None, max_length=2048)
     pasted_content: str | None = Field(default=None, min_length=1, max_length=1_000_000)
+    tag_ids: list[UUID] | None = Field(default=None, max_length=20)
 
     @field_validator("source_url", "pasted_content")
     @classmethod
@@ -124,6 +125,17 @@ class ResourcePatch(BaseModel):
         # title is excluded: an explicit null clears the title (nullable column).
         if value is None:
             raise ValueError("field cannot be null")
+        return value
+
+    @field_validator("tag_ids")
+    @classmethod
+    def replacement_tags(cls, value: list[UUID] | None) -> list[UUID]:
+        # Omission leaves tags untouched; [] clears them. Explicit null is not a
+        # second way to clear, so it stays invalid like the source fields above.
+        if value is None:
+            raise ValueError("field cannot be null")
+        if len(set(value)) != len(value):
+            raise ValueError("duplicate tags")
         return value
 
     @field_validator("source_url")
