@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 
 import { BookSketch } from '../../shell/Icon'
 import { displayTime, listResources, sourceLabels, statusLabels } from './api'
+import { resourceTitle } from './resourceTitle'
 import { ResourceError, ResourceProgress } from './ResourceState'
 import { useResourceQuery } from './useResourceQuery'
 import { ClassificationPicker, type Selection } from '../taxonomy/ClassificationPicker'
@@ -198,7 +199,7 @@ export function ResourceLibrary() {
                     {sourceLabels[item.source_type]}
                   </span>
                   <h2>
-                    <Link to={`/resources/${item.id}`}>{item.title}</Link>
+                    <Link to={`/resources/${item.id}`}>{resourceTitle(item)}</Link>
                   </h2>
                   <span className="resource-row-source">
                     {item.source_name || '未填写来源名称'}
@@ -230,7 +231,7 @@ export function ResourceLibrary() {
                   <span>{item.source_name || '未填写来源名称'}</span>
                 </div>
                 <h2>
-                  <Link to={`/resources/${item.id}`}>{item.title}</Link>
+                  <Link to={`/resources/${item.id}`}>{resourceTitle(item)}</Link>
                 </h2>
                 <p className="resource-reason">{item.save_reason || '留给下一次阅读。'}</p>
                 <p className="resource-hint">

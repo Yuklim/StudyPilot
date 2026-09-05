@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import { displayTime, getResource, safeWebUrl, sourceLabels } from './api'
+import { resourceTitle } from './resourceTitle'
 import { ResourceError } from './ResourceState'
 import { LearningPanel } from '../learning/LearningPanel'
 import { NotesPanel } from '../notes/NotesPanel'
@@ -36,7 +37,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
           <span className={`source-chip ${item.source_type.toLowerCase()}`}>
             {sourceLabels[item.source_type]}
           </span>
-          <h2>{item.title}</h2>
+          <h2>{resourceTitle(item)}</h2>
         </div>
       )}
       {openedId === resourceId && (

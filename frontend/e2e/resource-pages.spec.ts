@@ -17,7 +17,7 @@ test('real UI saves WEB and PASTE, refreshes details, searches and safely reads 
   await expect(page.getByRole('alert')).toContainText('请填写')
   expect(creates).toBe(0)
   await page.reload()
-  await page.getByLabel('标题（必填）').fill('页面合成 · 一页阅读方法')
+  await page.getByLabel('标题').fill('页面合成 · 一页阅读方法')
   await page.getByLabel('网页地址（必填）').fill('https://example.com/reading')
   await page.getByLabel('来源名称（选填）').fill('合成书屋')
   await page.getByLabel('保存原因（选填）').fill('留一点时间，思考怎样把读过的内容变成自己的理解。')
@@ -40,7 +40,7 @@ test('real UI saves WEB and PASTE, refreshes details, searches and safely reads 
   await expect(externalLink).toHaveAttribute('referrerpolicy', 'no-referrer')
   await page.getByRole('link', { name: '添加资料', exact: true }).click()
   await page.getByRole('radio', { name: /粘贴内容/ }).check()
-  await page.getByLabel('标题（必填）').fill('页面合成 · 写在页边的小记')
+  await page.getByLabel('标题').fill('页面合成 · 写在页边的小记')
   const original =
     '  # 合成学习摘录\n慢慢积累，也是一种前进。\n<script>document.body.dataset.executed="yes"</script>\n<img src="https://example.com/tracker" onerror="alert(1)">\n '
   await page.getByLabel('粘贴原文（必填）').fill(original)
@@ -87,6 +87,19 @@ test('real UI saves WEB and PASTE, refreshes details, searches and safely reads 
   expect(external).toEqual([])
 })
 
+test('a WEB link can be saved without a title and stays untitled in the library', async ({
+  page,
+}) => {
+  await page.goto('/resources/new')
+  await page.getByLabel('网页地址（必填）').fill('https://example.com/quick-save')
+  await page.getByRole('button', { name: '保存到资料库' }).click()
+  await expect(page).toHaveURL(/\/resources\/[0-9a-f-]{36}$/)
+  await expect(page.getByRole('heading', { name: '未命名资料', level: 2 })).toBeVisible()
+  const id = new URL(page.url()).pathname.split('/').pop()!
+  await page.getByRole('link', { name: '返回资料库' }).click()
+  await expect(page.locator(`a[href="/resources/${id}"]`)).toHaveText('未命名资料')
+})
+
 test('failed reads can be retried and uncertain saves do not replay or discard input', async ({
   page,
 }) => {
@@ -97,7 +110,7 @@ test('failed reads can be retried and uncertain saves do not replay or discard i
   await page.getByRole('button', { name: '重新加载' }).click()
   await expect(page.getByRole('navigation', { name: '资料分页' })).toBeVisible()
   await page.getByRole('link', { name: '添加资料', exact: true }).click()
-  await page.getByLabel('标题（必填）').fill('合成失败输入')
+  await page.getByLabel('标题').fill('合成失败输入')
   await page.getByLabel('网页地址（必填）').fill('https://example.com')
   let attempts = 0
   await page.route('**/api/v1/resources', async (route) => {
@@ -108,7 +121,7 @@ test('failed reads can be retried and uncertain saves do not replay or discard i
   })
   await page.getByRole('button', { name: '保存到资料库' }).click()
   await expect(page.getByRole('alert')).toContainText('保存结果尚未确认')
-  await expect(page.getByLabel('标题（必填）')).toHaveValue('合成失败输入')
+  await expect(page.getByLabel('标题')).toHaveValue('合成失败输入')
   await expect(page.getByRole('button', { name: '保存到资料库' })).toBeEnabled()
   expect(attempts).toBe(1)
   await page.goto('/resources/00000000-0000-4000-8000-000000000000')

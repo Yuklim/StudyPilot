@@ -33,6 +33,14 @@ describe('file feature adapter', () => {
     expect(form.getAll('tag_ids')).toEqual([resourceId, fileId])
     expect(form.get('file')).toBe(file)
   })
+  it('omits the title field from multipart when the metadata title is blank', async () => {
+    const send = vi.spyOn(api, 'uploadResource').mockResolvedValue({ data: sampleFile() })
+    const file = new File(['original'], 'note.txt')
+    await createFileResource({ title: '   ', source_name: 'source' }, file)
+    const form = send.mock.calls[0][0]
+    expect(form.has('title')).toBe(false)
+    expect([...form.keys()]).toEqual(['source_type', 'source_name', 'file'])
+  })
   it.each(['PENDING', 'FAILED', 'unknown'])('rejects unavailable file state %s', async (status) => {
     const item = sampleFile()
     vi.spyOn(api, 'request').mockResolvedValue({

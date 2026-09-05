@@ -338,8 +338,6 @@ function uploadSnapshot(form: FormData): FormData {
   const file = copy.get('file')
   if (
     copy.get('source_type') !== 'FILE' ||
-    typeof copy.get('title') !== 'string' ||
-    !String(copy.get('title')).trim() ||
     copy.getAll('tag_ids').length > 20 ||
     !(file instanceof File) ||
     file.size < 1 ||

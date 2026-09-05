@@ -19,7 +19,7 @@ function selectFile(file = new File(['original'], '合成原件.txt', { type: 't
 }
 function form() {
   renderWithRouter(<App />, '/resources/new')
-  fireEvent.change(screen.getByLabelText('标题（必填）'), { target: { value: '合成文件资料' } })
+  fireEvent.change(screen.getByLabelText('标题'), { target: { value: '合成文件资料' } })
   fireEvent.click(screen.getByRole('radio', { name: /上传文件/ }))
 }
 function submit() {
@@ -99,7 +99,7 @@ describe('file upload form', () => {
       const alert = await screen.findByRole('alert')
       expect(alert).toHaveTextContent(error.status === 415 ? '格式' : '保存结果尚未确认')
       if (error.status === 415) expect(alert).not.toHaveTextContent('保存结果尚未确认')
-      expect(screen.getByLabelText('标题（必填）')).toHaveValue('合成文件资料')
+      expect(screen.getByLabelText('标题')).toHaveValue('合成文件资料')
       expect(screen.getByText('合成原件.txt')).toBeInTheDocument()
       expect(screen.getByRole('button', { name: '保存到资料库' })).toBeEnabled()
       expect(send).toHaveBeenCalledTimes(1)

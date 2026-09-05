@@ -53,7 +53,7 @@ export function ResourceForm() {
     const length = (value: string) => Array.from(value).length
     const cleanTitle = title.trim()
     let invalid = ''
-    if (!cleanTitle || length(cleanTitle) > 200) invalid = '请填写 1～200 字的标题。'
+    if (length(cleanTitle) > 200) invalid = '标题最多 200 字。'
     else if (length(sourceName) > 120 || length(reason) > 1000)
       invalid = '来源名称最多 120 字，保存原因最多 1000 字。'
     else if (source === 'WEB' && (!safeWebUrl(url.trim()) || length(url.trim()) > 2048))
@@ -71,7 +71,7 @@ export function ResourceForm() {
     setError('')
     setUncertain(false)
     const common = {
-      title: cleanTitle,
+      ...(cleanTitle ? { title: cleanTitle } : {}),
       ...(sourceName ? { source_name: sourceName } : {}),
       ...(reason ? { save_reason: reason } : {}),
       ...(classification.topic ? { topic_id: classification.topic.id } : {}),
@@ -156,7 +156,7 @@ export function ResourceForm() {
             </label>
           </div>
           <label className="resource-field">
-            标题（必填）
+            标题
             <input
               value={title}
               onChange={(event) => {
@@ -164,10 +164,12 @@ export function ResourceForm() {
                 if (next.trim()) titleManaged.current = true
                 setTitle(next)
               }}
-              required
-              placeholder="给这份好奇起个名字"
+              placeholder="给这份好奇起个名字；留空可先保存，稍后再补"
             />
           </label>
+          <p className="resource-hint">
+            标题留空也能保存，会显示为「未命名资料」；网页链接可以直接跳过。
+          </p>
           {source === 'WEB' ? (
             <label className="resource-field">
               网页地址（必填）

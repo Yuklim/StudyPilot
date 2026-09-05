@@ -11,6 +11,7 @@ import {
   type Resource,
   type ResourceChanges,
 } from './api'
+import { resourceTitle } from './resourceTitle'
 
 function topicOf(item: Resource): Choice | null {
   return item.topic_id
@@ -79,7 +80,7 @@ function EditForm({
   cancelled: () => void
   saved: () => void
 }) {
-  const [title, setTitle] = useState(initial.title)
+  const [title, setTitle] = useState(initial.title ?? '')
   const [sourceName, setSourceName] = useState(initial.source_name ?? '')
   const [reason, setReason] = useState(initial.save_reason ?? '')
   const [sourceText, setSourceText] = useState(
@@ -105,7 +106,7 @@ function EditForm({
   // Retain the user's changed-field intent through a conflict. Unedited fields are omitted,
   // not copied from the stale form over another page's newer data.
   const changes: ResourceChanges = {}
-  if (title.trim() !== initial.title) changes.title = title.trim()
+  if (title.trim() !== (initial.title ?? '')) changes.title = title.trim() || null
   if (sourceName !== (initial.source_name ?? '')) changes.source_name = sourceName || null
   if (reason !== (initial.save_reason ?? '')) changes.save_reason = reason || null
   if ((topic?.id ?? null) !== initial.topic_id) changes.topic_id = topic?.id ?? null
@@ -121,7 +122,7 @@ function EditForm({
     if (busy.current || !canSave) return
     const length = (value: string) => Array.from(value).length
     let invalid = ''
-    if (!title.trim() || length(title.trim()) > 200) invalid = '请填写 1～200 字的标题。'
+    if (length(title.trim()) > 200) invalid = '标题最多 200 字。'
     else if (length(sourceName) > 120 || length(reason) > 1000)
       invalid = '来源名称最多 120 字，保存原因最多 1000 字。'
     else if (
@@ -205,8 +206,13 @@ function EditForm({
       <fieldset className="resource-fields" disabled={pending}>
         <legend className="sr-only">资料修改内容</legend>
         <label className="resource-field">
-          标题（必填）
-          <input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} required />
+          标题
+          <input
+            autoFocus
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="留空则显示为「未命名资料」"
+          />
         </label>
         <div className="resource-form-columns">
           <label className="resource-field">
@@ -303,7 +309,7 @@ function EditForm({
                 <h4>最新已保存资料（第 {latest.version} 版）</h4>
                 <dl>
                   <dt>标题</dt>
-                  <dd>{latest.title}</dd>
+                  <dd>{resourceTitle(latest)}</dd>
                   <dt>来源名称</dt>
                   <dd>{latest.source_name || '未填写'}</dd>
                   <dt>保存原因 / 简介</dt>

@@ -24,12 +24,11 @@ function deferred<T>() {
 }
 
 describe('resource form', () => {
-  it('validates required fields, URL safety, lengths and blank paste without a request', () => {
+  it('validates the source URL, lengths and blank paste without a request', () => {
     const request = vi.spyOn(api, 'request')
     renderWithRouter(<App />, '/resources/new')
     submit()
-    expect(screen.getByRole('alert')).toHaveTextContent('1～200')
-    change('标题（必填）', '合成标题')
+    expect(screen.getByRole('alert')).toHaveTextContent('http 或 https')
     change('网页地址（必填）', 'javascript:alert(1)')
     submit()
     expect(screen.getByRole('alert')).toHaveTextContent('http 或 https')
@@ -60,37 +59,37 @@ describe('resource form', () => {
     fireEvent.change(screen.getByLabelText('原始文件（必填）'), {
       target: { files: [new File(['x'], 'Zotero入门指南.pdf', { type: 'application/pdf' })] },
     })
-    expect(screen.getByLabelText('标题（必填）')).toHaveValue('Zotero入门指南')
+    expect(screen.getByLabelText('标题')).toHaveValue('Zotero入门指南')
   })
   it('does not overwrite a manually entered title when a file is chosen', () => {
     renderWithRouter(<App />, '/resources/new')
-    change('标题（必填）', '我自己起的名字')
+    change('标题', '我自己起的名字')
     fireEvent.click(screen.getByRole('radio', { name: /上传文件/ }))
     fireEvent.change(screen.getByLabelText('原始文件（必填）'), {
       target: { files: [new File(['x'], 'Another.pdf', { type: 'application/pdf' })] },
     })
-    expect(screen.getByLabelText('标题（必填）')).toHaveValue('我自己起的名字')
+    expect(screen.getByLabelText('标题')).toHaveValue('我自己起的名字')
   })
   it('derives a paste title from the first non-empty line and trims heading markers', () => {
     renderWithRouter(<App />, '/resources/new')
     fireEvent.click(screen.getByRole('radio', { name: /粘贴内容/ }))
     change('粘贴原文（必填）', '\n  # 一个 Markdown 标题\n正文开始\n')
-    expect(screen.getByLabelText('标题（必填）')).toHaveValue('一个 Markdown 标题')
+    expect(screen.getByLabelText('标题')).toHaveValue('一个 Markdown 标题')
   })
   it('does not overwrite a manually entered title when pasting content', () => {
     renderWithRouter(<App />, '/resources/new')
-    change('标题（必填）', '保留我写的标题')
+    change('标题', '保留我写的标题')
     fireEvent.click(screen.getByRole('radio', { name: /粘贴内容/ }))
     change('粘贴原文（必填）', '# 应被忽略的标题\n')
-    expect(screen.getByLabelText('标题（必填）')).toHaveValue('保留我写的标题')
+    expect(screen.getByLabelText('标题')).toHaveValue('保留我写的标题')
   })
   it('leaves the WEB title for the user and never auto-fills it from the URL', () => {
     const request = vi.spyOn(api, 'request')
     renderWithRouter(<App />, '/resources/new')
     fireEvent.click(screen.getByRole('radio', { name: /网页链接/ }))
     change('网页地址（必填）', 'https://example.com/article')
-    expect(screen.getByLabelText('标题（必填）')).toHaveValue('')
-    expect(screen.getByLabelText('标题（必填）')).not.toHaveFocus()
+    expect(screen.getByLabelText('标题')).toHaveValue('')
+    expect(screen.getByLabelText('标题')).not.toHaveFocus()
     expect(request).not.toHaveBeenCalled()
   })
   it('submits WEB once while pending, excludes paste fields and navigates to real detail', async () => {
@@ -101,7 +100,7 @@ describe('resource form', () => {
       .mockResolvedValue({ data: sample() })
     const storage = vi.spyOn(Storage.prototype, 'setItem')
     renderWithRouter(<App />, '/resources/new')
-    change('标题（必填）', ' 合成阅读资料 ')
+    change('标题', ' 合成阅读资料 ')
     change('网页地址（必填）', 'https://example.com/article')
     openSupplementary()
     change('保存原因（选填）', '慢慢理解')
@@ -125,10 +124,21 @@ describe('resource form', () => {
     expect(screen.getByRole('heading', { name: '资料详情', level: 1 })).toHaveFocus()
     expect(storage).not.toHaveBeenCalled()
   })
+  it('saves a WEB link with a blank title as an untitled resource and shows the placeholder', async () => {
+    const request = vi.spyOn(api, 'request').mockResolvedValue({ data: sample({ title: null }) })
+    renderWithRouter(<App />, '/resources/new')
+    change('网页地址（必填）', 'https://example.com/article')
+    submit()
+    expect(await screen.findByRole('heading', { name: '未命名资料', level: 2 })).toBeInTheDocument()
+    expect(request.mock.calls[0]).toEqual([
+      '/api/v1/resources',
+      { method: 'POST', body: { source_type: 'WEB', source_url: 'https://example.com/article' } },
+    ])
+  })
   it('preserves PASTE whitespace, serializes only the selected source and leaves failure inputs intact', async () => {
     const request = vi.spyOn(api, 'request').mockRejectedValue(new ApiError('NETWORK_ERROR'))
     renderWithRouter(<App />, '/resources/new')
-    change('标题（必填）', '文字')
+    change('标题', '文字')
     change('网页地址（必填）', 'https://example.com')
     fireEvent.click(screen.getByRole('radio', { name: /粘贴内容/ }))
     const text = '  # 合成原文\n<script>bad()</script>\n '
@@ -146,7 +156,7 @@ describe('resource form', () => {
     const pending = deferred<unknown>()
     vi.spyOn(api, 'request').mockReturnValue(pending.promise)
     renderWithRouter(<App />, '/resources/new')
-    change('标题（必填）', '合成')
+    change('标题', '合成')
     change('网页地址（必填）', 'https://example.com')
     submit()
     fireEvent.click(
@@ -219,6 +229,13 @@ describe('resource library', () => {
       ),
     )
     expect(screen.getByLabelText('搜索资料')).toHaveValue('')
+  })
+  it('shows the untitled placeholder in list and card views for resources without a title', async () => {
+    vi.spyOn(api, 'request').mockResolvedValue(samplePage([sample({ title: null })]))
+    renderWithRouter(<App />, '/resources')
+    expect(await screen.findByRole('heading', { name: '未命名资料' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '卡片' }))
+    expect(await screen.findByRole('heading', { name: '未命名资料' })).toBeInTheDocument()
   })
   it('ignores older search responses and rejects oversized search without sending it', async () => {
     const old = deferred<unknown>()
