@@ -28,7 +28,7 @@ export type Status = keyof typeof statusLabels
 export interface Resource {
   id: string
   version: number
-  title: string
+  title: string | null
   source_type: Source
   source_name: string | null
   save_reason: string | null
@@ -54,7 +54,7 @@ export interface ResourcePage {
   }
 }
 type ResourceMetadata = {
-  title: string
+  title?: string
   source_name?: string
   save_reason?: string
   topic_id?: string
@@ -64,7 +64,7 @@ export type CreateResource = ResourceMetadata &
   ({ source_type: 'WEB'; source_url: string } | { source_type: 'PASTE'; pasted_content: string })
 
 export type ResourceChanges = Partial<{
-  title: string
+  title: string | null
   source_name: string | null
   save_reason: string | null
   topic_id: string | null
@@ -177,7 +177,7 @@ function resource(value: unknown, detail: boolean): Resource {
   const result: Resource = {
     id: id(item.id),
     version: integer(item.version, 1),
-    title: string(item.title),
+    title: nullableString(item.title),
     source_type: source as Source,
     source_name: nullableString(item.source_name),
     save_reason: nullableString(item.save_reason),
@@ -309,7 +309,8 @@ export async function createFileResource(
   if (fileIssue(file)) throw new ApiError('INVALID_REQUEST')
   const form = new FormData()
   form.append('source_type', 'FILE')
-  form.append('title', metadata.title)
+  const title = metadata.title?.trim()
+  if (title) form.append('title', title)
   for (const key of ['source_name', 'save_reason', 'topic_id'] as const)
     if (metadata[key] !== undefined) form.append(key, metadata[key])
   for (const tag of metadata.tag_ids ?? []) form.append('tag_ids', tag)

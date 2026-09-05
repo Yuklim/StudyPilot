@@ -63,7 +63,7 @@ for (const source of ['WEB', 'PASTE', 'FILE'] as const) {
     await page.getByRole('button', { name: '编辑资料', exact: true }).click()
     const form = page.getByRole('form', { name: '编辑资料表单' })
     await expect(form.getByRole('button', { name: '保存资料修改' })).toBeDisabled()
-    await form.getByLabel('标题（必填）').fill(`整理好了 · ${source}`)
+    await form.getByLabel('标题').fill(`整理好了 · ${source}`)
     await form.getByLabel('来源名称（选填）').fill('新的来源')
     await form.getByLabel('保存原因 / 简介（选填）').fill('')
     await form.getByRole('button', { name: '更改主要主题' }).click()
@@ -147,7 +147,7 @@ test('real competing updates preserve the draft and never overwrite fields the u
   await page.goto(path)
   await page.getByRole('button', { name: '编辑资料', exact: true }).click()
   const form = page.getByRole('form', { name: '编辑资料表单' })
-  await form.getByLabel('标题（必填）').fill('本页明确修改的标题')
+  await form.getByLabel('标题').fill('本页明确修改的标题')
   await call(page, path, 'PATCH', {
     expected_version: 1,
     title: '另一处标题',
@@ -158,7 +158,7 @@ test('real competing updates preserve the draft and never overwrite fields the u
   await expect(form.getByRole('button', { name: '保存资料修改' })).toBeDisabled()
   await form.getByRole('button', { name: '保留草稿，读取最新资料' }).click()
   await expect(form.getByRole('region', { name: '最新已保存资料' })).toContainText('另一处的新简介')
-  await expect(form.getByLabel('标题（必填）')).toHaveValue('本页明确修改的标题')
+  await expect(form.getByLabel('标题')).toHaveValue('本页明确修改的标题')
   await form.getByRole('checkbox', { name: '我已核对最新资料，确认仍需保存本页修改' }).check()
   await form.getByRole('button', { name: '保存资料修改' }).click()
   await expect(page.getByRole('heading', { name: '本页明确修改的标题' })).toBeVisible()
@@ -169,6 +169,18 @@ test('real competing updates preserve the draft and never overwrite fields the u
   })
 })
 
+test('clearing the title in the editor saves an untitled resource', async ({ page }) => {
+  const id = await seed(page, 'WEB')
+  const path = '/resources/' + id
+  await page.goto(path)
+  await page.getByRole('button', { name: '编辑资料', exact: true }).click()
+  const form = page.getByRole('form', { name: '编辑资料表单' })
+  await form.getByLabel('标题').fill('')
+  await form.getByRole('button', { name: '保存资料修改' }).click()
+  await expect(page.getByRole('heading', { name: '未命名资料' })).toBeVisible()
+  expect((await call(page, path)).data).toMatchObject({ title: null })
+})
+
 test('a real committed update with a lost response is read back before an explicit no-op retry', async ({
   page,
 }) => {
@@ -177,7 +189,7 @@ test('a real committed update with a lost response is read back before an explic
   await page.goto(path)
   await page.getByRole('button', { name: '编辑资料', exact: true }).click()
   const form = page.getByRole('form', { name: '编辑资料表单' })
-  await form.getByLabel('标题（必填）').fill('已经保存但回执丢失')
+  await form.getByLabel('标题').fill('已经保存但回执丢失')
   await page.evaluate((target) => {
     const nativeFetch = window.fetch.bind(window)
     let dropped = false

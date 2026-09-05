@@ -211,7 +211,7 @@ describe('classification selection and resource integration', () => {
     click('选择主题与标签（选填）')
     fireEvent.click(await screen.findByRole('radio', { name: '合成主题' }))
     fireEvent.click(await screen.findByRole('checkbox', { name: '合成标签' }))
-    change('标题（必填）', '合成资料')
+    change('标题', '合成资料')
     change('网页地址（必填）', 'https://example.com')
     click('保存到资料库')
     expect(await screen.findByRole('heading', { name: '资料详情', level: 1 })).toBeInTheDocument()

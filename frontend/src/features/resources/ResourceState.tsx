@@ -1,4 +1,5 @@
 import { failureText, statusLabels, type Resource } from './api'
+import { resourceTitle } from './resourceTitle'
 
 export function ResourceError({ error, retry }: { error: unknown; retry?: () => void }) {
   return (
@@ -21,7 +22,7 @@ export function ResourceProgress({ resource }: { resource: Resource }) {
       <progress
         max={100}
         value={resource.progress.progress_percent}
-        aria-label={`${resource.title}的学习进度`}
+        aria-label={`${resourceTitle(resource)}的学习进度`}
       />
     </div>
   )

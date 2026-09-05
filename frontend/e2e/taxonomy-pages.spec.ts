@@ -51,7 +51,7 @@ test('classification UI manages real data and organizes resources with combined 
   await button(page, '确认删除标签').click()
   await expect(page.getByRole('heading', { name: '分类页面 · 临时', exact: true })).toHaveCount(0)
   await page.getByRole('link', { name: '添加资料', exact: true }).click()
-  await page.getByLabel('标题（必填）').fill('分类页面 · 我的阅读卡')
+  await page.getByLabel('标题').fill('分类页面 · 我的阅读卡')
   await page.getByLabel('网页地址（必填）').fill('https://example.com/classified')
   await button(page, '选择主题与标签（选填）').click()
   await page.getByRole('radio', { name: '分类页面 · 阅读方法', exact: true }).check()

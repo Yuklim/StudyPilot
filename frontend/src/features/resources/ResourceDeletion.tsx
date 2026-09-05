@@ -8,6 +8,7 @@ import {
   type DeletionPreview,
   type Resource,
 } from './api'
+import { resourceTitle } from './resourceTitle'
 
 const impactLabels: Array<[keyof DeletionImpact, string]> = [
   ['original_file_count', '原件'],
@@ -116,7 +117,7 @@ export function ResourceDeletion({
       {preview && (
         <div className="deletion-confirmation" role="dialog" aria-labelledby="deletion-title">
           <span className="note-tab">放下这一页</span>
-          <h3 id="deletion-title">确认删除“{resource.title}”？</h3>
+          <h3 id="deletion-title">确认删除“{resourceTitle(resource)}”？</h3>
           <p className="deletion-warning" role="alert">
             此操作不可撤销。资料本身及下列关联内容会被删除；主题和标签本体会保留。
           </p>

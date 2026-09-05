@@ -115,6 +115,18 @@ describe('controlled original-file transports', () => {
       expect(fetchMock).not.toHaveBeenCalled()
     },
   )
+  it('allows a file snapshot without a title and ignores later form mutation', async () => {
+    fetchMock
+      .mockResolvedValueOnce(session())
+      .mockResolvedValueOnce(Response.json({ data: { id: 'synthetic' } }, { status: 201 }))
+    const form = new FormData()
+    form.append('source_type', 'FILE')
+    form.append('file', new File(['original'], 'note.txt', { type: 'text/plain' }))
+    const upload = createApiClient().uploadResource(form)
+    form.set('title', 'mutated while connecting')
+    await expect(upload).resolves.toEqual({ data: { id: 'synthetic' } })
+    expect((fetchMock.mock.calls[1][1]?.body as FormData).has('title')).toBe(false)
+  })
   it('downloads only verified attachment bytes and a safe unicode filename', async () => {
     fetchMock.mockResolvedValueOnce(session()).mockResolvedValueOnce(originalResponse())
     const storage = vi.spyOn(Storage.prototype, 'setItem')

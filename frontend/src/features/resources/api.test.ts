@@ -84,6 +84,33 @@ describe('resource view adapter', () => {
       body: { source_name: null, title: '新标题', expected_version: 1 },
     })
   })
+  it('parses null titles from list and detail responses', async () => {
+    const request = vi
+      .spyOn(api, 'request')
+      .mockResolvedValueOnce(samplePage([sample({ title: null })]))
+      .mockResolvedValue({ data: sample({ title: null }) })
+    expect((await listResources('page=1')).data[0].title).toBeNull()
+    expect((await getResource(resourceId)).title).toBeNull()
+    expect(request).toHaveBeenCalledTimes(2)
+  })
+  it('clears a title by sending an explicit null in the PATCH body', async () => {
+    const request = vi
+      .spyOn(api, 'request')
+      .mockResolvedValue({ data: sample({ title: null, version: 2 }) })
+    await updateResource(sample(), { title: null }, 1)
+    expect(request).toHaveBeenCalledExactlyOnceWith(`/api/v1/resources/${resourceId}`, {
+      method: 'PATCH',
+      body: { title: null, expected_version: 1 },
+    })
+  })
+  it('creates a WEB resource without sending a title key when none is given', async () => {
+    const request = vi.spyOn(api, 'request').mockResolvedValue({ data: sample() })
+    await createResource({ source_type: 'WEB', source_url: 'https://example.com' })
+    expect(request).toHaveBeenCalledExactlyOnceWith('/api/v1/resources', {
+      method: 'POST',
+      body: { source_type: 'WEB', source_url: 'https://example.com' },
+    })
+  })
   it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, undefined, null, '1'])(
     'rejects unusable resource response version %s',
     async (version) => {

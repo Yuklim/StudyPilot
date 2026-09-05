@@ -19,7 +19,7 @@ test('file page saves an original, filters it and downloads identical bytes afte
   })
   await page.goto('/resources/new')
   await page.getByRole('radio', { name: /上传文件/ }).check()
-  await page.getByLabel('标题（必填）').fill('原件端到端 · 日常小记')
+  await page.getByLabel('标题').fill('原件端到端 · 日常小记')
   await page.getByLabel('保存原因（选填）').fill('在页边收好一个小问题')
   await page
     .getByLabel('原始文件（必填）')
@@ -71,7 +71,7 @@ test('file form preserves failed inputs, rejects invalid content and does not re
 }) => {
   await page.goto('/resources/new')
   await page.getByRole('radio', { name: /上传文件/ }).check()
-  await page.getByLabel('标题（必填）').fill('失败保留的合成文件')
+  await page.getByLabel('标题').fill('失败保留的合成文件')
   await page.getByLabel('原始文件（必填）').setInputFiles({
     name: 'forged.pdf',
     mimeType: 'application/pdf',
@@ -80,7 +80,7 @@ test('file form preserves failed inputs, rejects invalid content and does not re
   await page.getByRole('button', { name: '保存到资料库' }).click()
   await expect(page.getByRole('alert')).toContainText('内容与扩展名不一致')
   await expect(page.getByText('forged.pdf', { exact: true })).toBeVisible()
-  await expect(page.getByLabel('标题（必填）')).toHaveValue('失败保留的合成文件')
+  await expect(page.getByLabel('标题')).toHaveValue('失败保留的合成文件')
   await page.getByRole('button', { name: '移除文件' }).click()
   await expect(page.getByText('forged.pdf', { exact: true })).toHaveCount(0)
   await page
@@ -105,7 +105,7 @@ test('download failure gives no false success and only an explicit retry downloa
 }) => {
   await page.goto('/resources/new')
   await page.getByRole('radio', { name: /上传文件/ }).check()
-  await page.getByLabel('标题（必填）').fill('下载保护合成')
+  await page.getByLabel('标题').fill('下载保护合成')
   await page.getByLabel('原始文件（必填）').setInputFiles({
     name: 'protected.md',
     mimeType: 'text/markdown',

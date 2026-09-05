@@ -5,6 +5,7 @@ import App from '../../App'
 import { ApiError, api } from '../../api/client'
 import { renderWithRouter } from '../../test/render'
 import { resourceId, sample, sampleFile } from './fixtures'
+import { resourceTitle } from './resourceTitle'
 
 const token = 't'.repeat(43)
 const impact = {
@@ -54,7 +55,7 @@ describe('resource deletion page', () => {
     async (_, item) => {
       const request = mockDeletion(item, { data: { ...preview, resource_id: item.id } })
       renderWithRouter(<App />, `/resources/${item.id}`)
-      await screen.findByRole('heading', { name: item.title, level: 2 })
+      await screen.findByRole('heading', { name: resourceTitle(item), level: 2 })
       fireEvent.click(screen.getByRole('button', { name: '删除这份资料' }))
       expect(await screen.findByRole('dialog', { name: /确认删除/ })).toBeInTheDocument()
       expect(screen.getByText('原件')).toBeInTheDocument()
@@ -70,6 +71,16 @@ describe('resource deletion page', () => {
       expect(request).toHaveBeenCalledTimes(beforeCancel)
     },
   )
+
+  it('shows the untitled placeholder in the detail heading and deletion confirmation', async () => {
+    mockDeletion(sample({ title: null }))
+    renderWithRouter(<App />, `/resources/${resourceId}`)
+    await screen.findByRole('heading', { name: '未命名资料', level: 2 })
+    fireEvent.click(screen.getByRole('button', { name: '删除这份资料' }))
+    expect(
+      await screen.findByRole('dialog', { name: '确认删除“未命名资料”？' }),
+    ).toBeInTheDocument()
+  })
 
   it('confirms once, then returns to the library after a 204 response', async () => {
     const request = mockDeletion(sample())

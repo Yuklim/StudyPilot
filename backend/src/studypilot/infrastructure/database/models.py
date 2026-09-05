@@ -120,7 +120,7 @@ class LearningResource(Identified, Created, Versioned, Base):
         Index("ix_learning_resources_created_id", "created_at", "id"),
         {"info": {"owner": "resources"}},
     )
-    title: Mapped[str] = mapped_column(String(200))
+    title: Mapped[str | None] = mapped_column(String(200))
     source_type: Mapped[str] = mapped_column(choices("source_type", "WEB", "FILE", "PASTE"))
     source_url: Mapped[str | None] = mapped_column(String(2048))
     pasted_content: Mapped[str | None] = mapped_column(Text)

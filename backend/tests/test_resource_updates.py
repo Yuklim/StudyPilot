@@ -222,7 +222,6 @@ def test_reassign_and_clear_topic_updates_filters_search_and_reference_protectio
         {"expected_version": 0, "title": "x"},
         {"expected_version": 1.5, "title": "x"},
         {"expected_version": None, "title": "x"},
-        {"title": None},
         {"title": " \t\n"},
         {"title": "x" * 201},
         {"title": 5},
@@ -481,3 +480,83 @@ def test_missing_resources_and_contract(authorized: TestClient, database: Any) -
         name for name, field in ResourcePatch.model_fields.items() if field.is_required()
     } == set(schema["required"])
     assert "updateResource" in document["x-delivery-profile"]["available_operations"]
+
+
+def post_web(authorized: TestClient, path: str, title: str | None) -> dict[str, Any]:
+    body: dict[str, Any] = {"source_type": "WEB", "source_url": f"https://example.test/{path}"}
+    if title is not None:
+        body["title"] = title
+    response = authorized.post("/api/v1/resources", json=body)
+    assert response.status_code == 201, response.text
+    return dict(response.json()["data"])
+
+
+def test_create_untitled_web_and_paste(authorized: TestClient, database: Any) -> None:
+    web = post_web(authorized, "untitled-web", None)
+    assert web["title"] is None
+    detail = authorized.get(url(web)).json()["data"]
+    assert detail["title"] is None
+    paste = authorized.post(
+        "/api/v1/resources",
+        json={"source_type": "PASTE", "pasted_content": "untitled paste"},
+    )
+    assert paste.status_code == 201, paste.text
+    assert paste.json()["data"]["title"] is None
+
+
+def test_create_explicit_null_title_is_untitled(authorized: TestClient, database: Any) -> None:
+    result = authorized.post(
+        "/api/v1/resources",
+        json={
+            "source_type": "WEB",
+            "source_url": "https://example.test/null-title",
+            "title": None,
+        },
+    )
+    assert result.status_code == 201, result.text
+    assert result.json()["data"]["title"] is None
+
+
+def test_patch_explicit_null_clears_title(authorized: TestClient, database: Any) -> None:
+    item = create(authorized)
+    assert item["title"] == "原始标题"
+    result = authorized.patch(url(item), json={"expected_version": item["version"], "title": None})
+    assert result.status_code == 200, result.text
+    data = result.json()["data"]
+    assert data["title"] is None
+    assert data["version"] == item["version"] + 1
+
+
+def test_patch_omitted_title_leaves_it_unchanged(authorized: TestClient, database: Any) -> None:
+    item = create(authorized)
+    result = authorized.patch(
+        url(item), json={"expected_version": item["version"], "source_name": "只改来源"}
+    )
+    assert result.status_code == 200, result.text
+    assert result.json()["data"]["title"] == "原始标题"
+
+
+def test_title_sort_keeps_untitled_last_in_both_directions(
+    authorized: TestClient, database: Any
+) -> None:
+    # ASCII prefixes make the byte order of titles deterministic for sorting.
+    alpha = post_web(authorized, "a", "A 阿尔法")
+    beta = post_web(authorized, "b", "B 贝塔")
+    unnamed = post_web(authorized, "z-untitled", None)
+    for sort in ("title", "-title"):
+        rows = authorized.get(f"/api/v1/resources?sort={sort}").json()["data"]
+        assert len(rows) == 3
+        assert [row["id"] for row in rows][-1] == unnamed["id"]
+    ascending = authorized.get("/api/v1/resources?sort=title").json()["data"]
+    assert [row["title"] for row in ascending][:2] == ["A 阿尔法", "B 贝塔"]
+    descending = authorized.get("/api/v1/resources?sort=-title").json()["data"]
+    assert [row["title"] for row in descending][:2] == ["B 贝塔", "A 阿尔法"]
+    assert [alpha["title"], beta["title"], unnamed["title"]] == ["A 阿尔法", "B 贝塔", None]
+
+
+def test_search_with_untitled_rows_does_not_crash(authorized: TestClient, database: Any) -> None:
+    titled = create(authorized)
+    post_web(authorized, "no-name", None)
+    rows = authorized.get(f"/api/v1/resources?q={titled['title']}").json()["data"]
+    assert [row["id"] for row in rows] == [titled["id"]]
+    assert authorized.get("/api/v1/resources?q=不存在").json()["data"] == []

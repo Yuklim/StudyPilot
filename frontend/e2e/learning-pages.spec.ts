@@ -5,7 +5,7 @@ test.use({ timezoneId: 'Asia/Shanghai', trace: 'off' })
 
 async function createResource(page: Page, title: string) {
   await page.goto('/resources/new')
-  await page.getByLabel('标题（必填）').fill(title)
+  await page.getByLabel('标题').fill(title)
   await page.getByLabel('网页地址（必填）').fill('https://example.com/learning')
   await page.getByRole('button', { name: '保存到资料库' }).click()
   await expect(page).toHaveURL(/\/resources\/[0-9a-f-]{36}$/)

@@ -32,7 +32,7 @@ describe('resource editor', () => {
     renderWithRouter(<ResourceEditor resource={sample()} refreshed={vi.fn()} />)
     expect(screen.queryByRole('form')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '编辑资料' }))
-    change('标题（必填）', ` ${sample().title} `)
+    change('标题', ` ${sample().title} `)
     submit()
     expect(request).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: '保存资料修改' })).toBeDisabled()
@@ -41,7 +41,7 @@ describe('resource editor', () => {
     const pending = deferred()
     const request = vi.spyOn(api, 'request').mockReturnValue(pending.promise)
     const { refreshed } = open()
-    change('标题（必填）', ' 新标题 ')
+    change('标题', ' 新标题 ')
     change('来源名称（选填）', '')
     change('保存原因 / 简介（选填）', '')
     submit()
@@ -55,9 +55,21 @@ describe('resource editor', () => {
     expect(screen.getByRole('status')).toHaveTextContent('资料修改已保存')
     expect(refreshed).toHaveBeenCalledOnce()
   })
+  it('emptying the title sends an explicit null so the resource becomes untitled', async () => {
+    const request = vi
+      .spyOn(api, 'request')
+      .mockResolvedValue({ data: sample({ title: null, version: 2 }) })
+    open()
+    change('标题', '')
+    submit()
+    await screen.findByText('资料修改已保存。')
+    expect(request).toHaveBeenCalledExactlyOnceWith(`/api/v1/resources/${resourceId}`, {
+      method: 'PATCH',
+      body: { title: null, expected_version: 1 },
+    })
+  })
   it.each([
-    ['标题（必填）', ' ', '1～200'],
-    ['标题（必填）', '字'.repeat(201), '1～200'],
+    ['标题', '字'.repeat(201), '最多 200 字'],
     ['来源名称（选填）', '字'.repeat(121), '最多 120'],
     ['保存原因 / 简介（选填）', '字'.repeat(1001), '最多 1000'],
     ['网页地址（必填）', 'javascript:alert(1)', 'http 或 https'],
@@ -79,7 +91,7 @@ describe('resource editor', () => {
     open(sample({ source_type: 'PASTE', source_url: undefined, pasted_content: ' 旧原文\n ' }))
     expect(screen.getByLabelText('粘贴原文（必填）')).toHaveValue(' 旧原文\n ')
     const content = ' \n<script>bad()</script>\n '
-    change('标题（必填）', '🌱'.repeat(200))
+    change('标题', '🌱'.repeat(200))
     change('粘贴原文（必填）', content)
     submit()
     await screen.findByText('资料修改已保存。')
@@ -105,7 +117,7 @@ describe('resource editor', () => {
     expect(document.querySelector('input[type=file]')).toBeNull()
     expect(screen.queryByLabelText('网页地址（必填）')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('粘贴原文（必填）')).not.toBeInTheDocument()
-    change('标题（必填）', '文件标题')
+    change('标题', '文件标题')
     submit()
     await screen.findByText('资料修改已保存。')
     expect(request.mock.calls[0][1]?.body).toEqual({ title: '文件标题', expected_version: 1 })
@@ -148,10 +160,10 @@ describe('resource editor', () => {
         })
         .mockResolvedValue({ data: sample({ version: 4 }) })
       open()
-      change('标题（必填）', '本页草稿')
+      change('标题', '本页草稿')
       submit()
       await screen.findByText(/操作结果需要核对/)
-      expect(screen.getByLabelText('标题（必填）')).toHaveValue('本页草稿')
+      expect(screen.getByLabelText('标题')).toHaveValue('本页草稿')
       submit()
       expect(request).toHaveBeenCalledTimes(1)
       fireEvent.click(screen.getByRole('button', { name: '保留草稿，读取最新资料' }))
@@ -162,7 +174,7 @@ describe('resource editor', () => {
       expect(await screen.findByRole('region', { name: '最新已保存资料' })).toHaveTextContent(
         '另一处新来源',
       )
-      expect(screen.getByLabelText('标题（必填）')).toHaveValue('本页草稿')
+      expect(screen.getByLabelText('标题')).toHaveValue('本页草稿')
       expect(screen.getByRole('button', { name: '保存资料修改' })).toBeDisabled()
       fireEvent.click(
         screen.getByRole('checkbox', { name: '我已核对最新资料，确认仍需保存本页修改' }),
@@ -182,7 +194,7 @@ describe('resource editor', () => {
       .mockRejectedValueOnce(new ApiError('TOPIC_NOT_FOUND', 404))
       .mockResolvedValue({ data: sample({ version: 2 }) })
     open()
-    change('标题（必填）', '保留草稿')
+    change('标题', '保留草稿')
     submit()
     await screen.findByText('这个主题已不存在，请重新选择。')
     expect(screen.queryByText(/操作结果需要核对/)).not.toBeInTheDocument()
@@ -193,9 +205,9 @@ describe('resource editor', () => {
     const pending = deferred()
     const request = vi.spyOn(api, 'request').mockReturnValue(pending.promise)
     const { rerender, unmount, refreshed } = open()
-    change('标题（必填）', '保留修改')
+    change('标题', '保留修改')
     rerender(<ResourceEditor resource={undefined} refreshed={refreshed} />)
-    expect(screen.getByLabelText('标题（必填）')).toHaveValue('保留修改')
+    expect(screen.getByLabelText('标题')).toHaveValue('保留修改')
     submit()
     expect(request).not.toHaveBeenCalled()
     rerender(<ResourceEditor resource={sample()} refreshed={refreshed} />)
@@ -207,10 +219,10 @@ describe('resource editor', () => {
   it('asks before discarding unsaved edits', () => {
     const storage = vi.spyOn(Storage.prototype, 'setItem')
     open()
-    change('标题（必填）', '本页草稿')
+    change('标题', '本页草稿')
     fireEvent.click(screen.getByRole('button', { name: '取消编辑' }))
     fireEvent.click(screen.getByRole('button', { name: '继续编辑' }))
-    expect(screen.getByLabelText('标题（必填）')).toHaveValue('本页草稿')
+    expect(screen.getByLabelText('标题')).toHaveValue('本页草稿')
     fireEvent.click(screen.getByRole('button', { name: '取消编辑' }))
     fireEvent.click(screen.getByRole('button', { name: '确认放弃修改' }))
     expect(screen.queryByRole('form')).not.toBeInTheDocument()
@@ -233,7 +245,7 @@ describe('resource editor', () => {
       target: { value: '不能丢失的心得草稿' },
     })
     fireEvent.click(screen.getByRole('button', { name: '编辑资料' }))
-    change('标题（必填）', '新的资料标题')
+    change('标题', '新的资料标题')
     submit()
     await screen.findByRole('heading', { name: '新的资料标题' })
     expect(within(screen.getByRole('form', { name: '心得编辑' })).getByRole('textbox')).toHaveValue(
