@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-032"
-status = "IN_ACCEPTANCE"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "本任务放宽已批准的公共契约：为 `ResourcePatch` 新增 `tag_ids`（整组替换语义），同时改动 openapi-v1.json 与《API与数据契约基线》的对象定义、操作清单、错误码与版本规则叙述。属「架构/公共 API 契约」与「跨模块」（resources 写入路径首次批量写 taxonomy 的 resource_tags 关联）两项 L3 判入条件。另有一处关键数据语义决定：标签集合实际变化时资料 version 必须 +1，而 tag 关联不在 resource 行上、不会被 SQLAlchemy 自动标脏，实现若遗漏会让乐观并发在标签维度失效（前端拿到过期 version）。无数据库 schema 变更、无迁移。据此判 L3，不因「不加迁移」降级。"
 risk_flags = ["public-api", "major-cross-module", "critical-data", "business", "tests"]
@@ -232,8 +232,57 @@ checks = []
   >
   > **PASS**（针对新候选 `8115bca`；含上述三项已明确处置的非阻断记账项，不等于零问题）。
 
-- Acceptance：**待执行**，在 Review 之后，由独立于实现者与 Reviewer 的第二个只读实例核对 14 条完成条件与跨模块证据。
-- 最终状态/风险/用户操作：status=**IN_ACCEPTANCE**。实现、自动检查与两轮独立只读 Review 已完成（结论 PASS，候选 `8115bca`），L3 执行链仅剩独立 Acceptance。分支 `agent/coordinator/TASK-032-tag-postfill` 目前**仅在本地**，未推送、未开 PR。
+- Acceptance（L3 独立只读 Integration/验收，候选 `8115bca`，结论 **PASS**）：身份为第三个 `.claude/agents/reviewer.md` 实例（`tools: Read, Grep, Glob`，无 Bash、无写工具），无上下文继承，独立于实现者（主 Agent）与 Reviewer。报告原文：
+
+  > ## 只读证明与核对对象
+  >
+  > - 我的工具白名单只有 `Read` / `Grep` / `Glob`；无 `Write`/`Edit`/`Bash`。本次未创建、修改、提交任何文件。
+  > - 基线 `e2ab283` → **冻结候选 `8115bca`**。变更面读自导出的 `TASK-032-candidate-diff.patch`（12 文件）；**代码/契约/测试的事实核对我直接 Read 工作区文件**（= 候选内容，`fcb3266` 只动文档），不依赖该 patch 的可信度。
+  > - 未复跑任何检查（L3 Acceptance 不默认重跑；我也无 Bash）。机械数字采信记录，但已核对其内部自洽性。
+  >
+  > ## 14 条完成条件逐条核对
+  >
+  > | # | 证据位置 | 结论 |
+  > | --- | --- | --- |
+  > | 1 省略 tag_ids 不动标签 | `resource_store.py:195,199`（`exclude_unset` + `pop(...,None)`，`tag_ids is None` 时不进 `_replace_tags`）；`test_resource_updates.py` 新测「只改标题」步：`tag_names==["长期","面试"] and version==4` | 满足（断言经响应投影而非直接查 `resource_tags` 行；投影由 join 派生，等价） |
+  > | 2 子集/超集/异集整组替换、version 恰好 +1 | 同测试链：`[]→{入门,面试}` v1→2；`{入门,面试}→{面试,长期}` v2→3；`{长期,面试}→{入门}` v4→5；`{入门}→[]` v5→6，逐步钉死版本值 | 满足 |
+  > | 3 `[]` 清空、资料可读、行删除、Tag 保留 | `current["tags"]==[]`、`session.scalars(select(ResourceTag)).all()==[]`、`GET /tags total_items==3`、`GET path == current` | 满足（唯一的行级断言在此） |
+  > | 4 同集合（乱序）不加版本 | `unchanged.json()["data"] == current` 全对象比较（含 version/updated_at）；`resource_store.py:223` `current==wanted` 早返回 | 满足 |
+  > | 5 title + tag_ids 同事务、version 只 +1 | `together` 步：title 变更 + `tags==["入门"]` + `version==5`（从 4）；实现用 `no_autoflush` + 提前赋 `updated_at` 收敛为单次 UPDATE | 满足 |
+  > | 6 未知 tag → 404 且不写入 | `resource_store.py:199-206` 校验在赋值循环**之前**（`check_version`→源类型→`validate_taxonomy`→赋值）；测试用 `{title:"不能部分保存", tag_ids:[uuid4()]}` → 404 TAG_NOT_FOUND，末尾 `GET == before`（全响应等值，覆盖标题/主题/标签/版本） | 满足 |
+  > | 7 重复 / >20 / 显式 null → 422 不写入 | `contracts.py` `tag_ids: list[UUID] \| None = Field(max_length=20)` + `replacement_tags`（null 拒绝、去重）；测试三种形状均 422 VALIDATION_ERROR，末尾全响应等值；`test_invalid_patch_before_database` 另加 `None`/`"not-a-list"`/`["not-a-uuid"]` 触库前拒绝 | 满足 |
+  > | 8 版本不匹配 → 409，标签不变 | `update()` 第 194 行 `check_version` 先于一切；测试 `{expected_version:1, tag_ids:[]}` → 409 且 `details.current_version==2`（`error()` 助手强断言 code/details/request_id），随后全响应等值 | 满足 |
+  > | 9 既有 `PUT/DELETE .../tags/{tid}` 一条不改 | base..candidate 中后端测试仅 `test_resource_updates.py` 一个文件；幂等端点测试在 `backend/tests/test_taxonomy.py:239-263,333-340,393-408`，**未出现在 diff** | 满足 |
+  > | 10 前端改标签保存 + 冲突草稿保留 | `ResourceEditor.test.tsx:144`（PATCH body `{tag_ids:[tagId], expected_version:1}`，且回到原集合时保存按钮 disabled）、`:166`（409→重读→草稿仍「标签：未添加」、最新面板显示服务端新标签→最终 body `{tag_ids:[], expected_version:3}`）；e2e `resource-edit-pages.spec.ts` 新用例（真实 PUT 建关联→页面移除一个/勾选一个→`after.version===before.version+1`、按 id 读回被解绑 tag 仍存在、`pageerror` 为空） | 满足 |
+  > | 11 双份契约同步且互不矛盾 | openapi `ResourcePatch.tag_ids`（`type:array`→null 不合法、`maxItems:20`、`uniqueItems:true`、整组替换描述）；`x-error-codes` 增 `TAG_NOT_FOUND`；404 组件改名 `ResourceTopicOrTagNotFound`（我独立 grep：旧名在 openapi **0 命中**，新名定义+唯一 `$ref`，无悬空/孤儿）；中文契约 `:59/:164/:284/:556/:616` 与后端逐条对应（省略/`[]`/null-422/上限 20/去重/404 不写入/集合变化才 +1/必须带 expected_version）；`:506-507` 幂等端点段落未被改动 | 满足（后端实现、openapi、中文契约三方无矛盾） |
+  > | 12 全套检查全绿、数量只增不减 | 后端 497（基线 493 = +2 新测试 +2 参数，与 diff 中恰好 2 个新 `def test_` 和参数表 1→3 自洽）；vitest 339（基线 337，我 grep `ResourceEditor.test.tsx` 恰 11 个 `it` 中 2 个为新增，27→29 自洽）；e2e 37（基线 36，恰 1 个新 `test`）。三项均只增不减 | 满足（见 O3） |
+  > | 13 `check_task --candidate 8115bca` CHECKS PASS + 指纹 | EVIDENCE 记录 exit=0、base/input 全 SHA、files=12、profiles=backend,contracts,frontend、`product_fingerprint=216b5544…`（并明确旧指纹 `25c9f9dd…` 只代表 `87badda`） | 满足 |
+  > | 14 L3 执行链 | Reviewer 两轮报告**原文**均在 EVIDENCE 区，含只读证明（`.claude/agents/reviewer.md`，仅 Read/Grep/Glob、无 Bash）、独立于实现者的声明、第一轮 CHANGES_REQUIRED + 第二轮针对 `8115bca` 的 PASS 及显式继承范围；Acceptance = 本报告（第三个只读实例） | 满足（待主 Agent 原文写回后闭合） |
+  >
+  > ## 跨模块 / 治理核对
+  >
+  > - **路径**：12 个改动文件全部在 `allowed_paths` 内。禁止清单 `ResourceTagEditor.tsx`、`ClassificationPicker.tsx`、`ResourceForm.tsx`、`api/resources.py`、`application/resources.py`、`styles.css`、迁移目录、`test_resources.py`、`test_taxonomy.py` 在 base..candidate diff 中**零出现**。
+  > - **证据写回纪律（`fcb3266`）**：我把候选内 TASK-032 记录全文（patch 中的 143 行）与工作区当前文件逐段比对——toml 仅 `status` `IN_REVIEW→IN_ACCEPTANCE`；`risk/risk_reason/risk_flags/base/allowed_paths/checks` 与「需求与范围/目标/非目标/完成条件/上下文包/实现与测试」**逐字未变**；新增约 100 行全部落在 `<!-- EVIDENCE:BEGIN/END -->` 内。索引行 `IN_ACCEPTANCE` 与 toml 一致。`4fb84ab` 的同类核对由 Reviewer 完成（5 行全在标记区内），我采信。
+  > - **两处自改授权面**：② 目标 4 改用只读 `ClassificationBrowser` 属**收窄**（`ClassificationPicker.tsx`/`ClassificationBrowser.tsx` 均未改动，已核实不在 diff）；① `allowed_paths` 用 `test_resource_updates.py` 换 `test_resources.py` 是**等价替换而非扩权**（路径数不变，`test_resources.py` 实际一字未动），发生在冻结之前且已披露。二者不违反 §6，但属唯一写入者自行调整授权面，请用户合并时知悉。
+  > - **前端跨模块闭环**（我独立核对，非采信）：`ResourceEditor.tsx:159-176` 对 404 `TAG_NOT_FOUND` 不进入 recovery、保留草稿、经 `api.ts:344`+`client.ts:75` 显示「这个标签已不存在，请重新选择。」，与既有 `TOPIC_NOT_FOUND` 行为一致；openapi 新增的 tag 示例 message「所选标签不存在。」与 `api/resources.py:27` 真实文案一致。
+  > - **非阻断遗留项**：跨路径并发覆盖（幂等端点不推进资料 `version`）已如实写入契约 4.7 并在 EVIDENCE 登记为「已知取舍、不是已消除的风险」。按《风险分级与检查规则》实际风险判据：触发需本机单用户在两个入口交叉操作，影响是一次单标签增删被覆盖、重新增删即恢复，修复成本需改动本任务明示的非目标与既有幂等语义 → **可记录后继续，不阻断**。
+  >
+  > ## Findings
+  >
+  > **No blocking findings.** 非阻断观察（无需重新冻结候选）：
+  >
+  > - **O1** 条件 1 的「关联行未增删」是经响应投影断言，行级 `select(ResourceTag)` 断言只出现在清空场景。等价，不建议补测。
+  > - **O2** 严格的「非空真子集」替换（只删不增且剩余非空）无直接单测；空集真子集、混合增删、纯清空均已覆盖，且三者共用同一套集合运算（`current-wanted` / `wanted-current`），无实际风险。
+  > - **O3** `mypy .`（64 files）的证据绑定 `87badda`，候选 `8115bca` 的 check_task 跑的是 `mypy src tests`（60 files）。因 `87badda..8115bca` **无任何 Python 改动**（增量仅 e2e `.ts`、两份契约、任务记录/索引），前者仍绑定候选的 Python 内容，不属「拿旧 SHA 充数」；仅供知悉。
+  > - **O4** `frontend/src/features/resources/fixtures.ts` 在 `allowed_paths` 内但未改动（允许非要求），无影响。
+  >
+  > ## 剩余风险与结论
+  >
+  > 剩余风险低：仅余已在公共契约中如实记录的跨路径并发覆盖，以及本任务明示的非目标（不支持就地新建标签、标签区 20/页分页、两处入口分列）。不阻断交付。
+  >
+  > **结论：PASS**（针对候选 `8115bca`；含上述 4 项已处置的非阻断观察，不等于零问题）。合并仍须由用户本人执行。
+
+- 最终状态/风险/用户操作：status=**ACCEPTED**。L3 执行链已完整闭合：实现 + 自动检查（`check_task --candidate 8115bca` CHECKS PASS）+ 独立只读 Reviewer 两轮（CHANGES_REQUIRED → 修订 → 针对 `8115bca` 的 PASS）+ 独立只读 Acceptance（PASS，逐条核对 14 条完成条件与跨模块证据）。剩余风险低，无阻断项。分支 `agent/coordinator/TASK-032-tag-postfill` 目前**仅在本地**，未推送、未开 PR——**需要用户操作**：由用户本人决定并执行推送/开 PR/合并，Agent 不合并、不向 main 推送。合并后本记录状态改 MERGED 的登记按既有做法并入下一个已授权任务的控制面提交。
 - 非阻断遗留项：① **跨路径并发覆盖**——幂等关联端点 `PUT/DELETE .../tags/{tid}` 不推进资料 `version`，其后一次持旧 `version` 的 `tag_ids` 整组替换会覆盖那次单个增删且不报 `409`；已如实写入契约 4.7，本机单用户、重新增删即可恢复，按《风险分级与检查规则》判为可记录后继续。② 编辑页不支持就地新建标签（调研 B 项）、标签区为 20/页的分页浏览、两条标签入口分处「修改资料」与「资料详情」两页——均为本任务明确的非目标。
 - 日期与决定日志：2026-09-05 用户在 PR #36 合并后授权本任务，范围定为 A1+A2；同日主 Agent 在基线 `e2ab283` 亲自复核 6 项现状事实后登记为 L3（放宽公共契约 + 跨模块 + 版本语义决定），并入 TASK-031 的 MERGED 状态收尾。
 - 2026-09-05 `risk_flags` 更正：原写 `["contract", "public-api", "cross-module", ...]`，其中 `contract`/`cross-module` 不在 `docs/governance/risk-policy.json` 的合法取值内（check_task 报 `missing or unknown risk flags`），按策略文件改为 `["public-api", "major-cross-module", "critical-data", "business", "tests"]`。等级仍为 L3，理由未变；`critical-data` 对应 risk_reason 里已写明的乐观并发/版本语义影响。
