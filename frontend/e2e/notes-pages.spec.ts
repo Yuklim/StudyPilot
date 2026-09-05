@@ -303,3 +303,61 @@ test('deleting a resource cascades only its own notes and leaves standalone note
   expect((await call(page, '/notes')).body.page.total_items).toBe(1)
   expect((await call(page, `/resources/${id}/notes`)).status).toBe(404)
 })
+
+test('standalone note attaches to a resource and detaches back through the real UI', async ({
+  page,
+}) => {
+  const title = '随笔资料 · 后贴往返'
+  const id = await createResource(page, title)
+  // Remove any standalone notes left by earlier tests so this test is self-contained.
+  await page.goto('/notes')
+  const leftover = (await call(page, '/notes')).body.data
+  for (const note of leftover)
+    expect((await call(page, `/notes/${note.id}`, 'DELETE', undefined, note.version)).status).toBe(
+      204,
+    )
+  await page.reload()
+  await expect(page.getByText('还没有心得，写下一句话就可以开始。')).toBeVisible()
+  // Write a standalone note on the top-level 我的心得 page.
+  const editor = page.getByRole('form', { name: '心得编辑' })
+  const standaloneNote = '先独立记下，再后贴到这份资料'
+  await editor.getByRole('textbox').fill(standaloneNote)
+  await editor.getByRole('button', { name: '保存心得', exact: true }).click()
+  await expect(editor.getByRole('status')).toContainText('心得已保存')
+  const list = page.getByRole('list', { name: '心得列表' })
+  await expect(list).toContainText(standaloneNote)
+
+  // Attach it to the searched resource from the standalone list.
+  await list.getByRole('button', { name: '后贴到资料', exact: true }).click()
+  await page.getByPlaceholder('输入标题搜索资料库').fill('后贴往返')
+  await page.getByRole('button', { name: '搜索资料', exact: true }).click()
+  await page.getByRole('button', { name: `后贴到《${title}》`, exact: true }).click()
+  const attached = editor.getByRole('status')
+  await expect(attached).toContainText('已后贴到资料')
+  const openLink = attached.getByRole('link', { name: `打开《${title}》查看` })
+  await expect(openLink).toHaveAttribute('href', `/resources/${id}`)
+  await expect(list).not.toContainText(standaloneNote)
+  expect((await call(page, '/notes')).body.page.total_items).toBe(0)
+
+  // Open the resource detail from the notice; the note now lives under the resource.
+  await openLink.click()
+  await expect(page).toHaveURL(new RegExp(`/resources/${id}$`))
+  const boundList = page.getByRole('list', { name: '心得列表' })
+  await expect(boundList).toContainText(standaloneNote)
+  expect((await call(page, `/resources/${id}/notes`)).body.page.total_items).toBe(1)
+
+  // Detach it back to standalone from the bound list, confirming the dialog.
+  page.once('dialog', (dialog) => void dialog.accept())
+  await boundList.getByRole('button', { name: '解除绑定', exact: true }).click()
+  const boundEditor = page.getByRole('form', { name: '心得编辑' })
+  const detached = boundEditor.getByRole('status')
+  await expect(detached).toContainText('已解除为独立心得')
+  await expect(boundList).not.toContainText(standaloneNote)
+  expect((await call(page, `/resources/${id}/notes`)).body.page.total_items).toBe(0)
+
+  // Following the notice back to 我的心得, the note is standalone once more.
+  await detached.getByRole('link', { name: '去「我的心得」查看' }).click()
+  await expect(page).toHaveURL(/\/notes$/)
+  await expect(page.getByRole('list', { name: '心得列表' })).toContainText(standaloneNote)
+  expect((await call(page, '/notes')).body.page.total_items).toBe(1)
+})

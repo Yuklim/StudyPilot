@@ -1,6 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
 import { api, ApiError } from '../../api/client'
-import { cleanContent, deleteNote, getNote, listNotes, saveNote } from './api'
+import {
+  attachNote,
+  cleanContent,
+  deleteNote,
+  detachNote,
+  getNote,
+  listNotes,
+  saveNote,
+} from './api'
 import { note, notePage } from './fixtures'
 
 const resourceId = note().resource_id
@@ -152,5 +160,54 @@ describe('standalone note API (resource_id null)', () => {
     await expect(getNote(resourceId, standalone.id)).rejects.toMatchObject({
       code: 'INVALID_RESPONSE',
     })
+  })
+})
+
+describe('note scope moves (attach/detach)', () => {
+  // Matches the bound fixture's resource id (note().resource_id at runtime).
+  const target = '00000000-0000-4000-8000-000000000001'
+  const standalone = note({ resource_id: null, id: '018f1f58-4eb2-4a0d-a716-fb81b1960100' })
+
+  it('attaches a standalone note to a resource with a versioned POST', async () => {
+    const request = vi.spyOn(api, 'request')
+    request.mockResolvedValueOnce({ data: { ...standalone, resource_id: target, version: 2 } })
+    await attachNote(standalone, target)
+    expect(request).toHaveBeenLastCalledWith(`/api/v1/notes/${standalone.id}/attach`, {
+      method: 'POST',
+      body: { resource_id: target, expected_version: 1 },
+    })
+  })
+
+  it('detaches a bound note back to standalone with a versioned POST', async () => {
+    const bound = note({ id: standalone.id })
+    const request = vi.spyOn(api, 'request')
+    request.mockResolvedValueOnce({ data: { ...bound, resource_id: null, version: 2 } })
+    await detachNote(bound)
+    expect(request).toHaveBeenLastCalledWith(
+      `/api/v1/resources/${bound.resource_id}/notes/${bound.id}/detach`,
+      { method: 'POST', body: { expected_version: 1 } },
+    )
+  })
+
+  it('rejects malformed move responses and out-of-scope inputs before sending', async () => {
+    const request = vi.spyOn(api, 'request')
+    // attach response still standalone or stale version -> invalid
+    request.mockResolvedValue({ data: standalone })
+    await expect(attachNote(standalone, target)).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    })
+    // attach response changed the content -> invalid
+    request.mockResolvedValue({
+      data: { ...standalone, resource_id: target, version: 2, content: '别的字' },
+    })
+    await expect(attachNote(standalone, target)).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    })
+    // detach response still bound or content changed -> invalid
+    request.mockResolvedValue({ data: note({ version: 2 }) })
+    await expect(detachNote(note())).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    // must not fire for an already-bound note (attach) or a standalone note (detach)
+    await expect(attachNote(note(), target)).rejects.toMatchObject({ code: 'INVALID_REQUEST' })
+    await expect(detachNote(standalone)).rejects.toMatchObject({ code: 'INVALID_REQUEST' })
   })
 })

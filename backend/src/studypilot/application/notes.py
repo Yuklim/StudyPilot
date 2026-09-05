@@ -8,7 +8,14 @@ from sqlalchemy.orm.exc import StaleDataError
 
 from studypilot.infrastructure.database import create_database_engine, create_session_factory
 from studypilot.infrastructure.database.note_store import NoteStore
-from studypilot.modules.notes.contracts import NoteCreate, NoteError, NotePatch, NoteQuery
+from studypilot.modules.notes.contracts import (
+    NoteAttach,
+    NoteCreate,
+    NoteDetach,
+    NoteError,
+    NotePatch,
+    NoteQuery,
+)
 
 
 def transaction[T](operation: Callable[[NoteStore], T]) -> T:
@@ -98,3 +105,30 @@ def update_standalone(note_id: UUID, command: NotePatch) -> dict[str, Any]:
 
 def delete_standalone(note_id: UUID, expected: int) -> None:
     mutate_standalone(note_id, expected, lambda store: store.delete_standalone(note_id, expected))
+
+
+def attach(note_id: UUID, command: NoteAttach) -> dict[str, Any]:
+    """Bind a standalone note to ``command.resource_id``; classification matches
+    ``mutate_standalone`` — a concurrent attach that already moved the note makes
+    the fresh read raise NOTE_NOT_FOUND (404), never a replay."""
+    return {
+        "data": mutate_standalone(
+            note_id,
+            command.expected_version,
+            lambda store: store.attach(note_id, command.resource_id, command.expected_version),
+        )
+    }
+
+
+def detach(resource_id: UUID, note_id: UUID, command: NoteDetach) -> dict[str, Any]:
+    """Release a note bound to ``resource_id`` back to standalone; classification
+    matches ``mutate`` — a concurrent detach makes the fresh read raise
+    NOTE_NOT_FOUND (404), never a replay."""
+    return {
+        "data": mutate(
+            resource_id,
+            note_id,
+            command.expected_version,
+            lambda store: store.detach(resource_id, note_id, command.expected_version),
+        )
+    }

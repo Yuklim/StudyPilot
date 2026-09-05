@@ -52,13 +52,16 @@ function uuid(value: unknown): string | null {
   if (value === null) return null
   return typeof value === 'string' && isResourceId(value) ? value : invalid()
 }
-function note(value: unknown, resourceId: string | null): Note {
+function noteAt(value: unknown, expectedResourceId: string | null): Note {
+  // Expected scope enforces the returned note's binding exactly: standalone
+  // (null) or a specific resource id. attach/detach use it against the target
+  // binding after a scope move, while list/get/save pass the request scope.
   const row = object(value)
   const rid = uuid(row.resource_id)
   if (
     typeof row.id !== 'string' ||
     !isResourceId(row.id) ||
-    (resourceId === null ? rid !== null : rid !== resourceId) ||
+    rid !== expectedResourceId ||
     typeof row.content !== 'string' ||
     !cleanContent(row.content) ||
     [...row.content].length > 50000
@@ -90,7 +93,7 @@ export async function listNotes(resourceId: string | null, number = 1): Promise<
   const page = object(envelope.page)
   if (!Array.isArray(envelope.data) || typeof page.has_more !== 'boolean' || page.number !== number)
     return invalid()
-  const data = envelope.data.map((row) => note(row, resourceId))
+  const data = envelope.data.map((row) => noteAt(row, resourceId))
   const size = integer(page.size, 1, 100)
   const total = integer(page.total_items)
   if (
@@ -111,7 +114,7 @@ export async function listNotes(resourceId: string | null, number = 1): Promise<
   }
 }
 export async function getNote(resourceId: string | null, noteId: string): Promise<Note> {
-  const result = note(object(await api.request(path(resourceId, noteId))).data, resourceId)
+  const result = noteAt(object(await api.request(path(resourceId, noteId))).data, resourceId)
   return result.id === noteId ? result : invalid()
 }
 export async function saveNote(
@@ -129,7 +132,7 @@ export async function saveNote(
         previous.version < 1))
   )
     throw new ApiError('INVALID_REQUEST')
-  const result = note(
+  const result = noteAt(
     object(
       await api.request(path(resourceId, previous?.id), {
         method: previous ? 'PATCH' : 'POST',
@@ -159,6 +162,61 @@ export async function deleteNote(resourceId: string | null, previous: Note): Pro
     ifMatchVersion: previous.version,
   })
   if (result !== undefined) return invalid()
+}
+/** Move-result guard shared by attach/detach: the scope changed, content and
+ * identity did not, and the binding write always bumps the version by one. */
+function movedNote(value: unknown, expectedResourceId: string | null, previous: Note): Note {
+  const result = noteAt(value, expectedResourceId)
+  if (
+    result.id !== previous.id ||
+    result.content !== previous.content ||
+    result.created_at !== previous.created_at ||
+    result.version !== previous.version + 1
+  )
+    return invalid()
+  return result
+}
+export async function attachNote(note: Note, resourceId: string): Promise<Note> {
+  if (
+    note.resource_id !== null ||
+    !isResourceId(note.id) ||
+    !isResourceId(resourceId) ||
+    !Number.isSafeInteger(note.version) ||
+    note.version < 1
+  )
+    throw new ApiError('INVALID_REQUEST')
+  const result = movedNote(
+    object(
+      await api.request(`/api/v1/notes/${note.id}/attach`, {
+        method: 'POST',
+        body: { resource_id: resourceId, expected_version: note.version },
+      }),
+    ).data,
+    resourceId,
+    note,
+  )
+  return result
+}
+export async function detachNote(note: Note): Promise<Note> {
+  if (
+    note.resource_id === null ||
+    !isResourceId(note.resource_id) ||
+    !isResourceId(note.id) ||
+    !Number.isSafeInteger(note.version) ||
+    note.version < 1
+  )
+    throw new ApiError('INVALID_REQUEST')
+  const result = movedNote(
+    object(
+      await api.request(`/api/v1/resources/${note.resource_id}/notes/${note.id}/detach`, {
+        method: 'POST',
+        body: { expected_version: note.version },
+      }),
+    ).data,
+    null,
+    note,
+  )
+  return result
 }
 export function noteError(error: unknown): string {
   return error instanceof ApiError ? error.message : '操作未能完成，请检查本机连接。'

@@ -49,7 +49,7 @@
 
 本文件第 5、8、10 节及 `openapi-v1.json` 的标准 paths/schemas 描述**完整 MVP 目标**，不是当前程序全部已可调用的能力清单。同一操作允许按本节明确的输入子集分阶段交付；TASK-009 当前运行时的可用性及未开放输入响应以本节为准，不能把完整目标中的 FILE 分支视为本阶段已承诺可用。最终字段、媒体类型、成功响应、安全及数据规则仍保留，不删减、不改名，不宣称完整 MVP 已完成。
 
-TASK-011/012 已完成分类后端与页面，TASK-013/014 已完成 FILE 后端和上传/下载页面，TASK-015/016 已完成旧学习记录后端与页面，TASK-017 已提供个人笔记后端。TASK-019 接入轻量心得页面：正文新增/回看/修改/确认删除，只自动显示保存时间；不向学习写接口提交虚构的开始时间、时长、进度或状态。旧历史与状态/归档入口收起保留。TASK-027 提供独立心得：`Note.resource_id` 按用户确认放宽为可空并新增顶层 `/api/v1/notes` 集合——独立心得(resource_id 为 null)可不先收藏资料直接记录/回看/修改/删除；绑定资料(resource_id 非空)的心得仍在资料详情。这是本节首次真实放宽标准 Note 契约与操作清单，随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-029 再次放宽标准资源契约：`title` 改为可空（0003 迁移），WEB/PASTE/FILE 创建均可省略或显式 null 标题，`updateResource` 显式 null 清除标题，资料按 title 排序时未命名(null)固定排在有标题之后；界面以「未命名资料」占位展示、不落库。同样随该任务测试、独立审查、验收通过并由用户合并后交付。
+TASK-011/012 已完成分类后端与页面，TASK-013/014 已完成 FILE 后端和上传/下载页面，TASK-015/016 已完成旧学习记录后端与页面，TASK-017 已提供个人笔记后端。TASK-019 接入轻量心得页面：正文新增/回看/修改/确认删除，只自动显示保存时间；不向学习写接口提交虚构的开始时间、时长、进度或状态。旧历史与状态/归档入口收起保留。TASK-027 提供独立心得：`Note.resource_id` 按用户确认放宽为可空并新增顶层 `/api/v1/notes` 集合——独立心得(resource_id 为 null)可不先收藏资料直接记录/回看/修改/删除；绑定资料(resource_id 非空)的心得仍在资料详情。这是本节首次真实放宽标准 Note 契约与操作清单，随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-029 再次放宽标准资源契约：`title` 改为可空（0003 迁移），WEB/PASTE/FILE 创建均可省略或显式 null 标题，`updateResource` 显式 null 清除标题，资料按 title 排序时未命名(null)固定排在有标题之后；界面以「未命名资料」占位展示、不落库。同样随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-030 提供心得后贴/解除：独立心得(resource_id 为 null)可在「我的心得」页经 `attachNote` 后贴绑定到某份可读资料；已绑定心得可在资料详情经 `detachNote` 解除回独立。绑定移动是专用版本化写（`Note.resource_id` 在专用路径上移动、version+1、content 不变、单事务、不回放），`NoteCreate`/`NotePatch` 请求体仍不得直接写 `resource_id`。同样随该任务测试、独立审查、验收通过并由用户合并后交付。
 
 | 当前可用操作 | 交付范围 |
 | --- | --- |
@@ -65,6 +65,7 @@ TASK-011/012 已完成分类后端与页面，TASK-013/014 已完成 FILE 后端
 | `listResourceStudyRecords` / `createResourceStudyRecord` / `listStudyRecords` | TASK-015：既定历史分页与学习记录/当前进度原子写入，遵守版本、状态矩阵、复习计划前置条件和时间规则；不开放复习计划/结果写操作 |
 | `listResourceNotes` / `createResourceNote` / `getResourceNote` / `updateResourceNote` / `deleteResourceNote` | TASK-017：既定个人笔记增删改查与稳定分页；严格正文、所属资料及版本保护，只写 Note，不改变资料、进度或原件，不提供全文搜索或回收站 |
 | `listStandaloneNotes` / `createStandaloneNote` / `getStandaloneNote` / `updateStandaloneNote` / `deleteStandaloneNote` | TASK-027：独立心得(resource_id 为 null)的增删改查与稳定分页；无资源可见性前置，版本/单事务/不回放/错误收敛同资源笔记 |
+| `attachNote` / `detachNote` | TASK-030：独立心得经 `attachNote` 后贴绑定到目标资料(resource_id null→该资料，目标需可读)、已绑定心得经 `detachNote` 解除回独立(该资料→null)；均版本化单事务写，成功后 version+1、content 不变、不回放，错误收敛同既有 note 写 |
 
 - TASK-009～012 对 multipart 的临时 `415 CONTENT_TYPE_UNSUPPORTED` 限制由 TASK-013 的实际文件实现解除；合法 FILE 表单按第 5/8 节处理，其他媒体类型仍拒绝。缺失令牌或非法来源仍优先按第 7 节返回对应 `403`，不读正文或操作文件/数据库。
 - JSON 请求的 FILE 不属于 WEB/PASTE JSON schema，仍为 `422 VALIDATION_ERROR`。已开放的 WEB/PASTE 校验、错误、事务和只读投影必须完整符合其契约，不能借分阶段交付降低这些要求。
@@ -287,12 +288,12 @@ PUT 添加与 DELETE 移除是幂等的，避免整组标签覆盖造成并发�
 | API 名称 | 类型/示例 | C/U | 必填/可空/默认/限制 | 敏感 | 所有者与不变量 |
 | --- | --- | --- | --- | --- | --- |
 | `id` | uuid | R | 必有 | 否 | notes |
-| `resource_id` | uuid / null | C(路径或顶层) | 绑定资料时必有且不可改；独立心得(顶层 `/notes`)为 null | 否 | notes |
+| `resource_id` | uuid / null | C(路径或顶层) | 绑定资料时必有且只能经 `attachNote`/`detachNote` 双向移动；独立心得(顶层 `/notes`)为 null | 否 | notes；专用版本化写移动绑定，`NoteCreate`/`NotePatch` 请求体不得直接写 `resource_id` |
 | `content` | string / `这里记录个人理解。` | C/U | 去首尾后 1～50,000；不空 | 是 | notes；只存个人笔记，不混入 AI 内容 |
 | `version` | int | R | 默认 1 | 否 | notes |
 | `created_at` / `updated_at` | instant | R | 自动 | 否 | notes |
 
-第一阶段笔记不进入资料统一搜索；删除笔记是直接删除。绑定资料(resource_id 非空)的笔记在资源整体删除时进入影响确认集合；独立心得(resource_id 为 null)不属于任何资源，不进入资源删除影响集合。独立心得经顶层 `/api/v1/notes` 新增/回看/编辑/删除。
+第一阶段笔记不进入资料统一搜索；删除笔记是直接删除。绑定资料(resource_id 非空)的笔记在资源整体删除时进入影响确认集合；独立心得(resource_id 为 null)不属于任何资源，不进入资源删除影响集合。独立心得经顶层 `/api/v1/notes` 新增/回看/编辑/删除，也可经 `attachNote` 后贴绑定到资料（此后在资料笔记集合中、纳入该资料删除影响集合）；已绑定心得经 `detachNote` 解除回独立（此后回到顶层集合、退出资源删除影响集合）。
 
 ### 4.9 StudyRecord（learning 所有，追加后不可改）
 
@@ -514,6 +515,8 @@ OpenAPI 中 `ReviewRecord` 用条件 schema 固化上述规则：`NEEDS_REVIEW` 
 | GET `/api/v1/notes/{note_id}` | 独立心得详情 / notes | ID；200 Note | 200/403/404/500；只读 |
 | PATCH `/api/v1/notes/{note_id}` | 修改独立心得 / notes | `NotePatch`；200 Note | 200/400/403/404/409/415/422/428/500；写入 |
 | DELETE `/api/v1/notes/{note_id}` | 删除独立心得 / notes | If-Match；204 | 204/403/404/409/428/500；删除 |
+| POST `/api/v1/notes/{note_id}/attach` | 后贴心得绑定 / notes | `NoteAttach`；200 Note | 200/400/403/404/409/415/422/428/500；版本化写，resource_id 变目标资料、version+1、content 不变 |
+| POST `/resources/{resource_id}/notes/{note_id}/detach` | 解除心得绑定 / notes | `NoteDetach`；200 Note | 200/400/403/404/409/415/422/428/500；版本化写，resource_id 变 null、version+1、content 不变 |
 | GET `/resources/{resource_id}/study-records` | 单资料历史 / learning | 分页/时间筛选；200 `StudyRecordPage` | 200/403/404/422/500；只读 |
 | POST `/resources/{resource_id}/study-records` | 记录学习并更新当前值 / learning | `StudyRecordCreate`；201 `StudyRecordResult` | 201/400/403/404/409/415/422/500；事务写入 |
 | GET `/study-records` | 全局近期活动 / learning | 分页/筛选；200 页面 | 200/403/422/500；只读 |

@@ -2,8 +2,10 @@
 
 Two scopes share one notes table: attached notes (resource_id NOT NULL,
 visible only under their resource) and standalone notes (resource_id NULL,
-managed through the top-level /api/v1/notes collection). A note never moves
-between scopes in this task.
+managed through the top-level /api/v1/notes collection). A note moves between
+scopes only through the dedicated versioned operations: attach (standalone ->
+a readable resource) and detach (a resource -> standalone); content writes
+never change the binding.
 """
 
 from typing import Any
@@ -117,6 +119,35 @@ class NoteStore:
 
     def page_standalone(self, query: NoteQuery) -> dict[str, Any]:
         return self._page(Note.resource_id.is_(None), query)
+
+    # -- scope-move operations (versioned writes; content unchanged) --------
+
+    def attach(self, note_id: UUID, resource_id: UUID, expected: int) -> dict[str, Any]:
+        """Bind a currently standalone note to a readable resource.
+
+        Both sides are guarded: the target must be readable (WEB/PASTE, or a
+        FILE with a READY original) and the note must still be standalone,
+        otherwise NOTE_NOT_FOUND. Only the binding changes; the ORM bumps
+        version and updated_at because resource_id actually changed.
+        """
+        self.require_resource(resource_id)
+        note = self.standalone(note_id)
+        self.check_version(note, expected)
+        note.resource_id = resource_id
+        self.session.flush()
+        return project(note)
+
+    def detach(self, resource_id: UUID, note_id: UUID, expected: int) -> dict[str, Any]:
+        """Release a note bound to ``resource_id`` back to standalone.
+
+        The note must still be bound to that exact resource, otherwise
+        NOTE_NOT_FOUND. Only the binding changes; version and updated_at bump.
+        """
+        note = self.find(resource_id, note_id)
+        self.check_version(note, expected)
+        note.resource_id = None
+        self.session.flush()
+        return project(note)
 
     # -- shared helpers -------------------------------------------------------
 

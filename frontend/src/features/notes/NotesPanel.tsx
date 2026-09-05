@@ -1,11 +1,15 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 
 import { ApiError } from '../../api/client'
-import { displayTime } from '../resources/api'
+import { displayTime, type Resource } from '../resources/api'
+import { resourceTitle } from '../resources/resourceTitle'
 import { useResourceQuery } from '../resources/useResourceQuery'
 import {
+  attachNote,
   cleanContent,
   deleteNote,
+  detachNote,
   getNote,
   listNotes,
   needsRecovery,
@@ -13,6 +17,7 @@ import {
   saveNote,
   type Note,
 } from './api'
+import { ResourceAttachPicker } from './ResourceAttachPicker'
 
 export function NotesPanel({
   resourceId,
@@ -30,8 +35,9 @@ export function NotesPanel({
   const [page, setPage] = useState(1)
   const [revision, setRevision] = useState(0)
   const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
+  const [notice, setNotice] = useState<ReactNode>('')
   const [pending, setPending] = useState(false)
+  const [attachFor, setAttachFor] = useState<string | null>(null)
   const [recovery, setRecovery] = useState<{ verified: boolean; missing: boolean } | null>(null)
   const [confirmed, setConfirmed] = useState(false)
   const [checkedNotes, setCheckedNotes] = useState<Note[]>([])
@@ -63,6 +69,7 @@ export function NotesPanel({
     setRecovery(null)
     setConfirmed(false)
     setError('')
+    setAttachFor(null)
   }
   function finish() {
     busy.current = false
@@ -88,6 +95,70 @@ export function NotesPanel({
     } finally {
       finish()
     }
+  }
+  async function attach(row: Note, resource: Resource) {
+    if (busy.current || !available || !discardAllowed()) return
+    busy.current = true
+    setPending(true)
+    setAttachFor(null)
+    setNotice('')
+    setError('')
+    try {
+      await attachNote(row, resource.id)
+      if (!alive.current) return
+      setRevision((value) => value + 1)
+      setNotice(
+        <>
+          已后贴到资料。
+          <Link className="text-link" to={`/resources/${resource.id}`}>
+            打开《{resourceTitle(resource)}》查看
+          </Link>
+        </>,
+      )
+    } catch (cause) {
+      if (!alive.current) return
+      setError(`${noteError(cause)} 该心得状态可能已变化，列表已刷新，请核对后再试。`)
+      setRevision((value) => value + 1)
+    } finally {
+      finish()
+    }
+  }
+  async function detach(row: Note) {
+    if (busy.current || !available || !discardAllowed()) return
+    if (!window.confirm('解除后这条心得回到「我的心得」，不再挂在这份资料下。确定解除吗？')) return
+    busy.current = true
+    setPending(true)
+    setNotice('')
+    setError('')
+    try {
+      await detachNote(row)
+      if (!alive.current) return
+      setRevision((value) => value + 1)
+      setNotice(
+        <>
+          已解除为独立心得。
+          <Link className="text-link" to="/notes">
+            去「我的心得」查看
+          </Link>
+        </>,
+      )
+    } catch (cause) {
+      if (!alive.current) return
+      setError(`${noteError(cause)} 该心得状态可能已变化，列表已刷新，请核对后再试。`)
+      setRevision((value) => value + 1)
+    } finally {
+      finish()
+    }
+  }
+  function toggleAttach(row: Note) {
+    if (busy.current || !available || !discardAllowed()) return
+    if (attachFor === row.id) {
+      setAttachFor(null)
+      return
+    }
+    setAttachFor(row.id)
+    setNotice('')
+    setError('')
   }
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -353,6 +424,15 @@ export function NotesPanel({
                   )}
                 </p>
                 <div className="record-actions">
+                  {standalone && (
+                    <button
+                      className="journal-button"
+                      disabled={pending}
+                      onClick={() => toggleAttach(row)}
+                    >
+                      {attachFor === row.id ? '收起资料搜索' : '后贴到资料'}
+                    </button>
+                  )}
                   <button
                     className="journal-button"
                     disabled={pending}
@@ -367,7 +447,22 @@ export function NotesPanel({
                   >
                     删除
                   </button>
+                  {!standalone && (
+                    <button
+                      className="journal-button"
+                      disabled={pending}
+                      onClick={() => void detach(row)}
+                    >
+                      解除绑定
+                    </button>
+                  )}
                 </div>
+                {standalone && attachFor === row.id && (
+                  <ResourceAttachPicker
+                    disabled={pending}
+                    onPick={(resource) => void attach(row, resource)}
+                  />
+                )}
               </li>
             ))}
           </ol>

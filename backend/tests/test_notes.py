@@ -18,7 +18,7 @@ from support import RuntimePaths, resource
 from studypilot.infrastructure.database.models import LearningProgress, Note, OriginalFile
 from studypilot.infrastructure.database.note_store import NoteStore
 from studypilot.main import create_app
-from studypilot.modules.notes.contracts import NoteCreate, NotePatch
+from studypilot.modules.notes.contracts import NoteAttach, NoteCreate, NoteDetach, NotePatch
 
 CONTEXT = {"sec-fetch-site": "same-origin", "sec-fetch-mode": "cors", "sec-fetch-dest": "empty"}
 PRIVATE = "private synthetic note"
@@ -514,7 +514,12 @@ def test_missing_parents_ids_and_contract_shapes(
         (authorized.get(path(item)).json(), "NotePage"),
     ]:
         assert set(value) == set(schemas[schema]["properties"]) == set(schemas[schema]["required"])
-    models: tuple[type[NoteCreate], ...] = (NoteCreate, NotePatch)
+    models: tuple[type[NoteCreate], type[NotePatch], type[NoteAttach], type[NoteDetach]] = (
+        NoteCreate,
+        NotePatch,
+        NoteAttach,
+        NoteDetach,
+    )
     for model in models:
         schema = schemas[model.__name__]
         assert set(model.model_fields) == set(schema["properties"])
@@ -527,6 +532,8 @@ def test_missing_parents_ids_and_contract_shapes(
         "getResourceNote",
         "updateResourceNote",
         "deleteResourceNote",
+        "attachNote",
+        "detachNote",
     } <= set(document["x-delivery-profile"]["available_operations"])
 
 
@@ -640,3 +647,234 @@ def test_standalone_content_validation_and_missing_ids(
     error(authorized.get(standalone_path({"id": str(uuid4())})), 404, "NOTE_NOT_FOUND")
     # Malformed note id is 404 too.
     error(authorized.get("/api/v1/notes/not-a-uuid"), 404, "NOTE_NOT_FOUND")
+
+
+def attach_url(note: dict[str, Any]) -> str:
+    return standalone_path(note) + "/attach"
+
+
+def test_attach_moves_a_standalone_note_into_a_resource(
+    authorized: TestClient, item: dict[str, Any]
+) -> None:
+    note = add_standalone(authorized, "待后贴到资料")
+    assert note["resource_id"] is None and note["version"] == 1
+    url = attach_url(note)
+    # Guards: missing version, wrong version, missing/bad resource, extra field, media type.
+    error(authorized.post(url, json={"resource_id": item["id"]}), 428, "VERSION_REQUIRED")
+    error(
+        authorized.post(url, json={"resource_id": item["id"], "expected_version": 2}),
+        409,
+        "VERSION_CONFLICT",
+        {"current_version": 1},
+    )
+    error(authorized.post(url, json={"expected_version": 1}), 422, "VALIDATION_ERROR")
+    error(
+        authorized.post(url, json={"resource_id": "not-a-uuid", "expected_version": 1}),
+        422,
+        "VALIDATION_ERROR",
+    )
+    error(
+        authorized.post(
+            url,
+            json={"resource_id": item["id"], "expected_version": 1, "content": PRIVATE},
+        ),
+        422,
+        "VALIDATION_ERROR",
+    )
+    error(
+        authorized.post(url, content=PRIVATE, headers={"Content-Type": "text/plain"}),
+        415,
+        "CONTENT_TYPE_UNSUPPORTED",
+    )
+    # Success: binds to the resource; version+1 and updated_at move; content unchanged.
+    moved = authorized.post(url, json={"resource_id": item["id"], "expected_version": 1})
+    assert moved.status_code == 200, moved.text
+    data = moved.json()["data"]
+    assert data["id"] == note["id"]
+    assert data["resource_id"] == item["id"]
+    assert data["version"] == 2
+    assert data["content"] == note["content"]
+    assert data["created_at"] == note["created_at"]
+    assert data["updated_at"] > note["updated_at"]
+    # The note left the standalone collection and appears under the resource.
+    assert authorized.get(standalone_path() + "?page=1").json()["data"] == []
+    assert [n["id"] for n in authorized.get(path(item) + "?page=1").json()["data"]] == [note["id"]]
+    error(authorized.get(standalone_path(note)), 404, "NOTE_NOT_FOUND")
+    assert authorized.get(path(item, note)).status_code == 200
+    # A second attach is a scope error: the note is no longer standalone.
+    error(
+        authorized.post(url, json={"resource_id": item["id"], "expected_version": 2}),
+        404,
+        "NOTE_NOT_FOUND",
+    )
+
+
+def test_attach_rejects_unreadable_or_missing_resources(
+    authorized: TestClient,
+    session_factory: sessionmaker[Session],
+) -> None:
+    note = add_standalone(authorized)
+    # A random id is not a readable resource.
+    error(
+        authorized.post(
+            attach_url(note), json={"resource_id": str(uuid4()), "expected_version": 1}
+        ),
+        404,
+        "RESOURCE_NOT_FOUND",
+    )
+    # A FILE resource without a READY original is not readable.
+    with session_factory.begin() as session:
+        file_resource = resource(session, source_type="FILE", source_url=None)
+        file_id = str(file_resource.id)
+    error(
+        authorized.post(attach_url(note), json={"resource_id": file_id, "expected_version": 1}),
+        404,
+        "RESOURCE_NOT_FOUND",
+    )
+    # The note is untouched after both refusals.
+    assert authorized.get(standalone_path(note)).json()["data"] == note
+
+
+def detach_url(item: dict[str, Any], note: dict[str, Any]) -> str:
+    return path(item, note) + "/detach"
+
+
+def test_detach_moves_a_bound_note_back_to_standalone(
+    authorized: TestClient, item: dict[str, Any]
+) -> None:
+    bound = add(authorized, item, "待解除的心得")
+    url = detach_url(item, bound)
+    # Guards mirror attach: missing version, wrong version, extra field, media type.
+    error(authorized.post(url, json={}), 428, "VERSION_REQUIRED")
+    error(
+        authorized.post(url, json={"expected_version": 2}),
+        409,
+        "VERSION_CONFLICT",
+        {"current_version": 1},
+    )
+    error(
+        authorized.post(url, json={"expected_version": 1, "content": PRIVATE}),
+        422,
+        "VALIDATION_ERROR",
+    )
+    error(
+        authorized.post(url, content=PRIVATE, headers={"Content-Type": "text/plain"}),
+        415,
+        "CONTENT_TYPE_UNSUPPORTED",
+    )
+    # Wrong scope: detaching under a different readable resource is NOTE_NOT_FOUND.
+    other = authorized.post(
+        "/api/v1/resources",
+        json={"source_type": "PASTE", "title": "other", "pasted_content": "other text"},
+    ).json()["data"]
+    error(
+        authorized.post(detach_url(other, bound), json={"expected_version": 1}),
+        404,
+        "NOTE_NOT_FOUND",
+    )
+    # Success: back to standalone; version+1, content unchanged.
+    released = authorized.post(url, json={"expected_version": 1})
+    assert released.status_code == 200, released.text
+    data = released.json()["data"]
+    assert data["id"] == bound["id"]
+    assert data["resource_id"] is None
+    assert data["version"] == 2
+    assert data["content"] == bound["content"]
+    assert data["created_at"] == bound["created_at"]
+    assert authorized.get(path(item)).json()["data"] == []
+    assert [n["id"] for n in authorized.get(standalone_path() + "?page=1").json()["data"]] == [
+        bound["id"]
+    ]
+    error(authorized.get(path(item, bound)), 404, "NOTE_NOT_FOUND")
+    assert authorized.get(standalone_path(bound)).status_code == 200
+    # A second detach of the now-standalone note (still under the resource path) is 404.
+    error(
+        authorized.post(detach_url(item, bound), json={"expected_version": 2}),
+        404,
+        "NOTE_NOT_FOUND",
+    )
+
+
+@pytest.mark.parametrize("stage", ["after_flush_postexec", "before_commit"])
+@pytest.mark.parametrize("move", ["attach", "detach"])
+def test_scope_move_failure_rolls_back_without_replay(
+    authorized: TestClient,
+    item: dict[str, Any],
+    stage: str,
+    move: str,
+) -> None:
+    if move == "attach":
+        note = add_standalone(authorized, PRIVATE)
+        url = attach_url(note)
+        body = {"resource_id": item["id"], "expected_version": 1}
+    else:
+        note = add(authorized, item, PRIVATE)
+        url = detach_url(item, note)
+        body = {"expected_version": 1}
+    calls = 0
+
+    def fail(*args: Any) -> None:
+        nonlocal calls
+        calls += 1
+        raise RuntimeError(PRIVATE + " SQL /private/path")
+
+    event.listen(Session, stage, fail)
+    try:
+        response = authorized.post(url, json=body)
+    finally:
+        event.remove(Session, stage, fail)
+    error(response, 500, "UNKNOWN_ERROR")
+    assert calls == 1
+    # The note stayed in its original scope after the rollback.
+    if move == "attach":
+        assert authorized.get(standalone_path(note)).json()["data"] == note
+        assert authorized.get(path(item)).json()["data"] == []
+    else:
+        assert authorized.get(path(item, note)).json()["data"] == note
+
+
+@pytest.mark.parametrize("move", ["attach", "detach"])
+def test_real_competing_scope_moves_have_a_single_winner(
+    authorized: TestClient,
+    item: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+    move: str,
+) -> None:
+    if move == "attach":
+        note = add_standalone(authorized, "并发后贴")
+        url = attach_url(note)
+        body: dict[str, Any] = {"resource_id": item["id"], "expected_version": 1}
+    else:
+        note = add(authorized, item, "并发解除")
+        url = detach_url(item, note)
+        body = {"expected_version": 1}
+    barrier = Barrier(2, timeout=5)
+    original = NoteStore.check_version
+
+    def synchronize(record: Note, expected: int) -> None:
+        original(record, expected)
+        barrier.wait()
+
+    def write(_index: int) -> Any:
+        with TestClient(create_app(), base_url="http://127.0.0.1:8000") as client:
+            authorize(client)
+            return client.post(url, json=body)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(NoteStore, "check_version", staticmethod(synchronize))
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            responses = list(pool.map(write, [0, 1]))
+    winners = [r for r in responses if r.status_code == 200]
+    assert len(winners) == 1
+    loser = next(r for r in responses if r is not winners[0])
+    assert loser.status_code in {404, 409, 500}
+    data = winners[0].json()["data"]
+    assert data["id"] == note["id"]
+    assert data["version"] == 2
+    assert data["content"] == note["content"]
+    if move == "attach":
+        assert data["resource_id"] == item["id"]
+        error(authorized.get(standalone_path(note)), 404, "NOTE_NOT_FOUND")
+    else:
+        assert data["resource_id"] is None
+        error(authorized.get(path(item, note)), 404, "NOTE_NOT_FOUND")
