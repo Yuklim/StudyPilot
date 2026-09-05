@@ -52,6 +52,7 @@ test('navigation, history, direct links and keyboard focus use only approved res
   await page.keyboard.press('Enter')
   await expect(page.getByRole('main')).toBeFocused()
   const nav = page.getByRole('navigation', { name: '主要导航' })
+  const moreNav = page.getByRole('navigation', { name: '更多能力' })
   await nav.getByRole('link', { name: '资料库' }).focus()
   resourcePageOpened = true
   await page.keyboard.press('Enter')
@@ -76,7 +77,7 @@ test('navigation, history, direct links and keyboard focus use only approved res
   await page.getByRole('link', { name: '返回资料库' }).click()
   for (const title of ['学习记录', '复习安排', '主题统计']) {
     if (title === '学习记录') learningPageOpened = true
-    await nav.getByRole('link', { name: title }).click()
+    await moreNav.getByRole('link', { name: title }).click()
     await expect(page.getByRole('heading', { name: title, level: 1 })).toBeFocused()
   }
   await page.goto('/unknown-page')

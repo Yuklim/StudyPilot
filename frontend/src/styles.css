@@ -1065,6 +1065,7 @@ fieldset:disabled {
 .resource-filter-top {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
 }
 .resource-filter-top .search-field {
