@@ -8,7 +8,7 @@ risk = "L3"
 risk_reason = "放宽 Note 关键数据模型 resource_id 为非空到可空，新增 0002 数据库迁移，新增公共顶层笔记接口并改动标准 openapi Note schema/paths 与操作清单，跨后端、前端与契约文档；属架构/契约、迁移、重大跨模块。"
 risk_flags = ["migration", "public-api", "major-cross-module", "business", "tests"]
 owner = "coordinator"
-base = "a5af205e9dd4c7d93c0f0c7f8f2c08b0b6c8a1b5"
+base = "a5af2059f9e7b0e20a2ff948b1a92ec5e32caf4f"
 allowed_paths = ["backend/src/studypilot/modules/notes/**", "backend/src/studypilot/application/notes.py", "backend/src/studypilot/infrastructure/database/note_store.py", "backend/src/studypilot/infrastructure/database/models.py", "backend/src/studypilot/api/notes.py", "backend/src/studypilot/main.py", "backend/migrations/versions/0002_note_optional_resource.py", "backend/tests/test_notes.py", "backend/tests/test_migrations.py", "backend/tests/test_database.py", "backend/tests/test_resource_deletion.py", "backend/tests/test_taxonomy.py", "frontend/src/features/notes/**", "frontend/src/api/client.ts", "frontend/src/api/client.test.ts", "frontend/src/shell/pages.ts", "frontend/src/shell/Screen.tsx", "frontend/src/App.tsx", "frontend/src/App.test.tsx", "frontend/src/features/resources/ResourceDetail.tsx", "frontend/src/features/learning/RecordHistory.tsx", "frontend/src/styles.css", "frontend/e2e/notes-pages.spec.ts", "README.md", "docs/contracts/API与数据契约基线.md", "docs/contracts/openapi-v1.json", "docs/tasks/TASK-027-independent-notes.md", "docs/tasks/任务索引.md"]
 checks = ["backend", "frontend", "contracts", "governance"]
 ```
