@@ -6,6 +6,23 @@ import { createFileResource, createResource, failureText, safeWebUrl } from './a
 import { displayBytes, fileAccept, fileIssue } from './files'
 import { ClassificationPicker, type Selection } from '../taxonomy/ClassificationPicker'
 
+/** 去扩展名后的文件名，用作 FILE 来源的标题占位。 */
+function titleFromFileName(name: string): string {
+  const cleaned = name.replace(/\.[^./]+$/, '').trim()
+  return cleaned
+}
+
+/** 从粘贴正文取首个非空文本行作标题占位；不解析正文、不存储语义，仅作可编辑默认值。 */
+function titleFromPastedText(text: string): string {
+  const firstLine = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0)
+  if (!firstLine) return ''
+  const noHeading = firstLine.replace(/^#{1,6}\s+/, '').trim()
+  return Array.from(noHeading).slice(0, 200).join('')
+}
+
 export function ResourceForm() {
   const navigate = useNavigate()
   const alive = useRef(true)
@@ -15,6 +32,7 @@ export function ResourceForm() {
   const [file, setFile] = useState<File | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const [title, setTitle] = useState('')
+  const titleManaged = useRef(false)
   const [url, setUrl] = useState('')
   const [content, setContent] = useState('')
   const [sourceName, setSourceName] = useState('')
@@ -141,7 +159,11 @@ export function ResourceForm() {
             标题（必填）
             <input
               value={title}
-              onChange={(event) => setTitle(event.target.value)}
+              onChange={(event) => {
+                const next = event.target.value
+                if (next.trim()) titleManaged.current = true
+                setTitle(next)
+              }}
               required
               placeholder="给这份好奇起个名字"
             />
@@ -165,7 +187,14 @@ export function ResourceForm() {
                 className="paste-input"
                 rows={9}
                 value={content}
-                onChange={(event) => setContent(event.target.value)}
+                onChange={(event) => {
+                  const next = event.target.value
+                  setContent(next)
+                  if (!titleManaged.current && !title.trim()) {
+                    const derived = titleFromPastedText(next)
+                    if (derived) setTitle(derived)
+                  }
+                }}
                 required
                 placeholder="纯文本或 Markdown 都会原样保存，不会执行其中的代码。"
               />
@@ -182,8 +211,13 @@ export function ResourceForm() {
                   aria-describedby="file-guidance"
                   onChange={(event) => {
                     const chosen = event.target.files?.[0] ?? null
+                    const issue = chosen ? fileIssue(chosen) : ''
                     setFile(chosen)
-                    setError(chosen ? fileIssue(chosen) : '')
+                    setError(issue)
+                    if (chosen && !issue && !titleManaged.current && !title.trim()) {
+                      const derived = titleFromFileName(chosen.name)
+                      if (derived) setTitle(derived)
+                    }
                   }}
                 />
               </label>
@@ -212,25 +246,28 @@ export function ResourceForm() {
               )}
             </div>
           )}
-          <div className="resource-form-columns">
-            <label className="resource-field">
-              来源名称（选填）
-              <input
-                value={sourceName}
-                onChange={(event) => setSourceName(event.target.value)}
-                placeholder="作者、网站或书名 · 最多 120 字"
-              />
-            </label>
-            <label className="resource-field">
-              保存原因（选填）
-              <textarea
-                rows={3}
-                value={reason}
-                onChange={(event) => setReason(event.target.value)}
-                placeholder="为什么想再读一遍？最多 1000 字"
-              />
-            </label>
-          </div>
+          <details className="resource-more">
+            <summary>补充信息（选填）</summary>
+            <div className="resource-form-columns">
+              <label className="resource-field">
+                来源名称（选填）
+                <input
+                  value={sourceName}
+                  onChange={(event) => setSourceName(event.target.value)}
+                  placeholder="作者、网站或书名 · 最多 120 字"
+                />
+              </label>
+              <label className="resource-field">
+                保存原因（选填）
+                <textarea
+                  rows={3}
+                  value={reason}
+                  onChange={(event) => setReason(event.target.value)}
+                  placeholder="为什么想再读一遍？最多 1000 字"
+                />
+              </label>
+            </div>
+          </details>
           <ClassificationPicker value={classification} onChange={setClassification} />
           <button className="journal-button primary" type="submit">
             {pending ? (source === 'FILE' ? '正在上传并保存…' : '正在保存…') : '保存到资料库'}

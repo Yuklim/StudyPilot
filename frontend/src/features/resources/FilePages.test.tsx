@@ -25,6 +25,9 @@ function form() {
 function submit() {
   fireEvent.submit(screen.getByRole('form', { name: '添加资料表单' }))
 }
+function openSupplementary() {
+  fireEvent.click(screen.getByText('补充信息（选填）'))
+}
 function urls() {
   const create = vi.fn(() => 'blob:http://localhost/synthetic')
   const revoke = vi.fn()
@@ -71,6 +74,7 @@ describe('file upload form', () => {
     const persist = vi.spyOn(Storage.prototype, 'setItem')
     form()
     selectFile()
+    openSupplementary()
     fireEvent.change(screen.getByLabelText('来源名称（选填）'), { target: { value: '合成书屋' } })
     submit()
     submit()
