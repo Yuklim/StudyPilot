@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { describe, expect, it, vi } from 'vitest'
 import { api, ApiError } from '../../api/client'
 import { renderWithRouter } from '../../test/render'
+import { sample, samplePage } from '../resources/fixtures'
 import { NotesPanel } from './NotesPanel'
 import { note, notePage } from './fixtures'
 import type { Note } from './api'
@@ -253,5 +254,84 @@ describe('quick personal notes', () => {
     await act(async () => pending.resolve({ data: note({ content: '属于旧资料' }) }))
     await waitFor(() => expect(screen.queryByText(/心得已保存/)).not.toBeInTheDocument())
     expect(screen.getByRole('textbox')).toHaveValue('')
+  })
+})
+
+describe('attach/detach note binding', () => {
+  const standaloneId = '018f1f58-4eb2-4a0d-a716-fb81b1960100'
+
+  it('attaches a standalone note to a searched resource, then removes it from the list', async () => {
+    const row = note({ resource_id: null, id: standaloneId, content: '先独立记下' })
+    const target = sample({ title: '后贴目标资料' })
+    let rows = [row]
+    const request = vi.spyOn(api, 'request').mockImplementation(async (path) => {
+      if (path.startsWith('/api/v1/resources?')) return samplePage([target])
+      if (path.endsWith('/attach')) {
+        rows = []
+        return { data: { ...row, resource_id: target.id, version: 2 } }
+      }
+      if (path.includes('?')) return notePage(rows)
+      throw new Error('unexpected endpoint ' + path)
+    })
+    renderWithRouter(<NotesPanel resourceId={null} />)
+    await screen.findByText('先独立记下')
+    fireEvent.click(screen.getByRole('button', { name: '后贴到资料' }))
+    fireEvent.change(screen.getByPlaceholderText('输入标题搜索资料库'), {
+      target: { value: '目标' },
+    })
+    fireEvent.submit(screen.getByRole('form', { name: '搜索要后贴的资料' }))
+    fireEvent.click(await screen.findByRole('button', { name: '后贴到《后贴目标资料》' }))
+    const link = await screen.findByRole('link', { name: /打开《后贴目标资料》查看/ })
+    expect(link).toHaveAttribute('href', `/resources/${target.id}`)
+    await waitFor(() => expect(screen.queryByText('先独立记下')).not.toBeInTheDocument())
+    expect(request.mock.calls.find(([path]) => path.endsWith('/attach'))?.[1]?.body).toEqual({
+      resource_id: target.id,
+      expected_version: 1,
+    })
+  })
+
+  it('detaches a bound note back to standalone after confirmation', async () => {
+    const bound = note()
+    let rows = [bound]
+    const request = vi.spyOn(api, 'request').mockImplementation(async (path) => {
+      if (path === `/api/v1/resources/${resourceId}/notes/${bound.id}/detach`) {
+        rows = []
+        return { data: { ...bound, resource_id: null, version: 2 } }
+      }
+      if (path.includes('?')) return notePage(rows)
+      throw new Error('unexpected endpoint ' + path)
+    })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderWithRouter(<NotesPanel resourceId={resourceId} />)
+    await screen.findByText('这是合成心得。')
+    fireEvent.click(screen.getByRole('button', { name: '解除绑定' }))
+    const link = await screen.findByRole('link', { name: /去「我的心得」查看/ })
+    expect(link).toHaveAttribute('href', '/notes')
+    await waitFor(() => expect(screen.queryByText('这是合成心得。')).not.toBeInTheDocument())
+    expect(request.mock.calls.find(([path]) => path.endsWith('/detach'))?.[1]?.body).toEqual({
+      expected_version: 1,
+    })
+  })
+
+  it('shows an error, refreshes and does not silently retry a failed attach', async () => {
+    const row = note({ resource_id: null, id: standaloneId, content: '要后贴的一句' })
+    const target = sample()
+    const request = vi.spyOn(api, 'request').mockImplementation(async (path) => {
+      if (path.startsWith('/api/v1/resources?')) return samplePage([target])
+      if (path.endsWith('/attach')) throw new ApiError('VERSION_CONFLICT', 409)
+      if (path.includes('?')) return notePage([row])
+      throw new Error('unexpected endpoint ' + path)
+    })
+    renderWithRouter(<NotesPanel resourceId={null} />)
+    await screen.findByText('要后贴的一句')
+    fireEvent.click(screen.getByRole('button', { name: '后贴到资料' }))
+    fireEvent.change(screen.getByPlaceholderText('输入标题搜索资料库'), {
+      target: { value: '目标' },
+    })
+    fireEvent.submit(screen.getByRole('form', { name: '搜索要后贴的资料' }))
+    fireEvent.click(await screen.findByRole('button', { name: /后贴到《/ }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('状态可能已变化')
+    expect(request.mock.calls.filter(([path]) => path.endsWith('/attach'))).toHaveLength(1)
+    expect(await screen.findByText('要后贴的一句')).toBeInTheDocument()
   })
 })
