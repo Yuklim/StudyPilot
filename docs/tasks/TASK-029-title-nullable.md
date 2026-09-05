@@ -110,7 +110,7 @@ checks = ["backend", "frontend", "contracts", "governance"]
 
 （本区仅允许写回状态/EVIDENCE/候选与独立报告原文；目标/风险/路径/检查/实现与测试记录在标记区外。）
 
-- 状态登记：TASK-029 IN_PROGRESS→IN_ACCEPTANCE→ACCEPTED（2026-09-05 与 TASK-025/026/028 MERGED 状态一并写入本分支控制面提交；最终合并仍由用户执行）。**最终状态 MERGED：用户 2026-09-05 合并 PR #35（merge commit `dea241a`）**；MERGED 状态登记随 TASK-030 控制面提交带入 main。
+- 状态登记：TASK-029 IN_PROGRESS→IN_ACCEPTANCE→ACCEPTED（2026-09-05 与 TASK-025/026/028 MERGED 状态一并写入本分支控制面提交；最终合并仍由用户执行）。**最终状态 MERGED：用户 2026-09-05 合并本任务分支，merge commit `dea241a`**；MERGED 状态登记随 TASK-030 控制面提交带入 main。（事实更正：该合并提交信息里的 `(#35)` 为手写引用，TASK-029 当时并无 PR；GitHub 上的 PR #35 实际属于 TASK-030。）
 - 候选 SHA：`6b4f867`（实现+测试冻结，check_task 全 4 profiles `CHECKS PASS`，product_fingerprint=`1d68cdaa…`）。本证据提交为 docs 证据写回，不递归审查。
 - 独立 Review（reviewer 子 Agent，2026-09-05，只读 Read/Grep/Glob，报告原文）：
   > 结论 **PASS** —— 无越界、迁移安全（FK-OFF 仅限迁移连接、运行时 FK 语义不变）、完成条件 1-6 均有实现与测试绑定，已知 e2e 红为 main 基线问题而非本任务回归；仅保留下述非阻断记录项。
