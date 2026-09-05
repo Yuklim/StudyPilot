@@ -84,6 +84,15 @@ describe('resource form', () => {
     change('粘贴原文（必填）', '# 应被忽略的标题\n')
     expect(screen.getByLabelText('标题（必填）')).toHaveValue('保留我写的标题')
   })
+  it('leaves the WEB title for the user and never auto-fills it from the URL', () => {
+    const request = vi.spyOn(api, 'request')
+    renderWithRouter(<App />, '/resources/new')
+    fireEvent.click(screen.getByRole('radio', { name: /网页链接/ }))
+    change('网页地址（必填）', 'https://example.com/article')
+    expect(screen.getByLabelText('标题（必填）')).toHaveValue('')
+    expect(screen.getByLabelText('标题（必填）')).not.toHaveFocus()
+    expect(request).not.toHaveBeenCalled()
+  })
   it('submits WEB once while pending, excludes paste fields and navigates to real detail', async () => {
     const pending = deferred<unknown>()
     const request = vi
