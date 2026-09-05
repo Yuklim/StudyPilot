@@ -61,7 +61,15 @@ checks = ["backend", "frontend", "contracts", "governance"]
 
 ## 实现与测试
 
-- （实现 SHA/变更摘要、检查记录、指纹、e2e、已知限制在此区随实现写回。）
+- 后端实现：`modules/notes/contracts.py` 新增 `NoteAttach`（resource_id: UUID、expected_version: int ≥1）与 `NoteDetach`（expected_version；均 extra=forbid、strict），`NoteCreate`/`NotePatch` 未改；`note_store.py` 顶部 docstring 去掉「A note never moves between scopes in this task.」并写明两 scope 可由专用 attach/detach 双向移动，新增 `attach(note_id, resource_id, expected)`（先 `require_resource` 目标可读——不存在或 FILE 非 READY → RESOURCE_NOT_FOUND，再 `standalone` 当前必须仍独立 → 否则 NOTE_NOT_FOUND，`check_version` 守卫后写 resource_id、flush、project）与 `detach(resource_id, note_id, expected)`（`find` 当前必须仍绑定该资源，写 resource_id=None、flush、project），均单事务、content 不变、ORM version_id_col 自动 version+1/updated_at；`application/notes.py` 复用 mutate 分类新增 `attach`（mutate_standalone）与 `detach`（mutate），并发已被贴走/改版 → 新读 404/409/UNKNOWN、永不重放；`api/notes.py` 泛化 move_body 解析（非 JSON→415、坏 JSON→400、缺 expected_version→428、模型校验失败→422），`standalone_router` 增 `POST /{note_id}/attach`、绑定 `router` 增 `POST /{note_id}/detach`，均 200 `{"data": Note}`，路由注释同步。
+- 契约实现：openapi-v1.json 手编新增 `NoteAttach`/`NoteDetach` schema、`attachNote`（`POST /api/v1/notes/{note_id}/attach`）与 `detachNote`（`POST /api/v1/resources/{resource_id}/notes/{note_id}/detach`）两 path/operation（含 200/400/403/404/409/415/422/428/500 与安全参数、x-contract-section）、`available_operations` +2 达 35、client_policy 补「后贴/解除」句；`Note.resource_id` 保持 readOnly。中文契约基线 §1.3 叙事追加句 + 可用表两行、§4.8 resource_id 行改写为可经 attach/detach 双向移动（NoteCreate/NotePatch 请求体仍不得直接写）、§4.8 影响集外移动句、§10 操作清单两行。
+- 前端实现：`notes/api.ts` 抽出 `noteAt(value, expectedResourceId)`（null===null 成立，list/get/save 旧 scope 强校验不变）与 `movedNote` 守卫（id/content/created_at 不变、version=旧+1），新增 `attachNote(note, resourceId)`（POST `/notes/{id}/attach` body {resource_id, expected_version}）与 `detachNote(note)`（POST `/resources/{rid}/notes/{id}/detach`）；新 `ResourceAttachPicker.tsx` 搜索可读资料就地选目标；`NotesPanel.tsx` 独立卡「后贴到资料」（可展开搜索、成功后 revision+1 移出列表 + 可点提示链到资料详情）、绑定卡「解除绑定」（confirm 后 detach、成功 + 可点提示链到「我的心得」），失败走 noteError +「状态可能已变化」刷新重读不自动重放。
+- 测试记录：
+  - `backend/tests/test_notes.py` 新增 attach 成功+守卫、attach 拒绝不可读资源、detach 成功+守卫、`stage×move` 回滚不重放、`move` 并发单胜者（Barrier+monkeypatch NoteStore.check_version）共 8 组；契约形状测试扩展 NoteAttach/NoteDetach + attachNote/detachNote 进 available_operations；`test_taxonomy.py` `len(available)` 33→35。命令：`backend/.venv/bin/pytest tests/test_notes.py tests/test_taxonomy.py` → 101 passed；全量 `backend/.venv/bin/pytest` → 493 passed。
+  - `frontend/src/features/notes/api.test.ts` 增 attach/detach 路径/body/scope 无关返回校验（含坏响应与越界输入拒发）；`NotesPanel.test.tsx` 增后贴成功/解除成功/后贴失败刷新（各用例断言成功链接 href、列表移除、body）。命令：`frontend npm run test`（vitest）→ 16 文件 337 passed（此前基线 331）；`npm run format:check && npm run lint && npm run typecheck` 全绿；`npm run build` 由 check_task 复跑。
+  - e2e：`frontend/e2e/notes-pages.spec.ts` 增真 UI 往返「独立心得→后贴到资料→资料详情见该心得→解除绑定→回我的心得仍独立」（自清残留独立心得以自洽）。命令：`npx playwright test e2e/notes-pages.spec.ts` → 7 passed。
+  - 契约：`OpenAPI.model_validate_json`（backend/.venv）通过；`check_task.py` contracts 组复跑。
+- 已知限制/单列：main 基线 e2e 4 条红与本任务无关（在 main 上即红，见 TASK-029/030 验收时单列证据），不复跑为 PASS。无必要检查失败、无基线内新增失败。实现期间一次 NotesPanel vitest 偶发同步断言时序（失败后刷新窗口行短暂卸载）→ 改 findByText 后 3× 稳定绿。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
