@@ -12,8 +12,12 @@ base = "ed36a222f0ed930bfa97dcac1c3a47a33999ff15"
 allowed_paths = [
   "backend/src/studypilot/infrastructure/database/models.py",
   "backend/src/studypilot/infrastructure/database/resource_store.py",
+  "backend/src/studypilot/infrastructure/database/connection.py",
+  "backend/src/studypilot/infrastructure/database/__init__.py",
   "backend/src/studypilot/modules/resources/contracts.py",
+  "backend/migrations/env.py",
   "backend/migrations/versions/0003_resource_title_nullable.py",
+  "backend/tests/support.py",
   "backend/tests/test_resources.py",
   "backend/tests/test_resource_updates.py",
   "backend/tests/test_resource_deletion.py",
@@ -62,7 +66,7 @@ checks = ["backend", "frontend", "contracts", "governance"]
 - 契约（真实标准契约变更，走完整检查，不走 evidence-only）：openapi `LearningResource.title` 与三个 Create schema `title` 变 `["string","null"]` 并移出 required；`ResourcePatch.title` 变 `["string","null"]` 且注明「省略=不改，null=清除」；中文契约 2.3/4.1/5/1.3 与示例、三向追踪同步。
 - 前端：类型/解析 title 可空；表单与编辑器允许留空/清空（WEB/PASTE/FILE 一视同仁，FILE/PASTE 自动带出逻辑保留）；展示处统一占位。
 - 禁止未列路径；不做：服务端自动生成标题落库、Note(心得)标题/打标签/资源后贴资料、URL 联网抓取 `<title>`、openapi `x-delivery-profile.stage` 等顺手项。
-- allowed_paths 增补（用户 2026-09-05 批准）：登记时遗漏了 6 个本任务改动所必然连带的同步文件——`ResourceState.tsx`（进度条 aria-label 对 null 标题用占位，避免出现 "null 的学习进度"）、`ClassificationPages.test.tsx`（共享添加表单「标题（必填）」→「标题」的 Testing Library 精确标签同步）、`frontend/e2e/{file,learning,notes,taxonomy}-pages.spec.ts`（Playwright 标签同步，使 `npm run test:e2e` 不被本任务标签改名新增弄红）。均为纯标签/占位同步，不扩大产品范围。
+- allowed_paths 增补（用户 2026-09-05 两次批准）：登记时遗漏了本任务必然连带的文件——(1) 后端 FK-OFF 迁移支撑 4 个：`database/connection.py` 新增 `migration_connection()`（migrations env.py / database __init__ / tests support.py 接线），使 Alembic 在 SQLite `PRAGMA foreign_keys=OFF` 下运行：0003 的 batch_alter 重建需 DROP 旧表，FK ON 会级联删子表（notes/progress/files/tags）；运行时连接仍默认 FK ON，行为不变，仅结构性重构；(2) 前端纯标签/占位同步 6 个：`ResourceState.tsx`（进度条 aria-label 对 null 标题用占位，避免 "null 的学习进度"）、`ClassificationPages.test.tsx`（共享添加表单「标题（必填）」→「标题」的 Testing Library 精确标签同步）、`frontend/e2e/{file,learning,notes,taxonomy}-pages.spec.ts`（Playwright 标签同步，避免 `npm run test:e2e` 被本任务标签改名新增弄红）。(1) 为迁移安全必要支撑，(2) 为标签/占位同步，均不扩大产品范围。
 - 状态收尾（用户已选「并入下任务控制面」）：本分支首个 docs 提交一并把 TASK-025/026/028 的 MERGED 状态登记（记录+索引）带入 main；旧 `task-status-t025-t026-merging`、`task-status-t028-merging` 两纯文档分支不再单独并。
 
 ## 完成条件
