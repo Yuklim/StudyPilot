@@ -29,6 +29,7 @@ allowed_paths = [
   "frontend/src/features/resources/ResourceLibrary.tsx",
   "frontend/src/features/resources/ResourceDetail.tsx",
   "frontend/src/features/resources/ResourceDeletion.tsx",
+  "frontend/src/features/resources/ResourceState.tsx",
   "frontend/src/features/resources/ResourcePages.test.tsx",
   "frontend/src/features/resources/FilePages.test.tsx",
   "frontend/src/features/resources/ResourceEditor.test.tsx",
@@ -37,8 +38,13 @@ allowed_paths = [
   "frontend/src/features/resources/api.test.ts",
   "frontend/src/api/client.ts",
   "frontend/src/api/client.test.ts",
+  "frontend/src/features/taxonomy/ClassificationPages.test.tsx",
   "frontend/e2e/resource-pages.spec.ts",
   "frontend/e2e/resource-edit-pages.spec.ts",
+  "frontend/e2e/file-pages.spec.ts",
+  "frontend/e2e/learning-pages.spec.ts",
+  "frontend/e2e/notes-pages.spec.ts",
+  "frontend/e2e/taxonomy-pages.spec.ts",
   "docs/tasks/TASK-025-layout-simplification.md",
   "docs/tasks/TASK-026-import-simplification.md",
   "docs/tasks/TASK-028-classification-search-compact.md",
@@ -56,6 +62,7 @@ checks = ["backend", "frontend", "contracts", "governance"]
 - 契约（真实标准契约变更，走完整检查，不走 evidence-only）：openapi `LearningResource.title` 与三个 Create schema `title` 变 `["string","null"]` 并移出 required；`ResourcePatch.title` 变 `["string","null"]` 且注明「省略=不改，null=清除」；中文契约 2.3/4.1/5/1.3 与示例、三向追踪同步。
 - 前端：类型/解析 title 可空；表单与编辑器允许留空/清空（WEB/PASTE/FILE 一视同仁，FILE/PASTE 自动带出逻辑保留）；展示处统一占位。
 - 禁止未列路径；不做：服务端自动生成标题落库、Note(心得)标题/打标签/资源后贴资料、URL 联网抓取 `<title>`、openapi `x-delivery-profile.stage` 等顺手项。
+- allowed_paths 增补（用户 2026-09-05 批准）：登记时遗漏了 6 个本任务改动所必然连带的同步文件——`ResourceState.tsx`（进度条 aria-label 对 null 标题用占位，避免出现 "null 的学习进度"）、`ClassificationPages.test.tsx`（共享添加表单「标题（必填）」→「标题」的 Testing Library 精确标签同步）、`frontend/e2e/{file,learning,notes,taxonomy}-pages.spec.ts`（Playwright 标签同步，使 `npm run test:e2e` 不被本任务标签改名新增弄红）。均为纯标签/占位同步，不扩大产品范围。
 - 状态收尾（用户已选「并入下任务控制面」）：本分支首个 docs 提交一并把 TASK-025/026/028 的 MERGED 状态登记（记录+索引）带入 main；旧 `task-status-t025-t026-merging`、`task-status-t028-merging` 两纯文档分支不再单独并。
 
 ## 完成条件
