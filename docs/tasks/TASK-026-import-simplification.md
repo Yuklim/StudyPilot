@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-026"
-status = "IN_REVIEW"
+status = "ACCEPTED"
 risk = "L2"
 risk_reason = "纯前端「添加资料」表单体验收敛：折叠选填项 + 文件/粘贴自动带出标题占位；不触碰后端、数据库或公共 API 契约，但会同步更新被表单改动的既有前端测试断言。"
 risk_flags = ["business"]
@@ -51,7 +51,12 @@ checks = ["frontend"]
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-（候选 SHA、Review/Acceptance、最终状态在证据与收尾阶段回填）
+- 候选 SHA：`03d5f8c`（产品冻结点，含实现 `84e2528` 与 WEB 不自动填测试 `03d5f8c`；基线 `5c527a3`）。后续 docs 提交不改变产品实现。
+- Review：L2。**用户授权主 Agent 证据核对代替外部独立只读 Reviewer（授权范围沿用 TASK-025 方式，记录于本任务，不冒充独立 Reviewer 身份）**。主 Agent 核对：候选 diff 6 文件全部在 allowed_paths 内、无越界（未改 backend/契约/数据语义）；测试同步如实反映新交互（折叠字段操作前显式展开），新增 6 条断言覆盖「补充信息默认收起/展开可见/FILE/PASTE 自动带出/不覆盖手动标题/WEB 不强自动填且零请求」，未弱化诚实底线；vitest 321/321 PASS、tsc/build/format/lint 均 exit=0（check_task STATIC + CHECKS PASS，fingerprint `963ce3be642efab1d298523f334bd159c47352dac558215560d1eb6c5c8d315b`）；完成条件逐条以单测 + Playwright 真实浏览器验证（补充信息收起时来源名称不可见、粘贴后标题自动带出、展开后可见、WEB 填 URL 后标题仍空且无请求）。核对结论：PASS。
+- Acceptance：L1/L2 N/A。
+- 最终状态/风险/用户操作：IN_REVIEW→ACCEPTED 由用户决定（2026-09-05 用户选 a 授权主 Agent 证据核对）；分支未推送、未 PR、未合并，最终合并由用户执行。
+- 非阻断遗留项：分类（主题+标签）折叠仍由 ClassificationPicker 既有按钮承担，未并入「补充信息」details（避免嵌套折叠，观感更清晰）。
+- 日期与决定日志：2026-09-05 用户授权阶段1a 自主推进并确认 URL 不强自动填标题；同日授权主 Agent 证据核对（方式 a），据此记录 PASS。
 
 此区禁止放入或变更任务授权、风险等级、允许路径、检查要求、实现或测试记录。
 <!-- EVIDENCE:END -->
