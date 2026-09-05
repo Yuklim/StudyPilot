@@ -540,9 +540,7 @@ def add_standalone(client: TestClient, content: str = PRIVATE) -> dict[str, Any]
     return dict(response.json()["data"])
 
 
-def test_standalone_lifecycle_pagination_and_version(
-    database: Any, authorized: TestClient
-) -> None:
+def test_standalone_lifecycle_pagination_and_version(database: Any, authorized: TestClient) -> None:
     """Top-level /notes manages notes with no resource, independently of any item."""
     created = add_standalone(authorized, "第一条独立心得")
     row = created
@@ -610,9 +608,7 @@ def test_standalone_not_attached_and_resource_notes_remain_separate(
     error(authorized.get(standalone_path(attached)), 404, "NOTE_NOT_FOUND")
 
 
-def test_standalone_pagination_empty_and_bounds(
-    database: Any, authorized: TestClient
-) -> None:
+def test_standalone_pagination_empty_and_bounds(database: Any, authorized: TestClient) -> None:
     empty = authorized.get(standalone_path() + "?page=1&page_size=20").json()
     assert empty["data"] == [] and empty["page"]["total_items"] == 0
 

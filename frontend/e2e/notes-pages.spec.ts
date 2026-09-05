@@ -272,30 +272,28 @@ test('deleting a resource cascades only its own notes and leaves standalone note
   const preview = (await call(page, `/resources/${id}/deletion-preview`, 'POST')).body.data
   expect(preview.impact.note_count).toBe(1) // only the attached note counts
   expect(
-    (
-      await page.evaluate(
-        async ({ path, token }) => {
-          const session = await fetch('/api/v1/local-session', {
-            mode: 'cors',
-            cache: 'no-store',
-            credentials: 'omit',
-          }).then((r) => r.json())
-          const headers: Record<string, string> = {
-            'X-StudyPilot-Token': session.data.token,
-            'X-StudyPilot-Deletion-Token': token,
-          }
-          const response = await fetch('/api/v1' + path, {
-            method: 'DELETE',
-            headers,
-            mode: 'cors',
-            credentials: 'omit',
-            cache: 'no-store',
-            redirect: 'error',
-          })
-          return response.status
-        },
-        { path: `/resources/${id}`, token: preview.confirmation_token },
-      )
+    await page.evaluate(
+      async ({ path, token }) => {
+        const session = await fetch('/api/v1/local-session', {
+          mode: 'cors',
+          cache: 'no-store',
+          credentials: 'omit',
+        }).then((r) => r.json())
+        const headers: Record<string, string> = {
+          'X-StudyPilot-Token': session.data.token,
+          'X-StudyPilot-Deletion-Token': token,
+        }
+        const response = await fetch('/api/v1' + path, {
+          method: 'DELETE',
+          headers,
+          mode: 'cors',
+          credentials: 'omit',
+          cache: 'no-store',
+          redirect: 'error',
+        })
+        return response.status
+      },
+      { path: `/resources/${id}`, token: preview.confirmation_token },
     ),
   ).toBe(204)
 

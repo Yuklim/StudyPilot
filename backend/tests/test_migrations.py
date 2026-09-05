@@ -81,7 +81,9 @@ def test_0001_to_head_keeps_attached_notes_and_allows_standalone(tmp_path: Path)
         migrate(engine, "0001_initial")
         factory = create_session_factory(engine)
         with factory.begin() as session:
-            resource = LearningResource(title="Attached", source_type="PASTE", pasted_content="body")
+            resource = LearningResource(
+                title="Attached", source_type="PASTE", pasted_content="body"
+            )
             session.add(resource)
             session.flush()
             attached = Note(resource_id=resource.id, content="stays attached")

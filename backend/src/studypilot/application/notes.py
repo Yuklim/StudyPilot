@@ -75,9 +75,7 @@ def page_standalone(query: NoteQuery) -> dict[str, Any]:
     return transaction(lambda store: store.page_standalone(query))
 
 
-def mutate_standalone[T](
-    note_id: UUID, expected: int, operation: Callable[[NoteStore], T]
-) -> T:
+def mutate_standalone[T](note_id: UUID, expected: int, operation: Callable[[NoteStore], T]) -> T:
     try:
         return transaction(operation)
     except StaleDataError:
@@ -99,6 +97,4 @@ def update_standalone(note_id: UUID, command: NotePatch) -> dict[str, Any]:
 
 
 def delete_standalone(note_id: UUID, expected: int) -> None:
-    mutate_standalone(
-        note_id, expected, lambda store: store.delete_standalone(note_id, expected)
-    )
+    mutate_standalone(note_id, expected, lambda store: store.delete_standalone(note_id, expected))
