@@ -42,6 +42,10 @@ function versionedDeleteTarget(target: string): boolean {
   const parts = target.split('/')
   return (
     (parts.length === 5 && ['topics', 'tags'].includes(parts[3]) && fileIdPattern.test(parts[4])) ||
+    (parts.length === 5 &&
+      parts[3] === 'notes' &&
+      fileIdPattern.test(parts[4]) &&
+      parts[2] === 'v1') ||
     (parts.length === 7 &&
       parts[3] === 'resources' &&
       fileIdPattern.test(parts[4]) &&

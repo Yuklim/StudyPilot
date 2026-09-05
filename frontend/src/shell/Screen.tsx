@@ -5,6 +5,7 @@ import { ResourceForm } from '../features/resources/ResourceForm'
 import { ResourceLibrary } from '../features/resources/ResourceLibrary'
 import { ClassificationManager } from '../features/taxonomy/ClassificationManager'
 import { RecordHistory } from '../features/learning/RecordHistory'
+import { NotesPage } from '../features/notes/NotesPage'
 
 import { BookSketch, Icon } from './Icon'
 import type { ShellPage } from './pages'
@@ -99,6 +100,7 @@ export function Screen({ page }: { page: ShellPage }) {
   const match = useMatch('/resources/:resourceId')
   if (page.path === '/') return <Overview />
   if (page.path === '/classifications') return <ClassificationManager />
+  if (page.path === '/notes') return <NotesPage />
   if (page.path === '/study-records') return <RecordHistory />
   if (page.path === '/resources/new') return <ResourceForm />
   if (page.path === '/resources') return <ResourceLibrary />

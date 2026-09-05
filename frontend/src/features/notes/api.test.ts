@@ -101,3 +101,56 @@ describe('controlled note API', () => {
     expect(request).not.toHaveBeenCalled()
   })
 })
+
+describe('standalone note API (resource_id null)', () => {
+  const standaloneUrl = '/api/v1/notes'
+  const standalone = note({ resource_id: null, id: '018f1f58-4eb2-4a0d-a716-fb81b1960100' })
+
+  it('uses the top-level collection path for create/list/detail/update/delete', async () => {
+    const request = vi.spyOn(api, 'request')
+    request.mockResolvedValueOnce({
+      data: note({ resource_id: null, id: standalone.id, content: '独立心得' }),
+    })
+    await saveNote(null, '  独立心得\n', null)
+    expect(request).toHaveBeenLastCalledWith(standaloneUrl, {
+      method: 'POST',
+      body: { content: '独立心得' },
+    })
+    request.mockResolvedValueOnce({
+      data: note({ resource_id: null, content: '改', version: 2, id: standalone.id }),
+    })
+    await saveNote(null, '改', standalone)
+    expect(request).toHaveBeenLastCalledWith(standaloneUrl + '/' + standalone.id, {
+      method: 'PATCH',
+      body: { expected_version: 1, content: '改' },
+    })
+    request.mockResolvedValueOnce(undefined)
+    await deleteNote(null, standalone)
+    expect(request).toHaveBeenLastCalledWith(standaloneUrl + '/' + standalone.id, {
+      method: 'DELETE',
+      ifMatchVersion: 1,
+    })
+    request.mockResolvedValueOnce(notePage([standalone]))
+    await listNotes(null, 1)
+    expect(request).toHaveBeenLastCalledWith(
+      standaloneUrl + '?page=1&page_size=20&sort=-created_at',
+    )
+    request.mockResolvedValueOnce({ data: standalone })
+    await getNote(null, standalone.id)
+    expect(request).toHaveBeenLastCalledWith(standaloneUrl + '/' + standalone.id)
+  })
+
+  it('rejects a bound note under the standalone scope and a null-note under a bound scope', async () => {
+    const request = vi.spyOn(api, 'request')
+    // A standalone scope must never accept a note carrying a non-null resource_id.
+    request.mockResolvedValue({ data: note() })
+    await expect(getNote(null, standalone.id)).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    })
+    // A bound scope must never accept a standalone (null) note.
+    request.mockResolvedValue({ data: note({ resource_id: null }) })
+    await expect(getNote(resourceId, standalone.id)).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    })
+  })
+})

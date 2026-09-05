@@ -3,7 +3,8 @@ import { isResourceId } from '../resources/api'
 
 export interface Note {
   id: string
-  resource_id: string
+  /** 独立心得为 null；绑定资料心得为其资源 id。 */
+  resource_id: string | null
   content: string
   version: number
   created_at: string
@@ -47,12 +48,17 @@ function instant(value: unknown): string {
     ? value
     : invalid()
 }
-function note(value: unknown, resourceId: string): Note {
+function uuid(value: unknown): string | null {
+  if (value === null) return null
+  return typeof value === 'string' && isResourceId(value) ? value : invalid()
+}
+function note(value: unknown, resourceId: string | null): Note {
   const row = object(value)
+  const rid = uuid(row.resource_id)
   if (
     typeof row.id !== 'string' ||
     !isResourceId(row.id) ||
-    row.resource_id !== resourceId ||
+    (resourceId === null ? rid !== null : rid !== resourceId) ||
     typeof row.content !== 'string' ||
     !cleanContent(row.content) ||
     [...row.content].length > 50000
@@ -60,19 +66,23 @@ function note(value: unknown, resourceId: string): Note {
     return invalid()
   return {
     id: row.id,
-    resource_id: resourceId,
+    resource_id: rid,
     content: row.content,
     version: integer(row.version, 1),
     created_at: instant(row.created_at),
     updated_at: instant(row.updated_at),
   }
 }
-function path(resourceId: string, noteId?: string): string {
-  if (!isResourceId(resourceId) || (noteId !== undefined && !isResourceId(noteId)))
+function path(resourceId: string | null, noteId?: string): string {
+  if (
+    (resourceId !== null && !isResourceId(resourceId)) ||
+    (noteId !== undefined && !isResourceId(noteId))
+  )
     throw new ApiError('INVALID_REQUEST')
-  return `/api/v1/resources/${resourceId}/notes` + (noteId ? '/' + noteId : '')
+  const base = resourceId === null ? '/api/v1/notes' : `/api/v1/resources/${resourceId}/notes`
+  return base + (noteId ? '/' + noteId : '')
 }
-export async function listNotes(resourceId: string, number = 1): Promise<NotePage> {
+export async function listNotes(resourceId: string | null, number = 1): Promise<NotePage> {
   if (!Number.isSafeInteger(number) || number < 1) throw new ApiError('INVALID_REQUEST')
   const envelope = object(
     await api.request(path(resourceId) + `?page=${number}&page_size=20&sort=-created_at`),
@@ -100,12 +110,12 @@ export async function listNotes(resourceId: string, number = 1): Promise<NotePag
     },
   }
 }
-export async function getNote(resourceId: string, noteId: string): Promise<Note> {
+export async function getNote(resourceId: string | null, noteId: string): Promise<Note> {
   const result = note(object(await api.request(path(resourceId, noteId))).data, resourceId)
   return result.id === noteId ? result : invalid()
 }
 export async function saveNote(
-  resourceId: string,
+  resourceId: string | null,
   content: string,
   previous: Note | null,
 ): Promise<Note> {
@@ -137,7 +147,7 @@ export async function saveNote(
     return invalid()
   return result
 }
-export async function deleteNote(resourceId: string, previous: Note): Promise<void> {
+export async function deleteNote(resourceId: string | null, previous: Note): Promise<void> {
   if (
     previous.resource_id !== resourceId ||
     !Number.isSafeInteger(previous.version) ||
