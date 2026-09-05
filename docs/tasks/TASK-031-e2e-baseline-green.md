@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-031"
-status = "READY"
+status = "IN_PROGRESS"
 risk = "L2"
 risk_reason = "两类改动：(1) 三条 e2e 红是测试与 TASK-025/026 后真实 UI 不同步（导航拆成「主要导航/更多能力」两组、选填字段收进 `<details>` 折叠区），属测试侧修正，必须按真实用户路径补操作而不是删断言；(2) 一条是真实响应式缺陷——`/resources` 在 320px 下 documentElement.scrollWidth=338 横向溢出，源于 `.resource-filter-top` 不换行把 `.view-switch` 挤出视口，需改共享 `styles.css`，影响资料库页在所有断点的筛选行布局。不动后端、公共契约、数据模型与治理门禁；但共享样式 + 测试断言完整性需独立只读 Review，故 L2 而非 L1。"
 risk_flags = ["tests", "small-ui", "business"]
@@ -56,9 +56,20 @@ checks = ["frontend"]
 
 ## 实现与测试
 
-- 实现 SHA/变更摘要：（待填）
-- 命令、真实退出结果、product_fingerprint、环境、未运行原因：（待填）
-- 已知限制/未完成项：（待填）
+- 实现 SHA/变更摘要：`5da7ca2a2d011338dc0b90f7a5905b659b6a6eb5`，共 4 个文件 +26 −3。
+  - 产品修正（唯一一处非测试改动）：`frontend/src/styles.css` 的 `.resource-filter-top` 增加 `flex-wrap: wrap`（1 行）。该行原为不换行 flex，`.resource-actions` 与 `.view-switch` 都是 `flex-shrink:0`，320px 下把切换按钮挤出视口；允许换行后 320px 下切换组落到第二行，其余断点不动。未改任何 tsx/文案/结构。
+  - `frontend/e2e/scaffold.spec.ts`：新增 `moreNav = getByRole('navigation', { name: '更多能力' })`，把 `学习记录/复习安排/主题统计` 三个链接的点击从 `主要导航` 改到实际所在的 `更多能力` 分组（TASK-025 的导航拆分，`App.test.tsx` 早已同步）。其余断言（aria-current、焦点链、`unexpectedRequests` 为空、44px 命中区、reduced motion）逐条保留未动。
+  - `frontend/e2e/resource-pages.spec.ts`、`frontend/e2e/file-pages.spec.ts`：各新增 `openOptionalFields(page)` 助手——按 `补充信息（选填）` 摘要文本定位、经 `element.closest('details').open` 判断后再点击（幂等，不会把已展开的折叠区又关上），并断言 `保存原因（选填）` 可见；在 WEB 填 `来源名称（选填）` 前、PASTE 填 `保存原因（选填）` 前、FILE 填 `保存原因（选填）` 前各调用一次。走的是真实用户路径（先展开再填），没有删除或放宽任何既有断言，两条用例原有的保存计数、详情刷新、外链属性、粘贴原文原样、原件下载字节一致等断言全部保留。
+- 命令、真实退出结果、product_fingerprint、环境、未运行原因：
+  - 基线复现（`main` = `849dc1f`，未改动工作树）：`cd frontend && npm run test:e2e` → **4 failed / 32 passed (1.9m)**，失败项与本记录「需求与范围」列出的 4 条逐条一致。
+  - 候选（`5da7ca2`）：`cd frontend && npm run test:e2e` → **36 passed (24.6s)**，0 failed（用时下降是因为原先 4 条各自耗尽 30s 超时）。
+  - `npm run format:check` / `npm run lint` / `npm run typecheck` 全绿；`npm run test`（vitest）→ **16 文件 337 passed**，与基线持平（未增删 vitest 用例）。
+  - `PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-031-e2e-baseline-green.md --candidate 5da7ca2` → **CHECKS PASS**：base=`849dc1f`、input=`5da7ca2`、risk=L2、stages=(worker, review)、files=8、profiles=frontend、product_fingerprint=`adb435adfa90a91e8e5912d4ac330e5d2d1e7abfafd675b1f65ff17b0be0d907`（frontend 组含 format:check/lint/typecheck/vitest 337/vite build，全部 exit=0）。环境：本地 macOS、Node 24、Playwright 1.62.1 chromium；运行前临时移出未跟踪的 HANDOFF 文件以满足干净工作树要求，运行后已原样放回。
+  - 布局定向测量（scratchpad 内临时 Playwright 配置，不入库、不属交付物）：修复后 320/390/768/1440 四档 `documentElement.scrollWidth == innerWidth`；`.view-switch` 位置 390px `left=226 right=334`、768px `left=254 right=362`、1440px `left=1248 right=1356`，与修复前实测数值一致（≥390px 布局不变）；仅 320px 由修复前的 `left=230 right=338`（溢出 18px）变为换行后的 `left=33 right=141`；两个切换按钮高度仍为 39px、可见可点。
+  - 未运行：后端 pytest 与契约检查——本任务无后端/契约改动，check_task 自动选组也只选了 frontend；不以旧 PASS 冒充。
+- 已知限制/未完成项：
+  - 320px 下「卡片/列表」切换组换行到搜索框下方，是视口放不下时的预期取舍，不是回归；≥390px 视觉零变化。
+  - 未新增 e2e 用例，仅修正既有 4 条的定位方式与 1 处真实布局缺陷；`scaffold.spec.ts` 的 44px 命中区/reduced-motion 循环仍只覆盖「主要导航」组，未扩展到「更多能力」组（属可选增强，本任务范围外）。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
