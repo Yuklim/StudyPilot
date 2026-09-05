@@ -130,11 +130,11 @@ checks = []
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：待填。
-- Review：L3 独立只读 Reviewer，待填（身份、权限证据、base/candidate、findings 或 No findings、结论）。
-- Acceptance：L3 独立只读 Integration/Acceptance，待填（身份、权限证据、条件→证据、结论）。
-- 最终状态/风险/用户操作：待填。
-- 非阻断遗留项：待填。
+- 候选 SHA：`b69ba60`（含需求、实现与测试证据；代码实现 SHA `d3e038c`，`d3e038c..b69ba60` 仅为 risk_flags 更正与本记录的证据写回，不含代码改动。`check_task.py --candidate 87badda` CHECKS PASS，base=`e2ab283`、files=12、profiles=backend,contracts,frontend、product_fingerprint=`25c9f9dd674b48fa0762d27a8a8f8ea948b98e0be99162f16cf8b36529c88139`、risk=L3 stages=(worker, review, acceptance)）。base..candidate 的完整 diff 已导出到 scratchpad 的 `TASK-032-full-diff.patch`（727 行），供无 Bash 的只读 Reviewer 直接 Read。
+- Review：**待执行**。2026-09-05 主 Agent 尝试派发失败：本次会话以 `/Users/yuklimching` 为启动目录，项目级 `.claude/agents/reviewer.md` 未注册（`Agent type 'reviewer' not found`）；当时可用的 Agent 类型中最接近只读的 `Explore` **带 Bash**，不构成运行器层面的只读证明，按《风险分级与检查规则》「权限与独立性」不得充当独立 Reviewer。用户决定：在 StudyPilot 目录下重开会话以注册 reviewer Agent 后再审。接手会话应对 `e2ab283..b69ba60` 做首次完整 Review。
+- Acceptance：**待执行**，在 Review 之后，由独立于实现者与 Reviewer 的第二个只读实例核对 14 条完成条件与跨模块证据。
+- 最终状态/风险/用户操作：status=**IN_REVIEW**。实现与自动检查已完成且全绿，L3 执行链剩 Review 与 Acceptance 两步。分支 `agent/coordinator/TASK-032-tag-postfill` 目前**仅在本地**，未推送、未开 PR。
+- 非阻断遗留项：见「实现与测试」的已知限制段（编辑页不支持就地新建标签、标签区分页浏览、两条标签入口分处两页），均为本任务明确的非目标，不阻断交付。
 - 日期与决定日志：2026-09-05 用户在 PR #36 合并后授权本任务，范围定为 A1+A2；同日主 Agent 在基线 `e2ab283` 亲自复核 6 项现状事实后登记为 L3（放宽公共契约 + 跨模块 + 版本语义决定），并入 TASK-031 的 MERGED 状态收尾。
 - 2026-09-05 `risk_flags` 更正：原写 `["contract", "public-api", "cross-module", ...]`，其中 `contract`/`cross-module` 不在 `docs/governance/risk-policy.json` 的合法取值内（check_task 报 `missing or unknown risk flags`），按策略文件改为 `["public-api", "major-cross-module", "critical-data", "business", "tests"]`。等级仍为 L3，理由未变；`critical-data` 对应 risk_reason 里已写明的乐观并发/版本语义影响。
 - 2026-09-05 实现阶段两处任务记录更正（均在冻结候选之前，非证据写回改授权）：① `allowed_paths` 原写 `backend/tests/test_resources.py`，实测 `updateResource` 的测试在 `backend/tests/test_resource_updates.py`（`test_resources.py` 只测创建与查询），按实际影响改为后者，路径数量不变、不扩大范围；② 目标 4 原写「复用 `ClassificationPicker`」，实现时发现该组件同时承载主题选择，而编辑页已有独立主题控件，套用会产生两套主题 UI，遂改为在编辑页内用只读 `ClassificationBrowser` 自建标签区，`ClassificationPicker.tsx` 保持不改（仍在禁止范围内）。
