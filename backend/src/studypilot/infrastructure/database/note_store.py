@@ -1,4 +1,10 @@
-"""Only Note is writable here; resource visibility is a read-only prerequisite."""
+"""Only Note is writable here; resource visibility is a read-only prerequisite.
+
+Two scopes share one notes table: attached notes (resource_id NOT NULL,
+visible only under their resource) and standalone notes (resource_id NULL,
+managed through the top-level /api/v1/notes collection). A note never moves
+between scopes in this task.
+"""
 
 from typing import Any
 from uuid import UUID
@@ -52,6 +58,8 @@ class NoteStore:
         if note.version != expected:
             raise NoteError("VERSION_CONFLICT", 409, {"current_version": note.version})
 
+    # -- attached-note operations (unchanged semantics) -----------------------
+
     def create(self, resource_id: UUID, content: str) -> dict[str, Any]:
         self.require_resource(resource_id)
         note = Note(resource_id=resource_id, content=content)
@@ -80,7 +88,48 @@ class NoteStore:
 
     def page(self, resource_id: UUID, query: NoteQuery) -> dict[str, Any]:
         self.require_resource(resource_id)
-        scope = Note.resource_id == resource_id
+        return self._page(Note.resource_id == resource_id, query)
+
+    # -- standalone-note operations (resource_id IS NULL) --------------------
+
+    def create_standalone(self, content: str) -> dict[str, Any]:
+        note = Note(resource_id=None, content=content)
+        self.session.add(note)
+        self.session.flush()
+        return project(note)
+
+    def detail_standalone(self, note_id: UUID) -> dict[str, Any]:
+        return project(self.standalone(note_id))
+
+    def update_standalone(self, note_id: UUID, content: str, expected: int) -> dict[str, Any]:
+        note = self.standalone(note_id)
+        self.check_version(note, expected)
+        if note.content != content:
+            note.content = content
+        self.session.flush()
+        return project(note)
+
+    def delete_standalone(self, note_id: UUID, expected: int) -> None:
+        note = self.standalone(note_id)
+        self.check_version(note, expected)
+        self.session.delete(note)
+        self.session.flush()
+
+    def page_standalone(self, query: NoteQuery) -> dict[str, Any]:
+        return self._page(Note.resource_id.is_(None), query)
+
+    # -- shared helpers -------------------------------------------------------
+
+    def standalone(self, note_id: UUID) -> Note:
+        """Read a standalone Note by id; raises NOTE_NOT_FOUND if missing or attached."""
+        note = self.session.scalar(
+            select(Note).where(Note.id == note_id, Note.resource_id.is_(None))
+        )
+        if note is None:
+            raise NoteError("NOTE_NOT_FOUND", 404)
+        return note
+
+    def _page(self, scope: Any, query: NoteQuery) -> dict[str, Any]:
         total = int(self.session.scalar(select(func.count()).select_from(Note).where(scope)) or 0)
         column = getattr(Note, query.sort.lstrip("-"))
         offset = (query.page - 1) * query.page_size

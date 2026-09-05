@@ -49,10 +49,11 @@ describe('StudyPilot journal shell', () => {
     renderWithRouter(<App />)
     const primaryNav = within(screen.getByRole('navigation', { name: '主要导航' }))
     const moreNav = within(screen.getByRole('navigation', { name: '更多能力' }))
-    expect(primaryNav.getAllByRole('link')).toHaveLength(3)
+    expect(primaryNav.getAllByRole('link')).toHaveLength(4)
     expect(moreNav.getAllByRole('link')).toHaveLength(3)
     const cases = [
       { title: '资料库', link: () => primaryNav.getByRole('link', { name: '资料库' }) },
+      { title: '我的心得', link: () => primaryNav.getByRole('link', { name: '我的心得' }) },
       { title: '分类整理', link: () => primaryNav.getByRole('link', { name: '分类整理' }) },
       { title: '学习记录', link: () => moreNav.getByRole('link', { name: '学习记录' }) },
       { title: '复习安排', link: () => moreNav.getByRole('link', { name: '复习安排' }) },

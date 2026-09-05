@@ -49,7 +49,7 @@
 
 本文件第 5、8、10 节及 `openapi-v1.json` 的标准 paths/schemas 描述**完整 MVP 目标**，不是当前程序全部已可调用的能力清单。同一操作允许按本节明确的输入子集分阶段交付；TASK-009 当前运行时的可用性及未开放输入响应以本节为准，不能把完整目标中的 FILE 分支视为本阶段已承诺可用。最终字段、媒体类型、成功响应、安全及数据规则仍保留，不删减、不改名，不宣称完整 MVP 已完成。
 
-TASK-011/012 已完成分类后端与页面，TASK-013/014 已完成 FILE 后端和上传/下载页面，TASK-015/016 已完成旧学习记录后端与页面，TASK-017 已提供个人笔记后端。TASK-019 接入轻量心得页面：正文新增/回看/修改/确认删除，只自动显示保存时间；不向学习写接口提交虚构的开始时间、时长、进度或状态。旧历史与状态/归档入口收起保留。页面能力随该任务测试、独立审查、验收通过并由用户合并后交付；本节不改变标准契约。
+TASK-011/012 已完成分类后端与页面，TASK-013/014 已完成 FILE 后端和上传/下载页面，TASK-015/016 已完成旧学习记录后端与页面，TASK-017 已提供个人笔记后端。TASK-019 接入轻量心得页面：正文新增/回看/修改/确认删除，只自动显示保存时间；不向学习写接口提交虚构的开始时间、时长、进度或状态。旧历史与状态/归档入口收起保留。TASK-027 提供独立心得：`Note.resource_id` 按用户确认放宽为可空并新增顶层 `/api/v1/notes` 集合——独立心得(resource_id 为 null)可不先收藏资料直接记录/回看/修改/删除；绑定资料(resource_id 非空)的心得仍在资料详情。这是本节首次真实放宽标准 Note 契约与操作清单，随该任务测试、独立审查、验收通过并由用户合并后交付。
 
 | 当前可用操作 | 交付范围 |
 | --- | --- |
@@ -64,11 +64,12 @@ TASK-011/012 已完成分类后端与页面，TASK-013/014 已完成 FILE 后端
 | `attachResourceTag` / `detachResourceTag` | TASK-011：既定幂等关联/解除；不写资料主要主题、正文或学习状态 |
 | `listResourceStudyRecords` / `createResourceStudyRecord` / `listStudyRecords` | TASK-015：既定历史分页与学习记录/当前进度原子写入，遵守版本、状态矩阵、复习计划前置条件和时间规则；不开放复习计划/结果写操作 |
 | `listResourceNotes` / `createResourceNote` / `getResourceNote` / `updateResourceNote` / `deleteResourceNote` | TASK-017：既定个人笔记增删改查与稳定分页；严格正文、所属资料及版本保护，只写 Note，不改变资料、进度或原件，不提供全文搜索或回收站 |
+| `listStandaloneNotes` / `createStandaloneNote` / `getStandaloneNote` / `updateStandaloneNote` / `deleteStandaloneNote` | TASK-027：独立心得(resource_id 为 null)的增删改查与稳定分页；无资源可见性前置，版本/单事务/不回放/错误收敛同资源笔记 |
 
 - TASK-009～012 对 multipart 的临时 `415 CONTENT_TYPE_UNSUPPORTED` 限制由 TASK-013 的实际文件实现解除；合法 FILE 表单按第 5/8 节处理，其他媒体类型仍拒绝。缺失令牌或非法来源仍优先按第 7 节返回对应 `403`，不读正文或操作文件/数据库。
 - JSON 请求的 FILE 不属于 WEB/PASTE JSON schema，仍为 `422 VALIDATION_ERROR`。已开放的 WEB/PASTE 校验、错误、事务和只读投影必须完整符合其契约，不能借分阶段交付降低这些要求。
 - OpenAPI 顶层 `x-delivery-profile` 是本阶段机器可读清单；其余标准 operation/schema 保留为完整目标。当前不启用自动生成；以后若生成客户端，必须先按该清单限制可用操作/请求媒体类型，不能直接将完整目标文档当作当前运行时契约或生成已可上传的界面。该清单是版本说明，不新增运行时能力查询接口。其他未列入操作不因存在 schema 就获得本阶段可调用承诺。
-- TASK-013～017 及 TASK-019～022 的单任务证据记录相应实现、测试、独立 Review 和验收；上述交付元数据与代码一起审查，不能仅改清单就声称实现。TASK-022 资料删除后端随测试、独立审查/验收通过并由用户合并后交付；删除页面、复习、统计等未列能力仍未开放。交付完整接口全集时才验该完整目标，当前核心验收以 1.0 和产品需求为准。本节不授权回退已交付能力或改变 schema。
+- TASK-013～017 及 TASK-019～022 的单任务证据记录相应实现、测试、独立 Review 和验收；上述交付元数据与代码一起审查，不能仅改清单就声称实现。TASK-022 资料删除后端随测试、独立审查/验收通过并由用户合并后交付；删除页面、复习、统计等未列能力仍未开放。交付完整接口全集时才验该完整目标，当前核心验收以 1.0 和产品需求为准。除 TASK-027 按用户确认放宽 `Note.resource_id` 可空并新增顶层 `/notes` 外，本节不授权回退已交付能力或改变 schema。
 
 ## 2. 通用 HTTP 约定
 
@@ -285,12 +286,12 @@ PUT 添加与 DELETE 移除是幂等的，避免整组标签覆盖造成并发�
 | API 名称 | 类型/示例 | C/U | 必填/可空/默认/限制 | 敏感 | 所有者与不变量 |
 | --- | --- | --- | --- | --- | --- |
 | `id` | uuid | R | 必有 | 否 | notes |
-| `resource_id` | uuid | C(路径) | 必有，不可改 | 否 | notes |
+| `resource_id` | uuid / null | C(路径或顶层) | 绑定资料时必有且不可改；独立心得(顶层 `/notes`)为 null | 否 | notes |
 | `content` | string / `这里记录个人理解。` | C/U | 去首尾后 1～50,000；不空 | 是 | notes；只存个人笔记，不混入 AI 内容 |
 | `version` | int | R | 默认 1 | 否 | notes |
 | `created_at` / `updated_at` | instant | R | 自动 | 否 | notes |
 
-第一阶段笔记不进入资料统一搜索；删除笔记是直接删除，但资源整体删除时进入影响确认集合。
+第一阶段笔记不进入资料统一搜索；删除笔记是直接删除。绑定资料(resource_id 非空)的笔记在资源整体删除时进入影响确认集合；独立心得(resource_id 为 null)不属于任何资源，不进入资源删除影响集合。独立心得经顶层 `/api/v1/notes` 新增/回看/编辑/删除。
 
 ### 4.9 StudyRecord（learning 所有，追加后不可改）
 
@@ -344,7 +345,7 @@ OpenAPI 中 `ReviewRecord` 用条件 schema 固化上述规则：`NEEDS_REVIEW` 
 | Topic—LearningResource | Topic 1 对资料 0..*；资料 `topic_id` 可空 | 资料删除不影响 Topic | Topic 有引用即 409；先经 resources 重分配/清空 |
 | LearningResource—OriginalFile | FILE 资料恰好 1，其他恰好 0；`resource_id`、存储键唯一 | 经确认并按 trash 协议删除 | 不提供单独删除/替换原件接口 |
 | LearningResource—LearningProgress | 恰好 1；`resource_id` 唯一 | 经确认删除 | 不可单独删除 |
-| LearningResource—Note | 1 对 0..* | 纳入影响集合，经确认删除 | 可按版本单独删除 |
+| LearningResource—Note | 绑定笔记 1 对 0..*；独立心得 `resource_id` 为 null 不属此关系 | 绑定的纳入影响集合，经确认删除；独立心得不受资源删除影响 | 绑定笔记可按版本单独删除；独立心得经顶层 `/notes` 单独删除 |
 | LearningResource—StudyRecord | 1 对 0..*；记录不可变 | 纳入影响集合，经确认删除 | 不提供修改/删除接口，当前值变化不能覆盖历史 |
 | Tag—ResourceTag—LearningResource | 多对多；`(resource_id,tag_id)` 复合唯一 | 关联纳入影响集合并删除，Tag 保留 | Tag 有关联即 409；关联可幂等解除 |
 | LearningResource—ActiveReviewPlan | 1 对 0..1；`resource_id` 唯一 | 纳入影响集合，经确认删除 | 不物理删除；移出列表时转 PAUSED |
@@ -507,6 +508,11 @@ OpenAPI 中 `ReviewRecord` 用条件 schema 固化上述规则：`NEEDS_REVIEW` 
 | GET `/resources/{resource_id}/notes/{note_id}` | 笔记详情 / notes | ID；200 Note | 200/403/404/500；只读 |
 | PATCH `/resources/{resource_id}/notes/{note_id}` | 修改笔记 / notes | `NotePatch`；200 Note | 200/400/403/404/409/415/422/428/500；写入 |
 | DELETE `/resources/{resource_id}/notes/{note_id}` | 删除笔记 / notes | If-Match；204 | 204/403/404/409/428/500；删除 |
+| GET `/api/v1/notes` | 独立心得列表 / notes | 分页；200 `NotePage` | 200/403/422/500；只返回 `resource_id` 为 null 的独立心得 |
+| POST `/api/v1/notes` | 新增独立心得 / notes | `NoteCreate`；201 Note | 201/400/403/415/422/500；创建(resource_id 为 null) |
+| GET `/api/v1/notes/{note_id}` | 独立心得详情 / notes | ID；200 Note | 200/403/404/500；只读 |
+| PATCH `/api/v1/notes/{note_id}` | 修改独立心得 / notes | `NotePatch`；200 Note | 200/400/403/404/409/415/422/428/500；写入 |
+| DELETE `/api/v1/notes/{note_id}` | 删除独立心得 / notes | If-Match；204 | 204/403/404/409/428/500；删除 |
 | GET `/resources/{resource_id}/study-records` | 单资料历史 / learning | 分页/时间筛选；200 `StudyRecordPage` | 200/403/404/422/500；只读 |
 | POST `/resources/{resource_id}/study-records` | 记录学习并更新当前值 / learning | `StudyRecordCreate`；201 `StudyRecordResult` | 201/400/403/404/409/415/422/500；事务写入 |
 | GET `/study-records` | 全局近期活动 / learning | 分页/筛选；200 页面 | 200/403/422/500；只读 |
@@ -533,7 +539,7 @@ DELETE review 带 JSON 是契约列明的例外；它仍是写请求并必须先
 
 ### 10.1 每个操作的成功/失败示例索引
 
-上一张 35 行操作表的最后一列是逐 operation 响应状态矩阵（含成功与错误）；错误状态码对应第2.2节稳定错误码。OpenAPI 中每个非 204 operation 都在自己的成功响应 content 内给出可验证示例，每个 operation 也给出至少一个带安全示例的错误响应；WEB、PASTE 和 multipart FILE 三种创建媒体均有独立请求示例。以下短例仅作索引，不替代各 operation 示例：
+上一张 40 行操作表的最后一列是逐 operation 响应状态矩阵（含成功与错误）；错误状态码对应第2.2节稳定错误码。OpenAPI 中每个非 204 operation 都在自己的成功响应 content 内给出可验证示例，每个 operation 也给出至少一个带安全示例的错误响应；WEB、PASTE 和 multipart FILE 三种创建媒体均有独立请求示例。以下短例仅作索引，不替代各 operation 示例：
 
 以下为逐 operation 的稳定错误码矩阵（所有代码均使用第2.2节统一 ErrorResponse）：
 
@@ -563,6 +569,11 @@ DELETE review 带 JSON 是契约列明的例外；它仍是写请求并必须先
 | `getResourceNote` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `RESOURCE_NOT_FOUND`, `NOTE_NOT_FOUND`, `UNKNOWN_ERROR` |
 | `updateResourceNote` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `RESOURCE_NOT_FOUND`, `NOTE_NOT_FOUND`, `VERSION_CONFLICT`, `CONTENT_TYPE_UNSUPPORTED`, `VALIDATION_ERROR`, `VERSION_REQUIRED`, `UNKNOWN_ERROR` |
 | `deleteResourceNote` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `RESOURCE_NOT_FOUND`, `NOTE_NOT_FOUND`, `VERSION_CONFLICT`, `VERSION_REQUIRED`, `UNKNOWN_ERROR` |
+| `listStandaloneNotes` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `VALIDATION_ERROR`, `UNKNOWN_ERROR` |
+| `createStandaloneNote` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `CONTENT_TYPE_UNSUPPORTED`, `VALIDATION_ERROR`, `UNKNOWN_ERROR` |
+| `getStandaloneNote` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `NOTE_NOT_FOUND`, `UNKNOWN_ERROR` |
+| `updateStandaloneNote` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `NOTE_NOT_FOUND`, `VERSION_CONFLICT`, `CONTENT_TYPE_UNSUPPORTED`, `VALIDATION_ERROR`, `VERSION_REQUIRED`, `UNKNOWN_ERROR` |
+| `deleteStandaloneNote` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `NOTE_NOT_FOUND`, `VERSION_CONFLICT`, `VERSION_REQUIRED`, `UNKNOWN_ERROR` |
 | `listResourceStudyRecords` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `RESOURCE_NOT_FOUND`, `VALIDATION_ERROR`, `UNKNOWN_ERROR` |
 | `createResourceStudyRecord` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `RESOURCE_NOT_FOUND`, `VERSION_CONFLICT`, `INVALID_STATE_TRANSITION`, `STATE_CONFLICT`, `CONTENT_TYPE_UNSUPPORTED`, `VALIDATION_ERROR`, `UNKNOWN_ERROR` |
 | `listStudyRecords` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `VALIDATION_ERROR`, `UNKNOWN_ERROR` |
@@ -619,7 +630,7 @@ OpenAPI 3.1 使用 JSON Schema 联合类型（如 `type:["string","null"]`）表
 | 5.3 资料库 | 第2.3、9、10节 | `/resources` GET、`/resources/{id}` GET/PATCH/DELETE、deletion-preview、download |
 | 5.4 分类搜索筛选 | 第2.3、4.5～4.7、10节 | resources 查询；topics/tags CRUD；resource-tag PUT/DELETE |
 | 5.5 状态进度 | 第4.4/4.9、6节 | study-records POST/GET；`LearningStatus`、`LearningProgress` |
-| 5.6 个人笔记 | 第4.8、10节 | notes GET/POST/PATCH/DELETE；`Note` |
+| 5.6 个人笔记 | 第4.8、10节 | `/resources/{id}/notes` 与顶层 `/api/v1/notes` GET/POST/PATCH/DELETE；`Note` |
 | 5.7 学习记录 | 第4.9、6.2、10节 | 单资源/全局 study-records；`StudyRecord` |
 | 5.8 复习管理 | 第4.10/4.11、6、10节 | reviews list/schedule/pause/complete、review-records；review schemas |
 | 5.9 概览统计 | 第2.3、6.2、10～11节 | `/analytics/overview`、`/analytics/topics`；analytics schemas |

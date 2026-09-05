@@ -215,3 +215,91 @@ test('real note pages keep drafts when paging, and legacy history remains reacha
   await page.getByRole('button', { name: '更多：状态与归档管理' }).click()
   await expect(page.getByLabel('学习后状态')).toBeVisible()
 })
+
+test('top-level notes page records a standalone note that survives edits and deletes independently of resources', async ({
+  page,
+}) => {
+  await page.goto('/notes')
+  await expect(page.getByRole('heading', { name: '我的心得', level: 1 })).toBeVisible()
+  const form = page.getByRole('form', { name: '心得编辑' })
+  await expect(page.getByText('独立心得不绑定资料')).toBeVisible()
+  await expect(page.getByText('还没有心得，写下一句话就可以开始。')).toBeVisible()
+
+  await form.getByRole('textbox').fill('不先收藏资料也能记下的想法')
+  await form.getByRole('button', { name: '保存心得', exact: true }).click()
+  await expect(form.getByRole('status')).toContainText('心得已保存')
+  const list = page.getByRole('list', { name: '心得列表' })
+  await expect(list.locator('li')).toHaveCount(1)
+  await expect(list).toContainText('不先收藏资料也能记下的想法')
+
+  await page.reload()
+  await expect(list.locator('li')).toHaveCount(1)
+  await expect(list).toContainText('不先收藏资料也能记下的想法')
+
+  await list.getByRole('button', { name: '编辑', exact: true }).click()
+  await form.getByRole('textbox').fill('补充的独立心得')
+  await form.getByRole('button', { name: '保存修改', exact: true }).click()
+  await expect(form.getByRole('status')).toContainText('心得已保存')
+  await expect(list).toContainText('补充的独立心得')
+
+  await list.getByRole('button', { name: '删除', exact: true }).click()
+  await expect(form.getByText('删除这一条独立心得。')).toBeVisible()
+  await form.getByRole('checkbox', { name: '我确认永久删除上方这条心得' }).check()
+  await form.getByRole('button', { name: '确认删除心得', exact: true }).click()
+  await expect(form.getByRole('status')).toContainText('这条心得已删除')
+  await expect(page.getByText('还没有心得，写下一句话就可以开始。')).toBeVisible()
+  expect((await call(page, '/notes')).body.page.total_items).toBe(0)
+})
+
+test('deleting a resource cascades only its own notes and leaves standalone notes intact', async ({
+  page,
+}) => {
+  const id = await createResource(page, '独立心得隔离 · 删除测试')
+  // Attach one note to the resource.
+  const form = page.getByRole('form', { name: '心得编辑' })
+  await form.getByRole('textbox').fill('这条会随资料一起删除')
+  await form.getByRole('button', { name: '保存心得', exact: true }).click()
+  await expect(page.getByRole('list', { name: '心得列表' })).toContainText('这条会随资料一起删除')
+  // Add a standalone note through the top-level page.
+  await page.goto('/notes')
+  const standalone = page.getByRole('form', { name: '心得编辑' })
+  await standalone.getByRole('textbox').fill('这条独立心得要留下')
+  await standalone.getByRole('button', { name: '保存心得', exact: true }).click()
+  await expect(standalone.getByRole('status')).toContainText('心得已保存')
+  expect((await call(page, '/notes')).body.page.total_items).toBe(1)
+
+  // Preview then confirm deletion of the resource through the API.
+  const preview = (await call(page, `/resources/${id}/deletion-preview`, 'POST')).body.data
+  expect(preview.impact.note_count).toBe(1) // only the attached note counts
+  expect(
+    await page.evaluate(
+      async ({ path, token }) => {
+        const session = await fetch('/api/v1/local-session', {
+          mode: 'cors',
+          cache: 'no-store',
+          credentials: 'omit',
+        }).then((r) => r.json())
+        const headers: Record<string, string> = {
+          'X-StudyPilot-Token': session.data.token,
+          'X-StudyPilot-Deletion-Token': token,
+        }
+        const response = await fetch('/api/v1' + path, {
+          method: 'DELETE',
+          headers,
+          mode: 'cors',
+          credentials: 'omit',
+          cache: 'no-store',
+          redirect: 'error',
+        })
+        return response.status
+      },
+      { path: `/resources/${id}`, token: preview.confirmation_token },
+    ),
+  ).toBe(204)
+
+  // The standalone note is still there; the resource and its note are gone.
+  await page.reload()
+  await expect(page.getByRole('list', { name: '心得列表' })).toContainText('这条独立心得要留下')
+  expect((await call(page, '/notes')).body.page.total_items).toBe(1)
+  expect((await call(page, `/resources/${id}/notes`)).status).toBe(404)
+})

@@ -18,9 +18,12 @@ export function NotesPanel({
   resourceId,
   available = true,
 }: {
-  resourceId: string
+  /** 绑定资料的心得传资源 id；独立心得(顶层「我的心得」页)传 null 或不传。 */
+  resourceId?: string | null
   available?: boolean
 }) {
+  const scope = resourceId ?? null
+  const standalone = scope === null
   const [draft, setDraft] = useState('')
   const [selected, setSelected] = useState<Note | null>(null)
   const [deleting, setDeleting] = useState(false)
@@ -44,8 +47,11 @@ export function NotesPanel({
   useEffect(() => {
     if (selected && !deleting && !pending) input.current?.focus()
   }, [selected, deleting, pending])
-  const load = useCallback(() => listNotes(resourceId, page), [resourceId, page])
-  const { result, retry } = useResourceQuery(resourceId + ':' + page + ':' + revision, load)
+  const load = useCallback(() => listNotes(scope, page), [scope, page])
+  const { result, retry } = useResourceQuery(
+    (scope ?? 'standalone') + ':' + page + ':' + revision,
+    load,
+  )
   const dirty = !deleting && draft !== (selected?.content ?? '')
   function discardAllowed() {
     return !dirty || window.confirm('这份草稿尚未保存，确定放弃当前编辑吗？')
@@ -69,7 +75,7 @@ export function NotesPanel({
     setNotice('')
     setError('')
     try {
-      const latest = await getNote(resourceId, row.id)
+      const latest = await getNote(scope, row.id)
       if (!alive.current) return
       setSelected(latest)
       setDraft(latest.content)
@@ -102,10 +108,11 @@ export function NotesPanel({
     setNotice('')
     try {
       if (deleting && selected) {
-        await deleteNote(resourceId, selected)
-        if (alive.current) setNotice('这条心得已删除，资料与其他记录仍保留。')
+        await deleteNote(scope, selected)
+        if (alive.current)
+          setNotice(scope === null ? '这条心得已删除。' : '这条心得已删除，资料与其他记录仍保留。')
       } else {
-        const saved = await saveNote(resourceId, draft, selected)
+        const saved = await saveNote(scope, draft, selected)
         if (alive.current) setNotice(`心得已保存 · ${displayTime(saved.updated_at)}`)
       }
       if (alive.current) {
@@ -134,11 +141,11 @@ export function NotesPanel({
     setRecovery({ verified: false, missing: false })
     try {
       if (selected) {
-        const latest = await getNote(resourceId, selected.id)
+        const latest = await getNote(scope, selected.id)
         if (!alive.current) return
         setSelected(latest)
       } else {
-        const latest = await listNotes(resourceId, 1)
+        const latest = await listNotes(scope, 1)
         if (!alive.current) return
         setCheckedNotes(latest.data)
         setPage(1)
@@ -160,10 +167,16 @@ export function NotesPanel({
   return (
     <section className="notes-panel" aria-label="个人心得">
       <div className="section-heading">
-        <h2>随手记心得</h2>
-        <span className="note-tab">留住此刻的想法</span>
+        <h2>{standalone ? '我的心得' : '随手记心得'}</h2>
+        <span className="note-tab">
+          {standalone ? '不先收藏资料，也能留住想法' : '留住此刻的想法'}
+        </span>
       </div>
-      <p className="resource-hint">一句理解、一个疑问，都值得留下。不用填学习时长或进度。</p>
+      <p className="resource-hint">
+        {standalone
+          ? '一句理解、一个疑问，都值得留下；独立心得不绑定资料，随时可写可回看。'
+          : '一句理解、一个疑问，都值得留下。不用填学习时长或进度。'}
+      </p>
       {!available && <p role="status">正在核对资料，暂不能保存或删除心得；当前草稿仍保留。</p>}
       <form
         className="note-editor"
@@ -174,7 +187,11 @@ export function NotesPanel({
         {deleting && selected ? (
           <>
             <h3>删除这条心得？</h3>
-            <p>删除后无法恢复。只删除下面这条心得，不影响资料或其他记录。</p>
+            <p>
+              {standalone
+                ? '删除后无法恢复。只删除这一条独立心得。'
+                : '删除后无法恢复。只删除下面这条心得，不影响资料或其他记录。'}
+            </p>
             <p className="record-text note-delete-preview">{selected.content}</p>
           </>
         ) : (

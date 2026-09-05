@@ -78,6 +78,15 @@ export const pages: ShellPage[] = [
       '主题统计接口尚未接入。之后可以查看各主题的资料数量、完成比例与学习投入；现在不展示示例图表或数字。',
   },
   {
+    path: '/notes',
+    title: '我的心得',
+    caption: '独立记下此刻的理解与疑问，不先绑定资料。',
+    icon: 'record',
+    section: 'primary',
+    emptyTitle: '还没有独立心得',
+    description: '不必先收藏资料，随手记下的想法都会留在这里，可随时回看与修改。',
+  },
+  {
     path: '/classifications',
     title: '分类整理',
     caption: '给每一份好奇，贴上自己的线索。',

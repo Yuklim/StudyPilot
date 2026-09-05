@@ -528,3 +528,115 @@ def test_missing_parents_ids_and_contract_shapes(
         "updateResourceNote",
         "deleteResourceNote",
     } <= set(document["x-delivery-profile"]["available_operations"])
+
+
+def standalone_path(note: dict[str, Any] | None = None) -> str:
+    return "/api/v1/notes" + (f"/{note['id']}" if note else "")
+
+
+def add_standalone(client: TestClient, content: str = PRIVATE) -> dict[str, Any]:
+    response = client.post(standalone_path(), json={"content": content})
+    assert response.status_code == 201, response.text
+    return dict(response.json()["data"])
+
+
+def test_standalone_lifecycle_pagination_and_version(database: Any, authorized: TestClient) -> None:
+    """Top-level /notes manages notes with no resource, independently of any item."""
+    created = add_standalone(authorized, "第一条独立心得")
+    row = created
+    assert row["resource_id"] is None
+    assert row["content"] == "第一条独立心得" and row["version"] == 1
+
+    # Detail round-trip.
+    detail = authorized.get(standalone_path(created)).json()["data"]
+    assert detail == created
+
+    # Standalone notes are isolated from the per-resource listing.
+    page = authorized.get(standalone_path() + "?page=1&page_size=20").json()
+    assert [n["id"] for n in page["data"]] == [created["id"]]
+    assert page["page"]["total_items"] == 1 and page["page"]["has_more"] is False
+
+    # No-op edit keeps version/time.
+    before = authorized.get(standalone_path(created)).json()["data"]
+    noop = authorized.patch(
+        standalone_path(created),
+        json={"content": created["content"], "expected_version": created["version"]},
+    )
+    assert noop.status_code == 200
+    assert noop.json()["data"]["version"] == before["version"]
+
+    # Real edit bumps version and content.
+    changed = authorized.patch(
+        standalone_path(created),
+        json={"content": "修改后的独立心得", "expected_version": created["version"]},
+    )
+    assert changed.status_code == 200
+    assert changed.json()["data"]["content"] == "修改后的独立心得"
+    assert changed.json()["data"]["version"] == created["version"] + 1
+
+    # Wrong version conflicts; does not overwrite.
+    conflict = authorized.patch(
+        standalone_path(created),
+        json={"content": "试图覆盖", "expected_version": created["version"]},
+    )
+    error(conflict, 409, "VERSION_CONFLICT", {"current_version": created["version"] + 1})
+
+    # Delete with version header.
+    removed = authorized.delete(
+        standalone_path(created), headers={"If-Match": f'"{created["version"] + 1}"'}
+    )
+    assert removed.status_code == 204
+    gone = authorized.get(standalone_path(created))
+    error(gone, 404, "NOTE_NOT_FOUND")
+
+
+def test_standalone_not_attached_and_resource_notes_remain_separate(
+    authorized: TestClient, item: dict[str, Any]
+) -> None:
+    """An attached note under a resource and a standalone note never cross lists."""
+    attached = add(authorized, item, "绑定心得")
+    standalone = add_standalone(authorized, "独立心得")
+
+    resource_page = authorized.get(path(item) + "?page=1").json()
+    assert [n["id"] for n in resource_page["data"]] == [attached["id"]]
+
+    standalone_page = authorized.get(standalone_path() + "?page=1").json()
+    assert [n["id"] for n in standalone_page["data"]] == [standalone["id"]]
+
+    # A standalone id is not reachable under a resource, and vice versa.
+    error(authorized.get(path(item, standalone)), 404, "NOTE_NOT_FOUND")
+    error(authorized.get(standalone_path(attached)), 404, "NOTE_NOT_FOUND")
+
+
+def test_standalone_pagination_empty_and_bounds(database: Any, authorized: TestClient) -> None:
+    empty = authorized.get(standalone_path() + "?page=1&page_size=20").json()
+    assert empty["data"] == [] and empty["page"]["total_items"] == 0
+
+    created: list[dict[str, Any]] = []
+    for index in range(3):
+        created.append(add_standalone(authorized, f"心得 {index}"))
+
+    first = authorized.get(standalone_path() + "?page=1&page_size=2").json()
+    assert [n["content"] for n in first["data"]] == ["心得 2", "心得 1"]
+    assert first["page"]["total_items"] == 3 and first["page"]["has_more"] is True
+
+    second = authorized.get(standalone_path() + "?page=2&page_size=2").json()
+    assert [n["content"] for n in second["data"]] == ["心得 0"]
+    assert second["page"]["has_more"] is False
+
+    # Unknown page is empty, not an error.
+    beyond = authorized.get(standalone_path() + "?page=9&page_size=2").json()
+    assert beyond["data"] == [] and beyond["page"]["has_more"] is False
+
+
+def test_standalone_content_validation_and_missing_ids(
+    database: Any, authorized: TestClient
+) -> None:
+    # Empty / whitespace-only content is rejected.
+    for bad in ["", "   "]:
+        response = authorized.post(standalone_path(), json={"content": bad})
+        error(response, 422, "VALIDATION_ERROR")
+    # Non-note id under the top-level collection is 404.
+    error(authorized.get(standalone_path({"id": str(uuid4())})), 404, "NOTE_NOT_FOUND")
+    # Malformed note id is 404 too.
+    error(authorized.get("/api/v1/notes/not-a-uuid"), 404, "NOTE_NOT_FOUND")

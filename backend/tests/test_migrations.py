@@ -12,7 +12,7 @@ from sqlalchemy import inspect, select
 from support import BACKEND, migrate
 
 from studypilot.infrastructure.database import Base, create_database_engine, create_session_factory
-from studypilot.infrastructure.database.models import Topic
+from studypilot.infrastructure.database.models import LearningResource, Note, Topic
 
 
 def test_upgrade_is_repeatable_and_matches_models(tmp_path: Path) -> None:
@@ -29,7 +29,7 @@ def test_upgrade_is_repeatable_and_matches_models(tmp_path: Path) -> None:
                 "alembic_version",
             }
             context = MigrationContext.configure(connection, opts={"compare_type": True})
-            assert context.get_current_heads() == ("0001_initial",)
+            assert context.get_current_heads() == ("0002_note_optional_resource",)
             assert compare_metadata(context, Base.metadata) == []
         with factory() as session:
             assert session.scalar(select(Topic.name)) == "Kept after upgrade"
@@ -61,9 +61,45 @@ def test_nonempty_downgrade_refuses_before_dropping_any_table(tmp_path: Path) ->
             migrate(engine, "base", downgrade=True)
         assert set(inspect(engine).get_table_names()) == before
         with engine.connect() as connection:
-            assert MigrationContext.configure(connection).get_current_heads() == ("0001_initial",)
+            # The downgrade runs in one transaction; the non-empty guard aborts it,
+            # rolling back the already-applied 0002 step too, so head stays put.
+            assert MigrationContext.configure(connection).get_current_heads() == (
+                "0002_note_optional_resource",
+            )
         with factory() as session:
             assert session.scalar(select(Topic.name)) == "Must not be deleted"
+    finally:
+        engine.dispose()
+
+
+def test_0001_to_head_keeps_attached_notes_and_allows_standalone(tmp_path: Path) -> None:
+    """Upgrading an 0001 database to head must not lose attached notes and
+    must make resource_id nullable so standalone notes can be stored."""
+    engine = create_database_engine(f"sqlite:///{tmp_path / 'upgrade.db'}")
+    try:
+        # Build an 0001-era database with an attached note.
+        migrate(engine, "0001_initial")
+        factory = create_session_factory(engine)
+        with factory.begin() as session:
+            resource = LearningResource(
+                title="Attached", source_type="PASTE", pasted_content="body"
+            )
+            session.add(resource)
+            session.flush()
+            attached = Note(resource_id=resource.id, content="stays attached")
+            session.add(attached)
+        # Upgrade to head; the previously attached note survives.
+        migrate(engine)
+        with factory() as session:
+            assert {note.content for note in session.query(Note).all()} == {"stays attached"}
+        # After the upgrade resource_id is nullable, so a standalone note persists.
+        with factory.begin() as session:
+            session.add(Note(resource_id=None, content="free standing"))
+        with factory() as session:
+            assert {note.content for note in session.query(Note).all()} == {
+                "stays attached",
+                "free standing",
+            }
     finally:
         engine.dispose()
 

@@ -261,7 +261,9 @@ class Note(Identified, Created, Versioned, Base):
         positive_version(),
         {"info": {"owner": "notes"}},
     )
-    resource_id: Mapped[UUID] = mapped_column(
+    # NULL means a standalone note not attached to any resource (own entry page);
+    # the FK still cascades deletion for attached notes only (NULL never matches a parent).
+    resource_id: Mapped[UUID | None] = mapped_column(
         Uuid, ForeignKey("learning_resources.id", ondelete="CASCADE"), index=True
     )
     content: Mapped[str] = mapped_column(Text)
