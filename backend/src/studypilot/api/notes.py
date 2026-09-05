@@ -1,4 +1,4 @@
-"""Five approved note endpoints, behind the existing local-access middleware."""
+"""Approved personal-note endpoints, behind the existing local-access middleware."""
 
 import json
 import re
@@ -14,7 +14,14 @@ from starlette.concurrency import run_in_threadpool
 from starlette.responses import JSONResponse, Response
 
 from studypilot.application import notes
-from studypilot.modules.notes.contracts import NoteCreate, NoteError, NotePatch, NoteQuery
+from studypilot.modules.notes.contracts import (
+    NoteAttach,
+    NoteCreate,
+    NoteDetach,
+    NoteError,
+    NotePatch,
+    NoteQuery,
+)
 
 router = APIRouter(prefix="/api/v1/resources/{resource_id}/notes", redirect_slashes=False)
 MESSAGES = {
@@ -74,21 +81,45 @@ def reject_constant(value: str) -> None:
     raise ValueError("invalid JSON constant")
 
 
-async def command_body(request: Request, *, patch: bool) -> NoteCreate | NotePatch:
+def require_json(request: Request) -> None:
     if (
         request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
         != "application/json"
     ):
         raise NoteError("CONTENT_TYPE_UNSUPPORTED", 415)
+
+
+async def read_json(request: Request) -> tuple[Any, bytes]:
     try:
         raw = await request.body()
         value = json.loads(raw, parse_constant=reject_constant)
     except (ValueError, RecursionError):
         raise NoteError("MALFORMED_REQUEST", 400) from None
+    return value, raw
+
+
+async def command_body(request: Request, *, patch: bool) -> NoteCreate | NotePatch:
+    require_json(request)
+    value, raw = await read_json(request)
     if patch and isinstance(value, dict) and "expected_version" not in value:
         raise NoteError("VERSION_REQUIRED", 428)
     try:
         return (NotePatch if patch else NoteCreate).model_validate_json(raw)
+    except ValidationError:
+        raise NoteError("VALIDATION_ERROR", 422) from None
+
+
+async def move_body(
+    request: Request, model: type[NoteAttach] | type[NoteDetach]
+) -> NoteAttach | NoteDetach:
+    """Version-guarded body for attach/detach: missing expected_version is 428
+    (please read the current version), invalid content is 422, mirroring PATCH."""
+    require_json(request)
+    value, raw = await read_json(request)
+    if isinstance(value, dict) and "expected_version" not in value:
+        raise NoteError("VERSION_REQUIRED", 428)
+    try:
+        return model.model_validate_json(raw)
     except ValidationError:
         raise NoteError("VALIDATION_ERROR", 422) from None
 
@@ -157,8 +188,21 @@ def delete_note(request: Request, resource_id: str, note_id: str) -> Response:
     )
 
 
-# Top-level standalone-note collection. These operations only ever touch
-# notes whose resource_id is NULL; attached notes stay under their resource.
+@router.post("/{note_id}/detach")
+async def detach_note(request: Request, resource_id: str, note_id: str) -> Response:
+    """Release a note bound to this resource back to standalone (resource_id null)."""
+    try:
+        rid, nid = identity(resource_id, "resource"), identity(note_id, "note")
+        command = await move_body(request, NoteDetach)
+    except NoteError as error:
+        return failure(request, error)
+    assert isinstance(command, NoteDetach)
+    return await run_in_threadpool(respond, request, lambda: notes.detach(rid, nid, command))
+
+
+# Top-level standalone-note collection. Reading/writing content here addresses
+# notes whose resource_id is NULL; attachNote binds a standalone note to a
+# resource (after which it moves to that resource's collection).
 standalone_router = APIRouter(prefix="/api/v1/notes", redirect_slashes=False)
 
 
@@ -208,3 +252,15 @@ def delete_standalone_note(request: Request, note_id: str) -> Response:
         lambda: notes.delete_standalone(identity(note_id, "note"), version_header(request)),
         204,
     )
+
+
+@standalone_router.post("/{note_id}/attach")
+async def attach_standalone_note(request: Request, note_id: str) -> Response:
+    """Bind a currently standalone note to the resource given in the body."""
+    try:
+        nid = identity(note_id, "note")
+        command = await move_body(request, NoteAttach)
+    except NoteError as error:
+        return failure(request, error)
+    assert isinstance(command, NoteAttach)
+    return await run_in_threadpool(respond, request, lambda: notes.attach(nid, command))

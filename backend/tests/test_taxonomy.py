@@ -467,7 +467,7 @@ def test_delivery_catalog_matches_taxonomy_routes_and_preserves_resource_limits(
     }
     available = set(profile["available_operations"])
     assert expected <= available
-    assert len(available) == 33
+    assert len(available) == 35
     assert {
         "downloadOriginalFile",
         "updateResource",
@@ -487,6 +487,8 @@ def test_delivery_catalog_matches_taxonomy_routes_and_preserves_resource_limits(
         "getStandaloneNote",
         "updateStandaloneNote",
         "deleteStandaloneNote",
+        "attachNote",
+        "detachNote",
     } <= available
     assert {
         "listResourceStudyRecords",

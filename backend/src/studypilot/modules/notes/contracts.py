@@ -2,6 +2,7 @@
 
 import re
 from typing import Annotated, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
@@ -20,6 +21,21 @@ class NoteCreate(BaseModel):
 
 
 class NotePatch(NoteCreate):
+    expected_version: int = Field(ge=1)
+
+
+class NoteAttach(BaseModel):
+    """Bind a currently standalone note (top-level /notes) to a readable resource."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    resource_id: UUID
+    expected_version: int = Field(ge=1)
+
+
+class NoteDetach(BaseModel):
+    """Release a bound note (under a resource) back to a standalone note."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
     expected_version: int = Field(ge=1)
 
 
