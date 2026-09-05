@@ -49,7 +49,7 @@
 
 本文件第 5、8、10 节及 `openapi-v1.json` 的标准 paths/schemas 描述**完整 MVP 目标**，不是当前程序全部已可调用的能力清单。同一操作允许按本节明确的输入子集分阶段交付；TASK-009 当前运行时的可用性及未开放输入响应以本节为准，不能把完整目标中的 FILE 分支视为本阶段已承诺可用。最终字段、媒体类型、成功响应、安全及数据规则仍保留，不删减、不改名，不宣称完整 MVP 已完成。
 
-TASK-011/012 已完成分类后端与页面，TASK-013/014 已完成 FILE 后端和上传/下载页面，TASK-015/016 已完成旧学习记录后端与页面，TASK-017 已提供个人笔记后端。TASK-019 接入轻量心得页面：正文新增/回看/修改/确认删除，只自动显示保存时间；不向学习写接口提交虚构的开始时间、时长、进度或状态。旧历史与状态/归档入口收起保留。TASK-027 提供独立心得：`Note.resource_id` 按用户确认放宽为可空并新增顶层 `/api/v1/notes` 集合——独立心得(resource_id 为 null)可不先收藏资料直接记录/回看/修改/删除；绑定资料(resource_id 非空)的心得仍在资料详情。这是本节首次真实放宽标准 Note 契约与操作清单，随该任务测试、独立审查、验收通过并由用户合并后交付。
+TASK-011/012 已完成分类后端与页面，TASK-013/014 已完成 FILE 后端和上传/下载页面，TASK-015/016 已完成旧学习记录后端与页面，TASK-017 已提供个人笔记后端。TASK-019 接入轻量心得页面：正文新增/回看/修改/确认删除，只自动显示保存时间；不向学习写接口提交虚构的开始时间、时长、进度或状态。旧历史与状态/归档入口收起保留。TASK-027 提供独立心得：`Note.resource_id` 按用户确认放宽为可空并新增顶层 `/api/v1/notes` 集合——独立心得(resource_id 为 null)可不先收藏资料直接记录/回看/修改/删除；绑定资料(resource_id 非空)的心得仍在资料详情。这是本节首次真实放宽标准 Note 契约与操作清单，随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-029 再次放宽标准资源契约：`title` 改为可空（0003 迁移），WEB/PASTE/FILE 创建均可省略或显式 null 标题，`updateResource` 显式 null 清除标题，资料按 title 排序时未命名(null)固定排在有标题之后；界面以「未命名资料」占位展示、不落库。同样随该任务测试、独立审查、验收通过并由用户合并后交付。
 
 | 当前可用操作 | 交付范围 |
 | --- | --- |
@@ -148,6 +148,7 @@ TASK-011/012 已完成分类后端与页面，TASK-013/014 已完成 FILE 后端
 - 不接受任意数据库列名。未知搜索、筛选或排序参数返回 `422 VALIDATION_ERROR`；不把未知参数静默忽略。
 - 文本搜索在 Unicode NFKC 规范化、大小写折叠和连续空白折叠后做“包含”匹配。`progress_min/max` 两端都包含；时间范围 `from` 包含、`to` 不包含。语法正确但不存在的筛选 ID 返回空页，不返回 404。
 - `topic_id` 与 `topic_unassigned=true` 互斥；`topic_unassigned=false` 等同省略。`ReviewScope` 默认 TODAY；ALL 同时包含 SCHEDULED 与 PAUSED，其他三个 scope 只包含 SCHEDULED。按 `due_date` 升序时，PAUSED 的 null 永远排在所有有日期计划之后；降序时仍排在最后，然后按 `title,id` 决胜，不能依赖数据库默认 null 顺序。
+- 资料按 `title` 排序（升或降）时，无标题(null)固定排在有标题之后，再按该方向对标题排序并追加 `id` 升序决胜；不能依赖数据库默认 null 顺序。
 
 | 列表 | 搜索/筛选白名单 | 排序白名单与默认值 |
 | --- | --- | --- |
@@ -183,7 +184,7 @@ TASK-011/012 已完成分类后端与页面，TASK-013/014 已完成 FILE 后端
 | API 名称 | 类型/示例 | C/U | 必填/可空/默认/限制 | 敏感 | 所有者与不变量 |
 | --- | --- | --- | --- | --- | --- |
 | `id` | uuid / `018f...0001` | R | 必有，不空 | 否 | resources；服务端生成 |
-| `title` | string / `FastAPI 入门` | C/U | 必填，不空，去首尾空白后 1～200 字符 | 否 | resources |
+| `title` | string / `FastAPI 入门` | C/U | 可空，默认 null；提供时去首尾空白后 1～200 字符；省略或显式 null 视为未命名资料（界面用「未命名资料」占位，不落库），PATCH 显式 null 清除标题 | 否 | resources |
 | `source_type` | enum / `WEB` | C | 必填，不空，创建后不可变 | 否 | resources；三种之一 |
 | `source_url` | uri / `https://example.test/guide` | C/U | WEB 必填；其他类型必须省略；最大 2048 | 是 | resources；只允许 http/https，无凭据和片段 |
 | `pasted_content` | string / `# 学习摘录` | C/U | PASTE 必填；其他类型必须省略；1～1,000,000 字符 | 是 | resources；原文，不参与第一阶段统一搜索 |
@@ -360,11 +361,11 @@ OpenAPI 中 `ReviewRecord` 用条件 schema 固化上述规则：`NEEDS_REVIEW` 
 
 | 请求媒体类型 | 必须字段 | 必须省略 | 修改限制 |
 | --- | --- | --- | --- |
-| JSON WEB | `source_type=WEB,title,source_url` | `pasted_content,file` | 可改 URL；不能改类型 |
-| JSON PASTE | `source_type=PASTE,title,pasted_content` | `source_url,file` | 可改原文；不能改类型 |
-| multipart FILE | `source_type=FILE,title,file` | `source_url,pasted_content` | 原件不可替换；需新建资料 |
+| JSON WEB | `source_type=WEB,source_url` | `pasted_content,file` | 可改 URL；不能改类型 |
+| JSON PASTE | `source_type=PASTE,pasted_content` | `source_url,file` | 可改原文；不能改类型 |
+| multipart FILE | `source_type=FILE,file` | `source_url,pasted_content` | 原件不可替换；需新建资料 |
 
-三者可带 `source_name`、`save_reason`、可空 `topic_id` 和最多 20 个不重复 `tag_ids`。JSON 中 `tag_ids` 是 UUID 数组；multipart 中是重复的 `tag_ids` 表单字段。响应只返回摘要/详情，不回显全部粘贴正文；详情通过 `pasted_content` 显式返回，因此属于敏感响应。文件创建只有达到 `OriginalFile.READY` 才返回 `201`；不暗示正文已解析。
+三者均可带可空 `title`（省略或显式 null 表示未命名资料，显示层用「未命名资料」占位、不落库；提供时仍须去首尾空白后 1～200 字符，纯空白拒绝），以及 `source_name`、`save_reason`、可空 `topic_id` 和最多 20 个不重复 `tag_ids`。JSON 中 `tag_ids` 是 UUID 数组；multipart 中是重复的 `tag_ids` 表单字段。响应只返回摘要/详情，不回显全部粘贴正文；详情通过 `pasted_content` 显式返回，因此属于敏感响应。文件创建只有达到 `OriginalFile.READY` 才返回 `201`；不暗示正文已解析。
 
 所有 WEB 创建、修改和详情共同引用唯一 `SourceUrl` schema。服务端必须真正解析 URL，并同时满足：协议仅 http/https，username/password 均为空，fragment 为空；查询字符串允许保留。仅靠前缀字符串判断不够。`SourceUrl` 标记为敏感字段，不进入普通日志；例如 `https://user:password@example.test/doc#private` 必须返回 `422 VALIDATION_ERROR`。
 
