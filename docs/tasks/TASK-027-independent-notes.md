@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-027"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "放宽 Note 关键数据模型 resource_id 为非空到可空，新增 0002 数据库迁移，新增公共顶层笔记接口并改动标准 openapi Note schema/paths 与操作清单，跨后端、前端与契约文档；属架构/契约、迁移、重大跨模块。"
 risk_flags = ["migration", "public-api", "major-cross-module", "business", "tests"]
@@ -56,6 +56,7 @@ checks = ["backend", "frontend", "contracts", "governance"]
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
+- 2026-09-05 用户已合并；GitHub 核实 PR #33 MERGED，mergedAt=2026-09-05T04:06:13Z，mergeCommit=`0e8a731c506fc83c8c96b5fa5504aa4aae420492`。保留原实现与审查/验收证据；后续仅状态/索引写回。
 - 2026-09-05：IN_REVIEW。实现+检查证据齐备，最终产品候选 `2fd040dcf7355a56e057f76603ab3b00ad0f38ff`，product_fingerprint=`138fec800ee367038931df260408b932ed5a36b3988056bc1a7fccc3af263a6d`，base=`a5af2059f9e7b0e20a2ff948b1a92ec5e32caf4f`。CHECKS PASS 与 e2e 6/6 通过记录见「实现与测试」。
 
 ### 独立只读 Review
