@@ -1,7 +1,16 @@
 /// <reference lib="dom" />
 
 import { readFile } from 'node:fs/promises'
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
+
+async function openOptionalFields(page: Page) {
+  const summary = page.getByText('补充信息（选填）', { exact: true })
+  const isOpen = await summary.evaluate(
+    (element) => (element.closest('details') as HTMLDetailsElement).open,
+  )
+  if (!isOpen) await summary.click()
+  await expect(page.getByLabel('保存原因（选填）')).toBeVisible()
+}
 
 test.use({ trace: 'off' })
 
@@ -20,6 +29,7 @@ test('file page saves an original, filters it and downloads identical bytes afte
   await page.goto('/resources/new')
   await page.getByRole('radio', { name: /上传文件/ }).check()
   await page.getByLabel('标题').fill('原件端到端 · 日常小记')
+  await openOptionalFields(page)
   await page.getByLabel('保存原因（选填）').fill('在页边收好一个小问题')
   await page
     .getByLabel('原始文件（必填）')

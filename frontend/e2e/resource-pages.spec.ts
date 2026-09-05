@@ -1,5 +1,14 @@
 /// <reference lib="dom" />
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
+
+async function openOptionalFields(page: Page) {
+  const summary = page.getByText('补充信息（选填）', { exact: true })
+  const isOpen = await summary.evaluate(
+    (element) => (element.closest('details') as HTMLDetailsElement).open,
+  )
+  if (!isOpen) await summary.click()
+  await expect(page.getByLabel('保存原因（选填）')).toBeVisible()
+}
 
 test('real UI saves WEB and PASTE, refreshes details, searches and safely reads originals', async ({
   page,
@@ -19,6 +28,7 @@ test('real UI saves WEB and PASTE, refreshes details, searches and safely reads 
   await page.reload()
   await page.getByLabel('标题').fill('页面合成 · 一页阅读方法')
   await page.getByLabel('网页地址（必填）').fill('https://example.com/reading')
+  await openOptionalFields(page)
   await page.getByLabel('来源名称（选填）').fill('合成书屋')
   await page.getByLabel('保存原因（选填）').fill('留一点时间，思考怎样把读过的内容变成自己的理解。')
   await page.screenshot({ path: testInfo.outputPath('desktop-web-form.png'), fullPage: true })
@@ -44,6 +54,7 @@ test('real UI saves WEB and PASTE, refreshes details, searches and safely reads 
   const original =
     '  # 合成学习摘录\n慢慢积累，也是一种前进。\n<script>document.body.dataset.executed="yes"</script>\n<img src="https://example.com/tracker" onerror="alert(1)">\n '
   await page.getByLabel('粘贴原文（必填）').fill(original)
+  await openOptionalFields(page)
   await page.getByLabel('保存原因（选填）').fill('先收藏，下一次再慢慢读。')
   await page.getByRole('button', { name: '保存到资料库' }).click()
   await expect(page.getByLabel('粘贴原文内容')).toBeVisible()
