@@ -12,6 +12,7 @@ base = "5c527a3156acbc63a11d270e1b58ef3c674252c8"
 allowed_paths = [
   "frontend/src/features/resources/ResourceForm.tsx",
   "frontend/src/features/resources/ResourcePages.test.tsx",
+  "frontend/src/features/resources/FilePages.test.tsx",
   "frontend/src/styles.css",
   "docs/tasks/TASK-026-import-simplification.md",
   "docs/tasks/任务索引.md",
