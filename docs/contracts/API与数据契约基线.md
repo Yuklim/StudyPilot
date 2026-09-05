@@ -281,7 +281,7 @@ FILE 创建时不接受 `source_url`/`pasted_content`，并在同一成功响应
 | `created_at` | instant | R | 自动 | 否 | taxonomy |
 | `association_version` | int | R | 固定 1 | 否 | taxonomy；复合唯一 `(resource_id,tag_id)`；删除后重加是新关联 |
 
-PUT 添加与 DELETE 移除是幂等的，避免整组标签覆盖造成并发丢失。TASK-032 起另有一条整组替换路径：`updateResource` 的 `tag_ids`。两者并存且防护方式不同——幂等端点无版本前置条件，只增删单个关联；整组替换必须携带 `expected_version`，并发修改会得到 `409 VERSION_CONFLICT` 而不是静默覆盖，因此不重新引入本段要避免的丢失。标签集合实际变化时资料 `version` 加一，集合相同（顺序不计）则按上文不加版本；关联行本身仍是 `association_version` 固定 1，删除后重加是新关联。
+PUT 添加与 DELETE 移除是幂等的，避免整组标签覆盖造成并发丢失。TASK-032 起另有一条整组替换路径：`updateResource` 的 `tag_ids`。两者并存且防护方式不同——幂等端点无版本前置条件，只增删单个关联；整组替换必须携带 `expected_version`，与另一次**资料写**（含另一次 `updateResource`）并发会得到 `409 VERSION_CONFLICT` 而不是静默覆盖。但两条路径**交叉**并发不受这层保护：幂等端点只写关联行、不推进资料 `version`，因此在它之后、仍持有旧 `version` 的一次整组替换会按提交的集合整体覆盖掉那次单个增删，且不报 `409`。这是本任务的已知取舍（本地单用户、两处入口，重新增删即可恢复），不是已消除的风险。标签集合实际变化时资料 `version` 加一，集合相同（顺序不计）则按上文不加版本；关联行本身仍是 `association_version` 固定 1，删除后重加是新关联。
 
 ### 4.8 Note（notes 所有）
 
