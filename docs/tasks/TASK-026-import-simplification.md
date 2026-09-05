@@ -51,7 +51,7 @@ checks = ["frontend"]
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：`03d5f8c`（产品冻结点，含实现 `84e2528` 与 WEB 不自动填测试 `03d5f8c`；基线 `5c527a3`）。后续 docs 提交不改变产品实现。
+- 候选 SHA：产品冻结 `03d5f8c`（基线 `5c527a3`）；后因 PR #31（阶段0）合入 main `3973f30`，任务基线更新为 `3973f30`，合并后候选 HEAD 通过 check_task STATIC + CHECKS PASS（321/321），纯 TASK-026 增量 6 文件均在 allowed_paths 内。产品实现（ResourceForm/样式/测试）自 `03d5f8c` 后未再改变。
 - Review：L2。**用户授权主 Agent 证据核对代替外部独立只读 Reviewer（授权范围沿用 TASK-025 方式，记录于本任务，不冒充独立 Reviewer 身份）**。主 Agent 核对：候选 diff 6 文件全部在 allowed_paths 内、无越界（未改 backend/契约/数据语义）；测试同步如实反映新交互（折叠字段操作前显式展开），新增 6 条断言覆盖「补充信息默认收起/展开可见/FILE/PASTE 自动带出/不覆盖手动标题/WEB 不强自动填且零请求」，未弱化诚实底线；vitest 321/321 PASS、tsc/build/format/lint 均 exit=0（check_task STATIC + CHECKS PASS，fingerprint `963ce3be642efab1d298523f334bd159c47352dac558215560d1eb6c5c8d315b`）；完成条件逐条以单测 + Playwright 真实浏览器验证（补充信息收起时来源名称不可见、粘贴后标题自动带出、展开后可见、WEB 填 URL 后标题仍空且无请求）。核对结论：PASS。
 - Acceptance：L1/L2 N/A。
 - 最终状态/风险/用户操作：IN_REVIEW→ACCEPTED 由用户决定（2026-09-05 用户选 a 授权主 Agent 证据核对）；分支未推送、未 PR、未合并，最终合并由用户执行。
