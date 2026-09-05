@@ -249,6 +249,10 @@ test('tags can be filled in later from the edit page, as a whole replacement set
   await expect(form.getByText('标签：后补标签 · 保留、后补标签 · 移除')).toBeVisible()
   await form.getByRole('button', { name: '移除已选标签 后补标签 · 移除 ×' }).click()
   await form.getByRole('button', { name: '更改标签' }).click()
+  // The browser pages at 20 and the whole suite shares one backend, so filter by name
+  // instead of assuming the new tag lands on the first page.
+  await form.getByRole('searchbox', { name: '搜索标签' }).fill(added.name)
+  await form.getByRole('button', { name: '查找标签' }).click()
   await form.getByRole('checkbox', { name: added.name, exact: true }).check()
   await form.getByRole('button', { name: '保存资料修改' }).click()
   await expect(page.getByText('资料修改已保存。')).toBeVisible()
