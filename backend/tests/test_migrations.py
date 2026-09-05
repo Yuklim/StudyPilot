@@ -122,9 +122,7 @@ def test_0001_to_head_allows_untitled_resources(tmp_path: Path) -> None:
             session.flush()
             resource_id = resource.id
         with factory() as session:
-            row = session.scalar(
-                select(LearningResource).where(LearningResource.id == resource_id)
-            )
+            row = session.scalar(select(LearningResource).where(LearningResource.id == resource_id))
             assert row is not None and row.title is None
     finally:
         engine.dispose()
