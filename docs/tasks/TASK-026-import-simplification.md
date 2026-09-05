@@ -8,7 +8,7 @@ risk = "L2"
 risk_reason = "纯前端「添加资料」表单体验收敛：折叠选填项 + 文件/粘贴自动带出标题占位；不触碰后端、数据库或公共 API 契约，但会同步更新被表单改动的既有前端测试断言。"
 risk_flags = ["business"]
 owner = "coordinator"
-base = "5c527a3156acbc63a11d270e1b58ef3c674252c8"
+base = "3973f3091a4d3f927a98319d7020afe13a43b888"
 allowed_paths = [
   "frontend/src/features/resources/ResourceForm.tsx",
   "frontend/src/features/resources/ResourcePages.test.tsx",
