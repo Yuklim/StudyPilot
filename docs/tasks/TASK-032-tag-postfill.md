@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-032"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "本任务放宽已批准的公共契约：为 `ResourcePatch` 新增 `tag_ids`（整组替换语义），同时改动 openapi-v1.json 与《API与数据契约基线》的对象定义、操作清单、错误码与版本规则叙述。属「架构/公共 API 契约」与「跨模块」（resources 写入路径首次批量写 taxonomy 的 resource_tags 关联）两项 L3 判入条件。另有一处关键数据语义决定：标签集合实际变化时资料 version 必须 +1，而 tag 关联不在 resource 行上、不会被 SQLAlchemy 自动标脏，实现若遗漏会让乐观并发在标签维度失效（前端拿到过期 version）。无数据库 schema 变更、无迁移。据此判 L3，不因「不加迁移」降级。"
 risk_flags = ["public-api", "major-cross-module", "critical-data", "business", "tests"]
@@ -102,9 +102,30 @@ checks = []
 
 ## 实现与测试
 
-- 实现 SHA/变更摘要：待填。
-- 命令、真实退出结果、product_fingerprint、环境、未运行原因：待填。
-- 已知限制/未完成项：待填。
+- 实现 SHA/变更摘要：`d3e038c`（代码与契约）+ `87badda`（risk_flags 更正，仅任务记录）。相对基线 `e2ab283` 共 12 个文件。
+  - `backend/src/studypilot/modules/resources/contracts.py`（+12）：`ResourcePatch` 新增 `tag_ids: list[UUID] | None = Field(default=None, max_length=20)` 与 `replacement_tags` 校验器（null → 拒绝、重复 → 拒绝）。既有 `editable_fields` 校验器用 `model_fields_set`，因此 `tag_ids` 自动算作「至少一个可修改字段」，未改该校验器。
+  - `backend/src/studypilot/infrastructure/database/resource_store.py`（+34 −5）：`update()` 先从 `changes` 取出 `tag_ids`（`model_dump(exclude_unset=True)` 保证「省略即不改」），与 `topic_id` 一起走既有 `validate_taxonomy`（未知标签 → `TAG_NOT_FOUND` 404，抛在任何写入之前）；新增私有 `_replace_tags()` 做整组替换。
+  - `frontend/src/features/resources/api.ts`（+2）：`ResourceChanges` 增加 `tag_ids: string[]`。
+  - `frontend/src/features/resources/ResourceEditor.tsx`（+63）：新增 `tags`/`chooseTags` 状态（初值取自 `initial.tags`）、`sameTags()` 按 id 集合比较（顺序无关）、仅在集合真的不同才写入 `changes.tag_ids`；标签区用只读 `ClassificationBrowser kind="tags"` 渲染复选框 + 已选 chip，提交前校验上限 20；冲突核对面板的 `<dl>` 增加「标签」一项展示最新已保存集合。复用既有 `resource-topic-edit` 类，**未改 `styles.css`**。
+  - `docs/contracts/openapi-v1.json`（+4 −4 字段级）：`ResourcePatch` 增 `tag_ids`（`maxItems:20`、`uniqueItems:true`、说明整组替换语义）；`updateResource` 的 `x-error-codes` 增 `TAG_NOT_FOUND`。
+  - `docs/contracts/API与数据契约基线.md`（6 处）：交付状态段增 TASK-032 段落；`updateResource` 交付行、版本规则（`tag_ids` 走资料版本、必须带 `expected_version`）、4.7 幂等说明、`ResourcePatch` 字段规则、`updateResource` 错误码表。
+  - 测试：`backend/tests/test_resource_updates.py`（+108 −1）、`frontend/src/features/resources/ResourceEditor.test.tsx`（+51 −1）、`frontend/e2e/resource-edit-pages.spec.ts`（+44）。
+- 实现过程中发现并修正的两个真实缺陷（均由新测试先失败暴露，不是事后补叙）：
+  1. **版本被加了两次**。首版把 `resource.updated_at = utc_now()` 放在 `attach_tags()` 之后，而 `attach_tags()` 内部有 `flush()`：一次同时改标题与标签的 PATCH 会先冲出标题的 UPDATE（version→5），再冲出 updated_at 的 UPDATE（version→6）。测试断言 `version == 5` 实测得到 6。
+  2. **autoflush 造成同样的双次 UPDATE**。把赋值提到前面后仍是 6 —— 根因是 `_replace_tags()` 读当前关联集合的那条 `select` 触发 autoflush，把同一 PATCH 的列改动提前冲成独立 UPDATE。最终用 `with self._session.no_autoflush:` 包住该读，全流程收敛为单次 UPDATE、单次版本递增。两处都在代码里留了说明注释。
+- 既有断言的处置（未删除、未弱化）：`test_invalid_patch_before_database` 的参数表原有一条 `{"tag_ids": []}`，断言该请求在触库前被拒 —— 这正是本任务经授权放宽的行为。按新契约把这一条替换为三条**更严格**的形状（`None`、`"not-a-list"`、`["not-a-uuid"]`），它们仍必须在触库前 `422`；`tag_ids: []` 的合法路径由新测试断言其真实效果（清空标签、version+1）。参数总数 +2，无断言被移除。`test_missing_resources_and_contract` 的 `set(ResourcePatch.model_fields) == set(schema["properties"])` 未改，靠同步 openapi 恢复为绿 —— 该断言本身即模型↔契约一致性的看门人。
+- 命令、真实退出结果、product_fingerprint、环境、未运行原因：
+  - `PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-032-tag-postfill.md --candidate 87badda` → **CHECKS PASS**。base=`e2ab283`、input=`87badda`、risk=L3、stages=(worker, review, acceptance)、files=12、profiles=**backend,contracts,frontend**、product_fingerprint=`25c9f9dd674b48fa0762d27a8a8f8ea948b98e0be99162f16cf8b36529c88139`。组内含 backend ruff format/lint、mypy、pytest 与 frontend format:check/lint/typecheck/vitest/build，全部 exit=0。
+  - `cd backend && ruff format --check .`（65 files already formatted）/ `ruff check .`（All checks passed）/ `mypy .`（Success: no issues found in 64 source files）/ `pytest` → **497 passed**。基线为 **493 passed**（实测：把 `test_resource_updates.py` 换回 `e2ab283` 版本后 `pytest --collect-only` 得 493，随后原样还原）；净增 4 = 2 条新测试 + 参数表净增 2 条。
+  - `cd frontend && npm run format:check && npm run lint && npm run typecheck && npm run test && npm run build` 全绿；vitest **339 passed / 16 文件**，基线 337，净增 2（均在 `ResourceEditor.test.tsx`，该文件 27→29）。
+  - `cd frontend && npm run test:e2e` → **37 passed (24.7s)**，基线 36，净增 1。运行前把未跟踪的 HANDOFF 文件临时移出以满足干净工作树要求，检查后原样放回。
+  - 环境：本地 macOS（Darwin 25.5.0）、Python 3.13.9 / pytest 8.4.2、Node 24、Vitest 4.1.11、Playwright chromium、Vite 8.2.2。
+  - 未运行：无迁移相关检查 —— 本任务不含数据库 schema 变更，`check_task` 自动选组也未选迁移组；不以旧 PASS 冒充。
+- 已知限制/未完成项：
+  - 新增 e2e 用例最初两处红都是**用例自身**的问题，已修正并记录：① 用 `Promise.all` 并发 POST 两个标签触发后端 500（隔离 SQLite 串行写），改为串行创建；② 断言 `GET /tags` 的 `total_items === 3`，但整轮 e2e 共用一个后端、其他 spec 也会建标签，改为按 id 读回被移除的标签以证明「解除关联不删除标签本身」。产品代码未因此改动。
+  - 编辑页标签区未做「输入即创建标签」，仍需先去分类管理页新建（调研 B 项，本任务非目标）。
+  - 标签区展开后是分页浏览器（20/页），标签很多时需翻页；与详情页既有 `ResourceTagEditor` 的体验一致，未在本任务改善。
+  - 整组替换与逐个幂等端点两条路径并存，界面上分别在「修改资料」与「资料详情」两处；本任务按非目标要求未合并这两处入口。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
