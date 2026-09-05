@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-028"
-status = "IN_PROGRESS"
+status = "ACCEPTED"
 risk = "L1"
 risk_reason = "纯前端小视觉调整：压缩分类整理页搜索框宽度与布局，不改变契约、数据或行为语义。"
 risk_flags = ["small-ui"]
@@ -38,15 +38,18 @@ checks = ["frontend"]
 
 ## 实现与测试
 
-（实施后填写：实现 SHA/摘要、命令/退出/指纹、已知限制）
+- 实现：仅改 `frontend/src/styles.css`（无 JSX/行为改动）。`.classification-search .resource-field` 由 `flex:1 1 120px`(撑满整行)改为 `flex:0 1 230px`(有界不撑满)；压缩 `.classification-intro`(padding/margin、h2 24→19px)与 `.classification-tabs`、`.classification-search` margin，让主题/标签列表进入页面即上移可见。320/390/1440 实测无横向溢出。
+- 视觉核对：真实 Chromium 测 1440/900，搜索框宽收窄至 230px、主题列表首项 top 由改前 741 上移至 674(可见约 2 张卡)；390/320 `scrollWidth<=innerWidth` 均 true。
+- 检查命令与结果：
+  - `PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-028-classification-search-compact.md --worktree` → `CHECKS PASS`、exit 0；STATIC PASS，risk=L1，files=4，product_fingerprint=`5f8e7fad2d9be85cbe1b2a4e826973252fd21c80e0bab600b0ae9af1ccc947c4`；profile frontend(format/lint/typecheck/vitest/build)。
+  - `cd frontend && npx vitest run src/features/taxonomy` → 24 passed；`npx playwright test e2e/taxonomy-pages.spec.ts` → 3 passed(真实 Chromium + 临时 SQLite)。
+- 已知限制：横幅文案保留、仅压缩留白与字号；未改资料库/其它页共用样式。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：实施后冻结。
-- Review/Acceptance：L1 N/A。
-- 最终状态/风险/用户操作：ACCEPTED 后由用户最终合并，Agent 不合并 main。
-- 非阻断遗留项：无（纯视觉微调）。
+- 2026-09-05：ACCEPTED。L1 无需独立 Review/Acceptance。最终产品候选 `53c3da8f367d0ab308bd3498fe516f2f08c5802d`（实现提交），product_fingerprint=`5f8e7fad…c947c4`，base=`0e8a731c…ac420492`。CHECKS PASS(frontend)、taxonomy vitest 24、真实 Chromium e2e 3、320/390/1440 无横向溢出，见「实现与测试」。待用户合并，Agent 不合并 main。
+- 非阻断遗留项：无（纯视觉微调；横幅文案保留仅压缩留白）。
 
 此区仅允许写回状态/EVIDENCE/候选与报告原文；目标、风险、路径、检查、实现与测试记录在标记区外。
 <!-- EVIDENCE:END -->
