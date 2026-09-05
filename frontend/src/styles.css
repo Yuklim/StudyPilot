@@ -1681,8 +1681,42 @@ fieldset:disabled {
   min-width: 0;
 }
 .resource-source-edit summary,
-.resource-edit-recovery summary {
+.resource-edit-recovery summary,
+.resource-more summary {
   cursor: pointer;
+}
+.resource-more {
+  margin: 0 0 4px;
+  min-width: 0;
+}
+.resource-more summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  font-size: 13px;
+  color: #41543b;
+  list-style: none;
+}
+.resource-more summary::-webkit-details-marker {
+  display: none;
+}
+.resource-more summary::before {
+  content: '＋';
+  font-size: 15px;
+  line-height: 1;
+  color: #8a967c;
+  transition: transform 0.15s ease;
+}
+.resource-more[open] summary::before {
+  content: '−';
+}
+.resource-more .resource-form-columns {
+  margin-top: 6px;
+  padding: 16px 2px 2px;
+}
+.resource-more .resource-form-columns .resource-field:last-child {
+  margin-bottom: 0;
 }
 .resource-edit-recovery {
   padding: 16px;

@@ -12,6 +12,9 @@ function change(label: string, value: string) {
 function submit() {
   fireEvent.submit(screen.getByRole('form', { name: '添加资料表单' }))
 }
+function openSupplementary() {
+  fireEvent.click(screen.getByText('补充信息（选填）'))
+}
 function deferred<T>() {
   let resolve!: (value: T) => void
   const promise = new Promise<T>((done) => {
@@ -31,6 +34,7 @@ describe('resource form', () => {
     submit()
     expect(screen.getByRole('alert')).toHaveTextContent('http 或 https')
     change('网页地址（必填）', 'https://example.com')
+    openSupplementary()
     change('来源名称（选填）', '字'.repeat(121))
     submit()
     expect(screen.getByRole('alert')).toHaveTextContent('最多 120 字')
@@ -40,6 +44,45 @@ describe('resource form', () => {
     submit()
     expect(screen.getByRole('alert')).toHaveTextContent('非空原文')
     expect(request).not.toHaveBeenCalled()
+  })
+  it('keeps supplementary fields collapsed by default and reveals them when expanded', () => {
+    renderWithRouter(<App />, '/resources/new')
+    expect(screen.getByText('补充信息（选填）')).toBeInTheDocument()
+    expect(screen.getByLabelText('来源名称（选填）')).not.toBeVisible()
+    expect(screen.getByLabelText('保存原因（选填）')).not.toBeVisible()
+    openSupplementary()
+    expect(screen.getByLabelText('来源名称（选填）')).toBeVisible()
+    expect(screen.getByLabelText('保存原因（选填）')).toBeVisible()
+  })
+  it('derives a file title from the file name only when the title is still empty', () => {
+    renderWithRouter(<App />, '/resources/new')
+    fireEvent.click(screen.getByRole('radio', { name: /上传文件/ }))
+    fireEvent.change(screen.getByLabelText('原始文件（必填）'), {
+      target: { files: [new File(['x'], 'Zotero入门指南.pdf', { type: 'application/pdf' })] },
+    })
+    expect(screen.getByLabelText('标题（必填）')).toHaveValue('Zotero入门指南')
+  })
+  it('does not overwrite a manually entered title when a file is chosen', () => {
+    renderWithRouter(<App />, '/resources/new')
+    change('标题（必填）', '我自己起的名字')
+    fireEvent.click(screen.getByRole('radio', { name: /上传文件/ }))
+    fireEvent.change(screen.getByLabelText('原始文件（必填）'), {
+      target: { files: [new File(['x'], 'Another.pdf', { type: 'application/pdf' })] },
+    })
+    expect(screen.getByLabelText('标题（必填）')).toHaveValue('我自己起的名字')
+  })
+  it('derives a paste title from the first non-empty line and trims heading markers', () => {
+    renderWithRouter(<App />, '/resources/new')
+    fireEvent.click(screen.getByRole('radio', { name: /粘贴内容/ }))
+    change('粘贴原文（必填）', '\n  # 一个 Markdown 标题\n正文开始\n')
+    expect(screen.getByLabelText('标题（必填）')).toHaveValue('一个 Markdown 标题')
+  })
+  it('does not overwrite a manually entered title when pasting content', () => {
+    renderWithRouter(<App />, '/resources/new')
+    change('标题（必填）', '保留我写的标题')
+    fireEvent.click(screen.getByRole('radio', { name: /粘贴内容/ }))
+    change('粘贴原文（必填）', '# 应被忽略的标题\n')
+    expect(screen.getByLabelText('标题（必填）')).toHaveValue('保留我写的标题')
   })
   it('submits WEB once while pending, excludes paste fields and navigates to real detail', async () => {
     const pending = deferred<unknown>()
@@ -51,6 +94,7 @@ describe('resource form', () => {
     renderWithRouter(<App />, '/resources/new')
     change('标题（必填）', ' 合成阅读资料 ')
     change('网页地址（必填）', 'https://example.com/article')
+    openSupplementary()
     change('保存原因（选填）', '慢慢理解')
     submit()
     submit()
