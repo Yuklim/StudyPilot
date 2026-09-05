@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-027"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "放宽 Note 关键数据模型 resource_id 为非空到可空，新增 0002 数据库迁移，新增公共顶层笔记接口并改动标准 openapi Note schema/paths 与操作清单，跨后端、前端与契约文档；属架构/契约、迁移、重大跨模块。"
 risk_flags = ["migration", "public-api", "major-cross-module", "business", "tests"]
@@ -44,12 +44,19 @@ checks = ["backend", "frontend", "contracts", "governance"]
 
 ## 实现与测试
 
-（实施后填写：实现 SHA/摘要、命令/退出/指纹、已知限制）
+- 实现提交：`2fd040dcf7355a56e057f76603ab3b00ad0f38ff`（= 当前候选 HEAD）；分支 `agent/coordinator/TASK-027-independent-notes`，自 `main@a5af205` 派生。主 Agent 亲自实施，串行维护任务/索引。
+- 后端：`Note.resource_id` 放宽可空 + 0002 迁移(batch alter)；顶层 `/api/v1/notes` 集合只作用于 `resource_id IS NULL`(新增/回看/分页/编辑/删除，版本号保护/单事务/不回放/无资源前置)；既有 `/resources/{id}/notes` 绑定语义不变；资源删除仍级联绑定心得、独立心得不受影响(删除预览 note_count 只计绑定)。契约 openapi Note nullable、顶层 5 路径/操作；中文契约 4.8/删除关系/操作/错误/delivery/三向同步。
+- 前端：`notes/api.ts` 支持 resource_id null 走顶层路径；client 删除白名单扩 `/api/v1/notes/{id}`；`NotesPanel` 泛化 resourceId 可空 + 独立文案；新增顶层 `/notes`「我的心得」页(NotesPage)；pages/Screen/App 接线；README 说明。
+- 检查命令与结果：
+  - `PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-027-independent-notes.md --worktree` → `CHECKS PASS`、exit 0；STATIC PASS，risk=L3，files=25，product_fingerprint=`138fec800ee367038931df260408b932ed5a36b3988056bc1a7fccc3af263a6d`；profiles backend/contracts/frontend/governance。后端 ruff/mypy/478 pytest/uv build、契约 OpenAPI 结构、前端 format/lint/typecheck/vitest(323)/build、治理 validate + 23 unittest 全过。
+  - `cd frontend && npx playwright test e2e/notes-pages.spec.ts` → 6 passed（真实 Chromium + 后端临时 SQLite 18000/15173），含新增独立心得生命周期与资源删除隔离两 e2e。
+- 新增/变更测试：test_migrations 0001→head 升级保绑定可存独立 + heads 断言；test_database 独立 Note 持久化；test_notes 独立 CRUD/隔离/校验 4 项；test_resource_deletion 删除资源保留独立心得；test_taxonomy 契约 33 计数 + 独立操作 subset。
+- 已知限制：仅后端+页面独立心得；「后贴资料」、心得打标签、跨资料汇总全部心得留待后续独立任务；SQLite 写竞争可能受控失败、需读后核对(沿用既有笔记语义)。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：实施后冻结。
+- 2026-09-05：IN_REVIEW。实现+检查证据齐备，最终产品候选 `2fd040dcf7355a56e057f76603ab3b00ad0f38ff`，product_fingerprint=`138fec800ee367038931df260408b932ed5a36b3988056bc1a7fccc3af263a6d`，base=`a5af2059f9e7b0e20a2ff948b1a92ec5e32caf4f`。CHECKS PASS 与 e2e 6/6 通过记录见「实现与测试」。待独立只读 Review 与 Acceptance；用户独占最终合并。
 - Review：L3 需实际独立只读 Reviewer（.claude/agents/reviewer.md），核 base..candidate 完整 diff + 迁移/契约/删除去留；findings/No findings。
 - Acceptance：L3 需另一独立只读 Acceptance，核对完成条件与证据。
 - 最终状态/风险/用户操作：ACCEPTED 后由用户最终合并，Agent 不合并 main。
