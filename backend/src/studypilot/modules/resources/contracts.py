@@ -44,7 +44,12 @@ def normalized_search(value: str) -> str:
 
 class CreateBase(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
-    title: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
+    # Absent/null means "untitled" (stored as NULL); when provided it must still
+    # be 1..200 characters after stripping. Blank/whitespace-only stays invalid.
+    title: (
+        Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
+        | None
+    ) = None
     source_name: str | None = Field(default=None, max_length=120)
     save_reason: str | None = Field(default=None, max_length=1000)
     topic_id: UUID | None = None
@@ -112,10 +117,11 @@ class ResourcePatch(BaseModel):
     source_url: str | None = Field(default=None, max_length=2048)
     pasted_content: str | None = Field(default=None, min_length=1, max_length=1_000_000)
 
-    @field_validator("title", "source_url", "pasted_content")
+    @field_validator("source_url", "pasted_content")
     @classmethod
     def not_null(cls, value: str | None) -> str:
         # Defaults represent omission only; explicit null cannot clear these fields.
+        # title is excluded: an explicit null clears the title (nullable column).
         if value is None:
             raise ValueError("field cannot be null")
         return value

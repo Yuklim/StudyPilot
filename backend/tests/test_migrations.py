@@ -29,7 +29,7 @@ def test_upgrade_is_repeatable_and_matches_models(tmp_path: Path) -> None:
                 "alembic_version",
             }
             context = MigrationContext.configure(connection, opts={"compare_type": True})
-            assert context.get_current_heads() == ("0002_note_optional_resource",)
+            assert context.get_current_heads() == ("0003_resource_title_nullable",)
             assert compare_metadata(context, Base.metadata) == []
         with factory() as session:
             assert session.scalar(select(Topic.name)) == "Kept after upgrade"
@@ -64,7 +64,7 @@ def test_nonempty_downgrade_refuses_before_dropping_any_table(tmp_path: Path) ->
             # The downgrade runs in one transaction; the non-empty guard aborts it,
             # rolling back the already-applied 0002 step too, so head stays put.
             assert MigrationContext.configure(connection).get_current_heads() == (
-                "0002_note_optional_resource",
+                "0003_resource_title_nullable",
             )
         with factory() as session:
             assert session.scalar(select(Topic.name)) == "Must not be deleted"
@@ -100,6 +100,32 @@ def test_0001_to_head_keeps_attached_notes_and_allows_standalone(tmp_path: Path)
                 "stays attached",
                 "free standing",
             }
+    finally:
+        engine.dispose()
+
+
+def test_0001_to_head_allows_untitled_resources(tmp_path: Path) -> None:
+    """Upgrading an 0001 database to head must relax title to nullable so an
+    untitled resource can be stored after the migration."""
+    engine = create_database_engine(f"sqlite:///{tmp_path / 'untitled.db'}")
+    try:
+        migrate(engine, "0001_initial")
+        migrate(engine)
+        factory = create_session_factory(engine)
+        with factory.begin() as session:
+            resource = LearningResource(
+                title=None,
+                source_type="WEB",
+                source_url="https://example.test/untitled",
+            )
+            session.add(resource)
+            session.flush()
+            resource_id = resource.id
+        with factory() as session:
+            row = session.scalar(
+                select(LearningResource).where(LearningResource.id == resource_id)
+            )
+            assert row is not None and row.title is None
     finally:
         engine.dispose()
 

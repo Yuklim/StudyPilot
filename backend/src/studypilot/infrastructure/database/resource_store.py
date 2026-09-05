@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import ColumnElement, func, or_, select
 from sqlalchemy.orm import Session, defer
 
 from studypilot.infrastructure.database.types import utc_now
@@ -421,10 +421,16 @@ class ResourceStore:
             "progress_percent": LearningProgress.progress_percent,
         }
         order_column = sort_columns[query.sort.lstrip("-")]
-        statement = statement.order_by(
+        ordering: list[ColumnElement[Any]] = [
             order_column.desc() if query.sort.startswith("-") else order_column.asc(),
             LearningResource.id.asc(),
-        )
+        ]
+        # Untitled (NULL) resources always sort after titled ones, ascending or
+        # descending, per the documented contract; never trust the DB's default
+        # NULL ordering here.
+        if query.sort.lstrip("-") == "title":
+            ordering.insert(0, LearningResource.title.is_(None))
+        statement = statement.order_by(*ordering)
         # Unicode NFKC/casefold matching stays portable, without SQLite-only SQL.
         # Only bounded metadata is loaded; large source content is deferred.
         offset = (query.page - 1) * query.page_size

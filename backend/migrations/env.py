@@ -4,7 +4,7 @@ from alembic import context
 from sqlalchemy.engine import Connection
 
 from studypilot.infrastructure.config import get_settings
-from studypilot.infrastructure.database import Base, create_database_engine
+from studypilot.infrastructure.database import Base, migration_connection
 
 config = context.config
 target_metadata = Base.metadata
@@ -32,12 +32,8 @@ def run_migrations() -> None:
     if supplied_connection is not None:
         run_with_connection(supplied_connection)
         return
-    engine = create_database_engine()
-    try:
-        with engine.begin() as connection:
-            run_with_connection(connection)
-    finally:
-        engine.dispose()
+    with migration_connection() as connection:
+        run_with_connection(connection)
 
 
 run_migrations()
