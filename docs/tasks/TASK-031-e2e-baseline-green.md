@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-031"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L2"
 risk_reason = "两类改动：(1) 三条 e2e 红是测试与 TASK-025/026 后真实 UI 不同步（导航拆成「主要导航/更多能力」两组、选填字段收进 `<details>` 折叠区），属测试侧修正，必须按真实用户路径补操作而不是删断言；(2) 一条是真实响应式缺陷——`/resources` 在 320px 下 documentElement.scrollWidth=338 横向溢出，源于 `.resource-filter-top` 不换行把 `.view-switch` 挤出视口，需改共享 `styles.css`，影响资料库页在所有断点的筛选行布局。不动后端、公共契约、数据模型与治理门禁；但共享样式 + 测试断言完整性需独立只读 Review，故 L2 而非 L1。"
 risk_flags = ["tests", "small-ui", "business"]
@@ -95,7 +95,7 @@ checks = ["frontend"]
   >
   > **剩余风险**：低。320px 下 `.view-switch` 换行是预期取舍；未覆盖 320–390px 之间的中间宽度（换行优于溢出，可接受）。
 - Acceptance：L2 → N/A（风险路由不要求独立验收）。
-- 最终状态/风险/用户操作：status=**ACCEPTED**（L2，独立只读 Review PASS）。Reviewer 指出的状态不一致已按其建议在本次写回中校正：记录 toml 与索引行统一为 ACCEPTED。候选 `d5f7f56` 待**用户本人执行合并**（Agent 不合并、不推 main）。合并后按既有做法把记录/索引标 MERGED，可并入下个已授权任务的控制面提交。
+- 最终状态/风险/用户操作：status=**MERGED**（L2，独立只读 Review PASS）。Reviewer 指出的状态不一致已按其建议在本次写回中校正：记录 toml 与索引行统一为 ACCEPTED。候选 `d5f7f56` 已由**用户本人于 2026-09-05 12:43Z 执行合并**（PR #36，merge commit `e2ab283`）；本状态登记按既有做法并入 TASK-032 的控制面提交。
 - 非阻断遗留项：① `openOptionalFields` 在 resource-pages 与 file-pages 两份 spec 中重复——e2e 目录尚无共享 helper 模块，为 6 行助手新建一个共享文件的收益不抵结构成本，责任角色 coordinator，若第三份 spec 也需要展开折叠区则抽取；② 助手内 `closest('details')` 若将来折叠区结构被改会抛 TypeError 而非清晰断言失败——触发条件是 `ResourceForm` 折叠区被重构，届时报错仍会指向该行，影响仅是可读性；③ 未覆盖 320–390px 之间的中间宽度——换行策略在该区间只会更宽松，风险低。三项均不阻断交付。
 - 日期与决定日志：2026-09-05 用户在 TASK-030 合并后选定本任务；同日在基线 `849dc1f` 实测复现 4 条红并定位根因（3 测试侧 + 1 真实 320px 溢出），登记为 L2；同日实现 `5da7ca2`、证据写回冻结候选 `d5f7f56`，L2 独立只读 Review PASS，状态置 ACCEPTED 待用户合并。
 

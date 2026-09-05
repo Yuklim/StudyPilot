@@ -196,14 +196,44 @@ class ResourceStore:
         for field, source in (("source_url", "WEB"), ("pasted_content", "PASTE")):
             if field in changes and resource.source_type != source:
                 raise ResourceError("SOURCE_TYPE_MISMATCH", 409)
-        if "topic_id" in changes:
-            self.validate_taxonomy(command.topic_id, [])
+        tag_ids = changes.pop("tag_ids", None)
+        if "topic_id" in changes or tag_ids is not None:
+            self.validate_taxonomy(
+                command.topic_id if "topic_id" in changes else None, tag_ids or []
+            )
         for field, value in changes.items():
             if getattr(resource, field) != value:
                 setattr(resource, field, value)
+        if tag_ids is not None:
+            self._replace_tags(resource, tag_ids)
         # Existing ORM version guard also protects the actual UPDATE, not just this read.
         self._session.flush()
         return self._projections([resource], detail=True)[0]
+
+    def _replace_tags(self, resource: LearningResource, tag_ids: list[UUID]) -> None:
+        with self._session.no_autoflush:
+            # Autoflush here would push the column changes of this same PATCH out as
+            # their own UPDATE, so version_id_col would bump twice for one request.
+            current = set(
+                self._session.scalars(
+                    select(ResourceTag.tag_id).where(ResourceTag.resource_id == resource.id)
+                )
+            )
+        wanted = set(tag_ids)
+        if current == wanted:
+            # Same set: keep the contract rule that an unchanged request adds no version.
+            return
+        # Links live outside the resource row, so nothing else marks it dirty. Touch
+        # updated_at before attach_tags flushes, otherwise a PATCH that also changes a
+        # column flushes twice and bumps version_id_col twice for one request.
+        resource.updated_at = utc_now()
+        for link in self._session.scalars(
+            select(ResourceTag).where(
+                ResourceTag.resource_id == resource.id, ResourceTag.tag_id.in_(current - wanted)
+            )
+        ):
+            self._session.delete(link)
+        self.attach_tags(resource.id, sorted(wanted - current))
 
     def detail(self, resource_id: UUID) -> dict[str, Any]:
         resource = self.find(resource_id)

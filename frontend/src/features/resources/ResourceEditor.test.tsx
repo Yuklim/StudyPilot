@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { api, ApiError } from '../../api/client'
 import { renderWithRouter } from '../../test/render'
-import { categoryPage, topicId } from '../taxonomy/fixtures'
+import { category, categoryPage, tagId, topicId } from '../taxonomy/fixtures'
 import { ResourceEditor } from './ResourceEditor'
 import { ResourceDetail } from './ResourceDetail'
 import { resourceId, sample, sampleFile } from './fixtures'
@@ -12,6 +12,7 @@ import type { Resource } from './api'
 const change = (label: string, value: string) =>
   fireEvent.change(screen.getByLabelText(label), { target: { value } })
 const submit = () => fireEvent.submit(screen.getByRole('form', { name: '编辑资料表单' }))
+const oldTagId = '00000000-0000-4000-8000-000000000021'
 function open(item = sample()) {
   const refreshed = vi.fn()
   const view = render(<ResourceEditor resource={item} refreshed={refreshed} />)
@@ -140,6 +141,54 @@ describe('resource editor', () => {
       ).toEqual({ topic_id: clear ? null : topicId, expected_version: 1 })
     },
   )
+  it('replaces the whole tag set in one patch and treats the original set as no change', async () => {
+    const request = vi
+      .spyOn(api, 'request')
+      .mockImplementation(async (path) =>
+        path.startsWith('/api/v1/tags?')
+          ? categoryPage([category({ id: tagId, name: '合成标签' })])
+          : { data: sample({ version: 2 }) },
+      )
+    open(sample({ tags: [{ id: oldTagId, name: '旧标签' }] }))
+    fireEvent.click(screen.getByRole('button', { name: '更改标签' }))
+    fireEvent.click(await screen.findByRole('checkbox', { name: '合成标签' }))
+    // Back to the original set: a reordered or restored set must not count as a change.
+    fireEvent.click(screen.getByRole('button', { name: '移除已选标签 合成标签 ×' }))
+    expect(screen.getByRole('button', { name: '保存资料修改' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('checkbox', { name: '合成标签' }))
+    fireEvent.click(screen.getByRole('button', { name: '移除已选标签 旧标签 ×' }))
+    submit()
+    await screen.findByText('资料修改已保存。')
+    expect(
+      request.mock.calls.find(([, options]) => options?.method === 'PATCH')?.[1]?.body,
+    ).toEqual({ tag_ids: [tagId], expected_version: 1 })
+  })
+  it('clears every tag with an empty array and keeps that draft through a conflict', async () => {
+    const request = vi
+      .spyOn(api, 'request')
+      .mockRejectedValueOnce(
+        new ApiError('VERSION_CONFLICT', 409, undefined, { current_version: 3 }),
+      )
+      .mockResolvedValueOnce({
+        data: sample({ version: 3, tags: [{ id: tagId, name: '别处加的标签' }] }),
+      })
+      .mockResolvedValue({ data: sample({ version: 4, tags: [] }) })
+    open(sample({ tags: [{ id: oldTagId, name: '旧标签' }] }))
+    fireEvent.click(screen.getByRole('button', { name: '移除已选标签 旧标签 ×' }))
+    submit()
+    await screen.findByText(/操作结果需要核对/)
+    fireEvent.click(screen.getByRole('button', { name: '保留草稿，读取最新资料' }))
+    const latest = await screen.findByRole('region', { name: '最新已保存资料' })
+    expect(latest).toHaveTextContent('别处加的标签')
+    // The draft still says "no tags", and it is not overwritten by the newer server set.
+    expect(screen.getByText('标签：未添加')).toBeInTheDocument()
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: '我已核对最新资料，确认仍需保存本页修改' }),
+    )
+    submit()
+    await screen.findByText('资料修改已保存。')
+    expect(request.mock.calls.at(-1)?.[1]?.body).toEqual({ tag_ids: [], expected_version: 3 })
+  })
   it.each([
     new ApiError('VERSION_CONFLICT', 409, undefined, { current_version: 99 }),
     new ApiError('VERSION_REQUIRED', 428),
