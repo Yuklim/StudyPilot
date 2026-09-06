@@ -96,7 +96,7 @@ checks = []
 
 ## 实现与测试
 
-- 实现 SHA/变更摘要：**最终实现 SHA `5574d5d`**（base `b4a3fd0`，33 个文件；其中 `extension/package-lock.json` 一个文件占了大部分行数）。前两轮实现 SHA 依次为 `540027e`（第一轮）与 `4ed3062`（第一轮 findings 处置），均已被取代。**本段下方记录的命令与指纹一律是最终值**（`5574d5d` → `a92b486a…`）；早先轮次的值只在明确标注轮次处出现。
+- 实现 SHA/变更摘要：**最终实现 SHA `7baf19e`**（base `b4a3fd0`，33 个文件；其中 `extension/package-lock.json` 一个文件占了大部分行数）。前三轮实现 SHA 依次为 `540027e`、`4ed3062`、`5574d5d`，均已被取代。**本段下方记录的命令与指纹一律是最终值**（`7baf19e` → `2235caca…`）；早先轮次的值只在明确标注轮次处出现。
   1. **扩展侧**：`src/shared/protocol.ts`（消息契约与载荷校验）、`src/injected/extract.ts`（在文章页运行，Defuddle 提取 + 转 Markdown）、`src/injected/relay.ts`（只在本机 UI 源运行的中转脚本）、`src/popup/capture.ts`（编排逻辑，与 chrome API 解耦）、`src/popup/bridge.ts`（真实 chrome 接线）、popup 增加「保存这一页的正文」按钮。
   2. **构建**：内容脚本与注入脚本必须是经典脚本，而 Rollup 只在 es/system 下支持多入口，故新增 `vite.injected.config.ts`，用 `--mode` 选入口各构建一次（`extract.js`、`relay.js`），跟在 popup 构建之后、`emptyOutDir: false`。
   3. **权限**：`activeTab` + `scripting` + `storage` + 一条只匹配 `http://127.0.0.1:5173/*` 的 `content_scripts`。**未申请 `host_permissions`、未申请 `<all_urls>`**。manifest 白名单断言由五键扩到七键，另新增两条断言分别锁死权限清单的确切三项与内容脚本的唯一匹配源。
@@ -107,9 +107,9 @@ checks = []
 
 - 命令、真实退出结果、product_fingerprint、环境、未运行原因：
 
-  **任务检查（全套，最终）**：`check_task.py --task docs/tasks/TASK-038-extension-capture.md --candidate 5574d5d` → **CHECKS PASS**，base=`b4a3fd0`、files=33、`profiles=contracts,extension,frontend`、`product_fingerprint=a92b486a4309252094f8438fce602fef4bc47983b4d05006cddda5370b6ec989`。完整输出留存于 `scratchpad/check-038-r3.log`（145 行）；extension 组报 **7 files / 83 tests passed**；frontend 组报 **18 files / 407 tests passed**（本轮新增 `frontend/src/features/capture/protocol.test.ts` 一个文件）。
+  **任务检查（全套，最终）**：`check_task.py --task docs/tasks/TASK-038-extension-capture.md --candidate 7baf19e` → **CHECKS PASS**，base=`b4a3fd0`、files=33、`profiles=contracts,extension,frontend`、`product_fingerprint=2235caca2596ae7178d8515cbf94c10c01531ebc9ad3cdc925d41804f778708f`。完整输出留存于 `scratchpad/check-038-r4.log`（145 行）；extension 组报 **7 files / 84 tests passed**；frontend 组报 **18 files / 408 tests passed**。
 
-  **extension 83 条的逐文件对账**（第二轮 R2 曾指出有 9 条无人认领，这里结清；数字由 `vitest --reporter=json` 实测得出，非估算）：`boundaries.test.ts` 5、`manifest.test.ts` 9、`injected/extract.test.ts` 12、`injected/relay.test.ts` 11、`shared/protocol.test.ts` 25、`popup/capture.test.ts` 13、`popup/popup.test.ts` 8 —— 合计 83。
+  **extension 84 条的逐文件对账**（第二轮 R2 曾指出有 9 条无人认领，第三轮 R1 已独立推导出全部七个加数并逐一对上；数字由 `vitest --reporter=json` **实测**得出，非估算）：`boundaries.test.ts` 5、`manifest.test.ts` 9、`injected/extract.test.ts` 12、`injected/relay.test.ts` 11、`shared/protocol.test.ts` **26**、`popup/capture.test.ts` 13、`popup/popup.test.ts` 8 —— 合计 **84**（第三轮 O13 在 `protocol.test.ts` 各补一条控制字符用例，扩展侧由 25 增至 26；前端侧同理由 407 增至 408）。
 
   前两轮（已被取代，仅备查）：`--candidate 540027e` → CHECKS PASS，files=31、`product_fingerprint=f6c1552186cb08ae8c15c344a201c437b9a24f8dd5669ef886a0a4fef2bcc268`（`scratchpad/check-038.log`）；`--candidate 4ed3062` → CHECKS PASS，files=32、`product_fingerprint=f22c17dbe1b81716f474543e350cc709eee2dc488e3eb2b313bb5b51984f4114`（`scratchpad/check-038-r2.log`）。
 
@@ -121,7 +121,7 @@ checks = []
 
   **e2e**：`cd frontend && npm run test:e2e` → **41 passed**，与基线一致。本任务未新增 e2e，原因见「已知限制」第 1 条。
 
-  **变异验证（第一轮六项 + 第一轮处置后四项 + 第二轮处置后三项，共十三项，均已回滚，回滚后复跑全绿）**：
+  **变异验证（六 + 四 + 三 + 二，共十五项，均已回滚，回滚后复跑全绿）**：
   1. *信任边界是否真被测住*：删掉 `capturedFrom` 里的 `event.source` 与 `event.origin` 校验 → 采集页测试 **2 failed / 9 passed**。
   2. *「必须用户确认」是否真被测住*：让页面一收到内容就自动 `createResource` → **2 failed / 9 passed**。
   3. *内容脚本范围是否被锁死*：把 `matches` 放宽为 `[RELAY_MATCH, '<all_urls>']` → 扩展测试 **1 failed / 42 passed**。
@@ -135,6 +135,8 @@ checks = []
   11. *（处置 N1 后）只改前端那份协议是否会被捕获*：放宽**前端**那份的 authority `@` 规则 → `frontend/.../protocol.test.ts` 变红。这条是关键 —— 处置前该方向**没有任何机器守着**（扩展组根本不会运行），而它恰是更可能发生的方向。
   12. *（处置 N1 后）只改扩展那份是否会被捕获*：同样放宽**扩展**那份 → 扩展侧的逐字守卫变红。两个方向都有。
   13. *（处置 P1 后）改构建产物文件名模板是否会被捕获*：把 `outputName` 改成 `` `${mode}.bundle.js` `` → `manifest.test.ts` 变红。处置前这一改动会全绿通过，而产出的 manifest 指向不存在的文件。
+  14. *（处置 O13 后）控制字符规则是否被测住*：删掉 `isSafeSourceUrl` 里那一行 → 前端 `protocol.test.ts` 变红。**处置前删掉它两侧行为用例全绿**（实测确认），是「这一份符合规格」里唯一的洞。
+  15. *（处置 N-R2 后）只改一侧的 JSDoc 是否被捕获*：只改**前端**那份 `isSafeSourceUrl` 的规则说明 → 扩展侧逐字守卫变红。**处置前 JSDoc 不在比对范围内**，N-R1 那类「改了实现没回头看描述」的漂移完全抓不到。
 
   **实现过程中自查发现并修正的两处**（记录在案，因为它们都属本任务链上反复出现的缺陷类型）：① `extension/README.md` 与 `AGENTS.md` 仍写「顶层键恰好五个」，而实物已是七个——与 TASK-037 F1「宣称比实物宽」方向相反但同族，是「文档口径落后于实物」，第 6 项守卫即为此而加；② 我最初写的「不可用内容不开确认页」测试实际走的是超时分支，**是一条空断言**，改为让假 bridge 真实回传不可用内容、并断言结论必须是 `unusable` 而非 `timeout`。
 
@@ -686,6 +688,328 @@ TASK-038 行的末列仍写「不改后端、**契约**与安全门禁」，而�
   - **R1 要求显式记账的安全副产品 → 已记。** 候选一的旧 URL 校验只有 `/^https?:\/\//`，会**接受** `https://user:pw@example.com/a`；于是站点的 basic-auth 凭证会被 stash 进 `chrome.storage.local`、经确认页写进后端 `source_url` **落库**。为修 R2 的 F1 而加的完整规则把这条路堵死了（实测：旧校验对该地址返回 `true`，新校验返回 `false`）。**没有人是冲着凭证去的**——R2 从后端 422 的角度提 F1，主 Agent 从「让规则保持为真」的角度扩到三处，凭证是顺带堵上的。之所以要显式记账：**将来有人为了「支持带凭证的内网地址」把它放宽时，得知道自己拆掉的是什么。** 这条直接加固了 `extension/AGENTS.md` §3 的「不引入任何第三方站点凭证」。
   - **O10 → 部分采纳。** 已把「prettier 配置分叉会误红」与 cwd 依赖记进测试注释；函数体切片靠 `indexOf('\n}')` 这一条保持原样（当前两个函数都成立，且失败方向安全）。
   - **R2 留的 9 条无人认领的测试 → 已结清。** 用 `vitest --reporter=json` 实测逐文件对账，见「实现与测试」段；R2 数出的 25（`protocol.test.ts`）正确，余下的来自 `extract.test.ts`、`manifest.test.ts`、`relay.test.ts` 的新增用例。
+- Review（第三轮增量，L3 独立只读，`1399037..0d4b9e7`，R1 / R2 各由同一实例复核并显式声明继承范围）：**整体 PASS**。两位 Reviewer 均按根 `AGENTS.md` §7 建议就此收敛，剩余项在承载报告的同一次写回里处理，不再另开轮次。两份报告原文如下。
+
+# TASK-038 Review · R1 部分第三轮增量复核
+
+## 只读身份与权限证据
+
+`tools` 白名单仍只有 `Read` / `Grep` / `Glob`——**无** `Write`/`Edit`/`NotebookEdit`，**未授予** `Bash`。本轮全部调用均为读取与检索；运行器层面无法写文件、提交、推送或合并。仍独立于实现者（唯一写入者 `coordinator`）。
+
+- previous_candidate = `1399037` → **new_candidate = `0d4b9e7`**（代码修订 `5574d5d`）
+- 增量输入：`.../scratchpad/T038r3-R1.patch`（343 行）**逐行读毕**；其中落在我 R1 切片内的是 **12 个文件**（协调者核实的 18 文件增量中，其余 6 个为前端与任务记录文件，属 R2 范围）
+- 机械证据按 **NOT_RUN**：`check_task --candidate 5574d5d` CHECKS PASS、`files=33`、`product_fingerprint=a92b486a…`、extension 7 files / 83 tests、frontend 18 files / 407 tests，均由协调者从日志实读转达。**我未运行任何命令**；六项变异验证仍为实现者自述、无第三方复核。
+
+## 继承声明
+
+**我显式继承前两轮 R1 对 `b4a3fd0..8533b87` 与 `8533b87..1399037` 的全部覆盖与结论**：权限最小性与不可再小的判断、`activeTab` 的 MV3 实际语义、内容脚本 matches 不可放宽（`UI_ORIGIN` 字面断言）、白名单门闩顶层 7 键 + 条目内层 3 键的双重咬合、`extension/AGENTS.md` §3 三条底线逐字保留、注入链路的隔离世界执行上下文、`defuddle` 只落 `dist/extract.js` 单一产物且同步 `parse()` 不发网络请求、构建入口与 `build` 脚本一致、F1/F2/F3 与 S1–S5 的关闭结论。**本轮增量未推翻其中任何一条**——我逐个核对了被触及的文件，无一处削弱。
+
+本轮新审 `1399037..0d4b9e7` 及受影响上下文；基线、架构、风险等级均未变，故按 AGENTS.md §6 走增量路径。
+
+## 增量覆盖（R1 切片 12 文件全读）
+
+`extension/AGENTS.md`、`extension/src/boundaries.test.ts`、`extension/src/injected/extract.ts`、`extension/src/injected/extract.test.ts`、`extension/src/manifest.test.ts`、`extension/src/popup/capture.ts`、`extension/src/popup/capture.test.ts`、`extension/src/popup/popup.ts`、`extension/src/popup/popup.test.ts`、`extension/src/shared/protocol.ts`、`extension/src/shared/protocol.test.ts`、`extension/vite.injected.config.ts`。为交叉验证另读实物：`extension/src/manifest.test.ts` 全文、`frontend/src/features/capture/protocol.ts` 全文（镜像同步核对）、`frontend/src/features/resources/api.ts:419-432`（宣称核对）。
+
+---
+
+## 逐项处置复核
+
+### P3（超长网址静默截断）——已修，且「超长必拒」终于对应到真实路径
+`extract.ts` 的 `normalizeSourceUrl` 两个 `return` 都去掉了 `slice`，`MAX_URL` 也相应从 import 清单移除（必须移，否则 `noUnusedLocals` 会炸——这一步做对了）。我把真实路径完整走了一遍：3000 字符的 `location.href` → `normalizeSourceUrl` 原样返回 → payload 经 `chrome.runtime` 回传 → `runCapture` 的 `isCapturePayload(raced)` → `isSafeSourceUrl` 的 `value.length > MAX_URL` 命中 → false → 进入新的 `badUrl` 分支（markdown 是非空字符串 ✓、url 不安全 ✓）→ **`unusable-url`**，且 `stash` 与 `openConfirmPage` 都未被调用。
+
+`capture.test.ts` 新增的 `['网址超长', …'a'.repeat(3000), 'unusable-url']` 这一行，正是我上轮指出「`protocol.test.ts` 的超长用例在实际路径上永不触发」的直接闭合——现在它在**编排层**被验证，而不只是在校验器层。**P3 关闭。**
+
+### P1（输出文件名模板轴未绑）——已修，正是我指出的那一轴
+`vite.injected.config.ts` 导出 `ENTRIES` 与 ``outputName = (mode) => `${mode}.js` ``，且 `fileName: () => outputName(mode)` 真正消费了它。`manifest.test.ts:85-91` 改为 `expect(ENTRIES).toHaveProperty(mode)` + `expect(outputName(mode)).toBe(script)`。
+
+我验证的变红路径：把 `outputName` 改成 `` `${mode}.bundle.js` `` → `outputName('extract')` 得 `'extract.bundle.js'` ≠ `EXTRACT_SCRIPT` → **红** ✓。这正是我上轮举的那个反例。入口键轴由 `toHaveProperty` 保留 ✓，注入调用轴由 `bridge` 的正反两条字符串断言保留 ✓。**三条轴齐了，P1 关闭。**
+
+附带核过：`manifest.test.ts` 现在 `import … from '../vite.injected.config'`，该模块顶层只调用 `defineConfig(fn)`（Vite 中对函数参数是恒等/仅类型作用，不执行该函数），无副作用；`vite` 是 devDependency、测试环境为 node、`tsconfig.json` 已 include 该文件，导入不会引入新问题。
+
+残留（**不作为 finding**，仅记边界）：若有人绕开 `outputName` 直接写 `fileName: () => 'x.js'`，测试仍绿。但 `outputName` 的 JSDoc 已写明「导出它是为了让测试能把它和 manifest 里的常量绑在一起」，且 `build.lib` 只有 6 行，绕开属明确的有意行为。收益递减，不再要求。
+
+### P2（跨目录测试依赖未记录 + cwd 依赖）——两半都修，路径我逐段验过
+`extension/AGENTS.md:9` 在 §6 加了「一处明示例外」，写明测试期只读、不构成构建耦合、以及**移动前端文件需同步更新此路径否则扩展检查组会因另一模块变红**——这正是我担心的那个「被别人的改动搞懵」的场景，写到位了。
+
+路径改用 `import.meta.url`，我逐段解析：`protocol.test.ts` 位于 `extension/src/shared/`，`new URL('../../../frontend/…', import.meta.url)` → `src/shared` →(../) `src` →(../../) `extension` →(../../../) 仓库根 → `<root>/frontend/src/features/capture/protocol.ts` ✓ **正确**；`projectFile('./protocol.ts')` → `extension/src/shared/protocol.ts` ✓ **正确**。该文件无 jsdom pragma、跑在 node 环境，`import.meta.url` 是 file: URL，用法安全。**P2 关闭。**
+
+### S7 / S8（两处「描述强于实现」+ `parseAsync` 扫描并入）——已修，我核了并入后仍能变红且范围确实扩大
+- **S7**：`protocol.test.ts` 的注释改为「**连函数体内的注释也必须一致** —— 切片不剥注释，这是有意的」，并主动补了已知脆弱点（两工程 prettier 配置分叉会误红，属 2 秒可修的红）。与实现相符，**准确了**。
+- **S8**：`extract.test.ts` 里 `not.toContain('parseAsync')` 删除，改到 `boundaries.test.ts:21-29`，用 `sources().filter(path => /parseAsync/.test(code(path)))`。
+  - **仍能变红**：把 `extract.ts:55` 改成 `.parseAsync()` → `code()` 剥注释后仍含 `parseAsync` → offenders 非空 → 红 ✓。同时 `extract.test.ts` 保留的 `toContain('.parse()')` 也会红（`.parseAsync()` 不含子串 `.parse()`），**双重覆盖**。
+  - **今天为正确理由通过**：`extract.ts` 里 `parseAsync` 仅出现在 `EXTRACT_OPTIONS` 的 `/** */` JSDoc 内，被 `code()` 的块注释正则剥掉；本轮新增的 `normalizeSourceUrl` 注释是缩进 `//` 行，也被剥掉；其余 7 个源文件均无该词。
+  - **范围确实扩大**：从只扫 `extract.ts` 一个文件，扩到 `src/**` 下全部 8 个非测试 `.ts`。`sources()` 排除 `*.test.ts`，而旧断言本来也只看非测试文件，**无覆盖损失**。免责注释已随之继承（明确写了挡不住 `'parse' + 'Async'` 一类有意规避，并指明真正的看守是 `EXTRACT_OPTIONS.useAsync` 值断言）。**S8 关闭，且比我建议的更完整。**
+
+### S9 / O11（`unusable-url` 原因码）——逻辑正确，我对着七行用例逐条走过
+`capture.ts:60-71` 的分支：`badUrl = markdown 是非空字符串 && (url 非字符串 || !isSafeSourceUrl(url))`。逐行核对新测试表：结构不对 → markdown 非字符串 → `unusable` ✓；正文空白 → trim 后为 0 → `unusable` ✓；正文超上限（url 合法）→ `unusable` ✓；`javascript:` / 带 `#` / 带凭据 / 超长 → 四条均 `unusable-url` ✓。健壮性：`raced` 为字符串或 `null` 时 `candidate?.markdown` 得 `undefined`，走 `unusable`，不抛 ✓。`popup.ts` 新文案与其余四条互异，`popup.test.ts` 的「每种原因文案都不同」断言由 4 扩到 5 ✓。**处置正确。**
+
+### 凭证路径记账 + 本轮的进一步收紧
+上轮我要求显式记账的那条（旧的 `/^https?:\/\//` 会接受 `https://user:pw@…` 从而把站点凭证 stash 并落库）已被记账。**本轮又往前走了一步，且这一步是对的**：`protocol.ts` 新增 `if (/^https?:\/\/[^/?#]*@/.test(value)) return false`。我验了该正则的边界——`https://user:pw@example.com/a` 拒 ✓、`https://@example.com/`（JS 里 `username === ''` 为假值，旧写法会**放行**）拒 ✓、`https://example.com/a@b`（`@` 在路径里）**放行** ✓、`https://example.com?x=a@b` 放行 ✓。既堵上了 `!url.username` 判不出「空用户名」的漏洞，又不误伤路径/查询里的 `@`。这进一步加固了 `extension/AGENTS.md:20` 的「不引入任何第三方站点凭证」。
+
+同轮把 `/^https?:\/\//i` 的 `/i` 去掉，方向是**收紧**（只接受小写 scheme），与后端大小写敏感的 `startswith` 对齐；真实路径经 `new URL().href` 规整后 scheme 恒为小写，**不影响任何合法采集**，注释对此的说明准确。
+
+### 协调者问题 1：N1 的处置有没有削弱扩展侧守卫？——**没有**
+`protocol.test.ts` 本轮的 diff 只有三处：导入 `fileURLToPath`、`MIRROR`/`mine` 改用 `import.meta.url` 解析、以及注释改准。`body()` 的**逐字比对逻辑一字未动**，比对目标仍是两份 `isSafeSourceUrl` 与 `isCapturePayload` 的完整函数体（含体内注释）。扩展侧守卫**未被削弱**。
+
+两侧机制有意不同（前端因 Vite `server.fs.allow` 不许读项目根外文件、且 `frontend/vite.config.ts` 不在 allowed_paths，改用行为断言）——我认为这个不对称是**站得住的**：受限方选择了在其约束内可行的等效目标，而不是去扩权改配置。这恰恰是没有为了对称而越界，符合 §5「不越任务 allowed_paths」。
+
+更重要的是，我实读 `frontend/src/features/capture/protocol.ts:31-47` 确认：本轮的两处收紧（去 `/i`、加 `@` 规则）在前端副本上**逐字同步**，连注释都一模一样。所以扩展侧的逐字守卫**当前是绿的，且是因正确理由绿的**。本轮正好是「同时改动两份手写信任边界校验器」这一守卫存在的理由场景，它经受住了第一次真正的考验。
+
+### 协调者问题 2：83 = 5+9+12+11+25+13+8 是否与我能看到的文件自洽？——**完全自洽，七个加数我全部独立推导出来**
+
+| 文件 | 我数出的 `it` 数 | 构成 |
+|---|---|---|
+| `boundaries.test.ts` | **5** | 后端直连、cookie、**新增 parseAsync**、文档口径、非空扫描守卫 |
+| `manifest.test.ts` | **9** | 实读全文：MV3、版本对齐 package.json、popup 存在、七键白名单、三权限、内容脚本源、条目内层键、注入名绑定、extract 不得静态声明 |
+| `injected/extract.test.ts` | **12** | 4 基础 + 去 fragment 1 + `it.each` 4 + 不可解析 1 + 钉选项 1 + 空正文 1 |
+| `injected/relay.test.ts` | **11** | 2 + `it.each` 5 + `it.each` 4 |
+| `shared/protocol.test.ts` | **25** | 1 + 2 + 3 + 1 + 3 + 7 + 1 + 7 |
+| `popup/capture.test.ts` | **13** | 1 + `it.each` 7（本轮由 4 扩到 7）+ 4 + 1 |
+| `popup/popup.test.ts` | **8** | 1 + 1 + `it.each` 5（本轮由 4 扩到 5）+ 1 |
+| **合计** | **83** | ✓ |
+
+七个加数与协调者转达的分解**逐一对上**，总和 83 对上，文件数 7 对上，且两处增量（capture +3、popup +1、boundaries +1）与本轮 diff 精确一致（5 条新增 = 83 − 78 ✓）。**这条对账我给出独立确认。**
+
+### 协调者问题 2 续：过程失误的描述是否如实、洞是否堵住？
+
+**描述的机制我判定为如实**（在机制层面可核，非事后开脱）：Vitest 中模块级导入失败会被记为**收集期失败**，输出形如 `Test Files 1 failed | 6 passed`，并打印 "Failed to load" 块，**不会产生任何逐条 `×` 行**——因为根本没收集到用例。因此只 grep `Tests` 与 `×`，确实会看到其余文件汇总出的 "N passed" 而完全错过这次失败。这与它描述的现象完全吻合，不是编造的托词。但我必须如实标注：**我无法独立复现或审计它的命令历史**，只能确认所述机制成立。
+
+**洞堵住了吗？部分堵住，真正堵住它的不是「改看 `Test Files` 行」这一条。**
+- 看 `Test Files` 行确实覆盖了这次的具体失败模式（收集失败会显式计入 failed）✓。
+- 但它**单独**不足：文件被改名而不再匹配 `src/**/*.test.ts` 会静默消失，`Test Files 6 passed` 照样是绿的——除非同时钉住**期望的文件数**。`it.skip`/`describe.skip` 同理，只在 `Tests` 行以 skipped 出现，grep "passed" 仍会漏。
+- **真正堵住这一类的是它另外做的那件事：用 `--reporter=json` 逐文件对账测试数**。任何文件消失、收集失败或用例减少都会让分解对不上。这个控制比两种 grep 都强，我在上表中独立复算通过。
+- 残留：这仍是**流程控制**，依赖操作者每次都做；仓库里没有任何机械断言钉住「7 files / 83 tests」。要机械化就得动 `scripts/governance/**`，而那是本任务的明示非目标，**我不要求本轮处理**，仅作为剩余风险记录。
+
+关于它的自评「这和编造 18 files 是同一类：验证方式本身有洞」——**方向正确、值得肯定，但两者应当区分**：报 18 而日志是 17，是对**可核验证据的事实性错述**（AGENTS.md §2「不得伪造测试结果」直接管辖的那一类）；这次是**核验方法的覆盖缺口**导致的错误信念，是从真实但不完整的观察得出的。它抓住的共同点（检查方法自身有洞）是对的，也是有价值的教训。我要补一句同样重要的：**这两处都是它自己交代的，不是我查出来的**——这在诚信上是正面信号，但也意味着**我没有任何独立手段去界定还有多少同类问题未被自述**。这一点我如实写进剩余风险。
+
+---
+
+## 本轮新增 Findings
+
+### 必须修复（阻断）
+
+**No blocking findings.**
+
+### 可记录后继续
+
+**N-R1 — 本轮收紧了 `isSafeSourceUrl`，却使两份 `protocol.ts` 中「与 `safeWebUrl` 同规则」的宣称由真变假。**
+路径：`extension/src/shared/protocol.ts:44`（以及镜像 `frontend/src/features/capture/protocol.ts:29`），两处 JSDoc 均写「规则：http(s) 开头；不含空白、控制字符、反斜杠、`#`；可解析且有主机名；不含凭据。**与 `frontend/src/features/resources/api.ts` 的 `safeWebUrl` 同规则。**」
+实物：我读了 `frontend/src/features/resources/api.ts:419-432`，`safeWebUrl` **保留** `/^https?:\/\//i`（大小写不敏感）、**没有** authority 段 `@` 拒绝规则（只有 `!url.username && !url.password`——正是本轮注释亲自论证过的「判不出空用户名」的写法）、**也没有** `MAX_URL` 长度上限。本轮之前两者确实同规则；本轮把 `isSafeSourceUrl` 两处收紧后**只改了两份 protocol.ts，没有同步更正这句宣称**。
+触发：任何后续 Agent 依据「同规则」推断改一处即可，或据此认为 `safeWebUrl` 已具备同等严格度。
+影响：**不开新洞**——`safeWebUrl` 服务的是手工录入网址的展示防护，与采集路径无关，其宽松度是既有行为、本轮未改变。缺陷是**文档宣称强于实物**，正是本任务链上反复出现的那一类（TASK-036 A3、TASK-037 F1、本任务实现中途、我的 F1，这是第五次）。
+最小修复：**只改注释，不要去动 `safeWebUrl`**（改共享的前端校验器属扩大范围，需独立风险判断）。把那句改为如实表述，例如：「规则比 `frontend/src/features/resources/api.ts` 的 `safeWebUrl` **更严**：多了 `MAX_URL` 长度上限、authority 段 `@` 拒绝，且 scheme 大小写敏感。`safeWebUrl` 服务手工录入网址的展示防护，未随本次收紧同步。」两份副本须同改。
+分类：**可记录后继续**。
+
+**N-R2 — 镜像守卫不覆盖 JSDoc，所以 N-R1 这类宣称漂移它抓不到。**
+路径：`extension/src/shared/protocol.test.ts:59-63`，`body()` 从 `export function ${name}(` 起切片，**函数上方的 JSDoc 不在比对范围内**。
+触发：只在一份副本上修改/更正函数上方的 JSDoc（包括修复 N-R1 时只改一边）。
+影响：两份协议的**规则说明**可以无声分叉，而守卫全绿。函数体（含体内注释）已被覆盖，所以影响限于文档层，不涉及行为。
+最小修复：把切片起点上移到 JSDoc 开头（从 `export function` 位置向前回溯最近的 `/**`），或额外加一条比对两份文件中该 JSDoc 块的断言。约五行。
+分类：**可记录后继续**（低优先级；若采纳 N-R1 的修复，本条会让「两边同改」这件事变成机械保证而非人工纪律）。
+
+### 可选建议
+
+- **S10** `extract.test.ts` 现在只剩 `expect(source).toContain('.parse()')` 这一条还在用 cwd 相对的 `readFileSync('src/injected/extract.ts')`（P2 已把 `protocol.test.ts` 的两处改掉，这里因该文件跑在 jsdom 下未改）。既然 `parseAsync` 扫描已迁入 `boundaries.test.ts`，把这条 `.parse()` 正向断言一并迁过去最干净：`boundaries.test.ts` 跑在 node 环境、`sources()` 已经在读文件，迁过去可**消除扩展测试组最后一处 cwd 依赖**，同时让正反两条断言同处一地。顺带说明：注释里「jsdom 环境下 `import.meta.url` 不是 file: URL」这一条我**未独立验证**，迁走之后这个疑问也就不必再回答了。
+- **S11** P3 修好了网址的静默截断，但**同一函数里 markdown 仍在 `extract.ts` 静默截断**（`.slice(0, MAX_MARKDOWN)`），于是 `capture.test.ts` 里「回传的正文超出后端上限 → `unusable`」那一行同样不对应真实路径（真实路径下正文已被砍到恰好 1,000,000 而通过）。与网址不同的是，截断正文是**可辩护的取舍**（存下 1MB 正文优于什么都不存，且后端上限就是 1MB），所以我**不建议改成拒收**；建议只做两件小事：在 `normalizeSourceUrl` 旁的注释里写明「正文与网址在此有意采取不同策略」，以及考虑在正文被截断时给用户一句提示。极低优先级。
+- **S12** 「7 files / 83 tests」目前只靠人工对账维持，仓库内无机械断言。机械化需动 `scripts/governance/**`（本任务明示非目标），**本轮不要求处理**，仅建议在收尾时把这个期望值记进任务记录，供下一个扩展任务比对。
+
+---
+
+## 覆盖与缺口
+
+**本轮已看透**：P1/P2/P3 与 S7/S8/S9 的处置是否真正到位及其变红路径、`unusable-url` 分支对全部七行用例的逐条正确性、`isSafeSourceUrl` 两处收紧的正确性与边界（含 `@` 正则的四组边界输入）、两份 `protocol.ts` 的实际同步状态（实读比对）、`vite.injected.config.ts` 导出被测试真实消费、`extension/AGENTS.md` §6 例外条款的准确性、83 测试的**全部七个加数**、`safeWebUrl` 宣称与实物的差异。
+
+**明确缺口（不猜测、不填充）**：
+
+1. **`extension/package-lock.json` 至今未读，三轮均零变动**。我第一轮标注的供应链缺口**范围与结论完全未变**：「228 包、resolved 全指官方 registry、无 `file:`/`git+`、唯一 `hasInstallScript` 为 `fsevents`」**仍是实现者自述抽查，无任何独立核实**。这是本任务贯穿三轮唯一始终未闭合的实质缺口；若要闭合需就锁文件单独派审查。
+2. **`83 tests` 的实际执行结果未核**——我核的是「83 这个数与文件内容自洽」，不是「它们跑过且全绿」。全部检查结论仍由 CHECKS PASS 证据承担。
+3. **六项变异验证仍为实现者自述、无第三方复核**；我只能按代码判断断言「能否变红」。
+4. **后端 `contracts.py` 的 `parsed_url` 我未读**，因此「后端 scheme 判定是大小写敏感的 `startswith`」「后端拒 netloc 里的 `@`」两条注释的事实性我**未独立核实**。二者方向均为 fail-closed（扩展比后端更严不会造成漏放），故不作为 finding，但如实标注为未核。
+5. **`extension/dist/` 产物仍未检视**（未构建）；P1 的绑定是在源码层验证的，`npm run build` 的实际产物名未经我确认。
+6. **实现者所述的过程失误我只能确认机制成立，无法审计其命令历史**；且我无法界定还有多少同类问题未被自述。
+7. **R2 范围未覆盖**：`/capture` 页与 `CapturePage.tsx`、前端侧信任边界与 N1 的行为断言、契约文档 §14、e2e、任务记录叙述、frontend 的 18 files / 407 tests 对账（我只注意到前端本轮 17→18 文件，与 N1 新增守卫自洽，但**由 R2 核**）。
+8. 明示非目标（图片冻结、Firefox/Safari、A4 契约清单漂移、`validate_governance.py` 第二份清单、`scripts/governance/**`）未审。
+
+## 剩余风险
+
+1. **采集全流程仍未实机运行过**——三轮下来这仍是最大的未验证面。P1 修复的正是「只在实机加载时才炸」那一类，但修复本身也只在源码层被验证。
+2. **供应链面三轮未经独立核实**（缺口 1），依赖落点仍是能访问 `chrome.storage`/`chrome.runtime` 的内容脚本上下文；控制手段仅锁文件钉死。
+3. **证据可靠性依赖实现者自述**：两处已知的验证方法缺陷均为自报，且现有的逐文件对账是流程控制、无机械强制（S12）。
+4. 协议双份定义的守卫已经受住一次真实同步考验，但其覆盖止于函数体，JSDoc 可无声分叉（N-R2），且对两工程 prettier 配置分叉敏感（已在注释中自陈）。
+5. 正文超 1MB 时静默截断且不告知用户（S11，属有意取舍）。
+
+## 结论
+
+**PASS**（指向新候选 `0d4b9e7`）
+
+我上一轮提出的 P1/P2/P3 与 S7/S8/S9 **逐条复核确认已妥善处置**，其中 S8 的处置强于我的建议（范围从单文件扩到全部源文件并继承免责口径），P1 三条轴全部绑定。协调者点名的两个问题我给出独立结论：**扩展侧逐字守卫未被削弱**，且两份 `protocol.ts` 本轮实际逐字同步、守卫因正确理由为绿；**83 测试的七个加数我全部独立推导并与分解逐一对上**。本轮新增的 `@`-in-authority 规则是一处正确且有实质价值的收紧，进一步加固了「不引入第三方站点凭证」这条底线。实现者对过程失误的描述在机制层面**如实**，改用逐文件对账确实堵住了那个洞（但堵住它的是对账，不是「改看 `Test Files` 行」）。
+
+本轮新增 N-R1/N-R2 两项**可记录后继续**与 S10–S12 三项可选建议，**均不阻断**：无一触及安全底线、必要检查或已确认需求/契约；N-R1 不开新洞、修复只需改注释，N-R2 属文档层守卫缺口。
+
+覆盖边界：本结论**仅覆盖 R1 问题域**（扩展侧、权限与提取），继承前两轮 R1 的全部其余覆盖，并以上述八条缺口为限——特别是 `package-lock.json` 的供应链完整性**三轮至今未经我独立核实**，全部机械检查按 NOT_RUN 计，变异验证无第三方复核。TASK-038 的完整 Review 结论须与 R2 对 `0d4b9e7` 的结论合并后方能成立。
+
+# TASK-038 Review · R2 部分第三轮增量复核
+
+## 只读身份与权限证据
+
+工具白名单仍只有 `Read`/`Grep`/`Glob`：无 `Write`/`Edit`/`NotebookEdit`、无 `Bash`。本轮全部调用均为读取与检索，未写入任何文件、未提交、未推送。同一 Reviewer 实例，延续前两轮 R2 上下文。
+
+- previous_candidate `1399037` → **new_candidate `0d4b9e7`**（代码修订 `5574d5d`）。
+- 增量输入：`T038r3-R2.patch`（252 行 / 6 文件）全文读毕；另 Read 工作树 `docs/tasks/TASK-038-extension-capture.md`（TOML/实现与测试/变异段/EVIDENCE 处置段）与 `docs/tasks/任务索引.md`。
+- 机械证据（`CHECKS PASS`、`files=33`、`a92b486a…`、frontend 18 files/407 tests、extension 7 files/83 tests、十三项变异验证、两条 `selected_profiles` 实跑输出）按 **NOT_RUN** 处理，均为转述，我未运行任何命令。
+
+## 继承声明（显式）
+
+**我继承前两轮 R2 对 `b4a3fd0..1399037` 的全部其余覆盖与结论**：postMessage 信任边界成立（iframe/opener/隔离世界/结构化克隆/原型污染逐条推演）、"必须用户确认才写入"守住、协议三处一致、三个后端上限、§14 授权面扩大成立且为纯追加、e2e 边界陈述诚实、六条已知限制、纵深防线（全前端无 HTML/JS 汇聚点）。针对本次 diff 触及处我重新验证：`isSafeSourceUrl` 两侧改动**逐字节相同**且**单调收紧**（新增 `@` 拒收、去掉 `i`），`capturedFrom` 与 `isCapturePayload` 的结构未变；`CapturePage.tsx` 只删除了不可达分支与其唯一 import，**未新增任何写入面**（`save` / `receive` / 两个 `useEffect` 一行未动）。上述继承结论无一被推翻。
+
+---
+
+## 本轮核心：N1 的处置是否真的满足了 N1
+
+**结论：满足，我明确背书。** 判断不是基于它改了措辞，而是基于我对两个方向逐条推演的结果。
+
+### 1. "删掉一条两边都有的规则"（放宽）——会红，且几乎逐条对应
+
+我把前端 9 条拒收用例与 `isSafeSourceUrl` 的每一行做了映射：
+
+| 校验行 | 对应用例 | 删掉后是否红 |
+| --- | --- | --- |
+| `/^https?:\/\//`（无 `i`） | `javascript:alert(1)`、`HTTPS://example.com/a` | **红**（第二条专门钉住"去掉 `i`"这次修复） |
+| `value.length > MAX_URL` | 3000 字符 | **红** |
+| `/[\s\\#]/u` | `#anchor`、`a b`、`\a` | **红**（三者删掉该行后都会一路走到 `new URL` 成功返回 true） |
+| `/^https?:\/\/[^/?#]*@/` | `user:pw@…`、`https://@example.com/a` | **红**（关键：即便保留旧的 `!url.username`，空 userinfo 那条仍会漏过 → 用例仍红） |
+| `new URL` 可解析 / hostname | `https://` | **红** |
+| **控制字符行（`<32 || ===127`）** | **无任何用例** | **不红**（见 N5） |
+
+三个上限另有 `describe('limits')` 直接钉死到后端数值。**除控制字符一行外，前端侧"这一份被放宽"的每一条都有机器守着**——而 N1 的原始担忧正是"前端单独被放宽而无人发现"，这个诉求已被满足。
+
+### 2. "前端新增一条扩展没有的规则"（收紧）——**不会红**，这是替代方案的真实残余
+
+行为断言只有 3 条 accept 用例（`https://example.com/a`、`http://example.com/a?q=1`、`https://example.com:8443/a`）。前端若新增一条不影响这三个样本的更严规则（例如"拒绝非标准端口""要求路径非空"），前端组全绿；而能发现它的逐字比对住在扩展侧，**只改前端时扩展组不运行**。此时两份在"前端更严"方向静默漂移，后果是扩展交付的合法载荷被页面静默丢弃、用户只看到空态且无解释——属 F1 那一族的"静默死路"，但明显更轻：不产生错误数据、不越安全边界、且需要有人主动只改一侧并加严。
+
+### 3. 行为钉死 vs 逐字比对：能力差在哪
+
+- 逐字比对能发现**任何**不同步（含收紧、含注释），但只能保证"两份一样"——**两份一起错它发现不了**；
+- 行为钉死只能发现"被放宽到穿过某条用例"，但它把规则绑在**后端 `parsed_url` 的真实约束**上（每条拒收用例对应一条后端规则），**能发现"两份一起错"**。
+
+两者互补，组合覆盖优于任一单独。所以我认为这不是"降格的替代"，而是各补对方盲区的组合；实现者不为一道守卫去扩 `frontend/vite.config.ts` 的授权面，这个取舍我**认同**——在它刚因扩大授权面被反复追问之后，为守卫再扩一次的代价确实高于收益。
+
+### 4. 变异 11/12 按代码判断是否成立
+
+- **第 11 项成立**（放宽前端 authority `@` 规则 → 前端 `protocol.test.ts` 红）。而且这个变异点选得准：它是本轮新加的规则，两条用例（`user:pw@`、空 `@`）分别锁住"有凭据"和"空 userinfo"，后者正是 O7 要补的那半条。
+- **第 12 项成立**（放宽扩展那份 → 扩展侧逐字守卫红），且是双重的：逐字比对红 + 扩展自身的行为用例红。
+
+### 5. 契约 §14 的新措辞是否与实际能力相符
+
+前两句准确：「前者能发现『两份不一致』」✓、「后者能发现『这一份被放宽』」✓（除控制字符一行）。**最后一句"任一侧单独改动都会让对应的检查组变红"偏强**，见 N4。
+
+---
+
+## 其余处置核验
+
+- **O7（三处细微不等）→ 逐条复核，两处已消除、一处经我重算为等效**：① `i` 标志两侧均已去掉 ✓；② 新增 `/^https?:\/\/[^/?#]*@/` 与后端 `"@" in parsed.netloc` **精确等价**——我验算过 `[^/?#]*` 恰好覆盖 authority 段（`https://example.com/path@name`、`https://example.com?x=@y` 均不误伤，与 `urlsplit` 的 netloc 边界一致）✓；③ 后端 `_ = parsed.port` 未显式复制，但 WHATWG `new URL` 对越界/非法端口本就抛异常并落入 `catch` → **效果等价，无需再改** ✓。两份实现仍逐字节相同（含新增注释），逐字守卫不会因此误红。
+- **O9 → 已删** `link` 与那句不可达提示，连同 `safeWebUrl` 的 import 一并移除（无悬空 import）；`来自：{captured.url}` 保留。✓
+- **O10① → 已修**：两处 `readFileSync` 改用 `fileURLToPath(new URL(..., import.meta.url))`，摆脱 `process.cwd()` 依赖 ✓；O10③（prettier 分叉误红）已写进测试注释并注明"2 秒可修的红，不会掩盖缺陷"，与我的评估一致 ✓。逐字比对"连注释也必须一致"的性质已在注释中如实说明（R1 的 S7 同一处）✓。
+- **N2 → 已修**：索引行改为「不改后端、`/api/v1` HTTP 契约与安全门禁，但新增中文契约 §14（非 HTTP）」，与 F4 的 EVIDENCE 更正口径一致 ✓。
+- **N3 → 属 R1，知情**；从 R2 角度只确认它与 §14 的表述不冲突。
+- **O8/O11 → 不在我的 patch 内**（`extract.ts`/`capture.ts`/`popup.ts` 本轮未投给我），**未核**，见缺口。
+
+## 数字逐条对账（按前两轮的做法，对着转述的日志核）
+
+- **frontend 407 − 382 = 25**，恰为新 `protocol.test.ts` 的用例数：1(limits) + 3(accepts) + 9(rejects) + 1(copy) + 3(capturedFrom rejects) + 1(accepts payload) + 7(rejects payload) = **25** ✓
+- **frontend 18 files** = 17 + 1 ✓，与"本轮只新增一个前端测试文件"自洽；**files=33** = 32 + 1 ✓
+- **extension 83 的逐文件对账**：5+9+12+11+**25**+13+8 = 83，算术正确，且其中 25 与我第二轮独立数出的扩展 `protocol.test.ts` 用例数吻合；83 − 78 = 5 落在 R1 侧（O8/O11 的新用例），**不在我的覆盖内**。
+
+## 关于那处自述失误的记录方式
+
+**如实。** 记录 `:677` 写明了：`?raw` 失败后一度误判通过、根因是 grep 只过滤 `Tests`/`×` 而**整套加载失败不以 `×` 出现**、如何发现（显式单跑看到 `Test Files 1 failed`）、以及此后的纠正措施（改看 `Test Files` 行）。这三要素齐全，且承认的是**验证方式本身有洞**而非笼统的"疏忽"，我认为这是本任务链上对过程缺陷记录得最到位的一次。至于"18 files"那处编造，虽未进 `:139` 的自查清单，但**已随两份 Review 报告原文写进 EVIDENCE**（`:479` R1、`:610` 我自己那句"原写 18 确为编造，已更正"），可追溯性成立，**不另列 finding**。
+
+---
+
+## Findings（增量）
+
+### 必须修复（阻断）
+
+**无。**
+
+### 可记录后继续
+
+**N4｜契约 §14 末句仍强于实物 — `docs/contracts/API与数据契约基线.md` §14（patch 第 15 行）**
+现文："任一侧单独改动都会让对应的检查组变红。" 按代码：改**扩展**那份 → 逐字比对必红（除非同步改前端）✓；改**前端**那份 → 只有"放宽已钉住的规则"才红，**新增或收紧规则不会红**（见上文第 2 点）。触发：将来有人依据这句话认为前端侧任何改动都受机器保护。影响：轻，但方向是让读者**高估**保护力，且这句写在契约基线里——这是本任务链第七次"描述比实现更强"，前一次恰好也出现在为防这个问题而写的守卫说明里。最小修复（一句话）：改成「扩展侧：两份函数体只要不同步就红；前端侧：**放宽**已钉住的规则会红，**新增或收紧**规则不会——此方向仍靠人守」。
+
+### 可选建议
+
+**O12｜想让两侧完全对称，有一条不需要扩权的路**（这是实现者点名要我给的替代路径）：前端测试改读**本项目内**的 `./protocol.ts` 源文本（同一 project root 内，不触及 `server.fs.allow`，无需动 `frontend/vite.config.ts`），与测试里内嵌的字面期望函数体逐字比对。这样"前端任何改动（含收紧/新增）都会红"，与扩展侧机制对称，约十行。红的语义是"你改了协议，去同步另一份"——正是想要的强制提醒。**我不要求做**：当前组合已满足 N1 的核心诉求，这条留给将来真正发生一次收紧漂移时再补也来得及。
+
+**O13｜"这一份符合规格"里唯一的洞：控制字符行无用例。** 两侧的行为用例都没有一条形如 `'https://example.com/a'` 的拒收用例（`\t\n\r` 被上一行的 `\s` 先拦下，因此不算覆盖）。删掉该行两侧行为用例全绿，只有逐字比对能发现单侧删除，两侧同删则无人发现。真实路径不可达（`new URL().href` 会百分号编码），后端仍会拒 → 影响仅为一次 422。**一行可补**，补上后 N4 的第二句就完全为真。
+
+**O14｜O7 的残余理论差建议就此打住。** 我复算后仅剩两处方向相反的极端差：Python `str.isspace()` 含 U+0085 等而 JS `\s` 不含（前端更宽松）；DEL(0x7F) 前端拒而后端不拒（前端更严）。两者经 `new URL().href` 规整后均不可达，最坏后果是伪造载荷下的一次 422。**继续追平的收益低于代码复杂度成本，我明确不建议再改**，写在这里是为了避免下一轮有人把它当新缺陷重开。
+
+**O15｜两处已成死代码，不影响正确性**：新增 `@` 正则后，`!url.username && !url.password` 被完全覆盖；对 http(s) 而言空 host 会让 `new URL` 抛异常，故 `Boolean(url.hostname)` 亦不可达。保留作为纵深无妨，但注释可点明"下面两条是冗余的纵深，规则实际由上面的正则承担"，免得下一个人以为它们各自承担一条规则。
+
+---
+
+## 覆盖与缺口
+
+**本轮已覆盖**：增量 patch 全部 6 文件逐行；N1 替代方案的能力边界（按"删除规则/新增规则"两个方向逐条推演）；变异 11/12 的代码级成立性；契约 §14 新措辞与实物的逐句比对；O7 与后端 `parsed_url` 的逐条重算（含 `@` 正则与 netloc 边界的等价性验算）；O9/O10① 的实修；前端全部数字的自洽性；索引与记录的准确性；那处过程失误的记录如实性。
+
+**缺口（未读或未读透）**：
+1. **我未运行任何检查**；`CHECKS PASS`、407/83、十三项变异、两条 `selected_profiles` 输出均为转述，我只做代码级"能否变红"判断与口径自洽核对，**不构成验证**。
+2. **O8/O11 的实修未核**：`extract.ts`（不再截断）、`capture.ts`/`popup.ts`（`unusable-url` 原因码）本轮不在我的 patch 内。按代码逻辑推断：不截断 + 超长必拒 → 超长 URL 现在会落到 `unusable-url` 分支并给出用户可读原因，与 O8/O11 的意图一致，**但我没看到那三个文件的最终形态**，请 R1/Acceptance 核。
+3. **`node:fs` 是否真被 Vite `server.fs.allow` 拦未核**（无 Bash）。`readFileSync` 通常是运行时 Node 调用、不经 Vite 模块门禁，实现者的 `Denied ID` 若只发生在 `?raw` 上，则结论不变——因为我给的 O12 路径根本不需要跨目录读。**这一点不影响本轮结论。**
+4. extension 83 中新增的 5 条、`extension/AGENTS.md` §6（N3）的最终措辞，属 R1。
+5. 明示非目标（图片冻结、Firefox/Safari、A4 清单漂移、`validate_governance.py` 第二份清单）未审。
+
+## 剩余风险
+
+1. **协议漂移的"前端更严"方向仍无机器守卫**（见上文第 2 点与 N4/O12）：影响为扩展交付被静默丢弃、用户见空态无解释；不产生错误数据、不越安全边界。
+2. 控制字符规则两侧均无行为用例（O13）。
+3. 前两轮既有：同源框嵌/点击劫持（全站既有属性）、第三方扩展可满足 `source === window`（已写进 §14.3）、全流程从未实机跑过（完成条件 14 待用户实测）、未交付正文在扩展存储的滞留（已在 §14.5、`extension/AGENTS.md:25` 与两处 README 披露）、创建与写快照非事务的两个半成功状态（均已记录）。
+
+## 结论
+
+**PASS**（针对新候选 `0d4b9e7`，仅覆盖 R2 问题域；显式继承前两轮 R2 对 `b4a3fd0..1399037` 的全部其余覆盖）。
+
+N1 的处置我判**成立**：它不是"只改措辞"，而是在不扩大授权面的前提下换了一种机制，并且在 N1 真正关心的方向（前端被放宽）上**逐条可红**，同时补上了逐字比对本身的盲区（两份一起错）。O7 已实质达成与后端逐条对齐，O9/O10①、N2 均已实修，那处 `?raw` 过程失误记录如实。
+
+本轮新增 **1 项可记录后继续（N4）+ 4 项可选建议（O12–O15）**，**无阻断项**。
+
+**关于收敛（根 `AGENTS.md` §7）**：这是 R2 的第三轮，本轮所有剩余项都是一句话或一行级、且互不耦合。**我建议 R2 方向就此收敛**——N4 与 O13 可在承载本报告的同一次写回里一并处理，不需要为它们再开一轮独立复核，也不需要我再判一次。若主 Agent 选择不改 N4，请把它记为已知的非阻断记录项，不影响本 PASS。
+
+本结论**仅覆盖 R2**，须与 R1 对同一候选的结论合并方构成 TASK-038 的完整 Review；R1 若判 CHANGES_REQUIRED 或 BLOCKED，整体从其严。EVIDENCE 写回本报告原文形成的后续提交属机械写回，不构成需再次审查的产品变化。
+
+- 第三轮 findings 的处置（代码修订 SHA **`7baf19e`**）：
+  - **N-R1（R1）→ 修，只改注释、不动 `safeWebUrl`。** 这一条是**本轮修复自己造成的**：上一轮我收紧 `isSafeSourceUrl`（去掉 scheme 正则的 `/i`、新增 authority 段 `@` 拒绝），却没回头看两份 `protocol.ts` 里「与 `safeWebUrl` 同规则」那句 JSDoc —— **这句在我改之前是真的，是我的收紧让它变假**。主 Agent 独立实读 `api.ts:419-432` 复核，三处差异均属实：`safeWebUrl` 保留 `/i`、无 authority `@` 规则、无长度上限。已改为如实表述「比 `safeWebUrl` 更严，多三处」，并写明 `safeWebUrl` 服务手工录入路径、未随本次收紧同步是有意的。按 R1 的要求**没有去动 `safeWebUrl`** —— 改那个共享校验器属扩大范围。
+  - **N-R2（R1）→ 修，而且这一条把 N-R1 那类漂移机械化掉了。** 镜像守卫的切片原本从 `export function` 开始，**JSDoc 不在比对范围内**，所以「改了实现没回头改描述」这类漂移它抓不到，修 N-R1 时只改一边也不会红。切片起点上移到函数上方的 JSDoc。**副作用是两份 `isCapturePayload` 的 JSDoc 必须统一** —— 它们原本各写各的（都准确，只是视角不同）；现在统一为描述共享契约的同一段文字，各自的视角注释挪到 JSDoc 之外（`//` 行不在比对范围内）。变异验证：只改前端那份的规则说明 → 扩展侧守卫变红。
+  - **N4（R2）→ 修。** 契约 §14 末句「任一侧单独改动都会让对应的检查组变红」强于实物：前端方向只有「放宽」才红，「新增或收紧」不红。改为逐方向如实分述，并写明两种机制**互补**（逐字比对发现不了「两份一起错」，行为钉死能——因为后者把规则绑在后端 `parsed_url` 的真实约束上）。这个互补关系是 R2 指出的，我和派发会话都没想到。
+  - **O13（R2）→ 修。** 控制字符规则此前**两侧都没有任何行为用例**——实测确认：删掉那一行，前端 25 条用例全绿。两侧各补一条。补上后 N4 改写的第二句才完全为真。
+  - **O12 / O14 / O15、S10 / S11 / S12 → 不做，理由分列。** O12（前端改为读本项目内源文本做逐字比对以求两侧对称）：R2 明说不要求，当前组合已满足 N1 核心诉求；留待真正发生一次「收紧漂移」时再补。**O14 请后来者注意**：R2 明确写道 O7 的残余理论差只剩两处极端不等且都不可达，「继续追平的收益低于代码复杂度成本，我明确不建议再改，**写在这里是为了避免下一轮有人把它当新缺陷重开**」——这条边界原样保留在上方报告原文里。O15（两处已成死代码的纵深）保留不动。S10（把最后一处 cwd 依赖迁走）、S11（正文截断与网址采取不同策略，属可辩护取舍）、S12（把「7 files / 84 tests」机械化需动 `scripts/governance/**`，本任务明示非目标）均记录不做。
+- **本任务链上「描述比实现更强」这一族缺陷的完整清单与可操作教训**（写在这里而不是散在各轮处置里，因为它比任何单条 finding 更有复用价值）：
+
+  **先说一件方法上的事**：此前对话里出现过「第六次」「第七次」这类序数，而**两位 Reviewer 对同一个模式给出的序数并不一致**（R2 说第七次、R1 在 N-R1 里说第五次）——它们各自按自己看见的范围数，都没错，但任何一个单独拿出来都不准。序数天然依赖「全集是什么」，而没有任何单个实例持有全集。**所以这里列清单，不写序数**；下面每条都能在仓库里定位：
+
+  1. TASK-036 A3：资料详情的文案说链接在「上方」，实际在下方。
+  2. TASK-036 A3（同任务另一处）：空态文案以 WEB 语境写成，却对 PASTE/FILE 资料同样渲染。
+  3. TASK-037 F1（该任务唯一的阻断项）：`README` 宣称 `manifest.test.ts` 会在新增权限时失败，实际只否定三个键。
+  4. 本任务实现中途（主 Agent 自查）：三处文档写「顶层键恰好五个」，而实物已是七个。
+  5. 本任务（主 Agent 自查）：把「frontend 组报 18 files」写进记录，而检查日志实为 17 —— **这一条与其余不同，它不是描述写宽了，而是对可核证据的事实性错述**，R1 在第三轮明确要求区分这两类。
+  6. 本任务：非目标段理由①称授权面修订「发生在任何实现写入之前」，经 `git log -S` 证伪。
+  7. 本任务 S8（R1 提出）：源码扫描断言的注释写成「这条断言就是那句承诺的看守」，而它挡不住有意规避，真正的看守是紧邻那条值断言。
+  8. 本任务 S7（R1 提出）：镜像守卫注释写「措辞可以不同，规则不能不同」，而切片不剥注释、措辞同样必须一致。
+  9. 本任务 N4（R2 提出）：契约 §14 写「任一侧单独改动都会让对应的检查组变红」，而前端方向只有「放宽」才红。
+  10. 本任务 N-R1（R1 提出）：`protocol.ts` 的 JSDoc 写「与 `safeWebUrl` 同规则」—— **这句原本是真的，是我自己的收紧让它变假**。
+
+  **第 10 条与前面九条形态不同，这个区别是这份清单里最要紧的发现**：前九条是「写描述时就写宽了」，第 10 条是「描述当初是对的，改了实现却没回头看它」。**同一个根因的两种表现——一种是写歪，一种是写对了之后放着不管。**
+
+  **可操作的动作（下一个任务可直接用）**：
+
+  > 写完任何一句描述保护范围或覆盖能力的话，回头问一句「**它实际检查的是什么**」，然后照那个答案改写。**改实现时，同样回头问一句「有哪些句子在描述我刚改的这个东西」。**
+  >
+  > 若描述与实现不一致：改的是句子 —— **除非那个保护本来就该有**，那就去改实现，并补一条会因此变红的断言。判据：**把句子降格之后，如果你会觉得「那这道防线还有什么用」，那就说明该改的是实现。**
+
+  后半句的判据来自本任务链的两次实例：TASK-037 F1（门闩宣称挡权限、实为黑名单三键）与本任务 N1（守卫只覆盖单向），**正确处置都是改实现而不是降格描述**；只写「改句子」会把人引向用诚实的措辞把本该修的洞留下来。
+  **本轮 N-R2 是第一次把这条教训机械化**：把 JSDoc 纳入镜像比对之后，第 10 条那种形态（改了实现没回头看描述）不再依赖人记得去看。
+- **两位 Reviewer 关于「自报」的一句判断，原样留在这里**（R1 第三轮）：主 Agent 的两处失误（编造 18 files、`?raw` 失败被 grep 掩盖）**都是它自己交代的，不是审查查出来的** —— 这在诚信上是正面信号，**但也意味着审查方没有任何独立手段去界定还有多少同类问题未被自述**。这句话应当随本任务一起交给 Acceptance 与用户，而不是被当作对自报行为的表扬收下。
 - Acceptance：待填
 - 最终状态/风险/用户操作：待填
 - 非阻断遗留项（仅有真实问题时）：待填
