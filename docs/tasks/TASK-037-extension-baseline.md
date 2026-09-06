@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-037"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "本任务改的是治理门禁本身：`scripts/governance/check_task.py` 的检查组选择逻辑决定了「哪些代码会被自动检查覆盖」，改错的后果不是某个功能坏掉，而是此后所有扩展代码在无人察觉的情况下逃过检查，且这种缺陷不会以失败的形式暴露出来。命中 `scripts/governance/**`、`docs/governance/**`、`**/AGENTS.md` 三条高风险路径下限。另一半实质风险是先例效应：`extension/` 是仓库的第三个顶层代码目录，其工程约定（构建、lint、测试、依赖边界、与前后端的关系）一旦落地就会被后续所有扩展工作沿用，事后改造成本远高于第一次定对。本任务不实现任何抓取行为，不改安全边界，不改后端。"
 risk_flags = ["governance", "architecture", "tooling", "tests"]
@@ -63,7 +63,7 @@ checks = []
 
 ### 非目标 / 禁止范围
 
-- **不实现任何抓取、注入或图片冻结**。骨架不含 content script 的业务逻辑、不申请 host permissions 之外的权限、不与后端或 UI 页面通信。这些属 TASK-038。
+- **不实现任何抓取、注入或图片冻结**。骨架不含 content script 的业务逻辑、**不申请任何权限**（原文曾写「不申请 host permissions 之外的权限」，字面上等于预先允许了 host_permissions，与实现和 README 均不符，经 Review 指出后收紧）、不与后端或 UI 页面通信。这些属 TASK-038。
 - **不改 `backend/**` 任何文件**，不改 `security/local_access.py`，不改任何 API 契约（`docs/contracts/**` 不在允许路径内）。
 - **不引入任何第三方站点凭证**（继承 TASK-036 的硬性非目标）。
 - **不做 A4**（`x-delivery-profile.available_operations` 已停在 `stage: "TASK-022"`，缺 12 个 operation，且 `backend/tests/test_taxonomy.py:485` 硬编码 `len(available) == 35`）。它的正确修法不是把 12 条补回去，而是补一个漂移守卫测试，否则下次照样烂掉；那是有独立测试故事的另一个任务，塞进本任务会让一个已跨 governance/extension/frontend 三面的 L3 再多一个 contracts 面。**A4 仍未修复**，本任务不得声称已处理。

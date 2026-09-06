@@ -18,6 +18,8 @@ npm run build
 
 ## 在 Chrome 中加载
 
+**以下步骤尚未在真实 Chrome 中实机验证**（建立此骨架的环境无法驱动浏览器）。已验证的只是构建产物的形状：`dist/` 下有 `manifest.json`、`popup.html` 与 JS 资源，manifest 为合法 JSON、`manifest_version: 3`、`default_popup` 指向确实存在的文件。首次加载请确认。
+
 1. 打开 `chrome://extensions`；
 2. 右上角开启「开发者模式」；
 3. 点「加载已解压的扩展程序」，选择 `extension/dist/`。
@@ -28,4 +30,4 @@ npm run build
 
 - 扩展**不直接调用后端 API**，内容经本机 UI 页面（`http://127.0.0.1:5173`）转交。原因见 `extension/AGENTS.md` §3。
 - 扩展**不涉及任何第三方站点的登录凭证**，只读取用户当前已登录、已看得见的页面。
-- 当前 manifest 不申请任何权限；新增权限须经任务与独立审查，`src/manifest.test.ts` 对此设有门闩。
+- 当前 manifest 不申请任何权限。`src/manifest.test.ts` 断言 manifest 的顶层键**恰好**是 `manifest_version`/`name`/`version`/`description`/`action` 五个，因此新增任何键都会让测试失败——不只是 `permissions` 和 `host_permissions`，也包括 `optional_permissions`、`externally_connectable`、`web_accessible_resources` 和 CSP 覆写。这些改动须经任务与独立审查。

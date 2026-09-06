@@ -18,7 +18,7 @@ TASK-037 只建立工程骨架与检查组。骨架中的说明文字不是业�
 - **不引入任何第三方站点凭证**：不要求、不读取、不存储、不转发用户在知乎/CSDN 等站点的登录态、Cookie 或扫码登录结果。扩展读的是用户**已经登录、已经看得见**的页面，会话由浏览器自己持有。
 - **只能采集用户本人当前已能看到的内容**，不得绕过任何站点的访问控制、付费墙或权限检查。
 - **不改动 StudyPilot 的安全边界**：内容一律经由本机 UI 页面（`http://127.0.0.1:5173`）转交，扩展**不直接调用** `/api/v1`。理由：`backend/src/studypilot/security/local_access.py` 要求 `Origin` 等于 UI 源且 `Sec-Fetch-*` 三元组成立，而扩展发起的请求源是 `chrome-extension://`、`Sec-Fetch-Site: cross-site`，只能通过放宽该门禁来满足。放宽本机访问门禁不在本模块的职权内。
-- **权限最小化且需显式授权**：新增 `permissions`、`host_permissions` 或 `content_scripts` 必须在任务记录中写明用途与替代方案，并经独立 Review。`src/manifest.test.ts` 会因这类新增而失败，这是有意的门闩，不得为通过测试而删除断言。
+- **权限最小化且需显式授权**：给扩展增加任何 reach —— `permissions`、`host_permissions`、`optional_permissions`、`content_scripts`、`externally_connectable`、`web_accessible_resources`、CSP 覆写等 —— 必须在任务记录中写明用途与替代方案，并经独立 Review。`src/manifest.test.ts` 断言 manifest 的顶层键恰好是既定的五个，**任何**新增键都会让它失败；这是有意的白名单门闩，不得为通过测试而删除或放宽断言。用白名单而非逐个点名危险键，是因为点名必然漏掉下一个。
 - 不在扩展存储中持久化 StudyPilot 的本机访问令牌或任何密钥；不记录用户正文、笔记或凭据。
 - 未完成的功能不得以假数据或无效按钮伪装成可用。
 

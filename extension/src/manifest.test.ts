@@ -25,13 +25,17 @@ describe('MV3 manifest', () => {
     expect(existsSync(projectFile(POPUP_PAGE))).toBe(true)
   })
 
-  it('declares no permissions and no host permissions', () => {
-    // The baseline can read nothing. Granting a permission is a security decision
-    // that belongs in a reviewed task, so this assertion is meant to fail — loudly
-    // — the first time capture work adds one, forcing the change to be deliberate.
-    const declared = manifest as Record<string, unknown>
-    expect(declared.permissions).toBeUndefined()
-    expect(declared.host_permissions).toBeUndefined()
-    expect(declared.content_scripts).toBeUndefined()
+  it('declares exactly these five keys and nothing else', () => {
+    // The baseline can read nothing, and granting it any reach is a security
+    // decision that belongs in a reviewed task. This is a whitelist on purpose:
+    // naming the dangerous keys instead would miss `optional_permissions`,
+    // `optional_host_permissions`, `externally_connectable`,
+    // `web_accessible_resources`, `content_security_policy`, `background`,
+    // `declarative_net_request` and every key Chrome adds later — all of which
+    // grant reach just as effectively. Any new top-level key fails here, which
+    // forces the change to be deliberate and reviewed.
+    expect(Object.keys(manifest).sort()).toEqual(
+      ['action', 'description', 'manifest_version', 'name', 'version'].sort(),
+    )
   })
 })

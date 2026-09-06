@@ -245,7 +245,7 @@ npm ci
 npm run build
 ```
 
-构建产物在 `extension/dist/`。在 Chrome 打开 `chrome://extensions`，开启右上角「开发者模式」，点「加载已解压的扩展程序」并选择该目录即可加载。改代码后重新 `npm run build`，再在扩展页点一次刷新。
+构建产物在 `extension/dist/`。在 Chrome 打开 `chrome://extensions`，开启右上角「开发者模式」，点「加载已解压的扩展程序」并选择该目录即可加载。改代码后重新 `npm run build`，再在扩展页点一次刷新。**这套加载步骤尚未在真实 Chrome 中实机验证**，首次加载请确认。
 
 当前 manifest **不申请任何权限**；`extension/src/manifest.test.ts` 会在有人新增权限时失败，以保证这类改动必须经过任务与独立审查。扩展将来也不会直接调用后端 API，内容一律经本机 UI 页面转交，边界与理由见 `extension/AGENTS.md`。
 

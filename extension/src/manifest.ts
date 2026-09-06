@@ -1,11 +1,14 @@
 // The single source of truth for the MV3 manifest. `vite.config.ts` emits it as
 // `dist/manifest.json` at build time, so there is no second copy to drift.
 //
-// This baseline deliberately declares **no** `permissions` and **no**
-// `host_permissions`. Reading a page's content or fetching its images requires
-// them, and adding one is a security decision that must go through a task and an
-// independent review — never a silent edit. `manifest.test.ts` fails if this
-// file grows either field, which is the point.
+// This baseline deliberately declares no reach of any kind. Reading a page's
+// content or fetching its images requires it, and adding it is a security
+// decision that must go through a task and an independent review — never a
+// silent edit. `manifest.test.ts` asserts the exact set of top-level keys, so
+// **any** added key fails it — not just `permissions` and `host_permissions`,
+// but `optional_permissions`, `externally_connectable`,
+// `web_accessible_resources`, a CSP override and so on. That breadth is the
+// point: a blacklist of the obvious names would have let the others through.
 
 export type Manifest = {
   manifest_version: 3
