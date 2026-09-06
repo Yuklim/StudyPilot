@@ -54,7 +54,7 @@ checks = []
 - **不引入任何第三方站点凭证**（继承 TASK-036/037 的硬性非目标）。扩展只读用户已登录、已渲染的页面；不得绕过任何站点的访问控制或付费墙。
 - **不支持 Firefox / Safari**（用户明确决定）。不引入 `webextension-polyfill` 一类兼容层，不产出第二套构建产物。
 - **不改后端、不改 `/api/v1` 的 HTTP 契约、不改数据库**。`backend/**` 与 `docs/contracts/openapi-v1.json` 不在允许路径内；本任务复用既有的 `createResource` 与 `putResourceSnapshot`，不新增、不修改任何 HTTP 操作。
-- **但中文契约文档要改一处**：`extension/AGENTS.md` §4（TASK-037 写入）规定「与 UI 页面之间的消息格式属跨模块契约，须在相应任务中与 frontend 一并定义并写入契约文档；不得由本模块单方面约定」。本任务新增的扩展↔`/capture` 页面 postMessage 格式正是这样一份跨模块契约，故须写入 `docs/contracts/API与数据契约基线.md`。**登记时把契约整体列为非目标是错的**——那会让本任务违反自己模块的嵌套规则。实现开始前据此修订 `allowed_paths`，新增 `docs/contracts/API与数据契约基线.md` 一条（不含 openapi 快照，因为这不是 HTTP 操作）。此项修订属**扩大**授权面，与 TASK-037 决定日志中「授权面修订只有在收窄时才安全」的判据方向相反，故须特别说明：① 它发生在**任何实现写入之前**、登记刚完成时，不是为已交付物追认合法性；② 它的动因是遵守既有的嵌套规则，不是为了让某段已写好的代码合法；③ 若 Reviewer 认为该扩大不成立，正确的处置是把消息契约的定义方式退回讨论，而不是保留代码删掉文档。
+- **但中文契约文档要改一处**：`extension/AGENTS.md` §4（TASK-037 写入）规定「与 UI 页面之间的消息格式属跨模块契约，须在相应任务中与 frontend 一并定义并写入契约文档；不得由本模块单方面约定」。本任务新增的扩展↔`/capture` 页面 postMessage 格式正是这样一份跨模块契约，故须写入 `docs/contracts/API与数据契约基线.md`。**登记时把契约整体列为非目标是错的**——那会让本任务违反自己模块的嵌套规则。实现开始前据此修订 `allowed_paths`，新增 `docs/contracts/API与数据契约基线.md` 一条（不含 openapi 快照，因为这不是 HTTP 操作）。此项修订属**扩大**授权面，与 TASK-037 决定日志中「授权面修订只有在收窄时才安全」的判据方向相反，故须特别说明：① **【此条初版陈述不实，经第一轮 Review 后用 git 证伪，据实更正，不删除】** 初版写的是「它发生在任何实现写入之前、登记刚完成时」。实际情况是：`allowed_paths` 里的契约那一条**首次出现在实现提交 `540027e` 中**（登记提交 `6891166` 的 `allowed_paths` 只有 9 条、不含它），也就是**授权面的扩大与实现代码落在同一个提交里，没有一个独立的前置控制面提交**。我在编辑器里确实是先改记录再写代码，但提交历史里没有这个先后，而我把它当作事实写进了正当性论证的第一条。**本次修订的正当性因此不依赖时序**，而依赖下面②③两条可独立核验的事实；② 它的动因是遵守既有的嵌套规则，不是为了让某段已写好的代码合法；③ 若 Reviewer 认为该扩大不成立，正确的处置是把消息契约的定义方式退回讨论，而不是保留代码删掉文档。
 - **不做阅读器、不做 Markdown 渲染、不做标注、不做 PDF**。
 - **不申请 `<all_urls>` host permission**，除非实现中证明 `activeTab` 无法满足且在记录中写明理由——即便如此也须独立 Review 认可。
 - 不动未列路径。
@@ -96,7 +96,7 @@ checks = []
 
 ## 实现与测试
 
-- 实现 SHA/变更摘要：**`540027e`**（base `b4a3fd0`，31 个文件；其中 `extension/package-lock.json` 一个文件占了大部分行数）。
+- 实现 SHA/变更摘要：**最终实现 SHA `4ed3062`**（base `b4a3fd0`，32 个文件；其中 `extension/package-lock.json` 一个文件占了大部分行数）；第一轮实现 SHA 为 `540027e`，经第一轮 Review 的 R1 F1/F2/F3 与 R2 F1/F2/F3/F5 处置后被取代。**本段下方记录的命令与指纹一律是最终值**（`4ed3062` → `f22c17db…`）；第一轮的值只在明确标注「第一轮」处出现。
   1. **扩展侧**：`src/shared/protocol.ts`（消息契约与载荷校验）、`src/injected/extract.ts`（在文章页运行，Defuddle 提取 + 转 Markdown）、`src/injected/relay.ts`（只在本机 UI 源运行的中转脚本）、`src/popup/capture.ts`（编排逻辑，与 chrome API 解耦）、`src/popup/bridge.ts`（真实 chrome 接线）、popup 增加「保存这一页的正文」按钮。
   2. **构建**：内容脚本与注入脚本必须是经典脚本，而 Rollup 只在 es/system 下支持多入口，故新增 `vite.injected.config.ts`，用 `--mode` 选入口各构建一次（`extract.js`、`relay.js`），跟在 popup 构建之后、`emptyOutDir: false`。
   3. **权限**：`activeTab` + `scripting` + `storage` + 一条只匹配 `http://127.0.0.1:5173/*` 的 `content_scripts`。**未申请 `host_permissions`、未申请 `<all_urls>`**。manifest 白名单断言由五键扩到七键，另新增两条断言分别锁死权限清单的确切三项与内容脚本的唯一匹配源。
@@ -107,21 +107,27 @@ checks = []
 
 - 命令、真实退出结果、product_fingerprint、环境、未运行原因：
 
-  **任务检查（全套）**：`check_task.py --task docs/tasks/TASK-038-extension-capture.md --candidate 540027e` → **CHECKS PASS**，base=`b4a3fd0`、files=31、`profiles=contracts,extension,frontend`、`product_fingerprint=f6c1552186cb08ae8c15c344a201c437b9a24f8dd5669ef886a0a4fef2bcc268`。完整输出留存于会话临时目录 `scratchpad/check-038.log`（145 行）；extension 组五条命令在第 7/17/25/33/50 行逐条可见、全部 exit=0，报 **6 files / 44 tests passed**；frontend 组报 **17 files / 380 tests passed**。运行环境沿用 TASK-037 经 Review 认可的路径：主工作区因未跟踪的 `docs/research/` 不满足脚本的干净要求，故 `git worktree add` 一个独立干净的 worktree 检出 `540027e` 后在其中运行（临时分支 `...-capture-check`，零提交差异、未推送，检查后连同 worktree 与 `.git/info/exclude` 的临时行一并删除）。
+  **任务检查（全套，最终）**：`check_task.py --task docs/tasks/TASK-038-extension-capture.md --candidate 4ed3062` → **CHECKS PASS**，base=`b4a3fd0`、files=32、`profiles=contracts,extension,frontend`、`product_fingerprint=f22c17dbe1b81716f474543e350cc709eee2dc488e3eb2b313bb5b51984f4114`。完整输出留存于 `scratchpad/check-038-r2.log`（145 行）；extension 组五条命令在第 7/17/25/33/50 行逐条可见、全部 exit=0，报 **7 files / 78 tests passed**；frontend 组报 **17 files / 382 tests passed**（本轮未新增前端测试文件，新增用例都加在既有的 `CapturePage.test.tsx` 里）。
+
+  第一轮（已被取代，仅备查）：`--candidate 540027e` → CHECKS PASS，files=31、同样三个 profile、`product_fingerprint=f6c1552186cb08ae8c15c344a201c437b9a24f8dd5669ef886a0a4fef2bcc268`，输出留存于 `scratchpad/check-038.log`；当时 extension 44 tests / frontend 380 tests。运行环境沿用 TASK-037 经 Review 认可的路径：主工作区因未跟踪的 `docs/research/` 不满足脚本的干净要求，故 `git worktree add` 一个独立干净的 worktree 检出 `540027e` 后在其中运行（临时分支 `...-capture-check`，零提交差异、未推送，检查后连同 worktree 与 `.git/info/exclude` 的临时行一并删除）。
 
   **governance 组未被自动选中**：`selected_profiles()` 的治理规则只匹配根 `AGENTS.md` 与 `.codex/`、`.agents/`、`docs/governance/`、`scripts/governance/` 前缀，`extension/AGENTS.md` 不在其中——这与 TASK-037 第一轮 A 部分 Review 核实并接受的既有行为一致（其风险下限仍由 `risk-policy.json` 的 `**/AGENTS.md` 独立兜住 L3）。本任务未改治理脚本，另行单独运行治理组：`validate_governance.py` PASS、`ruff check/format --isolated scripts/governance` 全绿、`unittest discover -s scripts/governance` **23 tests OK**。
 
-  **backend 组未被自动选中**（本任务不改 `backend/**`），另行在主工作区单独运行：`ruff format --check . && ruff check . && mypy src tests && pytest -q` → 全绿，**525 passed**，与基线一致。
+  **backend 组未被自动选中**（本任务不改 `backend/**`），另行在主工作区单独运行：`ruff format --check . && ruff check . && mypy src tests && pytest -q` → 全绿，**525 passed**，与基线一致；处置后再次单跑 `pytest -q` 仍为 **525 passed**。
 
   **e2e**：`cd frontend && npm run test:e2e` → **41 passed**，与基线一致。本任务未新增 e2e，原因见「已知限制」第 1 条。
 
-  **变异验证（六项，均已回滚，回滚后复跑全绿）**：
+  **变异验证（第一轮六项 + 处置后四项，共十项，均已回滚，回滚后复跑全绿）**：
   1. *信任边界是否真被测住*：删掉 `capturedFrom` 里的 `event.source` 与 `event.origin` 校验 → 采集页测试 **2 failed / 9 passed**。
   2. *「必须用户确认」是否真被测住*：让页面一收到内容就自动 `createResource` → **2 failed / 9 passed**。
   3. *内容脚本范围是否被锁死*：把 `matches` 放宽为 `[RELAY_MATCH, '<all_urls>']` → 扩展测试 **1 failed / 42 passed**。
   4. *扩展是否真的不直连后端*：在 `bridge.ts` 里加一行指向 `http://127.0.0.1:8000/api/v1/resources` 的常量 → **1 failed / 42 passed**。
   5. *权限清单是否被锁死*：给 manifest 加 `'tabs'` 而不改文档 → **2 failed**（权限断言 + 新增的文档漂移守卫各一条）。
   6. *文档漂移守卫是否有效*：见上第 5 项；该守卫在首次运行时就真实抓到一处缺漏（`extension/README.md` 未写出内容脚本的确切匹配源），已修。
+  7. *（处置 R1 F2 后）「不发网络请求」是否被钉住*：把 `useAsync` 改回 `true` → `extract.test.ts` **1 failed / 11 passed**；把 `.parse()` 改成 `.parseAsync()` → **3 failed**（该断言 + 两条依赖同步提取的实质断言）。
+  8. *（处置 R2 F1 后）带锚点的网址是否被拒*：`normalizeSourceUrl` 与两份 `isCapturePayload` 各有用例；前端新增两条伪造投递用例（`#锚点`、带凭据）断言页面停在空态、不出现表单。
+  9. *（新增守卫）协议漂移是否被捕获*：把**前端那份**的 URL 规则放宽（去掉 `#` 与反斜杠的拒收）→ 扩展侧的跨目录守卫 **1 failed / 24 passed**，报两份 `isSafeSourceUrl` 函数体不一致。
+  10. *（R1 S6 的推断）实测不成立*：见「已知限制」第 5 条。
 
   **实现过程中自查发现并修正的两处**（记录在案，因为它们都属本任务链上反复出现的缺陷类型）：① `extension/README.md` 与 `AGENTS.md` 仍写「顶层键恰好五个」，而实物已是七个——与 TASK-037 F1「宣称比实物宽」方向相反但同族，是「文档口径落后于实物」，第 6 项守卫即为此而加；② 我最初写的「不可用内容不开确认页」测试实际走的是超时分支，**是一条空断言**，改为让假 bridge 真实回传不可用内容、并断言结论必须是 `unusable` 而非 `timeout`。
 
