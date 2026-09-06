@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-034"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "目标 1 放宽已批准的公共契约：分类页端点（listTopics/listTags/getTopic/getTag/createTopic/createTag/updateTopic/updateTag）的响应对象新增 `resource_count`。这不是给现有 `Tag`/`Topic` schema 加字段就能了事 —— 二者被 `ResourceProjection.tags` 内嵌复用（openapi 中 `ResourceProjection.properties.tags.items.$ref = Tag`，且 `Tag` 为 `additionalProperties:false`），直接加必填字段会让每份资料响应违反契约，并迫使资料列表为每个内嵌标签算 N+1 次计数。因此必须引入新的响应 schema 并改动多个既有 schema 的引用指向，属「公共 API 契约」这一 L3 判入条件。另有一处性能语义决定：分页列表的计数必须用一次聚合查询得出，不能对 20 个分类各查一次。目标 2、3 为纯前端小改动，随最高风险并入。无数据库 schema 变更、无迁移。"
 risk_flags = ["public-api", "business", "tests", "small-ui"]
@@ -313,7 +313,7 @@ checks = []
   该文件至今未被 git 跟踪、不在 `1a72eb9..cad70bc` 的 diff 内、非本任务产物，主 Agent 两次均未删除或修改它，本任务也未引用它或把它算作证据 —— 故**候选与审查范围不受影响**。但须明确：本任务的机械检查是在「共享工作树存在不受控第三方写入」的条件下取得的。已取得的 `check_task` PASS 绑定输入指纹 `e8fc7a87…`（指纹只覆盖被测产品内容，不含未跟踪文件），就该指纹而言证据成立；真正的风险在于**后续**检查可能再次被并发写入污染。这违反 AGENTS.md §3「共享目录同一时刻一个写入者」，且规则只能约束读到它的 Agent、管不住别的会话。已原样报给用户，缓解方向（限制并发会话，或把本仓库的任务工作挪到独立 worktree）由用户决定。
 - 主 Agent 口径更正（第三处）：我在给派发会话的消息里说该文件「依旧原样未动」，那是照 22:59 那次的核实转述、未重新验证，说法已被 23:21 的改动推翻。经复核后以上述两个版本的哈希为准。
 - 主 Agent 口径更正（第二处）：我先前在 EVIDENCE 与派发消息里都写成「15 条完成条件」，实为 **14 条**（`## 完成条件` 下编号 1～14，第 14 条是 L3 执行链完整性）。系与 `check_task` 的 `files=15` 记混。由派发会话在 `cad70bc` 与 `881d998` 两个版本上各数一遍后指出，主 Agent 复核确认。该错误数字曾出现在给 Acceptance 的请求中；派发会话给 Acceptance 的简报一律以自己 git 跑出的数字为准、未采信主 Agent 转述，故简报里始终是 14，并已再次确认。以 14 为准。
-- 最终状态/风险/用户操作：status=**ACCEPTED**。L3 执行链完整：Worker → 自动检查（CHECKS PASS）→ 独立只读 Reviewer 两轮（PASS / PASS）→ 独立只读 Acceptance（PASS）。三个审查实例互不相同、均只有 Read/Grep/Glob、无 Bash 与写工具、无上下文继承。最终候选 `cad70bc` 待**用户本人执行合并**（Agent 不合并、不推 main）。合并后按既有做法把记录/索引标 MERGED，可并入下个已授权任务的控制面提交。
+- 最终状态/风险/用户操作：status=**MERGED**（候选 `cad70bc` 已由用户本人于 2026-09-06 06:49Z 执行合并，PR #39，merge commit `113f765`；本状态登记按既有做法并入 TASK-035 的控制面提交）。原 ACCEPTED 记述：L3 执行链完整：Worker → 自动检查（CHECKS PASS）→ 独立只读 Reviewer 两轮（PASS / PASS）→ 独立只读 Acceptance（PASS）。三个审查实例互不相同、均只有 Read/Grep/Glob、无 Bash 与写工具、无上下文继承。最终候选 `cad70bc` 待**用户本人执行合并**（Agent 不合并、不推 main）。合并后按既有做法把记录/索引标 MERGED，可并入下个已授权任务的控制面提交。
 - 非阻断遗留项：
   - **删除面板链接依据列表快照**（Reviewer Finding 3，`ClassificationManager.tsx`）：列表加载后、点删除前若该分类被别处引用，此时 409 文案仍如实给出份数，但「查看这 N 份资料」链接不出现；点「放弃草稿，载入最新版本」刷新后即出现，可恢复。暂不修的理由：要消除它就得在打开删除面板时再查一次分类详情，为本机单用户下概率很低的时序问题增加一次请求与一处加载态，收益不抵成本。责任角色 coordinator；若将来分类页面向多人协作或引入实时刷新，需重评。
   - `create()` 直接返回 0 而非实查：前提是「刚插入的分类不可能已被引用」，Reviewer 已独立确认该前提成立（客户端不能自带 id、`store.create` 全仓单一调用点、无「创建即绑定」复合路径）。若将来出现创建即绑定的复合操作，此处需改为实查。
