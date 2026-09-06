@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-035"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "新增两个公共 API 操作（`detachAllTagResources`、`mergeTag`）与一个新错误码，属「公共 API 契约」这一 L3 判入条件。二者都是**批量写**：一次请求可删除或移动任意多条 `resource_tags` 关联，且 `mergeTag` 还会删除源标签本身 —— 这是本仓库此前没有过的写入形态（既有关联端点一次只动一条），事务边界、并发守卫与失败回滚都必须新设计。合并还涉及一处关键数据语义：目标标签已有的关联不得产生重复主键，源标签的 FK 是 `ON DELETE RESTRICT`，因此删除源标签前必须确保其关联已全部移走或删除，顺序错了会在数据库层报错而非给出可理解的响应。无数据库 schema 变更、无迁移。"
 risk_flags = ["public-api", "critical-data", "business", "tests"]
@@ -113,9 +113,30 @@ checks = []
 
 ## 实现与测试
 
-- 实现 SHA/变更摘要：待填。
-- 命令、真实退出结果、product_fingerprint、环境、未运行原因：待填。
-- 已知限制/未完成项：待填。
+- 实现 SHA/变更摘要：`e4b4401`，相对基线 `113f765` 共 12 个代码/契约文件（加任务记录与索引，`check_task` 记 files=17）。无迁移、无数据库 schema 变更。
+  - `modules/taxonomy/contracts.py`：新增 `BulkCommand`（只含 `expected_resource_count`，docstring 写明它为何存在）及其两个子类 `TagDetachAll`、`TagMerge`。
+  - `infrastructure/database/taxonomy_store.py`：新增 `check_usage()`（重算并与期望值比对，不符抛 `TAXONOMY_USAGE_CHANGED` 409 且此前未做任何写入）、`detach_all()`、`merge()`。`merge()` 的顺序是本任务最需要小心的一处：先查出目标已持有的资料集合 → 逐条把源关联迁到目标（**目标已有的直接丢弃源行，不重复插入**，因为 `(resource_id, tag_id)` 是复合主键）→ `flush()` 让所有关联删除落库 → 再删除源标签 → 再 `flush()`。倒过来会撞上 `ResourceTag.tag_id` 的 `ON DELETE RESTRICT`，在数据库层报错而不是给出可理解的响应；代码里对这两点各留了一行注释。
+  - `application/taxonomy.py`：两个事务包装；`merge` 沿用既有的 `IntegrityError`/`StaleDataError` → 新事务重新分类（先查版本、再查份数）→ 否则 `UNKNOWN_ERROR` 的写法，**不重放批量写**。
+  - `api/taxonomy.py`：把既有 `command_body` 里的 content-type 与 JSON 解析抽成 `json_body()`，新增 `bulk_body()` 复用它（避免把这段校验复制第二遍）；新增两条 POST 路由与 `TAXONOMY_USAGE_CHANGED` 的中文文案。既有四个模型的解析路径逐字未变。
+  - `docs/contracts/openapi-v1.json`：新增两个操作、两个请求 schema（`TagDetachAll`/`TagMerge`）、一个 409 响应组件 `TaxonomyUsageConflict`。核对过：操作总数 44 且 operationId 唯一、无悬空 `$ref`、`Tag`/`Topic`/`TagUsage`/`TopicUsage`/`ResourceProjection` 的既有定义与引用一字未动。
+  - `docs/contracts/API与数据契约基线.md`：6 处 —— 交付状态段、操作清单新增一行、错误码表新增 `TAXONOMY_USAGE_CHANGED`、操作表新增两行、逐操作错误码新增两行，以及 4.7 段的三段说明（批量路径不推进资料版本因而与 TASK-032 登记的跨路径并发属同类取舍；为何用份数守卫而不套用第 9 节的「预览 + 一次性令牌」；合并的去重、删除顺序与自合并 422）。
+  - 前端：`api/client.ts` 注册新错误码与文案；`taxonomy/api.ts` 新增 `detachAllTagResources()`/`mergeTag()`（后者额外校验响应确实是**目标**标签的投影，不是刚被删掉的源）；`ClassificationManager.tsx` 新增独立的 `TagBulkPanel`（不塞进既有的创建/编辑/删除表单分支），卡片上按 `kind === 'tags'` 给出「合并到…」、并仅在 `resource_count > 0` 时给「清空关联」。
+- 一处实现中的自我修正：给 openapi 加内容时，第一版用 `json.load`/`json.dumps` 整体重写文件，把 428 行的既有排版压成了一行（`git diff` 显示 1 增 427 删）。这会让 diff 完全无法审查。已回退，改用与 TASK-032/034 相同的字符串手术，最终 diff 为**纯新增 11 行**。
+- 命令、真实退出结果、product_fingerprint、环境、未运行原因：
+  - `PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-035-tag-bulk-relink.md --candidate e4b4401` → **CHECKS PASS**。base=`113f765`、risk=L3、stages=(worker, review, acceptance)、files=17、profiles=**backend,contracts,frontend**、product_fingerprint=`442379cc048fd15f5bbcaa58caa81a53a94e3db36cba06c86e587f4ba54611e3`。
+  - `cd backend && ruff format --check .`（65 files already formatted）/ `ruff check .`（All checks passed）/ `mypy .`（Success: no issues found in 64 source files）/ `pytest` → **505 passed**，基线 **500**，净增 5。
+  - `cd frontend && npm run format:check && lint && typecheck && test && build` 全绿；vitest **360 passed**，基线 **356**，净增 4。
+  - `npm run test:e2e` → **40 passed**，基线 **39**，净增 1（真实后端上完成一次跨两份资料的合并，其中一份两个标签都有，验证去重）。
+  - 环境：本地 macOS（Darwin 25.5.0）、Python 3.13.9 / pytest 8.4.2、Node 24、Vitest 4.1.11、Playwright chromium、Vite 8.2.2。
+  - 未运行：无迁移相关检查 —— 本任务无 schema 变更，`check_task` 自动选组也未选该组；不以旧 PASS 冒充。
+  - 共享工作树监测（按上下文包要求）：跑长检查前后各记一次未跟踪文件 `docs/research/阅读器与标注能力调研.md` 的哈希与 mtime，两次均为 `f56cad6b3b3561ebc34ab9e0d69fcf8dce8616934f08978f2f1bdb87118253f3` / 25904 字节 / `Sep 5 23:21`。**本次检查期间没有发生并发写入**（TASK-034 期间曾两次发生，其中一次导致 `inputs changed during checks`）。运行 `check_task` 时按既有做法把该未跟踪目录临时移出、跑完原样放回，未删除或修改。
+- 获授权但未改动的路径（授权非义务）：`frontend/src/features/taxonomy/api.test.ts`、`frontend/src/styles.css` —— 新面板复用既有 `classification-editor`/`classification-browser`/`resource-actions` 类，无需新样式；新增的 API 调用由 `ClassificationPages.test.tsx` 经真实组件路径覆盖，未另写单元测试。
+- 已知限制/未完成项：
+  - 两个操作都**不推进资料版本**，因此与 TASK-032 登记的跨路径并发覆盖属同一类已知取舍：批量操作之后，仍持旧 `version` 的 `tag_ids` 整组替换不会因此报 409。已写入契约 4.7，B4 是本任务明示的非目标。
+  - 合并只支持一对一（源 → 目标）。多选批量合并、以及「改名撞名时提示合并」的自动引导都未做。
+  - 主题没有对应操作（一对多关系，且契约要求逐份改 `resources`）—— 本任务明示非目标。
+  - `expected_resource_count` 守卫的是**份数**而非具体集合：若期间恰好一增一减、总数不变，守卫不会拦下。这是与风险相称的取舍（本机单用户；要精确到集合就需要第 9 节那套 `impact_revision` 级别的机制），已在契约中登记。
+  - 前端合并面板的目标选择走分页浏览器，标签很多时需搜索翻页；未做 typeahead。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
