@@ -254,11 +254,14 @@ class ContentSnapshot(Identified, Created, Versioned, Base):
         CheckConstraint("format IN ('MARKDOWN')", name="format"),
         CheckConstraint("status IN ('READY', 'FAILED')", name="status"),
         # READY carries the text; FAILED records why there is none. The two states
-        # never overlap, mirroring OriginalFile.failure_state.
+        # never overlap, mirroring OriginalFile.failure_state. The `IS NOT NULL` is
+        # load-bearing, not redundant: without it `length(NULL) > 0` makes the FAILED
+        # branch NULL, the whole CHECK NULL, and SQLite accepts NULL as satisfied.
         CheckConstraint(
             "(status = 'READY' AND failure_code IS NULL AND content IS NOT NULL "
             "AND char_count IS NOT NULL AND sha256 IS NOT NULL) OR "
-            "(status = 'FAILED' AND length(failure_code) > 0 AND content IS NULL "
+            "(status = 'FAILED' AND failure_code IS NOT NULL AND length(failure_code) > 0 "
+            "AND content IS NULL "
             "AND char_count IS NULL AND sha256 IS NULL)",
             name="capture_state",
         ),

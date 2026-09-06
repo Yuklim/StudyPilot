@@ -40,7 +40,8 @@ def upgrade() -> None:
         sa.CheckConstraint(
             "(status = 'READY' AND failure_code IS NULL AND content IS NOT NULL "
             "AND char_count IS NOT NULL AND sha256 IS NOT NULL) OR "
-            "(status = 'FAILED' AND length(failure_code) > 0 AND content IS NULL "
+            "(status = 'FAILED' AND failure_code IS NOT NULL AND length(failure_code) > 0 "
+            "AND content IS NULL "
             "AND char_count IS NULL AND sha256 IS NULL)",
             name=op.f("ck_content_snapshots_capture_state"),
         ),

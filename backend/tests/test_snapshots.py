@@ -7,10 +7,10 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, event, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from studypilot.infrastructure.database.models import ContentSnapshot, LearningResource
-from studypilot.main import create_app
 
 CONTEXT = {"sec-fetch-site": "same-origin", "sec-fetch-mode": "cors", "sec-fetch-dest": "empty"}
 MARKDOWN = "# 标题\n\n正文第一段。\n\n```py\nprint('x')\n```\n"
@@ -130,6 +130,12 @@ def test_deleting_the_snapshot_or_the_resource_leaves_the_other_side_intact(
         assert authorized.put(path(item), json={"content": MARKDOWN}).status_code == 201
 
     error(authorized.delete(path(kept)), 428, "VERSION_REQUIRED")
+    # A version too long for int() is still a precondition failure, not a 500.
+    error(
+        authorized.delete(path(kept), headers={"If-Match": '"' + "9" * 5000 + '"'}),
+        428,
+        "VERSION_REQUIRED",
+    )
     error(
         authorized.delete(path(kept), headers={"If-Match": '"9"'}),
         409,
@@ -142,11 +148,14 @@ def test_deleting_the_snapshot_or_the_resource_leaves_the_other_side_intact(
     assert authorized.get(f"/api/v1/resources/{kept['id']}").json()["data"] == before
     error(authorized.get(path(kept)), 404, "SNAPSHOT_NOT_FOUND")
 
-    # Deleting a resource cascades to its snapshot and nothing else.
+    # Give the kept resource its snapshot back so the cascade has something to spare.
+    assert authorized.put(path(kept), json={"content": MARKDOWN}).status_code == 201
     with session_factory() as session:
         session.execute(delete(LearningResource).where(LearningResource.id == UUID(doomed["id"])))
         session.commit()
-        assert session.scalar(select(func.count()).select_from(ContentSnapshot)) == 0
+        # Only the doomed resource's snapshot goes: the other one is untouched.
+        assert session.scalar(select(func.count()).select_from(ContentSnapshot)) == 1
+    assert authorized.get(path(kept)).json()["data"]["content"] == MARKDOWN
 
 
 @pytest.mark.usefixtures("database")
@@ -208,6 +217,57 @@ def test_snapshot_commit_failure_rolls_back_and_hides_internals(
     error(authorized.get(path(resource)), 404, "SNAPSHOT_NOT_FOUND")
 
 
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        # The one this table's CHECK originally let through: without `IS NOT NULL`,
+        # `length(NULL) > 0` is NULL, the whole CHECK is NULL, and SQLite accepts it.
+        {
+            "status": "FAILED",
+            "failure_code": None,
+            "content": None,
+            "char_count": None,
+            "sha256": None,
+        },
+        {"status": "READY", "failure_code": "why"},
+        {"status": "FAILED", "failure_code": "why"},
+        {"status": "READY", "content": None},
+        {"status": "READY", "char_count": None},
+        {"status": "READY", "sha256": None},
+        {"status": "PAUSED"},
+        {"format": "HTML"},
+        {"content": ""},
+        {"char_count": 0},
+        {"sha256": "short"},
+        {"extractor": ""},
+    ],
+)
+def test_invalid_content_snapshots_rejected(
+    database: Any, session_factory: sessionmaker[Session], invalid: dict[str, Any]
+) -> None:
+    factory = session_factory
+    with factory.begin() as session:
+        parent = LearningResource(title="约束用资料", source_type="PASTE", pasted_content="原文")
+        session.add(parent)
+        session.flush()
+        parent_id = parent.id
+    with pytest.raises(IntegrityError), factory.begin() as session:
+        session.add(
+            ContentSnapshot(
+                **{
+                    "resource_id": parent_id,
+                    "format": "MARKDOWN",
+                    "content": MARKDOWN,
+                    "char_count": len(MARKDOWN),
+                    "sha256": "0" * 64,
+                    "extractor": "manual",
+                    "status": "READY",
+                }
+                | invalid
+            )
+        )
+
+
 def test_backend_makes_no_outbound_network_calls() -> None:
     """A snapshot is pasted in, never fetched: the backend must stay offline."""
     source = Path(__file__).resolve().parents[1] / "src"
@@ -221,4 +281,3 @@ def test_backend_makes_no_outbound_network_calls() -> None:
         )
     ]
     assert offenders == []
-    assert create_app() is not None

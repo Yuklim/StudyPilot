@@ -100,7 +100,12 @@ def version_header(request: Request) -> int:
     entries = request.headers.getlist("if-match")
     if len(entries) != 1 or not re.fullmatch(r'"[1-9][0-9]*"', entries[0]):
         raise ResourceError("VERSION_REQUIRED", 428)
-    return int(entries[0][1:-1])
+    try:
+        # The pattern allows any length; int() refuses beyond 4300 digits, and an
+        # unusable version is a precondition failure, not a server fault.
+        return int(entries[0][1:-1])
+    except ValueError:
+        raise ResourceError("VERSION_REQUIRED", 428) from None
 
 
 @router.get("")
