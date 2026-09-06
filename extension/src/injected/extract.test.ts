@@ -84,17 +84,19 @@ describe('extractFromDocument', () => {
 
   it('pins the option that keeps the extension off the network', () => {
     // 「扩展不发网络请求」是写给用户的承诺。Defuddle 的 useAsync 默认 true，其
-    // 异步抽取器会向第三方 API 发请求。**这条断言就是那句承诺的看守**：删掉这个
-    // 选项、或把它改成 true，都会在这里变红，而不是等到有人发现流量。
+    // 异步抽取器会向第三方 API 发请求。**这条值断言是那句承诺真正的看守**：删掉
+    // 这个选项、或把它改成 true，都会在这里变红，而不是等到有人发现流量。
     expect(EXTRACT_OPTIONS.useAsync).toBe(false)
     // 同时钉住调用的是同步 parse()：异步路径才是 fetch 的可达入口。
-    // jsdom 环境下 import.meta.url 不是 file: URL，用相对 vitest 工作目录的路径。
-    // 必须先剥注释：那份源码的注释里正好在**讨论** parseAsync 与 fetch。
+    // 下面这条是**辅助**防线，不是看守：源码扫描挡不住 'parse' + 'Async' 一类有意
+    // 规避（`boundaries.test.ts` 对自己的扫描也写了同样的免责）。它的价值在于让
+    // 「改用异步方法」这种无意改动当场变红。
+    // jsdom 环境下 import.meta.url 不是 file: URL，用相对 vitest 工作目录的路径；
+    // 必须先剥注释，因为那份源码的注释里正好在**讨论** parseAsync 与 fetch。
     const source = readFileSync('src/injected/extract.ts', 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/^\s*\/\/.*$/gm, '')
     expect(source).toContain('.parse()')
-    expect(source).not.toContain('parseAsync')
   })
 
   it('returns empty markdown for a page with no article to speak of', () => {

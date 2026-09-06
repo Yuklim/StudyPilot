@@ -704,7 +704,12 @@ TASK-038 新增。这是本文件里**第一份非 HTTP 契约**：它约束的�
 
 **不属本契约、可由扩展单方面改动**：`CAPTURE_EXTRACTED`（注入脚本回传给 popup，走 `chrome.runtime`，不经页面）、`PENDING_KEY`（扩展存储的键名）、`UI_ORIGIN`/`RELAY_MATCH`（扩展自己的常量，其值受 manifest 测试约束）。改动它们不需要动本节，也不需要动前端。
 
-`extension/src/shared/protocol.test.ts` 有一条跨目录守卫，逐字比对两份 `isSafeSourceUrl` 与 `isCapturePayload` 的实现并核对三个上限，使两份手写实现的漂移不再只能靠人守。
+两份手写实现各有一道机器守卫，**两侧对称、机制不同**（因为 `check_task.py` 按路径前缀选检查组：只改其中一份时，另一侧的检查组根本不运行，单向守卫会在最可能漂移的方向上失效）：
+
+- `extension/src/shared/protocol.test.ts` 在测试期只读前端那份源码，**逐字比对**两个校验函数的函数体（连注释一并比），并核对三个上限的数值 —— 保证「两份一模一样」；
+- `frontend/src/features/capture/protocol.test.ts` **不跨目录读文件**，改为把同一套规则**逐条钉成行为断言**（每条拒收用例对应后端 `parsed_url` 里的一条规则）—— 保证「这一份符合规格」。
+
+合起来两个方向都有机器守着。前者能发现「两份不一致」，后者能发现「这一份被放宽」；任一侧单独改动都会让对应的检查组变红。
 
 ### 14.1 为什么经页面转交，而不是扩展直连 API
 

@@ -1,4 +1,9 @@
-import { CAPTURE_EXTRACTED, isCapturePayload, type CapturePayload } from '../shared/protocol'
+import {
+  CAPTURE_EXTRACTED,
+  isCapturePayload,
+  isSafeSourceUrl,
+  type CapturePayload,
+} from '../shared/protocol'
 
 // 采集流程的编排逻辑，与 chrome API 解耦，便于在没有浏览器的环境里真实测试。
 // 真实接线见 ./bridge.ts。
@@ -18,7 +23,7 @@ export interface CaptureBridge {
 
 export type CaptureOutcome =
   | { ok: true; payload: CapturePayload }
-  | { ok: false; reason: 'no-tab' | 'inject-failed' | 'timeout' | 'unusable' }
+  | { ok: false; reason: 'no-tab' | 'inject-failed' | 'timeout' | 'unusable' | 'unusable-url' }
 
 /**
  * 顺序是有讲究的：**先订阅再注入**。注入脚本一跑完就发消息，晚订阅会丢结果。
@@ -55,7 +60,16 @@ export async function runCapture(
     ])
     if (raced === timeout) return { ok: false, reason: 'timeout' }
     // 提取到的可能是空正文（例如纯图片页），那不值得开确认页。
-    if (!isCapturePayload(raced)) return { ok: false, reason: 'unusable' }
+    if (!isCapturePayload(raced)) {
+      // 区分「正文没提取出来」和「正文好好的、但这个网址后端存不了」：
+      // 后者对用户是完全不同的情况，一句「没能提取出正文」会把人指向错误的方向。
+      const candidate = raced as { url?: unknown; markdown?: unknown } | null
+      const badUrl =
+        typeof candidate?.markdown === 'string' &&
+        candidate.markdown.trim().length > 0 &&
+        (typeof candidate.url !== 'string' || !isSafeSourceUrl(candidate.url))
+      return { ok: false, reason: badUrl ? 'unusable-url' : 'unusable' }
+    }
 
     await bridge.stash(raced)
     await bridge.openConfirmPage()

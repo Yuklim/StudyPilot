@@ -29,9 +29,15 @@ export interface CapturePayload {
  * 与 `frontend/src/features/resources/api.ts` 的 `safeWebUrl` 同规则。
  */
 export function isSafeSourceUrl(value: string): boolean {
-  if (!/^https?:\/\//i.test(value) || value.length > MAX_URL) return false
+  // scheme 不带 /i：后端用的是大小写敏感的 startswith。真实采集路径经
+  // `new URL().href` 规整后 scheme 恒为小写，所以这只影响伪造载荷。
+  if (!/^https?:\/\//.test(value) || value.length > MAX_URL) return false
   if (/[\s\\#]/u.test(value)) return false
   if ([...value].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) return false
+  // 后端拒的是 netloc 里出现 `@`，不是「用户名非空」——`https://@example.com/` 在
+  // 后端是 username='' 而非 None，同样被拒。JS 的 URL 分不出「没有」与「为空」，
+  // 所以直接查 authority 段里有没有 `@`。
+  if (/^https?:\/\/[^/?#]*@/.test(value)) return false
   try {
     const url = new URL(value)
     return Boolean(url.hostname) && !url.username && !url.password

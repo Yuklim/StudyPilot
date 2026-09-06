@@ -47,6 +47,16 @@ describe('extension boundaries', () => {
     expect(offenders).toEqual([])
   })
 
+  it('never reaches the async extraction path', () => {
+    // 「扩展不发网络请求」的**辅助**防线：Defuddle 的 fetch 调用点只经 parseAsync 到达。
+    // 真正的看守是 extract.test.ts 里那条 EXTRACT_OPTIONS.useAsync 值断言；这一条是
+    // 源码扫描，和上面两条一样属常见模式的辅助防线，挡不住 'parse' + 'Async' 一类
+    // 有意规避。放在这里而不是只扫 extract.ts，是为了覆盖 src 下**全部**源文件——
+    // 将来 defuddle 被别处引用时不必记得再加一条。
+    const offenders = sources().filter((path) => /parseAsync/.test(code(path)))
+    expect(offenders).toEqual([])
+  })
+
   it('keeps the docs naming every reach the manifest actually asks for', () => {
     // 这类缺陷已经连着出现四次（TASK-036 A3、TASK-037 F1、本任务实现中途，以及
     // R1 指出的「门闩本身漏了根 README」）：

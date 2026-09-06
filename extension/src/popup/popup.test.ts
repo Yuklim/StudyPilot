@@ -20,6 +20,7 @@ describe('outcomeText', () => {
     ['inject-failed', '不允许'],
     ['timeout', '超时'],
     ['unusable', '手工粘贴'],
+    ['unusable-url', '网址存不了'],
   ] as const)('gives a specific reason and next step for %s', (reason, expected) => {
     // 「失败了」对用户没有用。每种失败都要说清是什么情况、下一步能做什么。
     const text = outcomeText({ ok: false, reason })
@@ -28,7 +29,7 @@ describe('outcomeText', () => {
   })
 
   it('gives a different message for every reason', () => {
-    const reasons = ['no-tab', 'inject-failed', 'timeout', 'unusable'] as const
+    const reasons = ['no-tab', 'inject-failed', 'timeout', 'unusable', 'unusable-url'] as const
     const texts = reasons.map((reason) => outcomeText({ ok: false, reason }))
     expect(new Set(texts).size).toBe(reasons.length)
   })

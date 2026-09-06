@@ -18,5 +18,7 @@ export function outcomeText(outcome: CaptureOutcome): string {
       return '页面读取超时，可能内容还没加载完。等页面稳定后再点一次。'
     case 'unusable':
       return '没能从这一页提取出正文。可以打开 StudyPilot 手工粘贴。'
+    case 'unusable-url':
+      return '正文读到了，但这一页的网址存不了（含登录信息、片段标识符或过长）。可以打开 StudyPilot 手工粘贴。'
   }
 }

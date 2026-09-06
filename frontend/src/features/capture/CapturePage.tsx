@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
-import { createResource, failureText, putResourceSnapshot, safeWebUrl } from '../resources/api'
+import { createResource, failureText, putResourceSnapshot } from '../resources/api'
 
 import {
   CAPTURE_READY,
@@ -98,8 +98,6 @@ export function CapturePage() {
     }
   }
 
-  const link = captured ? safeWebUrl(captured.url) : null
-
   return (
     <section className="resource-sheet" aria-labelledby="capture-title">
       <div className="resource-sheet-heading">
@@ -135,10 +133,7 @@ export function CapturePage() {
         <form onSubmit={save} aria-label="确认采集内容" noValidate>
           <fieldset disabled={pending}>
             <legend className="sr-only">采集到的内容</legend>
-            <p className="resource-hint">
-              来自：{captured.url}
-              {link ? null : '（该网址无法安全打开，仅显示文本）'}
-            </p>
+            <p className="resource-hint">来自：{captured.url}</p>
             <p className="resource-hint">
               这是保存当时的副本，不随原文更新。图片仍指向原站，本版本不冻结图片。
             </p>

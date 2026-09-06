@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
@@ -21,7 +22,9 @@ import {
 // 「测试全绿但东西是坏的」那一族，所以值得一道门闩。
 //
 // 读跨目录文件只发生在测试里，不构成构建耦合（extension 仍不依赖 frontend 的任何产物）。
-const MIRROR = '../frontend/src/features/capture/protocol.ts'
+// 用 import.meta.url 解析，不依赖 process.cwd()：换个工作目录跑 vitest 也成立。
+const projectFile = (path: string) => fileURLToPath(new URL(path, import.meta.url))
+const MIRROR = projectFile('../../../frontend/src/features/capture/protocol.ts')
 
 function mirrorSource(): string {
   return readFileSync(MIRROR, 'utf8')
@@ -52,15 +55,17 @@ describe('protocol mirror', () => {
   })
 
   it('shares the same validation rules verbatim', () => {
-    // 逐字比对两个校验函数的函数体。措辞可以不同，规则不能不同 —— 所以这里比的是
-    // 代码本身；两边任何一处放宽都会让这条红。
+    // 逐字比对两个校验函数的函数体，**连函数体内的注释也必须一致** —— 切片不剥
+    // 注释，这是有意的：两边任何一处不同步（无论是规则还是对规则的说明）都该红。
+    // 已知脆弱点：两个工程的 prettier 配置若将来分叉，会误红；那是 2 秒可修的红，
+    // 不会掩盖缺陷。
     const body = (source: string, name: string) => {
       const start = source.indexOf(`export function ${name}(`)
       expect(start, `找不到 ${name}`).toBeGreaterThan(-1)
       const end = source.indexOf('\n}', start)
       return source.slice(start, end).replace(/\s+/g, ' ')
     }
-    const mine = readFileSync('src/shared/protocol.ts', 'utf8')
+    const mine = readFileSync(projectFile('./protocol.ts'), 'utf8')
     const theirs = mirrorSource()
     for (const name of ['isSafeSourceUrl', 'isCapturePayload']) {
       expect(body(theirs, name)).toBe(body(mine, name))

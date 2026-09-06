@@ -52,6 +52,7 @@ TASK-037 建立工程骨架与检查组；TASK-038 实现网页正文采集（�
 - 默认允许：具体任务单授权的 `extension/**` 路径。
 - 默认禁止：后端、数据库、治理文档、`frontend/**` 与未获批准的业务契约。
 - 本目录是**独立 npm 工程**，不与 `frontend/` 共享 `node_modules`、不做 npm workspace；两个顶层目录之间不建立构建耦合。
+- **一处明示例外**：`src/shared/protocol.test.ts` 在**测试期**只读 `frontend/src/features/capture/protocol.ts` 的源码文本，用于守护两份手写协议实现的漂移。这不构成构建耦合 —— 不 import、不共享依赖、`npm run build` 与 `dist/` 完全不涉及 `frontend/`。**但移动或改名前端那个文件需要同步更新此处路径**，否则扩展的检查组会因为另一个模块的改动而变红。
 - 生成文件：`node_modules/`、`dist/`、覆盖率与 `*.tsbuildinfo` 不提交。
 - 锁文件要求：依赖变化必须同步提交 `package.json` 和 `package-lock.json`，并重新执行全部扩展检查。
 

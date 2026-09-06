@@ -50,15 +50,20 @@ describe('runCapture', () => {
   })
 
   it.each([
-    ['回传的结构不对', { title: 't' }],
-    ['回传的正文是空的', { ...payload, markdown: '   ' }],
-    ['回传的网址不是 http(s)', { ...payload, url: 'javascript:alert(1)' }],
-    ['回传的正文超出后端上限', { ...payload, markdown: 'x'.repeat(1_000_001) }],
-  ])('never opens the confirm page when %s', async (_label, bad) => {
-    // 结论必须是 unusable 而不是 timeout —— 后者只说明内容没送达，
+    // 结论必须是 unusable/unusable-url 而不是 timeout —— 后者只说明内容没送达，
     // 那样就验不到「送达了但不可用，仍然拒绝」这件事。
+    // 两种原因要分开：正文没提取出来，和正文好好的但网址存不了，对用户是
+    // 完全不同的情况，一句「没能提取出正文」会把人指向错误的方向。
+    ['回传的结构不对', { title: 't' }, 'unusable'],
+    ['回传的正文是空的', { ...payload, markdown: '   ' }, 'unusable'],
+    ['回传的正文超出后端上限', { ...payload, markdown: 'x'.repeat(1_000_001) }, 'unusable'],
+    ['网址不是 http(s)', { ...payload, url: 'javascript:alert(1)' }, 'unusable-url'],
+    ['网址带片段标识符', { ...payload, url: 'https://example.com/a#x' }, 'unusable-url'],
+    ['网址带凭据', { ...payload, url: 'https://u:p@example.com/a' }, 'unusable-url'],
+    ['网址超长', { ...payload, url: `https://example.com/${'a'.repeat(3000)}` }, 'unusable-url'],
+  ])('never opens the confirm page when %s', async (_label, bad, reason) => {
     const { bridge, calls } = bridgeWith(bad)
-    await expect(runCapture(bridge, 200)).resolves.toEqual({ ok: false, reason: 'unusable' })
+    await expect(runCapture(bridge, 200)).resolves.toEqual({ ok: false, reason })
     expect(calls).not.toContain('stash')
     expect(calls).not.toContain('open')
   })

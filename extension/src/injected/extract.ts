@@ -1,12 +1,6 @@
 import Defuddle from 'defuddle/full'
 
-import {
-  CAPTURE_EXTRACTED,
-  MAX_MARKDOWN,
-  MAX_TITLE,
-  MAX_URL,
-  type CapturePayload,
-} from '../shared/protocol'
+import { CAPTURE_EXTRACTED, MAX_MARKDOWN, MAX_TITLE, type CapturePayload } from '../shared/protocol'
 
 // 在用户当前打开的那个页面里运行，由 popup 在用户点击扩展图标后经
 // chrome.scripting 注入（activeTab 只在那一次点击后授予该标签页的访问权）。
@@ -36,12 +30,16 @@ export const EXTRACT_OPTIONS = { markdown: true, useAsync: false } as const
  * 这份资料存不进去。
  */
 export function normalizeSourceUrl(href: string): string {
+  // **不截断。** 早先这里 `slice(0, MAX_URL)`，结果是超长网址被砍到 2048 之后
+  // 仍然「https:// 开头、无空白、可解析、无凭据」——顺利通过 `isSafeSourceUrl`，
+  // 于是那条「超长必拒」的规则在真实路径上永远不会触发，库里会存下一个点开
+  // 打不开的截断地址。长度裁决交给校验，让它诚实失败（走 unusable 分支）。
   try {
     const url = new URL(href)
     url.hash = ''
-    return url.href.slice(0, MAX_URL)
+    return url.href
   } catch {
-    return href.slice(0, MAX_URL)
+    return href
   }
 }
 
