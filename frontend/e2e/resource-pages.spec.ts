@@ -210,3 +210,40 @@ test('a tag created while saving becomes a clickable filter that survives reload
   await expect(page.getByText('已选 0 个标签')).toBeVisible()
   expect(errors).toEqual([])
 })
+
+test('a web resource can keep a pasted snapshot of its text alongside the link', async ({
+  page,
+}) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  const suffix = String(Date.now())
+  const body = `# 冻结正文 ${suffix}\n\n第一段。\n\n\`\`\`py\nprint('x')\n\`\`\`\n`
+
+  await page.goto('/resources/new')
+  await page.getByLabel('标题').fill('带快照的资料 ' + suffix)
+  await page.getByLabel('网页地址（必填）').fill('https://example.com/snapshot')
+  await page.getByRole('button', { name: '保存到资料库' }).click()
+  await expect(page.getByRole('heading', { name: '带快照的资料 ' + suffix })).toBeVisible()
+
+  const section = page.getByRole('region', { name: '正文快照' })
+  await expect(section).toContainText('还没有保存正文')
+  await section.getByRole('button', { name: '粘贴正文' }).click()
+  await page.getByLabel('正文（Markdown）').fill(body)
+  await section.getByRole('button', { name: '保存正文' }).click()
+  await expect(section).toContainText(`共 ${Array.from(body).length} 字`)
+  await expect(section.locator('pre')).toContainText('冻结正文 ' + suffix)
+
+  // The whole point of the shape: frozen text and the original link coexist.
+  await expect(page.getByRole('link', { name: /打开原网页/ })).toHaveAttribute(
+    'href',
+    'https://example.com/snapshot',
+  )
+  await page.reload()
+  await expect(section.locator('pre')).toContainText('冻结正文 ' + suffix)
+
+  await section.getByRole('button', { name: '删除正文' }).click()
+  await expect(section).toContainText('还没有保存正文')
+  // Dropping the snapshot leaves the resource itself untouched.
+  await expect(page.getByRole('heading', { name: '带快照的资料 ' + suffix })).toBeVisible()
+  expect(errors).toEqual([])
+})

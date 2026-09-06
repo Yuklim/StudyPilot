@@ -2093,3 +2093,22 @@ a.source-chip:focus-visible {
 .usage-link:focus-visible {
   text-decoration-thickness: 2px;
 }
+
+/* TASK-036: the frozen copy of a resource's text, shown as source, not rendered. */
+.resource-snapshot {
+  margin: 24px 0;
+  min-width: 0;
+}
+.snapshot-body {
+  max-height: 420px;
+  overflow: auto;
+  padding: 14px 16px;
+  margin: 12px 0;
+  background: #fbfaf5;
+  border: 1px solid #e6e2d4;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.9;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

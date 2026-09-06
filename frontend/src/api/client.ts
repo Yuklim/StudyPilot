@@ -50,7 +50,12 @@ function versionedDeleteTarget(target: string): boolean {
       parts[3] === 'resources' &&
       fileIdPattern.test(parts[4]) &&
       parts[5] === 'notes' &&
-      fileIdPattern.test(parts[6]))
+      fileIdPattern.test(parts[6])) ||
+    // A resource has at most one snapshot, so the path ends at the collection name.
+    (parts.length === 6 &&
+      parts[3] === 'resources' &&
+      fileIdPattern.test(parts[4]) &&
+      parts[5] === 'snapshot')
   )
 }
 
@@ -75,6 +80,7 @@ const messages = {
   TAG_NOT_FOUND: '这个标签已不存在，请重新选择。',
   TAXONOMY_USAGE_CHANGED: '使用这个分类的资料份数已经变化，本次操作未执行。请重新读取后再决定。',
   RESOURCE_NOT_FOUND: '这份资料已不存在，请重新打开资料库。',
+  SNAPSHOT_NOT_FOUND: '这份资料还没有保存正文，或正文已被删除。请重新读取后再操作。',
   NOTE_NOT_FOUND: '这条心得已不存在，请重新读取心得列表。',
   VERSION_CONFLICT: '内容已被修改，本次操作未执行。请载入最新版本后重新确认。',
   VERSION_REQUIRED: '缺少有效版本，请重新载入后再操作。',
@@ -262,6 +268,7 @@ async function failure(response: Response): Promise<ApiError> {
     'TOPIC_NOT_FOUND',
     'TAG_NOT_FOUND',
     'RESOURCE_NOT_FOUND',
+    'SNAPSHOT_NOT_FOUND',
     'NOTE_NOT_FOUND',
     'VERSION_CONFLICT',
     'VERSION_REQUIRED',

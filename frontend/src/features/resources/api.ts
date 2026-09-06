@@ -286,6 +286,99 @@ export async function updateResource(
   return saved
 }
 
+export interface ContentSnapshot {
+  id: string
+  resource_id: string
+  format: 'MARKDOWN'
+  content: string | null
+  char_count: number | null
+  sha256: string | null
+  captured_at: string
+  captured_from_url: string | null
+  extractor: string
+  status: 'READY' | 'FAILED'
+  failure_code: string | null
+  version: number
+  created_at: string
+  updated_at: string
+}
+
+function snapshot(value: unknown, resourceId: string): ContentSnapshot {
+  const item = object(value)
+  if (
+    !isResourceId(String(item.id)) ||
+    item.resource_id !== resourceId ||
+    item.format !== 'MARKDOWN' ||
+    (item.status !== 'READY' && item.status !== 'FAILED') ||
+    typeof item.extractor !== 'string' ||
+    !item.extractor
+  )
+    return invalid()
+  // READY carries the text; FAILED carries the reason. The two never overlap.
+  const ready = item.status === 'READY'
+  if (ready && (typeof item.content !== 'string' || !item.content)) return invalid()
+  if (!ready && item.content !== null) return invalid()
+  return {
+    id: item.id as string,
+    resource_id: resourceId,
+    format: 'MARKDOWN',
+    content: (item.content ?? null) as string | null,
+    char_count: ready ? integer(item.char_count, 1) : null,
+    sha256: ready ? (item.sha256 as string) : null,
+    captured_at: instant(item.captured_at),
+    captured_from_url: (item.captured_from_url ?? null) as string | null,
+    extractor: item.extractor,
+    status: item.status,
+    failure_code: (item.failure_code ?? null) as string | null,
+    version: integer(item.version, 1),
+    created_at: instant(item.created_at),
+    updated_at: instant(item.updated_at),
+  }
+}
+
+// Absent is a normal state, not an error: the caller gets null and shows an empty slot.
+export async function getResourceSnapshot(resourceId: string): Promise<ContentSnapshot | null> {
+  if (!isResourceId(resourceId)) throw new ApiError('INVALID_REQUEST')
+  try {
+    const envelope = object(await api.request(`/api/v1/resources/${resourceId}/snapshot`))
+    return snapshot(envelope.data, resourceId)
+  } catch (cause) {
+    if (cause instanceof ApiError && cause.code === 'SNAPSHOT_NOT_FOUND') return null
+    throw cause
+  }
+}
+
+export async function putResourceSnapshot(
+  resourceId: string,
+  content: string,
+  expectedVersion?: number,
+): Promise<ContentSnapshot> {
+  if (!isResourceId(resourceId) || !content.trim()) throw new ApiError('INVALID_REQUEST')
+  const envelope = object(
+    await api.request(`/api/v1/resources/${resourceId}/snapshot`, {
+      method: 'PUT',
+      // Omitted on the first write; required once a snapshot exists.
+      body: {
+        content,
+        ...(expectedVersion === undefined ? {} : { expected_version: expectedVersion }),
+      },
+    }),
+  )
+  return snapshot(envelope.data, resourceId)
+}
+
+export async function deleteResourceSnapshot(
+  resourceId: string,
+  expectedVersion: number,
+): Promise<void> {
+  if (!isResourceId(resourceId)) throw new ApiError('INVALID_REQUEST')
+  const result = await api.request(`/api/v1/resources/${resourceId}/snapshot`, {
+    method: 'DELETE',
+    ifMatchVersion: expectedVersion,
+  })
+  if (result !== undefined) return invalid()
+}
+
 export async function previewResourceDeletion(resourceId: string): Promise<DeletionPreview> {
   if (!isResourceId(resourceId)) throw new ApiError('INVALID_REQUEST')
   const envelope = object(

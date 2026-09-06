@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 
 import { displayTime, getResource, safeWebUrl, sourceLabels } from './api'
 import { resourceTitle } from './resourceTitle'
+import { ContentSnapshot } from './ContentSnapshot'
 import { ResourceError } from './ResourceState'
 import { LearningPanel } from '../learning/LearningPanel'
 import { NotesPanel } from '../notes/NotesPanel'
@@ -93,6 +94,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
             </div>
           </dl>
           <ResourceTagEditor resource={item} refreshed={retry} />
+          <ContentSnapshot resourceId={item.id} />
           <section className="save-reason-note" aria-label="保存原因">
             <span className="note-tab">为什么收下这一页</span>
             <p>{item.save_reason || '还没有填写保存原因。'}</p>
