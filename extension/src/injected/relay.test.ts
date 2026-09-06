@@ -29,11 +29,14 @@ function messageEvent(overrides: Partial<MessageEvent> = {}) {
 
 describe('relayHandler', () => {
   let posted: unknown[]
+  let targets: unknown[]
 
   beforeEach(() => {
     posted = []
-    vi.spyOn(window, 'postMessage').mockImplementation((message: unknown) => {
+    targets = []
+    vi.spyOn(window, 'postMessage').mockImplementation((message: unknown, target?: unknown) => {
       posted.push(message)
+      targets.push(target)
     })
   })
 
@@ -41,6 +44,9 @@ describe('relayHandler', () => {
     const storage = storageWith(stored)
     await relayHandler(window, storage)(messageEvent())
     expect(posted).toEqual([{ type: CAPTURE_PAYLOAD, payload: stored }])
+    // targetOrigin 是信任边界上的参数：改成 '*' 会把内容广播给任何监听者。
+    expect(targets).toEqual([window.location.origin])
+    expect(targets).not.toContain('*')
   })
 
   it('delivers a capture only once', async () => {

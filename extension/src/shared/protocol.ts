@@ -34,6 +34,26 @@ export interface CapturePayload {
 }
 
 /**
+ * 与后端 `source_url` 的校验规则对齐（`modules/resources/contracts.py` 的
+ * `parsed_url`），而不只是「以 http(s) 开头」。宽松版本会让带 `#` 锚点的地址一路
+ * 预填成功、直到用户点保存才被 422 拒绝，而确认页不提供网址编辑框 —— 无路可走。
+ *
+ * 规则：http(s) 开头；不含空白、控制字符、反斜杠、`#`；可解析且有主机名；不含凭据。
+ * 与 `frontend/src/features/resources/api.ts` 的 `safeWebUrl` 同规则。
+ */
+export function isSafeSourceUrl(value: string): boolean {
+  if (!/^https?:\/\//i.test(value) || value.length > MAX_URL) return false
+  if (/[\s\\#]/u.test(value)) return false
+  if ([...value].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) return false
+  try {
+    const url = new URL(value)
+    return Boolean(url.hostname) && !url.username && !url.password
+  } catch {
+    return false
+  }
+}
+
+/**
  * 接收端一律先过这道校验再使用。两端都要用它：中转脚本防的是自己存坏了，
  * 页面防的是**任何网页都能向同源窗口 postMessage** —— 结构对不上就丢弃。
  */
@@ -42,7 +62,7 @@ export function isCapturePayload(value: unknown): value is CapturePayload {
   const candidate = value as Record<string, unknown>
   const { title, url, markdown } = candidate
   if (typeof title !== 'string' || title.length > MAX_TITLE) return false
-  if (typeof url !== 'string' || url.length > MAX_URL || !/^https?:\/\//i.test(url)) return false
+  if (typeof url !== 'string' || !isSafeSourceUrl(url)) return false
   if (typeof markdown !== 'string') return false
   return markdown.trim().length > 0 && markdown.length <= MAX_MARKDOWN
 }

@@ -1,3 +1,4 @@
+import { EXTRACT_SCRIPT } from '../manifest'
 import { CAPTURE_URL, PENDING_KEY, type CapturePayload } from '../shared/protocol'
 
 import { extractedPayload, type CaptureBridge } from './capture'
@@ -18,7 +19,7 @@ export function chromeBridge(): CaptureBridge {
       return () => chrome.runtime.onMessage.removeListener(listener)
     },
     async inject(tabId: number) {
-      await chrome.scripting.executeScript({ target: { tabId }, files: ['extract.js'] })
+      await chrome.scripting.executeScript({ target: { tabId }, files: [EXTRACT_SCRIPT] })
     },
     async stash(payload: CapturePayload) {
       await chrome.storage.local.set({ [PENDING_KEY]: payload })

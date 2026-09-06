@@ -111,11 +111,20 @@ export function CapturePage() {
         <div className="resource-error">
           <p role="alert">
             资料已经创建，但正文没有保存成功：{partial.reason} 已经保存的资料还在，
-            你可以打开它把正文粘贴进去。这里不会自动重试。
+            你可以打开它，把下面这段正文粘贴进去。这里不会自动重试。
           </p>
           <Link className="journal-button" to={`/resources/${partial.id}`}>
             打开这份资料
           </Link>
+          {/*
+            正文必须留在屏幕上。扩展的暂存在交付时就删了、原网页可能已经关掉，
+            这份文本是用户手上唯一的一份 —— 把它连同「粘贴进去」的提示一起抹掉，
+            等于让提示指向一个并不存在的东西。
+          */}
+          <label className="resource-field">
+            待粘贴的正文（可全选复制）
+            <textarea rows={12} value={markdown} readOnly />
+          </label>
         </div>
       ) : !captured ? (
         <p className="resource-hint">

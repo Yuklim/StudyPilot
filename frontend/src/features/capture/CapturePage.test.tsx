@@ -26,8 +26,7 @@ function deliver(overrides: Partial<MessageEventInit> = {}, payload: unknown = c
   )
 }
 
-function mount(handler?: Parameters<typeof api.request>[1] extends never ? never : unknown) {
-  void handler
+function mount() {
   renderWithRouter(<App />, '/capture')
 }
 
@@ -68,13 +67,16 @@ describe('capture page', () => {
     ['正文是空白', {}, { ...captured, markdown: '   ' }],
     ['网址不是 http(s)', {}, { ...captured, url: 'javascript:alert(1)' }],
     ['payload 是字符串', {}, 'not-an-object'],
+    ['网址带片段标识符（后端会拒）', {}, { ...captured, url: 'https://example.com/a#x' }],
+    ['网址带凭据', {}, { ...captured, url: 'https://u:p@example.com/a' }],
   ])('discards a forged delivery %s', async (_label, overrides, payload) => {
     // 完成条件 4：任何网页都能向同源窗口 postMessage，所以这里是信任边界本身。
     vi.spyOn(api, 'request').mockResolvedValue(undefined)
     mount()
     await screen.findByText(/还没有收到扩展发来的内容/)
     deliver(overrides, payload)
-    // 仍停在空态，没有崩溃、也没有出现表单。
+    // 鉴别力全在下面那条 form 断言上：空态在 deliver 之前就已存在，对它的断言近似恒真，
+    // 只用来等一次微任务冲刷，不承担防线。
     await waitFor(() => expect(screen.getByText(/还没有收到扩展发来的内容/)).toBeInTheDocument())
     expect(screen.queryByRole('form', { name: '确认采集内容' })).not.toBeInTheDocument()
   })
@@ -145,5 +147,8 @@ describe('capture page', () => {
     )
     // 不自动重试：PUT 只发过一次。
     expect(request.mock.calls.filter(([, options]) => options?.method === 'PUT')).toHaveLength(1)
+    // 提示语让用户「把下面这段正文粘贴进去」，那段正文就必须还在屏幕上：
+    // 扩展暂存在交付时已删、原网页可能已关，这是用户手上唯一的一份。
+    expect(screen.getByLabelText(/待粘贴的正文/)).toHaveValue(captured.markdown)
   })
 })

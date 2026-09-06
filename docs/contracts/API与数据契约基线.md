@@ -700,7 +700,11 @@ OpenAPI 3.1 使用 JSON Schema 联合类型（如 `type:["string","null"]`）表
 
 ## 14. 浏览器扩展与 UI 页面的消息契约 `[架构][细化]`
 
-TASK-038 新增。这是本文件里**第一份非 HTTP 契约**：它约束的不是 `/api/v1`，而是浏览器扩展与本机 UI 页面 `/capture` 之间的 `window.postMessage` 消息。之所以要写进契约文档而不是各自实现，是因为 `extension/` 与 `frontend/` 是两个独立 npm 工程、没有构建耦合，两边各写一份代码，只能靠这份约定对齐（见 `extension/AGENTS.md` §4）。**改动须三处同步**：`extension/src/shared/protocol.ts`、`frontend/src/features/capture/protocol.ts`、本节。
+TASK-038 新增。这是本文件里**第一份非 HTTP 契约**：它约束的不是 `/api/v1`，而是浏览器扩展与本机 UI 页面 `/capture` 之间的 `window.postMessage` 消息。之所以要写进契约文档而不是各自实现，是因为 `extension/` 与 `frontend/` 是两个独立 npm 工程、没有构建耦合，两边各写一份代码，只能靠这份约定对齐（见 `extension/AGENTS.md` §4）。**属本契约的部分**：两个消息名（`studypilot-capture-ready`、`studypilot-capture-payload`）、`CapturePayload` 的字段与约束、以及 14.3 的接收端校验规则。改动这三样须三处同步：`extension/src/shared/protocol.ts`、`frontend/src/features/capture/protocol.ts`、本节。
+
+**不属本契约、可由扩展单方面改动**：`CAPTURE_EXTRACTED`（注入脚本回传给 popup，走 `chrome.runtime`，不经页面）、`PENDING_KEY`（扩展存储的键名）、`UI_ORIGIN`/`RELAY_MATCH`（扩展自己的常量，其值受 manifest 测试约束）。改动它们不需要动本节，也不需要动前端。
+
+`extension/src/shared/protocol.test.ts` 有一条跨目录守卫，逐字比对两份 `isSafeSourceUrl` 与 `isCapturePayload` 的实现并核对三个上限，使两份手写实现的漂移不再只能靠人守。
 
 ### 14.1 为什么经页面转交，而不是扩展直连 API
 
@@ -718,7 +722,7 @@ TASK-038 新增。这是本文件里**第一份非 HTTP 契约**：它约束的�
 | 字段 | 类型 | 约束 |
 | --- | --- | --- |
 | `title` | string | 长度 ≤ 200，与 4.1 的资料标题一致；**可为空字符串**（标题可空，见 TASK-029），页面显示为「未命名资料」占位 |
-| `url` | string | 长度 ≤ 2048，必须以 `http://` 或 `https://` 开头 |
+| `url` | string | 须满足 4.1 `source_url` 的**全部**规则，不只是 http(s) 开头：长度 ≤ 2048、不含空白/控制字符/反斜杠/**片段标识符 `#`**、可解析且有主机名、不含凭据。采集端在提取时即去掉 fragment —— 后端本就不接受带 `#` 的 `source_url`，宽松放行只会让用户一路预填成功、到保存时才被 422 拒绝且无从修复 |
 | `markdown` | string | 去空白后非空，长度 ≤ 1,000,000，与 4.13 的 `ContentSnapshot.content` 一致 |
 
 ### 14.3 信任边界（本节的要害）
@@ -730,6 +734,8 @@ TASK-038 新增。这是本文件里**第一份非 HTTP 契约**：它约束的�
 3. 消息类型必须匹配，载荷必须通过上表的结构与长度校验；
 4. 任何一条不满足即**静默丢弃**，页面保持空态，不报错、不崩溃。
 
+**这道校验证明的是「消息由本窗口内运行的脚本发出」，不证明发送方就是 StudyPilot 扩展。** 内容脚本虽在隔离世界，但与页面共享同一个 Window，故满足该条件；同理，任何对本机 UI 源拥有内容脚本权限的第三方扩展也能满足。这不构成权限升级——能在该源注入脚本的扩展本就能直接替用户点击按钮；这道校验要挡的是**远程网页**，而远程网页无法在该窗口内执行脚本。
+
 即便以上全部被绕过，**攻击者也只能让确认页预填一段文字**：写入只发生在用户点击「保存为资料」之后。「必须由用户确认才写入」是这条链路的最终保障，不得为「自动保存更顺手」而取消。
 
 ### 14.4 扩展侧的权限边界
@@ -738,4 +744,4 @@ TASK-038 新增。这是本文件里**第一份非 HTTP 契约**：它约束的�
 
 ### 14.5 本阶段的边界
 
-扩展只采集**正文**，正文中的图片引用仍指向原站，**本阶段不冻结图片**——冻结图片需要新的资产存储（`content_snapshots` 只存 Markdown，`original_files` 为 `UNIQUE(resource_id)` 且 media_type 白名单不含图片），属独立任务。扩展只支持 **Chrome 与 Edge**（Chromium），不支持 Firefox 与 Safari。
+扩展只采集**正文**，正文中的图片引用仍指向原站，**本阶段不冻结图片**——冻结图片需要新的资产存储（`content_snapshots` 只存 Markdown，`original_files` 为 `UNIQUE(resource_id)` 且 media_type 白名单不含图片），属独立任务。扩展只支持 **Chrome 与 Edge**（Chromium），不支持 Firefox 与 Safari。另有一处已知残留：用户点了采集却始终不打开确认页时，待交付的正文会留在扩展本地存储中，直到下次采集覆盖或下次交付时清除；两处面向用户的文档均已如实告知。

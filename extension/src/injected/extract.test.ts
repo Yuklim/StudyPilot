@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs'
+
 import { describe, expect, it } from 'vitest'
 
 import { MAX_TITLE } from '../shared/protocol'
 
-import { extractFromDocument } from './extract'
+import { EXTRACT_OPTIONS, extractFromDocument, normalizeSourceUrl } from './extract'
 
 // 一篇典型技术文章的骨架：正文外面裹着导航、页脚、推荐位和广告位。
 // 提取的价值全在于「只留中间那块」——所以断言分两半：正文必须活下来，噪声必须消失。
@@ -58,6 +60,41 @@ describe('extractFromDocument', () => {
   it('clamps an over-long title to what the backend accepts', () => {
     const result = extractFromDocument(pageWith(ARTICLE, '标'.repeat(400)), 'https://example.com/a')
     expect(result.title.length).toBeLessThanOrEqual(MAX_TITLE)
+  })
+
+  it('drops the fragment so the backend will actually accept the url', () => {
+    // 后端的 source_url 不接受 `#`（contracts.py 的 parsed_url）。带锚点的地址若原样
+    // 传下去，用户会一路预填成功、直到点保存才被 422 拒绝，而确认页没有网址编辑框。
+    const result = extractFromDocument(pageWith(ARTICLE), 'https://example.com/a#section-3')
+    expect(result.url).toBe('https://example.com/a')
+  })
+
+  it.each([
+    ['https://example.com/a#anchor', 'https://example.com/a'],
+    ['https://example.com/a?q=1#x', 'https://example.com/a?q=1'],
+    ['https://example.com/a', 'https://example.com/a'],
+    ['https://example.com/#/hash/route', 'https://example.com/'],
+  ])('normalizes %s', (input, expected) => {
+    expect(normalizeSourceUrl(input)).toBe(expected)
+  })
+
+  it('leaves an unparseable url alone rather than throwing', () => {
+    expect(normalizeSourceUrl('not a url')).toBe('not a url')
+  })
+
+  it('pins the option that keeps the extension off the network', () => {
+    // 「扩展不发网络请求」是写给用户的承诺。Defuddle 的 useAsync 默认 true，其
+    // 异步抽取器会向第三方 API 发请求。**这条断言就是那句承诺的看守**：删掉这个
+    // 选项、或把它改成 true，都会在这里变红，而不是等到有人发现流量。
+    expect(EXTRACT_OPTIONS.useAsync).toBe(false)
+    // 同时钉住调用的是同步 parse()：异步路径才是 fetch 的可达入口。
+    // jsdom 环境下 import.meta.url 不是 file: URL，用相对 vitest 工作目录的路径。
+    // 必须先剥注释：那份源码的注释里正好在**讨论** parseAsync 与 fetch。
+    const source = readFileSync('src/injected/extract.ts', 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '')
+    expect(source).toContain('.parse()')
+    expect(source).not.toContain('parseAsync')
   })
 
   it('returns empty markdown for a page with no article to speak of', () => {

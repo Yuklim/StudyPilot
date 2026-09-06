@@ -48,11 +48,18 @@ describe('extension boundaries', () => {
   })
 
   it('keeps the docs naming every reach the manifest actually asks for', () => {
-    // 这类缺陷已经连着出现三次（TASK-036 A3、TASK-037 F1，以及本任务实现中途）：
+    // 这类缺陷已经连着出现四次（TASK-036 A3、TASK-037 F1、本任务实现中途，以及
+    // R1 指出的「门闩本身漏了根 README」）：
     // manifest 变了，而三处宣称还停在旧口径。人眼守不住，让它自己报警。
-    const docs = ['README.md', 'AGENTS.md'].map((name) => ({
+    // 三处宣称：extension 的两份 + 仓库根 README。**根 README 是普通用户最先读到的
+    // 权限承诺**，上一版把它漏在门闩外，等于最要紧的一处没人守。
+    const docs = [
+      { name: 'extension/README.md', path: '../README.md' },
+      { name: 'extension/AGENTS.md', path: '../AGENTS.md' },
+      { name: 'README.md', path: '../../README.md' },
+    ].map(({ name, path }) => ({
       name,
-      text: readFileSync(fileURLToPath(new URL(`../${name}`, import.meta.url)), 'utf8'),
+      text: readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf8'),
     }))
     const declared = [
       ...manifest.permissions,

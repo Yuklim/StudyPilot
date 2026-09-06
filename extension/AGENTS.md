@@ -19,10 +19,10 @@ TASK-037 建立工程骨架与检查组；TASK-038 实现网页正文采集（�
 
 - **不引入任何第三方站点凭证**：不要求、不读取、不存储、不转发用户在知乎/CSDN 等站点的登录态、Cookie 或扫码登录结果。扩展读的是用户**已经登录、已经看得见**的页面，会话由浏览器自己持有。
 - **只能采集用户本人当前已能看到的内容**，不得绕过任何站点的访问控制、付费墙或权限检查。
-- **不改动 StudyPilot 的安全边界**：内容一律经由本机 UI 页面（`http://127.0.0.1:5173`）转交，扩展**不直接调用** `/api/v1`。理由：`backend/src/studypilot/security/local_access.py` 要求 `Origin` 等于 UI 源且 `Sec-Fetch-*` 三元组成立，而扩展发起的请求源是 `chrome-extension://`、`Sec-Fetch-Site: cross-site`，只能通过放宽该门禁来满足。放宽本机访问门禁不在本模块的职权内。
+- **不改动 StudyPilot 的安全边界**：内容一律经由本机 UI 页面（`http://127.0.0.1:5173`）转交，扩展**不直接调用** `/api/v1`。理由：`backend/src/studypilot/infrastructure/security/local_access.py` 要求 `Origin` 等于 UI 源且 `Sec-Fetch-*` 三元组成立，而扩展发起的请求源是 `chrome-extension://`、`Sec-Fetch-Site: cross-site`，只能通过放宽该门禁来满足。放宽本机访问门禁不在本模块的职权内。
 - **当前已授予的 reach 就是全部，逐条有据**：`activeTab`（仅在用户点击图标后授予当前那一个标签页，用完即失效）、`scripting`（把提取脚本注入该标签页）、`storage`（popup 关闭后暂存一份待交付内容，交付即删）、以及**一条只匹配 `http://127.0.0.1:5173/*` 的内容脚本**。**不申请 `host_permissions`，不申请 `<all_urls>`**——那会把「用户主动指定的一页」换成「对所有站点的长期访问权」。
 - **权限最小化且需显式授权**：给扩展增加任何 reach —— `permissions`、`host_permissions`、`optional_permissions`、`content_scripts`、`externally_connectable`、`web_accessible_resources`、CSP 覆写等 —— 必须在任务记录中写明用途与替代方案，并经独立 Review。`src/manifest.test.ts` 断言 manifest 的顶层键恰好是既定的那一组（当前为 `manifest_version`/`name`/`version`/`description`/`permissions`/`content_scripts`/`action` 七个），另有断言锁死 `permissions` 的确切三项与内容脚本的唯一匹配源，**任何**新增键都会让它失败；这是有意的白名单门闩，不得为通过测试而删除或放宽断言。用白名单而非逐个点名危险键，是因为点名必然漏掉下一个。
-- 不在扩展存储中持久化 StudyPilot 的本机访问令牌或任何密钥；不记录用户正文、笔记或凭据。
+- 不在扩展存储中持久化 StudyPilot 的本机访问令牌或任何密钥；不记录用户笔记或凭据。**唯一例外是 §3 已授权的 `pendingCapture` 暂存**：采集到的正文在交给 `/capture` 页面之前必须落一次扩展存储（popup 打开新标签页后即被关闭），中转脚本在交付时立即删除。**已知残留**：用户点了采集却始终不打开确认页时，这份正文会一直留在扩展 profile 的磁盘上，直到下次采集覆盖或下次交付时被清掉——这一点必须在面向用户的文档里如实告知。
 - 未完成的功能不得以假数据或无效按钮伪装成可用。
 
 ## 4. 公共契约
@@ -65,7 +65,7 @@ TASK-037 建立工程骨架与检查组；TASK-038 实现网页正文采集（�
 
 ### 安全边界
 
-- 要发现的违规行为：扩展直接向 `127.0.0.1:8000` 发请求；为让扩展直连而修改 `security/local_access.py` 或放宽 `Origin`/`Sec-Fetch` 校验。
+- 要发现的违规行为：扩展直接向 `127.0.0.1:8000` 发请求；为让扩展直连而修改 `infrastructure/security/local_access.py` 或放宽 `Origin`/`Sec-Fetch` 校验。
 - 真实风险：本机访问门禁一旦为扩展放开，任何本机页面或扩展都可能获得同等能力。
 - 安全路径：内容经 UI 页面转交，后端只信任 UI 源。
 

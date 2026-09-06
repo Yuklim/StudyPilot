@@ -21,6 +21,26 @@ export interface CapturePayload {
 }
 
 /**
+ * 与后端 `source_url` 的校验规则对齐（`modules/resources/contracts.py` 的
+ * `parsed_url`），而不只是「以 http(s) 开头」。宽松版本会让带 `#` 锚点的地址一路
+ * 预填成功、直到用户点保存才被 422 拒绝，而确认页不提供网址编辑框 —— 无路可走。
+ *
+ * 规则：http(s) 开头；不含空白、控制字符、反斜杠、`#`；可解析且有主机名；不含凭据。
+ * 与 `frontend/src/features/resources/api.ts` 的 `safeWebUrl` 同规则。
+ */
+export function isSafeSourceUrl(value: string): boolean {
+  if (!/^https?:\/\//i.test(value) || value.length > MAX_URL) return false
+  if (/[\s\\#]/u.test(value)) return false
+  if ([...value].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) return false
+  try {
+    const url = new URL(value)
+    return Boolean(url.hostname) && !url.username && !url.password
+  } catch {
+    return false
+  }
+}
+
+/**
  * 校验后才使用。**任何网页都能向同源窗口 postMessage**，所以这道校验不是防御性
  * 编程的客套，而是这个页面的信任边界本身：结构对不上就当没收到。
  */
@@ -29,7 +49,7 @@ export function isCapturePayload(value: unknown): value is CapturePayload {
   const candidate = value as Record<string, unknown>
   const { title, url, markdown } = candidate
   if (typeof title !== 'string' || title.length > MAX_TITLE) return false
-  if (typeof url !== 'string' || url.length > MAX_URL || !/^https?:\/\//i.test(url)) return false
+  if (typeof url !== 'string' || !isSafeSourceUrl(url)) return false
   if (typeof markdown !== 'string') return false
   return markdown.trim().length > 0 && markdown.length <= MAX_MARKDOWN
 }
@@ -41,5 +61,9 @@ export function capturedFrom(event: MessageEvent, win: Window): CapturePayload |
   if (event.origin !== win.location.origin) return null
   const envelope = event.data as { type?: unknown; payload?: unknown } | null
   if (envelope?.type !== CAPTURE_PAYLOAD) return null
-  return isCapturePayload(envelope.payload) ? envelope.payload : null
+  if (!isCapturePayload(envelope.payload)) return null
+  // 返回**已校验字段的副本**而不是原对象：让「校验的即所用的」在代码层面自明。
+  // 结构化克隆已经挡住了 getter/Proxy，这一步是把不变量写进代码而非依赖运行时特性。
+  const { title, url, markdown } = envelope.payload
+  return { title, url, markdown }
 }
