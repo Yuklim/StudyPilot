@@ -56,8 +56,11 @@ export function isSafeSourceUrl(value: string): boolean {
  * 接收端一律先过这道校验再使用：结构对不上就丢弃，不猜测、不补救。
  *
  * **任何网页都能向同源窗口 postMessage**，所以这不是防御性编程的客套，而是这条
- * 链路的信任边界本身。两端各有一份实现，规则必须完全一致 —— 这一点由两侧的
- * 守卫测试机器强制，不靠人记。
+ * 链路的信任边界本身。两端各有一份实现，规则必须完全一致。
+ *
+ * 两侧守卫覆盖到什么程度，如实说清（`check_task.py` 按路径前缀选检查组，只改一侧
+ * 时另一侧的组不运行）：改**扩展**那份 → 扩展侧逐字比对必红；改**前端**那份 →
+ * 只有**放宽**已被用例钉住的规则才红，**新增或收紧**不会红，那个方向仍靠人记。
  */
 export function isCapturePayload(value: unknown): value is CapturePayload {
   if (typeof value !== 'object' || value === null) return false
