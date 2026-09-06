@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-033"
-status = "IN_REVIEW"
+status = "ACCEPTED"
 risk = "L2"
 risk_reason = "三个目标全部落在前端，已批准的公共契约、后端、数据模型与迁移一律不动：新建标签复用既有 `POST /api/v1/tags`（TASK-011 交付），筛选进 URL 只改变客户端如何组装同一个既有查询串，chip 可点只是把纯文本换成链接。不新增接口、不改请求/响应形状、不改 AND 筛选语义。判 L2 而非 L1 的原因：目标 3 是对 `ResourceLibrary` 筛选机制的一次真实重构（七个维度与 URL 双向同步、要处理浏览器前进后退与非法参数），资料库是核心页面，回归面覆盖搜索/筛选/排序/分页；目标 1 又在原本只读的选择器里首次引入写操作。判 L3 的条件均未命中：无契约、无迁移、无安全/认证、无关键数据模型、无跨模块写。"
 risk_flags = ["business", "internal-refactor", "small-ui", "tests"]
@@ -134,7 +134,7 @@ checks = []
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA（第二轮，最终）：待第二轮 Review 后填。第一轮候选：`dcd0301`（含需求、实现与测试证据；代码实现 SHA `f801ad1`，`f801ad1..dcd0301` 仅为本记录的证据写回，不含代码改动。`check_task.py --candidate f801ad1` CHECKS PASS，base=`b6ab87e`、files=14、profiles=frontend、product_fingerprint=`cd5e125a92a8fd44ee0f1a6b3115b852176b48bd6cceca400f96d28304d2c3c7`、risk=L2 stages=(worker, review)）。base..candidate 的完整 diff 已导出到 scratchpad 的 `TASK-033-full-diff.patch`，供无 Bash 的只读 Reviewer 直接 Read。
+- 候选 SHA（最终）：`26b2818`（代码修订 SHA `5f79e21`，`5f79e21..26b2818` 仅为第一轮报告与处置的证据写回，不含代码改动）。第一轮候选：`dcd0301`（含需求、实现与测试证据；代码实现 SHA `f801ad1`，`f801ad1..dcd0301` 仅为本记录的证据写回，不含代码改动。`check_task.py --candidate f801ad1` CHECKS PASS，base=`b6ab87e`、files=14、profiles=frontend、product_fingerprint=`cd5e125a92a8fd44ee0f1a6b3115b852176b48bd6cceca400f96d28304d2c3c7`、risk=L2 stages=(worker, review)）。base..candidate 的完整 diff 已导出到 scratchpad 的 `TASK-033-full-diff.patch`，供无 Bash 的只读 Reviewer 直接 Read。
 - Review 第一轮（L2 独立只读，`b6ab87e..dcd0301`）：**PASS（含 F1～F4 四项非阻断）**。
 
   派发方式：本实现会话以 `/Users/yuklimching` 为启动目录，项目级 `.claude/agents/reviewer.md` 未注册（已实测：把该文件复制到用户级 `~/.claude/agents/` 后当场重试仍为 `Agent type 'reviewer' not found`，说明注册表在会话启动时一次性构建，中途放文件不生效）。因此改由同机另一个在 StudyPilot 目录下启动的会话 `studypilot-05` 代为派发。**执行审查的仍是 `.claude/agents/reviewer.md` 定义的只读实例（`tools: Read, Grep, Glob`，运行器层无 Bash、无写工具），全新实例、无上下文继承、独立于实现者。** 未用带 Bash 的 `Explore`/`general-purpose` 冒充。
@@ -184,9 +184,46 @@ checks = []
   - **三处覆盖缺口全部补测**：新增 3 条 vitest —— 空地址下重置清草稿（缺口三 / F1 回归测试，已实测：临时移除 F1 修复后该用例转红，恢复后转绿，确认它真的能抓到这个回退）、资料详情 chip 为链接并指向 `/resources?tag_id=<id>`（缺口二）、已选 20 个时新建入口禁用且给出原因（缺口一）。
   - **索引账务已对齐**：`任务索引.md` 的 TASK-033 行由 `IN_PROGRESS` 改为 `IN_REVIEW`，与记录 TOML 一致。
 - 修订后的检查（真实运行）：`check_task.py --candidate 5f79e21` → **CHECKS PASS**，base=`b6ab87e`、files=14、profiles=frontend、product_fingerprint=`1b6427d9ec88a40de39dd0f5a59539ee33da9a1bac31ef0916db92545b6dcf02`。`npm run format:check && lint && typecheck && test && build` 全绿，vitest **350 passed**（第一轮候选 347，净增 3 条新测试）；`npm run test:e2e` → **38 passed**（不变）；后端未改动。
-- Review 第二轮（增量 `dcd0301..新候选`）：**待执行**。
+- Review 第二轮（L2 独立只读，增量 `dcd0301..26b2818`，同一 Reviewer）：**PASS，No findings（新增）**。
+
+  外部核实（派发会话以 Bash 提供）：
+  > 主 Agent（派发会话）已用 `diff` 核实：`TASK-033-round2-incremental.patch` 与 `git diff dcd0301..26b2818` 逐字节一致（212 行、5 个文件）。另核实工作树 HEAD 正是 `26b2818`，除一个与本任务无关的未跟踪 HANDOFF markdown 外干净。
+
+  报告原文：
+  > ## 只读证明
+  > 仅有 `Read`/`Grep`/`Glob`；无 `Write`/`Edit`/`Bash`。本轮未写任何文件、未提交、未推送。
+  >
+  > ## 范围与继承声明
+  > - 本轮为**修订审查**：`dcd0301..26b2818`（代码修订 `5f79e21`；`5f79e21..26b2818` 只写任务记录与索引）。依据 coordinator 导出的增量 patch（212 行 / **5 文件**，其与 `git diff dcd0301..26b2818` 逐字节一致由主 Agent 以 Bash 核实，我无 Bash 不能自证），并对工作树（HEAD = `26b2818`）定点交叉验证。
+  > - **显式继承**：第一轮我已完整审过 `b6ab87e..dcd0301`（14 文件、1008 行）的最终 diff 与相关调用链，结论 PASS。本轮增量只触及 `ResourceLibrary.tsx` 的三处（两个常量、重置 onClick 一行、`setNames` 过滤条件）与两个测试文件的纯新增，**未触及** `readApplied`/`writeApplied`/查询串组装/渲染期同步分支/`TagCreateField` 及其三个宿主/chip 链接/styles.css。这些部分的第一轮覆盖与结论直接继承，未重复审查；受影响上下文（`label()`、`named()`、`names` 缓存写入、重置路径、draft 同步）已在本轮重新推演。
+  > - 结论指向新候选 `26b2818`。
+  >
+  > ## 逐项核查
+  > **1. F1 修法 — 消除了原因，与渲染期同步不打架。** 重置 onClick 现为 `setValidation('')` → `setLookupFailed(false)` → `setDraft(draftOf(readApplied(new URLSearchParams())))` → `setParams(new URLSearchParams())`。地址本就为空时 `shown === address` 恒成立、渲染期同步不触发，新加的 `setDraft` 是唯一清草稿的路径 —— 正是 F1 缺的那条。地址非空时两者都会跑，但两者写入的内容完全相同（`q/source/status` 空、`sort='-created_at'`、`classification={topic:null,tags:[]}`，与基线 `initialFilters` 一致），只是对象标识不同；收敛到同一状态，无错位、无循环，最多一次多余渲染。不是遮症状：修的是「空地址下无人负责清草稿」这一结构缺口。
+  > **2. `PENDING_NAME`/`MISSING_NAME` — 自洽，语义未丢。** `label()` 只是把两个字面量提为常量，分支逻辑逐字未变。`names` 的「问过且读不到」标记仍是空字符串，`MISSING_NAME` 纯属显示层、现被显式排除在缓存写入之外，与原语义等价。坏 id 仍继续参与筛选：本轮 diff 未触及 `applied`→`query` 任何一行，第一轮那条断言 `getAll('tag_id')` 含 missing id 的测试原样保留。极端情况（用户真建一个叫「正在读取名称…」或「（已不存在）」的标签）：该名称被过滤器挡在缓存外 → `names[id]` 保持 `undefined` → effect 按 id 取回真名 → chip 显示正确；代价仅一次多余请求，且「真名与占位同形」的显示歧义在改动前就存在，不是新引入。判为无害。
+  > **3. 三条新测试 — 名副其实，非形式通过。** 重置那条先断言 `address() === ''` 锁死前提，再同时断言搜索框清空**与**「已选 0 个标签」（后者绑定 Picker 的真实 selection）；移除 F1 那一行则两条断言必红 —— 这是我读代码得出的判断。实现者另称做过变异验证（临时删除该行→转红→恢复→转绿）；**该声明未经 coordinator 复核，也未经我复核**，如实标注来源，我的结论不依赖它。详情页 chip 那条补上第一轮缺口二，断言 `role=link` + `href`，且吸取了第一轮漏 mock `/notes?` 的教训。20 上限那条用既有 `Picker` 帮助组件，断言 20 个时输入禁用 + 原因文案，**再移除一个断言恢复可用** —— 双向绑定 `full` 的计算而非静态属性。数量自洽：347 + 3 = 350，e2e 无改动仍 38，`check_task` files=14（增量 5 文件全在原 14 之内）。所有机械证据按 **NOT_RUN** 处理。
+  > **4. F3/F4 记录接受 — 我独立复判，理由成立。** F3 触发需地址里带不可解析 id 且用户翻页/再应用；影响仅是红字告警提前消失，chip 仍显示「（已不存在）」、筛选结果依然正确。无数据损坏、无越权、不违反任何完成条件（条件 10 只要求「不崩溃、给出可理解提示、不丢其他条件」，首次进入时提示是给出的）。两种修法各有真实代价的说法我认可。F4 仅在手改地址时可达；值只经 `URLSearchParams` 编码后发给后端，或落在 `<select value>`，全仓此路径无 `dangerouslySetInnerHTML`，无注入面；后端校验 + 既有 `ResourceError` 兜底，不白屏。两条的 EVIDENCE 登记都写了影响、为何暂不修、责任角色与重评触发条件，符合规则要求。
+  > **5. 范围与写回边界 — 合规。** 5 个文件全部在 `allowed_paths` 内；无后端、无 `docs/contracts/**`、无迁移、无依赖/锁文件变化。`26b2818` 对任务记录的改动全部落在 EVIDENCE 标记区之间：TOML 块、需求与范围、目标、非目标、完成条件、上下文包、「实现与测试」段均一字未动（按行核对与第一轮候选一致）。索引只改 TASK-033 那一行的状态字，与 TOML 对齐 —— 第一轮指出的账务不一致已消除。
+  >
+  > ## Findings
+  > **No findings（新增）。** F1、F2 已在 `5f79e21` 真正修复并各自带回归测试；F3、F4 维持第一轮的非阻断定性，已按规则登记为剩余风险；第一轮列出的三处覆盖缺口全部补齐。本轮增量未引入新问题、未削弱任何既有断言（两个测试文件的 hunk 均为纯新增）。
+  >
+  > ## 覆盖与缺口
+  > - 继承第一轮对 `b6ab87e..dcd0301` 的完整覆盖；本轮增量已逐行核。
+  > - 剩余缺口（均为第一轮已判、且非承诺项）：F4 的四个维度无前端白名单校验测试；`tag_id` 在地址里重复出现时 Picker 的 React key 会重复（仅手改地址可达，第一轮已列为 trivial）。
+  > - 我未运行任何检查；`check_task --candidate 5f79e21` CHECKS PASS、vitest 350、e2e 38、fingerprint `1b6427d9…` 全部按 **NOT_RUN** 记录，只做与 diff 的自洽核对（均自洽）。
+  > - patch 与仓库逐字节一致、以及变异验证两项外部事实，分别由 coordinator（已核）与实现者（未经第三方核）提供，来源已如实标注。
+  >
+  > ## 剩余风险
+  > 低。已登记的 F3/F4 只影响提示时机与手改地址的容错，不触碰安全、隐私、数据完整性或已确认契约；核心路径（空地址与基线等价、应用筛选重置分页、刷新/后退/分享、chip 跳转、就地新建不丢草稿、20 上限、坏 id 仍参与筛选）现已代码与测试双向绑定。
+  >
+  > ## 结论
+  > **PASS**（针对新候选 `26b2818`，含继承的第一轮 `b6ab87e..dcd0301` 覆盖；F3、F4 为已明确处置并登记的非阻断遗留项，PASS 不等于零问题）。合并仍须由用户本人执行。
+
+- 一处主 Agent 口径更正：我在派发第二轮时把增量说成「212 行 / 6 文件」，实测 `git diff --stat dcd0301..26b2818` 为 **5 个文件**（TASK-033 记录、任务索引、`ResourceLibrary.tsx`、`ResourcePages.test.tsx`、`ClassificationPages.test.tsx`），由派发会话指出、主 Agent 复核确认。以 5 为准。
+- 变异验证的证据等级说明：F1 回归测试的变异验证（临时移除修复→用例转红→恢复→转绿）由主 Agent 本人执行，**未经独立第三方复核**。派发会话说明未复核的理由是：复核需临时改动实现者正在使用的同一个工作树，按 AGENTS.md「共享目录同一时刻一个写入者」不宜并发写入。Reviewer 的结论不依赖该声明，它是独立读测试代码得出的同向判断。此处如实标注来源与等级，不把它当作已被独立验证的事实。
 - Acceptance：L2 → N/A（风险路由不要求独立验收）。
-- 最终状态/风险/用户操作：status=**IN_REVIEW**（第一轮 PASS，F1/F2 已修并补齐三处覆盖缺口，等待同一 Reviewer 对 `dcd0301..新候选` 做增量复审）。分支 `agent/coordinator/TASK-033-tag-usability` 目前仅在本地，未推送、未开 PR。
+- 最终状态/风险/用户操作：status=**ACCEPTED**。L2 执行链完整（Worker → 自动检查 → 独立只读 Reviewer 两轮 → PASS）；L2 不要求独立验收，Acceptance 为 N/A。最终候选 `26b2818` 待**用户本人执行合并**（Agent 不合并、不推 main）。合并后按既有做法把记录/索引标 MERGED，可并入下个已授权任务的控制面提交。
 - 非阻断遗留项：
   - **F3** —— 翻页或再次应用筛选会清掉「读不到名称」的红字告警，而该坏 id 仍在筛选中；chip 上仍显示「（已不存在）」，信号未完全丢失。暂不修的成本取舍见上（两种修法各有代价）。责任角色 coordinator；筛选区若改为不展示 chip 则需重评。
   - **F4** —— `sort`/`source_type`/`learning_status`/超长 `q` 手改地址时不做前端白名单校验，由后端校验 + 既有错误页兜底。责任角色 coordinator；资料库若对外暴露或引入自动生成的分享链接则需重评。
