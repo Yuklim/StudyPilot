@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-037"
-status = "READY"
+status = "IN_PROGRESS"
 risk = "L3"
 risk_reason = "本任务改的是治理门禁本身：`scripts/governance/check_task.py` 的检查组选择逻辑决定了「哪些代码会被自动检查覆盖」，改错的后果不是某个功能坏掉，而是此后所有扩展代码在无人察觉的情况下逃过检查，且这种缺陷不会以失败的形式暴露出来。命中 `scripts/governance/**`、`docs/governance/**`、`**/AGENTS.md` 三条高风险路径下限。另一半实质风险是先例效应：`extension/` 是仓库的第三个顶层代码目录，其工程约定（构建、lint、测试、依赖边界、与前后端的关系）一旦落地就会被后续所有扩展工作沿用，事后改造成本远高于第一次定对。本任务不实现任何抓取行为，不改安全边界，不改后端。"
 risk_flags = ["governance", "architecture", "tooling", "tests"]
@@ -105,9 +105,37 @@ checks = []
 
 ## 实现与测试
 
-- 实现 SHA/变更摘要：待填
-- 命令、真实退出结果、product_fingerprint、环境、未运行原因：待填
-- 已知限制/未完成项：待填
+- 实现 SHA/变更摘要：**`5e7ef25`**（base `32c3750`，25 个文件）。
+  1. 新建顶层 `extension/`：独立 npm 工程（`package.json`/`package-lock.json`/`tsconfig.json`/`vite.config.ts`/`eslint.config.js`/prettier 配置），脚本名与 `frontend/` 对齐；不做 workspace、不共享 `node_modules`。
+  2. `src/manifest.ts` 是 manifest 的唯一来源，`vite.config.ts` 的 `studypilot-emit-manifest` 插件在构建时产出 `dist/manifest.json`，仓库里没有第二份副本可漂移。manifest 不申请任何 `permissions`/`host_permissions`/`content_scripts`。
+  3. popup 为诚实空壳：`popup.html` + `src/popup/main.ts`（仅 DOM 接线）+ `src/popup/popup.ts`（纯函数 `popupText`，与 DOM 解耦以便测试），显示「工程框架已就绪，网页采集功能尚未实现」，无任何按钮。
+  4. `extension/AGENTS.md` 按 `MODULE_AGENTS_TEMPLATE.md` 七节撰写；`extension/README.md` 与根 `README.md` 补安装/构建/加载与检查说明。
+  5. `check_task.py` 三处改动：`PROFILE_NAMES` 增 `extension`、`selected_profiles()` 增 `extension/` 前缀、`commands()` 增 extension 分支；`test_check_task.py` 增选组断言；`docs/governance/风险分级与检查规则.md` 检查组清单增一行。
+  6. A3：`ContentSnapshot` 新增 `sourceType` prop，两处文案改为按来源分支（`snapshotHints`/`emptyHints`），`ResourceDetail` 传入 `item.source_type`；`ResourcePages.test.tsx` 新增两组 `it.each` 共 6 条断言。
+  7. 未改 `.gitignore`：其 Node 段（`node_modules/`、`dist/`、`*.tsbuildinfo`）不带目录前缀，对 `extension/` 天然生效，已核实 `git add -A extension` 不会带入生成物。
+
+- 命令、真实退出结果、product_fingerprint、环境、未运行原因：
+
+  **任务检查（全套）**：`check_task.py --task docs/tasks/TASK-037-extension-baseline.md --candidate 5e7ef25` → **CHECKS PASS**，base=`32c3750`、files=25、`profiles=extension,frontend,governance`、`product_fingerprint=8a50315df815e211feb109c9e9bcb81cc916310c1f33d22b835d8c09858e6733`。完整输出留存于会话临时目录 `scratchpad/check-037-full.log`（155 行）。extension 组的五条命令在输出第 5/15/23/31/48 行逐条可见并全部 exit=0，其中 `npm run test -- --run` 报 **2 files / 5 tests passed**；frontend 组报 **16 files / 369 tests passed**。
+
+  **该检查的运行环境须如实说明**：主工作区因存在**未跟踪**的 `docs/research/`（用户在另一会话创建、至今未纳入 Git）而不满足脚本的 `git status --porcelain` 干净要求，全套检查会以 `FAIL: full checks require the candidate checked out with a clean worktree` 拒绝执行。未改动、未移动、未提交该用户文件；改为 `git worktree add` 一个**独立干净的 worktree** 检出候选 `5e7ef25` 后在其中运行。该 worktree 需要一个符合 `agent/<role>/TASK-\d{3,}-.+` 的分支名（脚本拒绝 detached HEAD），故建了临时本地分支 `agent/coordinator/TASK-037-extension-baseline-check`；它只用于跑检查，不含任何提交差异，不推送，检查后删除。`backend/.venv` 以符号链接引入该 worktree（Python 工具链），`frontend/`、`extension/` 各自 `npm ci`。**这一路径比在脏工作区里跑更严格**：它同时证明了提交出去的树在全新检出下自足（`npm ci` 依锁文件安装即可通过全部检查）。
+
+  **backend 组未被自动选中**（本任务不改 `backend/**`），另行在主工作区单独运行：`ruff format --check . && ruff check . && mypy src tests && pytest -q` → 全绿，**525 passed**，与基线一致（本任务不应改变后端数量）。
+
+  **e2e**：`cd frontend && npm run test:e2e` → **41 passed**，与基线一致。本任务不新增 e2e；已核实既有快照 e2e（`frontend/e2e/resource-pages.spec.ts:229,245`）用的是 WEB 资料，而 WEB 的空态文案未变，故 A3 改动不触及该断言。
+
+  **变异验证（三项，均已回滚，回滚后复跑全绿）**：
+  1. *A3 是否真被测住*：把 `snapshotHints`/`emptyHints` 三个来源改回 TASK-036 的单一 WEB 文案（含「上方」），`ResourcePages.test.tsx` **5 条失败 / 34 通过**（WEB 空态那条本就正确，故仍通过——这正是预期）。
+  2. *extension 组是否真在跑*：在 `extension/src/broken.ts` 写入类型错误，按 `check_task.commands("extension")` 逐条执行，`typecheck` **exit=1**（`error TS2322`），组判 FAIL。
+  3. *manifest 权限门闩是否有效*：给 manifest 加 `permissions: ['tabs']`（格式合规，先过 prettier），`npm run test -- --run` **1 failed / 4 passed**，报 `expected [ 'tabs' ] to be undefined`。
+
+  环境：macOS（Darwin 25.5.0）、Node v24（`.node-version`）、npm 11、Python 3.13（`backend/.venv`）。`extension/` 首次 `npm install` 因用户级 npm 缓存 `EACCES` 失败，改用仓库内已忽略的 `.npm-cache`（README 既有 FAQ 的同款做法，本任务把该 FAQ 从「`frontend/`」扩到「`frontend/` 或 `extension/`」）。
+
+- 已知限制/未完成项：
+  1. **A4 未做且仍在恶化**：`openapi-v1.json` 的 `x-delivery-profile` 仍停在 `stage: "TASK-022"`，`available_operations` 有 35 项而实现已有 47 个 operationId，缺 `scheduleReview`/`pauseReview`/`completeReview`/`listReviews`/`listResourceReviewRecords`/`getOverviewAnalytics`/`listTopicAnalytics`/`detachAllTagResources`/`mergeTag`/`getResourceSnapshot`/`putResourceSnapshot`/`deleteResourceSnapshot` 共 12 项，且 `backend/tests/test_taxonomy.py:485` 硬编码 `len(available) == 35`。已明示为非目标，本任务未处理。
+  2. **`docs/research/阅读器与标注能力调研.md` 仍未纳入 Git**，而 TASK-036 的上下文包引用了它——任何从 Git 检出工作的 Reviewer 都看不到被引用的内容。属用户文件，本任务不处理，仅记录。
+  3. 扩展骨架**不含任何采集能力**，也没有与 UI 页面之间的消息契约；那属 TASK-038。
+  4. **扩展从未在真实浏览器里加载过**：本环境无法驱动 Chrome 的「加载已解压的扩展程序」。已验证的只是构建产物存在且形状正确（`dist/` 下有 `manifest.json`、`popup.html` 与 JS 资源，manifest 为合法 JSON、`manifest_version: 3`、`default_popup` 指向确实存在的文件）。「能被 Chrome 成功加载」尚无证据，README 的加载步骤未经实机验证——请用户首次按 README 加载时确认。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
