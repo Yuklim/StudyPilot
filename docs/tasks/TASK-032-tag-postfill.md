@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-032"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "本任务放宽已批准的公共契约：为 `ResourcePatch` 新增 `tag_ids`（整组替换语义），同时改动 openapi-v1.json 与《API与数据契约基线》的对象定义、操作清单、错误码与版本规则叙述。属「架构/公共 API 契约」与「跨模块」（resources 写入路径首次批量写 taxonomy 的 resource_tags 关联）两项 L3 判入条件。另有一处关键数据语义决定：标签集合实际变化时资料 version 必须 +1，而 tag 关联不在 resource 行上、不会被 SQLAlchemy 自动标脏，实现若遗漏会让乐观并发在标签维度失效（前端拿到过期 version）。无数据库 schema 变更、无迁移。据此判 L3，不因「不加迁移」降级。"
 risk_flags = ["public-api", "major-cross-module", "critical-data", "business", "tests"]
@@ -282,7 +282,7 @@ checks = []
   >
   > **结论：PASS**（针对候选 `8115bca`；含上述 4 项已处置的非阻断观察，不等于零问题）。合并仍须由用户本人执行。
 
-- 最终状态/风险/用户操作：status=**ACCEPTED**。L3 执行链已完整闭合：实现 + 自动检查（`check_task --candidate 8115bca` CHECKS PASS）+ 独立只读 Reviewer 两轮（CHANGES_REQUIRED → 修订 → 针对 `8115bca` 的 PASS）+ 独立只读 Acceptance（PASS，逐条核对 14 条完成条件与跨模块证据）。剩余风险低，无阻断项。分支 `agent/coordinator/TASK-032-tag-postfill` 目前**仅在本地**，未推送、未开 PR——**需要用户操作**：由用户本人决定并执行推送/开 PR/合并，Agent 不合并、不向 main 推送。合并后本记录状态改 MERGED 的登记按既有做法并入下一个已授权任务的控制面提交。
+- 最终状态/风险/用户操作：status=**MERGED**。L3 执行链已完整闭合：实现 + 自动检查（`check_task --candidate 8115bca` CHECKS PASS）+ 独立只读 Reviewer 两轮（CHANGES_REQUIRED → 修订 → 针对 `8115bca` 的 PASS）+ 独立只读 Acceptance（PASS，逐条核对 14 条完成条件与跨模块证据）。剩余风险低，无阻断项。分支 `agent/coordinator/TASK-032-tag-postfill` 目前**仅在本地**，未推送、未开 PR——**需要用户操作**：由用户本人决定并执行推送/开 PR/合并，Agent 不合并、不向 main 推送。合并后本记录状态改 MERGED 的登记按既有做法并入下一个已授权任务的控制面提交。（候选 `8115bca` 已由用户本人于 2026-09-05 16:22Z 执行合并，PR #37，merge commit `b6ab87e`；本状态登记按既有做法并入 TASK-033 的控制面提交。）
 - 非阻断遗留项：① **跨路径并发覆盖**——幂等关联端点 `PUT/DELETE .../tags/{tid}` 不推进资料 `version`，其后一次持旧 `version` 的 `tag_ids` 整组替换会覆盖那次单个增删且不报 `409`；已如实写入契约 4.7，本机单用户、重新增删即可恢复，按《风险分级与检查规则》判为可记录后继续。② 编辑页不支持就地新建标签（调研 B 项）、标签区为 20/页的分页浏览、两条标签入口分处「修改资料」与「资料详情」两页——均为本任务明确的非目标。
 - 日期与决定日志：2026-09-05 用户在 PR #36 合并后授权本任务，范围定为 A1+A2；同日主 Agent 在基线 `e2ab283` 亲自复核 6 项现状事实后登记为 L3（放宽公共契约 + 跨模块 + 版本语义决定），并入 TASK-031 的 MERGED 状态收尾。
 - 2026-09-05 `risk_flags` 更正：原写 `["contract", "public-api", "cross-module", ...]`，其中 `contract`/`cross-module` 不在 `docs/governance/risk-policy.json` 的合法取值内（check_task 报 `missing or unknown risk flags`），按策略文件改为 `["public-api", "major-cross-module", "critical-data", "business", "tests"]`。等级仍为 L3，理由未变；`critical-data` 对应 risk_reason 里已写明的乐观并发/版本语义影响。
