@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from studypilot.modules.taxonomy.contracts import (
     Kind,
+    TagMerge,
     TaxonomyError,
     TaxonomyQuery,
     normalized_name,
@@ -102,6 +103,44 @@ class TaxonomyStore:
             else select(func.count()).select_from(ResourceTag).where(ResourceTag.tag_id == identity)
         )
         return int(self.session.scalar(statement) or 0)
+
+    def check_usage(self, kind: Kind, identity: UUID, expected: int) -> None:
+        count = self.references(kind, identity)
+        if count != expected:
+            raise TaxonomyError("TAXONOMY_USAGE_CHANGED", 409, {"resource_count": count})
+
+    def detach_all(self, tag_id: UUID, expected: int) -> dict[str, Any]:
+        record = self.find("tag", tag_id)
+        self.check_usage("tag", tag_id, expected)
+        for link in self.session.scalars(select(ResourceTag).where(ResourceTag.tag_id == tag_id)):
+            self.session.delete(link)
+        # The tag itself stays: clearing its links is not deleting the tag.
+        self.session.flush()
+        return project(record, 0)
+
+    def merge(self, tag_id: UUID, command: TagMerge) -> dict[str, Any]:
+        source = self.find("tag", tag_id)
+        if command.target_tag_id == tag_id:
+            raise TaxonomyError("VALIDATION_ERROR", 422)
+        target = self.find("tag", command.target_tag_id)
+        self.check_version(source, command.expected_version)
+        self.check_usage("tag", tag_id, command.expected_resource_count)
+        held = set(
+            self.session.scalars(
+                select(ResourceTag.resource_id).where(ResourceTag.tag_id == target.id)
+            )
+        )
+        for link in self.session.scalars(select(ResourceTag).where(ResourceTag.tag_id == tag_id)):
+            # A resource already carrying the target keeps one row: (resource_id, tag_id)
+            # is the primary key, so re-inserting it would collide.
+            if link.resource_id not in held:
+                self.session.add(ResourceTag(resource_id=link.resource_id, tag_id=target.id))
+            self.session.delete(link)
+        # tag_id is ON DELETE RESTRICT, so every link must be gone before the tag row.
+        self.session.flush()
+        self.session.delete(source)
+        self.session.flush()
+        return project(target, self.references("tag", target.id))
 
     def delete(self, kind: Kind, identity: UUID, expected: int) -> None:
         record = self.find(kind, identity)

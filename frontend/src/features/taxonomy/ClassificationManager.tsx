@@ -4,9 +4,12 @@ import { Link } from 'react-router-dom'
 import { ClassificationBrowser } from './ClassificationBrowser'
 import {
   deleteClassification,
+  detachAllTagResources,
   getClassification,
   labels,
+  mergeTag,
   saveClassification,
+  type Choice,
   type Classification,
   type Kind,
 } from './api'
@@ -26,7 +29,100 @@ function UsageLink({ kind, item }: { kind: Kind; item: Classification }) {
   )
 }
 
-type Editor = { mode: 'edit' | 'delete'; item?: Classification }
+type Editor = { mode: 'edit' | 'delete' | 'detach' | 'merge'; item?: Classification }
+
+// Bulk association work lives apart from the create/edit/delete form: it acts on many
+// resource_tags rows at once and needs its own confirmation, not another form branch.
+function TagBulkPanel({
+  editor,
+  close,
+  saved,
+}: {
+  editor: { mode: 'detach' | 'merge'; item: Classification }
+  close: () => void
+  saved: () => void
+}) {
+  const { item, mode } = editor
+  const [target, setTarget] = useState<Choice | null>(null)
+  const { pending, error, run } = useOperation()
+  const ready = mode === 'detach' || (!!target && target.id !== item.id)
+  return (
+    <section
+      className="classification-editor"
+      aria-label={`${mode === 'detach' ? '清空关联' : '合并标签'}确认`}
+    >
+      <span className="note-tab">先确认，再动手</span>
+      <fieldset disabled={pending} className="classification-browser">
+        <legend className="sr-only">{mode === 'detach' ? '清空标签关联' : '合并标签'}</legend>
+        <h2>
+          {mode === 'detach'
+            ? `清空“${item.name}”的全部关联？`
+            : `把“${item.name}”合并到哪个标签？`}
+        </h2>
+        <p className="resource-hint">
+          {mode === 'detach'
+            ? `会解除 ${item.resource_count} 份资料上的这个标签，标签本身保留，资料内容不受影响。`
+            : `会把 ${item.resource_count} 份资料上的“${item.name}”换成目标标签，然后删除“${item.name}”。资料内容不受影响。`}
+        </p>
+        <p className="resource-hint">
+          按当前看到的 {item.resource_count} 份提交；若期间份数已变化，本次不会执行。
+        </p>
+        {mode === 'merge' && (
+          <>
+            <p className="resource-hint">目标标签：{target ? target.name : '尚未选择'}</p>
+            <ClassificationBrowser
+              kind="tags"
+              disabled={pending}
+              render={(candidate) => (
+                <label className="classification-choice">
+                  <input
+                    type="radio"
+                    name="merge-target"
+                    disabled={candidate.id === item.id}
+                    checked={target?.id === candidate.id}
+                    onChange={() => setTarget(candidate)}
+                  />
+                  <span>{candidate.name}</span>
+                </label>
+              )}
+            />
+          </>
+        )}
+        <div className="resource-actions">
+          <button
+            type="button"
+            className="journal-button danger"
+            disabled={!ready}
+            onClick={() =>
+              void run(
+                () =>
+                  mode === 'detach'
+                    ? detachAllTagResources(item)
+                    : mergeTag(item, target as Choice),
+                saved,
+              )
+            }
+          >
+            {pending
+              ? '正在处理…'
+              : mode === 'detach'
+                ? `确认清空 ${item.resource_count} 份关联`
+                : '确认合并'}
+          </button>
+          <button type="button" className="journal-button" onClick={close}>
+            取消
+          </button>
+        </div>
+        {error && (
+          <div role="alert" className="resource-error">
+            <p>{error}</p>
+            <p>没有自动重试。请重新读取分类列表，确认份数后再决定。</p>
+          </div>
+        )}
+      </fieldset>
+    </section>
+  )
+}
 function ClassificationEditor({
   kind,
   editor,
@@ -184,19 +280,31 @@ function ClassificationPanel({ kind }: { kind: Kind }) {
           {notice}
         </p>
       )}
-      {editor && (
-        <ClassificationEditor
-          key={`${kind}:${editor.item?.id ?? 'new'}:${editor.mode}`}
-          kind={kind}
-          editor={editor}
-          close={() => setEditor(undefined)}
-          saved={() => {
-            setEditor(undefined)
-            setRevision(revision + 1)
-            setNotice('操作成功，已重新读取分类列表。')
-          }}
-        />
-      )}
+      {editor &&
+        ((editor.mode === 'detach' || editor.mode === 'merge') && editor.item ? (
+          <TagBulkPanel
+            key={`${kind}:${editor.item.id}:${editor.mode}`}
+            editor={{ mode: editor.mode, item: editor.item }}
+            close={() => setEditor(undefined)}
+            saved={() => {
+              setEditor(undefined)
+              setRevision(revision + 1)
+              setNotice('操作成功，已重新读取分类列表。')
+            }}
+          />
+        ) : (
+          <ClassificationEditor
+            key={`${kind}:${editor.item?.id ?? 'new'}:${editor.mode}`}
+            kind={kind}
+            editor={editor}
+            close={() => setEditor(undefined)}
+            saved={() => {
+              setEditor(undefined)
+              setRevision(revision + 1)
+              setNotice('操作成功，已重新读取分类列表。')
+            }}
+          />
+        ))}
       <ClassificationBrowser
         kind={kind}
         revision={revision}
@@ -220,6 +328,32 @@ function ClassificationPanel({ kind }: { kind: Kind }) {
               >
                 修改
               </button>
+              {kind === 'tags' && item.resource_count > 0 && (
+                <button
+                  type="button"
+                  className="journal-button"
+                  aria-label={`清空标签关联 ${item.name}`}
+                  onClick={() => {
+                    setNotice('')
+                    setEditor({ mode: 'detach', item })
+                  }}
+                >
+                  清空关联
+                </button>
+              )}
+              {kind === 'tags' && (
+                <button
+                  type="button"
+                  className="journal-button"
+                  aria-label={`合并标签 ${item.name}`}
+                  onClick={() => {
+                    setNotice('')
+                    setEditor({ mode: 'merge', item })
+                  }}
+                >
+                  合并到…
+                </button>
+              )}
               <button
                 type="button"
                 className="journal-button danger"

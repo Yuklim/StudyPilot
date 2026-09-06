@@ -73,6 +73,7 @@ const messages = {
   DUPLICATE_TAG: '已有同名标签，请换一个名称。',
   TOPIC_NOT_FOUND: '这个主题已不存在，请重新选择。',
   TAG_NOT_FOUND: '这个标签已不存在，请重新选择。',
+  TAXONOMY_USAGE_CHANGED: '使用这个分类的资料份数已经变化，本次操作未执行。请重新读取后再决定。',
   RESOURCE_NOT_FOUND: '这份资料已不存在，请重新打开资料库。',
   NOTE_NOT_FOUND: '这条心得已不存在，请重新读取心得列表。',
   VERSION_CONFLICT: '内容已被修改，本次操作未执行。请载入最新版本后重新确认。',
@@ -267,6 +268,7 @@ async function failure(response: Response): Promise<ApiError> {
     'STATE_CONFLICT',
     'INVALID_STATE_TRANSITION',
     'TAXONOMY_IN_USE',
+    'TAXONOMY_USAGE_CHANGED',
     'VALIDATION_ERROR',
     'FILE_NOT_FOUND',
     'FILE_TOO_LARGE',
@@ -296,7 +298,7 @@ async function failure(response: Response): Promise<ApiError> {
   const key =
     code === 'VERSION_CONFLICT'
       ? 'current_version'
-      : code === 'TAXONOMY_IN_USE'
+      : code === 'TAXONOMY_IN_USE' || code === 'TAXONOMY_USAGE_CHANGED'
         ? 'resource_count'
         : undefined
   const value = key && object(error?.details) ? error.details[key] : undefined

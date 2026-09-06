@@ -112,6 +112,44 @@ export async function saveClassification(
   if (previous && data.id !== previous.id) return invalid()
   return data
 }
+// Bulk association writes. Both carry the count the user was looking at so a
+// changed set aborts the write instead of silently acting on a stale number.
+export async function detachAllTagResources(item: Classification): Promise<Classification> {
+  if (!isResourceId(item.id)) throw new ApiError('INVALID_REQUEST')
+  const cleared = classification(
+    object(
+      await api.request(`/api/v1/tags/${item.id}/detach-all`, {
+        method: 'POST',
+        body: { expected_resource_count: item.resource_count },
+      }),
+    ).data,
+    'tags',
+  )
+  if (cleared.id !== item.id) return invalid()
+  return cleared
+}
+
+export async function mergeTag(item: Classification, target: Choice): Promise<Classification> {
+  if (!isResourceId(item.id) || !isResourceId(target.id) || target.id === item.id)
+    throw new ApiError('INVALID_REQUEST')
+  const merged = classification(
+    object(
+      await api.request(`/api/v1/tags/${item.id}/merge`, {
+        method: 'POST',
+        body: {
+          target_tag_id: target.id,
+          expected_version: item.version,
+          expected_resource_count: item.resource_count,
+        },
+      }),
+    ).data,
+    'tags',
+  )
+  // The response is the target's projection, never the source that just disappeared.
+  if (merged.id !== target.id) return invalid()
+  return merged
+}
+
 export async function deleteClassification(kind: Kind, item: Classification): Promise<void> {
   const result = await api.request(target(kind, item.id), {
     method: 'DELETE',
@@ -141,5 +179,7 @@ export function classificationError(error: unknown): string {
   if (!(error instanceof ApiError)) return '暂时无法完成操作，请稍后重试。'
   if (error.code === 'TAXONOMY_IN_USE' && error.details.resource_count !== undefined)
     return `仍有 ${error.details.resource_count} 份资料使用这个分类，不能删除；资料不会被连带删除。`
+  if (error.code === 'TAXONOMY_USAGE_CHANGED' && error.details.resource_count !== undefined)
+    return `现在有 ${error.details.resource_count} 份资料使用这个分类，与你看到的份数不一致；本次操作未执行。`
   return error.message
 }
