@@ -134,11 +134,64 @@ checks = []
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：`dcd0301`（含需求、实现与测试证据；代码实现 SHA `f801ad1`，`f801ad1..dcd0301` 仅为本记录的证据写回，不含代码改动。`check_task.py --candidate f801ad1` CHECKS PASS，base=`b6ab87e`、files=14、profiles=frontend、product_fingerprint=`cd5e125a92a8fd44ee0f1a6b3115b852176b48bd6cceca400f96d28304d2c3c7`、risk=L2 stages=(worker, review)）。base..candidate 的完整 diff 已导出到 scratchpad 的 `TASK-033-full-diff.patch`，供无 Bash 的只读 Reviewer 直接 Read。
-- Review：**待执行**。本次会话仍以 `/Users/yuklimching` 为启动目录，项目级 `.claude/agents/reviewer.md` 未注册，无法在此派出运行器层面真只读的 Reviewer（沿用 TASK-032 的处理：不用带 Bash 的 Agent 冒充）。接手会话应在 StudyPilot 目录下开启，对 `b6ab87e..dcd0301` 做首次完整 Review。重点建议：`ResourceLibrary` 的 URL ↔ 筛选映射是否与改动前的查询完全等价（尤其默认值不写 URL、page 重置、topic_unassigned 分支）、渲染期 setState 的同步是否会产生额外渲染或状态错位、名称解析缓存是否可能重复请求或泄漏、`TagCreateField` 在三个宿主表单里是否真的不会误提交外层 form。
+- 候选 SHA（第二轮，最终）：待第二轮 Review 后填。第一轮候选：`dcd0301`（含需求、实现与测试证据；代码实现 SHA `f801ad1`，`f801ad1..dcd0301` 仅为本记录的证据写回，不含代码改动。`check_task.py --candidate f801ad1` CHECKS PASS，base=`b6ab87e`、files=14、profiles=frontend、product_fingerprint=`cd5e125a92a8fd44ee0f1a6b3115b852176b48bd6cceca400f96d28304d2c3c7`、risk=L2 stages=(worker, review)）。base..candidate 的完整 diff 已导出到 scratchpad 的 `TASK-033-full-diff.patch`，供无 Bash 的只读 Reviewer 直接 Read。
+- Review 第一轮（L2 独立只读，`b6ab87e..dcd0301`）：**PASS（含 F1～F4 四项非阻断）**。
+
+  派发方式：本实现会话以 `/Users/yuklimching` 为启动目录，项目级 `.claude/agents/reviewer.md` 未注册（已实测：把该文件复制到用户级 `~/.claude/agents/` 后当场重试仍为 `Agent type 'reviewer' not found`，说明注册表在会话启动时一次性构建，中途放文件不生效）。因此改由同机另一个在 StudyPilot 目录下启动的会话 `studypilot-05` 代为派发。**执行审查的仍是 `.claude/agents/reviewer.md` 定义的只读实例（`tools: Read, Grep, Glob`，运行器层无 Bash、无写工具），全新实例、无上下文继承、独立于实现者。** 未用带 Bash 的 `Explore`/`general-purpose` 冒充。
+
+  外部核实（派发会话以 Bash 提供，补上 Reviewer 自身无法自证的一环）：
+  > 主 Agent（派发会话）已用 `diff` 核实：交给 Reviewer 的 `TASK-033-full-diff.patch` 与 `git diff b6ab87e..dcd0301` 逐字节一致（1008 行、14 文件），patch 忠实于仓库。此项补上了 TASK-032 的 Reviewer 曾列为覆盖缺口的一点（Reviewer 无 Bash，无法自证导出 patch 忠实于仓库）。
+
+  报告原文：
+  > ## 只读证明
+  > 本 Agent 仅被授予 `Read`/`Grep`/`Glob`，无 `Write`/`Edit`/`NotebookEdit`、无 `Bash`。本次未写任何文件、未提交、未推送。
+  >
+  > ## 范围
+  > - base `b6ab87e` → 候选 `dcd0301`（代码 SHA `f801ad1`）。审查依据：coordinator 导出的 `TASK-033-full-diff.patch`（1008 行 / 14 文件，其与 `git diff b6ab87e..dcd0301` 逐字节一致由主 Agent 以 Bash 核实，我无 Bash 不能自证，如实记为外部事实），并对工作树代码/测试文件定点交叉验证。`dca4671` 的 4 行 EVIDENCE 区改动不在候选内，未审。
+  > - 范围合规：14 个文件全部在 `allowed_paths` 内，无后端、无 `docs/contracts/**`、无迁移。**无越界**。
+  > - 既有断言：四个测试文件的 hunk 全为纯新增，**无删除或弱化的断言**。
+  >
+  > ## 逐项核查结论（重点四条）
+  > **1. URL ↔ 筛选等价性 — 通过。** 发给后端的 `key` 构造顺序与旧代码逐字对应（`page,page_size,sort` 固定 → `q,source_type,learning_status,topic_unassigned|topic_id,tag_id*`）。空地址下 `readApplied` 产出 `sort=-created_at,page=1`、其余空，查询串与改动前首渲染完全一致（完成条件 9 成立）。`writeApplied` 不写默认值；`search()` 恒置 `page:1`；分页 `apply({...applied, page})` 保留全部维度。`page` 非法值（`''`/`abc`/`2.5`/负数）均回落 1。`topic_unassigned==='true'` 分支与 `ClassificationPicker.tsx:72-75` 的字面量 `'unassigned'` 一致。`tag_id` 用 `getAll`/`append`，顺序与重复原样保留。
+  > **2. 渲染期同步 draft — 通过。** `shown !== address` 时同步 `setShown`/`setDraft`，条件收敛、不早返回（hooks 顺序稳定），不会死循环；地址只由用户自身导航改变，不存在「输入中被外部地址吞掉」。
+  > **3. 名称解析 — 通过。** `names[id] === undefined` 才发请求，失败写 `''`，同一坏 id 不重复请求；`alive` 闭包 + `useOperation` 的 `alive` ref 双重防卸载后 setState；读不到名称的 id **仍进入查询串**（`ResourcePages.test.tsx` 断言 `getAll('tag_id')` 含 missing id），符合「不静默丢弃筛选条件」。
+  > **4. TagCreateField 与三个宿主 — 通过。** 已确认 `ResourceForm.tsx:111-289` 的 `<form>` 包住 `:273` 的 Picker、`ResourceEditor` 的 `EditForm` 同样在 form 内；`TagCreateField` 为 `div` + `type="button"` + `Enter` 上 `preventDefault()`，不会误提交外层资料表单。失败/重名走 `useOperation` → `classificationError` → 原样呈现服务端 message，输入内容保留。
+  >
+  > ## Findings
+  > **F1（非阻断，可记录后继续）— `重置` 在无已应用筛选时不清空未提交的草稿。** `ResourceLibrary.tsx:196-207`。触发：地址已是 `/resources`（无任何筛选参数），用户在搜索框输入文字、或在 Picker 里勾了几个标签（均未点「应用」），然后点「重置」。此时 `params.toString()` 前后都是 `''`，`shown === address`，渲染期同步不触发，`draft` 不被重置。改动前 `重置` 无条件 `setDraft(initialFilters)`，所以这是相对基线的行为回退。影响：按钮看起来没反应，未应用的勾选继续留在表单里（下一次点「应用」会带上）。屏幕上仍如实显示这些 chip，不产生「看不见的筛选」，用户手动清即可。本机单用户场景下影响轻微、可恢复。新增测试从 `?q=...&page=3` 出发做重置，恰好绕开了这个子分支。最小修复（一行，低风险）：在该 onClick 里补 `setDraft(draftOf(readApplied(new URLSearchParams())))`。
+  > **F2（非阻断，可选建议）— 页内选到的「名称」可能把占位文案写进 `names` 缓存。** 若名称解析尚未返回就打开 Picker 并勾选/移除，`label()` 给出的 `'正在读取名称…'` 会被当作权威名称写入 `names[id]`，此后 effect 认为该 id 已解析、不再请求，chip 会一直显示该占位文案直到离开页面。触发窗口很窄，且**只影响显示，不影响筛选**（`search()` 只取 `.id`）。建议：写回 `names` 时过滤掉占位文案。
+  > **F3（非阻断，观察）— 分页/再应用会清掉「读不到名称」的告警但条件仍在。** `apply()` 无条件 `setLookupFailed(false)`；坏 id 已在 `names` 中，effect 不会重跑，于是翻页后红字提示消失而该 id 仍在筛选。chip 上仍显示「（已不存在）」，信号未完全丢失，影响轻微。
+  > **F4（非阻断，记录）— URL 可注入未校验的 `sort`/`source_type`/`learning_status`/超长 `q`。** `readApplied` 对这四项不做白名单校验。手改地址时后端返回校验错误，页面走既有 `ResourceError` 而不是白屏。完成条件 10 只约束 `tag_id`/`topic_id`，未承诺此项；本机单用户下不构成安全或数据风险。
+  >
+  > ## 覆盖与缺口
+  > - 新增覆盖自洽：vitest `+8`（ResourcePages `+4`、ClassificationPages `+3`、ResourceEditor `+1`）与记录的 339→347 一致；e2e `+1` 与 37→38 一致。我**没有**运行任何检查，所有机械证据按 **NOT_RUN** 处理，只做数量与 diff 的自洽核对。
+  > - 缺口一：完成条件 4（已选 20 个时新建入口禁用）无任何测试。缺口二：完成条件 6 的「资料详情 chip 为链接」无 RTL/e2e 断言。缺口三：F1 那条子分支无测试。三处均为一行实现、可从 diff 直接读出，按实际风险不作为阻断。
+  >
+  > ## 记录一致性
+  > 「实现与测试」段与代码相符，无夸大，逐条核对属实。一处小账务不一致：候选内 TOML 为 `status = "IN_REVIEW"`，而《任务索引》该行写 `IN_PROGRESS`，建议写回证据时一并对齐。
+  >
+  > ## 剩余风险
+  > 低。F1 是可见且可自行绕过的小回退；F2/F3 只影响 chip 上的文字，不影响发给后端的筛选条件；F4 只在手改地址时出现且有受控错误页。核心路径（空地址等价、应用筛选重置分页、刷新/后退/分享、chip 跳转、就地新建不丢草稿）均有代码与测试双向支撑。
+  >
+  > ## 结论
+  > **PASS**（针对候选 `dcd0301`；含 F1～F4 四项非阻断问题，其中 F1 建议顺手用一行修掉；PASS 不等于零问题）。合并仍须由用户本人执行。
+
+- 第一轮 findings 的处置（修订 SHA `5f79e21`，`dcd0301..5f79e21` 共 5 文件 +74 −8，全部在 `allowed_paths` 内）：
+  - **F1 已修**。`ResourceLibrary.tsx` 的「重置」onClick 补 `setDraft(draftOf(readApplied(new URLSearchParams())))`，并留注释说明「地址本就为空时渲染期同步不会触发，必须在此显式清」。这是相对基线的真回退，按 Reviewer 建议修掉而不是记录接受。
+  - **F2 已修**。把两处占位文案提为常量 `PENDING_NAME` / `MISSING_NAME`，写回 `names` 缓存时过滤掉它们，避免占位被当作权威名称缓存导致 chip 永久停在「正在读取名称…」。
+  - **F3 记录接受，不修**。修法要么让 `apply()` 保留告警状态（翻页后仍红字，但那时告警已与当前动作无关），要么在每次 apply 后重跑解析（对已知坏 id 徒增请求）。chip 上仍显示「（已不存在）」，信号未丢失。责任角色 coordinator；若将来筛选区改为不展示 chip，需重评。
+  - **F4 记录接受，不修**。四个维度的白名单校验属于对手改地址的防御，后端已有校验且前端有受控错误页；本机单用户、非安全/数据风险。责任角色 coordinator；若将来资料库对外暴露或引入分享链接的自动化生成，需重评。
+  - **三处覆盖缺口全部补测**：新增 3 条 vitest —— 空地址下重置清草稿（缺口三 / F1 回归测试，已实测：临时移除 F1 修复后该用例转红，恢复后转绿，确认它真的能抓到这个回退）、资料详情 chip 为链接并指向 `/resources?tag_id=<id>`（缺口二）、已选 20 个时新建入口禁用且给出原因（缺口一）。
+  - **索引账务已对齐**：`任务索引.md` 的 TASK-033 行由 `IN_PROGRESS` 改为 `IN_REVIEW`，与记录 TOML 一致。
+- 修订后的检查（真实运行）：`check_task.py --candidate 5f79e21` → **CHECKS PASS**，base=`b6ab87e`、files=14、profiles=frontend、product_fingerprint=`1b6427d9ec88a40de39dd0f5a59539ee33da9a1bac31ef0916db92545b6dcf02`。`npm run format:check && lint && typecheck && test && build` 全绿，vitest **350 passed**（第一轮候选 347，净增 3 条新测试）；`npm run test:e2e` → **38 passed**（不变）；后端未改动。
+- Review 第二轮（增量 `dcd0301..新候选`）：**待执行**。
 - Acceptance：L2 → N/A（风险路由不要求独立验收）。
-- 最终状态/风险/用户操作：status=**IN_REVIEW**。实现与自动检查已完成且全绿，L2 执行链剩独立 Review 一步。分支 `agent/coordinator/TASK-033-tag-usability` 目前仅在本地，未推送、未开 PR。
-- 非阻断遗留项：见「实现与测试」的已知限制段（名称解析的短暂占位、其他页面浏览状态未进 URL、仍无 OR 筛选、管理页无使用量），均为本任务明示的非目标或可接受取舍。
+- 最终状态/风险/用户操作：status=**IN_REVIEW**（第一轮 PASS，F1/F2 已修并补齐三处覆盖缺口，等待同一 Reviewer 对 `dcd0301..新候选` 做增量复审）。分支 `agent/coordinator/TASK-033-tag-usability` 目前仅在本地，未推送、未开 PR。
+- 非阻断遗留项：
+  - **F3** —— 翻页或再次应用筛选会清掉「读不到名称」的红字告警，而该坏 id 仍在筛选中；chip 上仍显示「（已不存在）」，信号未完全丢失。暂不修的成本取舍见上（两种修法各有代价）。责任角色 coordinator；筛选区若改为不展示 chip 则需重评。
+  - **F4** —— `sort`/`source_type`/`learning_status`/超长 `q` 手改地址时不做前端白名单校验，由后端校验 + 既有错误页兜底。责任角色 coordinator；资料库若对外暴露或引入自动生成的分享链接则需重评。
+  - 名称解析需一次额外读取，chip 会短暂显示「正在读取名称…」；筛选结果本身不等这次读取。
+  - 分类管理页与「我的心得」页的浏览状态仍未进 URL；仍无 OR 筛选（契约 `:146` 未动）；管理页仍无标签使用量 —— 均为本任务明示的非目标。
 - 日期与决定日志：2026-09-05 用户在 PR #37 合并后授权本任务；同日在提出的三个 chip 跳转方案中选定「全部筛选条件进 URL」并要求合为一个任务，主 Agent 已当面说明该选择使范围明显大于最初描述的「chip 可点，改动很小」，用户确认按完整范围执行。同日主 Agent 在基线 `b6ab87e` 亲自复核 6 项现状事实后登记为 L2，并入 TASK-032 的 MERGED 状态收尾。
 
 此区禁止放入或变更任务授权、风险等级、允许路径、检查要求、实现或测试记录。
