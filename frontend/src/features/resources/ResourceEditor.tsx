@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 
 import { ApiError } from '../../api/client'
 import { ClassificationBrowser } from '../taxonomy/ClassificationBrowser'
+import { TagCreateField } from '../taxonomy/TagCreateField'
 import type { Choice } from '../taxonomy/api'
 import {
   failureText,
@@ -96,6 +97,7 @@ function EditForm({
   const [chooseTopic, setChooseTopic] = useState(false)
   const [tags, setTags] = useState<Choice[]>(() => initial.tags.map((tag) => ({ ...tag })))
   const [chooseTags, setChooseTags] = useState(false)
+  const [tagRevision, setTagRevision] = useState(0)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
   const [recovery, setRecovery] = useState(false)
@@ -301,8 +303,17 @@ function EditForm({
           {chooseTags && (
             <section aria-label="编辑标签">
               <p className="resource-hint">最多 20 个；保存时按这里的结果整组替换。</p>
+              <TagCreateField
+                disabled={tags.length >= 20}
+                hint={tags.length >= 20 ? '已选满 20 个标签，先移除一个再新建。' : undefined}
+                created={(tag) => {
+                  setTags([...tags, tag])
+                  setTagRevision(tagRevision + 1)
+                }}
+              />
               <ClassificationBrowser
                 kind="tags"
+                revision={tagRevision}
                 render={(item) => (
                   <label className="classification-choice">
                     <input

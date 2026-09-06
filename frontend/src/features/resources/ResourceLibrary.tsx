@@ -1,5 +1,5 @@
-import { useCallback, useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 
 import { BookSketch } from '../../shell/Icon'
 import { displayTime, listResources, sourceLabels, statusLabels } from './api'
@@ -7,38 +7,155 @@ import { resourceTitle } from './resourceTitle'
 import { ResourceError, ResourceProgress } from './ResourceState'
 import { useResourceQuery } from './useResourceQuery'
 import { ClassificationPicker, type Selection } from '../taxonomy/ClassificationPicker'
+import { getClassification, type Kind } from '../taxonomy/api'
 
-const initialFilters = {
-  q: '',
-  source: '',
-  status: '',
-  sort: '-created_at',
-  classification: { topic: null, tags: [] } as Selection,
+const DEFAULT_SORT = '-created_at'
+const UNASSIGNED = 'unassigned'
+// Chip text shown while an id from the address bar has no name yet, or cannot get one.
+// They are placeholders, never real names, so they must not be cached as if they were.
+const PENDING_NAME = '正在读取名称…'
+const MISSING_NAME = '（已不存在）'
+
+interface Applied {
+  q: string
+  source: string
+  status: string
+  sort: string
+  topicId: string
+  tagIds: string[]
+  page: number
 }
+
+// The address bar is the single source of truth for applied filters, so refreshing,
+// sharing and Back all reproduce a result set. `view` stays local: it is a display
+// preference, and putting it in a shared link would impose one reader's choice on another.
+function readApplied(params: URLSearchParams): Applied {
+  const page = Number(params.get('page'))
+  return {
+    q: params.get('q') ?? '',
+    source: params.get('source_type') ?? '',
+    status: params.get('learning_status') ?? '',
+    sort: params.get('sort') || DEFAULT_SORT,
+    topicId:
+      params.get('topic_unassigned') === 'true' ? UNASSIGNED : (params.get('topic_id') ?? ''),
+    tagIds: params.getAll('tag_id'),
+    page: Number.isInteger(page) && page >= 1 ? page : 1,
+  }
+}
+
+function writeApplied(applied: Applied): URLSearchParams {
+  const next = new URLSearchParams()
+  if (applied.q) next.set('q', applied.q)
+  if (applied.source) next.set('source_type', applied.source)
+  if (applied.status) next.set('learning_status', applied.status)
+  if (applied.sort !== DEFAULT_SORT) next.set('sort', applied.sort)
+  if (applied.topicId === UNASSIGNED) next.set('topic_unassigned', 'true')
+  else if (applied.topicId) next.set('topic_id', applied.topicId)
+  applied.tagIds.forEach((id) => next.append('tag_id', id))
+  if (applied.page > 1) next.set('page', String(applied.page))
+  return next
+}
+
+function draftOf(applied: Applied) {
+  return {
+    q: applied.q,
+    source: applied.source,
+    status: applied.status,
+    sort: applied.sort,
+    classification: selectionOf(applied),
+  }
+}
+
+function selectionOf(applied: Applied): Selection {
+  return {
+    topic: applied.topicId ? { id: applied.topicId, name: '' } : null,
+    tags: applied.tagIds.map((id) => ({ id, name: '' })),
+  }
+}
+
 export function ResourceLibrary() {
-  const [draft, setDraft] = useState(initialFilters)
-  const [filters, setFilters] = useState(initialFilters)
-  const [page, setPage] = useState(1)
+  const [params, setParams] = useSearchParams()
+  const address = params.toString()
+  const applied = useMemo(() => readApplied(new URLSearchParams(address)), [address])
+  // Ids come from the address bar without names; resolve them so the chips stay readable.
+  const [names, setNames] = useState<Record<string, string>>({})
+  const [lookupFailed, setLookupFailed] = useState(false)
+  const [draft, setDraft] = useState(() => draftOf(applied))
+  const [shown, setShown] = useState(address)
   const [view, setView] = useState<'cards' | 'list'>('list')
   const [validation, setValidation] = useState('')
-  const query = new URLSearchParams({ page: String(page), page_size: '20', sort: filters.sort })
-  if (filters.q) query.set('q', filters.q)
-  if (filters.source) query.set('source_type', filters.source)
-  if (filters.status) query.set('learning_status', filters.status)
-  if (filters.classification.topic?.id === 'unassigned') query.set('topic_unassigned', 'true')
-  else if (filters.classification.topic) query.set('topic_id', filters.classification.topic.id)
-  filters.classification.tags.forEach((tag) => query.append('tag_id', tag.id))
+
+  if (shown !== address) {
+    // A new address (Back, a tag chip, a pasted link) replaces the unapplied form.
+    setShown(address)
+    setDraft(draftOf(applied))
+  }
+
+  useEffect(() => {
+    const wanted: [Kind, string][] = [
+      ...(applied.topicId && applied.topicId !== UNASSIGNED
+        ? ([['topics', applied.topicId]] as [Kind, string][])
+        : []),
+      ...applied.tagIds.map((id) => ['tags', id] as [Kind, string]),
+    ]
+    const missing = wanted.filter(([, id]) => names[id] === undefined)
+    if (!missing.length) return
+    let alive = true
+    void Promise.all(
+      missing.map(async ([kind, id]) => {
+        // An empty name marks "asked and could not resolve", so we never ask twice.
+        try {
+          return [id, (await getClassification(kind, id)).name || ' '] as const
+        } catch {
+          return [id, ''] as const
+        }
+      }),
+    ).then((rows) => {
+      if (!alive) return
+      setNames((current) => ({ ...current, ...Object.fromEntries(rows) }))
+      if (rows.some(([, name]) => !name)) setLookupFailed(true)
+    })
+    return () => {
+      alive = false
+    }
+  }, [applied, names])
+
+  function label(choice: { id: string; name: string }): string {
+    if (choice.id === UNASSIGNED) return '未分配主题'
+    if (choice.name) return choice.name
+    const known = names[choice.id]
+    if (known === undefined) return PENDING_NAME
+    return known.trim() || MISSING_NAME
+  }
+  const named = (selection: Selection): Selection => ({
+    topic: selection.topic ? { ...selection.topic, name: label(selection.topic) } : null,
+    tags: selection.tags.map((tag) => ({ ...tag, name: label(tag) })),
+  })
+
+  const query = new URLSearchParams({
+    page: String(applied.page),
+    page_size: '20',
+    sort: applied.sort,
+  })
+  if (applied.q) query.set('q', applied.q)
+  if (applied.source) query.set('source_type', applied.source)
+  if (applied.status) query.set('learning_status', applied.status)
+  if (applied.topicId === UNASSIGNED) query.set('topic_unassigned', 'true')
+  else if (applied.topicId) query.set('topic_id', applied.topicId)
+  applied.tagIds.forEach((id) => query.append('tag_id', id))
   const key = query.toString()
   const load = useCallback(() => listResources(key), [key])
   const { result, retry } = useResourceQuery(key, load)
   const filtered = Boolean(
-    filters.q ||
-    filters.source ||
-    filters.status ||
-    filters.classification.topic ||
-    filters.classification.tags.length,
+    applied.q || applied.source || applied.status || applied.topicId || applied.tagIds.length,
   )
+  const page = applied.page
   const data = result?.data
+
+  function apply(next: Applied) {
+    setLookupFailed(false)
+    setParams(writeApplied(next))
+  }
 
   function search(event: FormEvent) {
     event.preventDefault()
@@ -47,8 +164,15 @@ export function ResourceLibrary() {
       return
     }
     setValidation('')
-    setPage(1)
-    setFilters({ ...draft, q: draft.q.trim() })
+    apply({
+      q: draft.q.trim(),
+      source: draft.source,
+      status: draft.status,
+      sort: draft.sort,
+      topicId: draft.classification.topic?.id ?? '',
+      tagIds: draft.classification.tags.map((tag) => tag.id),
+      page: 1,
+    })
   }
 
   return (
@@ -77,10 +201,12 @@ export function ResourceLibrary() {
               className="journal-button"
               type="button"
               onClick={() => {
-                setDraft(initialFilters)
-                setFilters(initialFilters)
-                setPage(1)
                 setValidation('')
+                setLookupFailed(false)
+                // An already empty address means the render-time sync will not fire,
+                // so the unapplied draft has to be cleared here as it was before.
+                setDraft(draftOf(readApplied(new URLSearchParams())))
+                setParams(new URLSearchParams())
               }}
             >
               重置
@@ -150,8 +276,25 @@ export function ResourceLibrary() {
             </select>
           </label>
           <ClassificationPicker
-            value={draft.classification}
-            onChange={(classification) => setDraft({ ...draft, classification })}
+            value={named(draft.classification)}
+            onChange={(classification) => {
+              // Names picked in page are authoritative; remember them for the address bar.
+              setNames((current) => ({
+                ...current,
+                ...Object.fromEntries(
+                  [...(classification.topic ? [classification.topic] : []), ...classification.tags]
+                    .filter(
+                      (choice) =>
+                        choice.name &&
+                        choice.id !== UNASSIGNED &&
+                        choice.name !== PENDING_NAME &&
+                        choice.name !== MISSING_NAME,
+                    )
+                    .map((choice) => [choice.id, choice.name]),
+                ),
+              }))
+              setDraft({ ...draft, classification })
+            }}
             filter
           />
           {validation && (
@@ -161,10 +304,15 @@ export function ResourceLibrary() {
           )}
         </div>
       </form>
+      {lookupFailed && (
+        <p role="alert" className="resource-filter-note">
+          网址里有已不存在或读不到的主题/标签，它对应的筛选条件仍在生效但显示不出名称；其余筛选条件不受影响。
+        </p>
+      )}
       <div className="resource-toolbar">
         <p aria-live="polite">
           <span>{data ? `共 ${data.page.total_items} 份资料` : '我的收藏'}</span>
-          <small>筛选条件离开本页后重置</small>
+          <small>筛选条件会写进网址，刷新、收藏和后退都保留</small>
         </p>
       </div>
       {!result && (
@@ -207,7 +355,9 @@ export function ResourceLibrary() {
                   {item.tags.length > 0 && (
                     <ul className="resource-tags" aria-label="标签">
                       {item.tags.map((tag) => (
-                        <li key={tag.id}>{tag.name}</li>
+                        <li key={tag.id}>
+                          <Link to={`/resources?tag_id=${tag.id}`}>{tag.name}</Link>
+                        </li>
                       ))}
                     </ul>
                   )}
@@ -241,7 +391,9 @@ export function ResourceLibrary() {
                 {item.tags.length > 0 && (
                   <ul className="resource-tags" aria-label="标签">
                     {item.tags.map((tag) => (
-                      <li key={tag.id}>{tag.name}</li>
+                      <li key={tag.id}>
+                        <Link to={`/resources?tag_id=${tag.id}`}>{tag.name}</Link>
+                      </li>
                     ))}
                   </ul>
                 )}
@@ -257,7 +409,7 @@ export function ResourceLibrary() {
           <button
             className="journal-button"
             disabled={page <= 1}
-            onClick={() => setPage((value) => Math.max(1, value - 1))}
+            onClick={() => apply({ ...applied, page: Math.max(1, page - 1) })}
           >
             上一页
           </button>
@@ -269,7 +421,7 @@ export function ResourceLibrary() {
           <button
             className="journal-button"
             disabled={!data.page.has_more}
-            onClick={() => setPage((value) => value + 1)}
+            onClick={() => apply({ ...applied, page: page + 1 })}
           >
             下一页
           </button>

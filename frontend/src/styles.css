@@ -2044,3 +2044,34 @@ fieldset:disabled {
     font-size: 21px;
   }
 }
+
+/* TASK-033: tag chips are links now, and tags can be created where they are used. */
+.resource-tags li a,
+a.source-chip {
+  color: inherit;
+  text-decoration: none;
+}
+.resource-tags li a:hover,
+.resource-tags li a:focus-visible,
+a.source-chip:hover,
+a.source-chip:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.tag-create {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+  margin: 12px 0 14px;
+}
+.tag-create .resource-field {
+  flex: 1 1 200px;
+  min-width: 0;
+  margin: 0;
+}
+.tag-create .resource-hint,
+.tag-create .resource-error {
+  flex: 1 1 100%;
+  margin: 0;
+}

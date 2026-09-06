@@ -84,9 +84,9 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
               <dd>
                 {item.tags.length
                   ? item.tags.map((tag) => (
-                      <span className="source-chip" key={tag.id}>
+                      <Link className="source-chip" key={tag.id} to={`/resources?tag_id=${tag.id}`}>
                         {tag.name}
-                      </span>
+                      </Link>
                     ))
                   : '暂无标签'}
               </dd>

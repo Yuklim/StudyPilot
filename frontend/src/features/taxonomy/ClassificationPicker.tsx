@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import { ClassificationBrowser } from './ClassificationBrowser'
+import { TagCreateField } from './TagCreateField'
 import type { Choice } from './api'
 
 export interface Selection {
@@ -17,6 +18,9 @@ export function ClassificationPicker({
   filter?: boolean
 }) {
   const [open, setOpen] = useState(false)
+  // Bumped after a create so the shared browser reloads and shows the new tag.
+  const [revision, setRevision] = useState(0)
+  const full = value.tags.length >= 20
   return (
     <div className="classification-picker">
       <button
@@ -90,8 +94,20 @@ export function ClassificationPicker({
           </section>
           <section aria-label="选择资料标签">
             <h3>标签</h3>
+            {/* Filtering is a read: offering to create a tag there would only mis-create. */}
+            {!filter && (
+              <TagCreateField
+                disabled={full}
+                hint={full ? '已选满 20 个标签，先移除一个再新建。' : undefined}
+                created={(tag) => {
+                  onChange({ ...value, tags: [...value.tags, tag] })
+                  setRevision(revision + 1)
+                }}
+              />
+            )}
             <ClassificationBrowser
               kind="tags"
+              revision={revision}
               render={(item) => (
                 <label className="classification-choice">
                   <input

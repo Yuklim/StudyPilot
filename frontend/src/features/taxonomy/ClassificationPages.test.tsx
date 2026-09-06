@@ -308,3 +308,94 @@ describe('classification selection and resource integration', () => {
     expect(request.mock.calls.filter(([, options]) => options?.method === 'DELETE')).toHaveLength(1)
   })
 })
+
+describe('creating a tag where it is used', () => {
+  const fresh = category({ id: resourceId, name: '临时想到的标签' })
+  it('creates and selects a tag without leaving the resource form or losing the draft', async () => {
+    const request = vi.spyOn(api, 'request').mockImplementation(async (path, options) => {
+      if (options?.method === 'POST' && path === '/api/v1/tags') return { data: fresh }
+      return reads(path)
+    })
+    renderWithRouter(<App />, '/resources/new')
+    change('标题', '正在填的资料')
+    click('选择主题与标签（选填）')
+    await screen.findByRole('checkbox', { name: '合成标签' })
+    change('新建标签', '  临时想到的标签  ')
+    click('新建并选用')
+    await waitFor(() => expect(screen.getByText(/已选 1 个标签/)).toBeInTheDocument())
+    expect(request.mock.calls.find(([, o]) => o?.method === 'POST')).toEqual([
+      '/api/v1/tags',
+      { method: 'POST', body: { name: '临时想到的标签' } },
+    ])
+    // The point of the feature: the half-written资料 draft is still there.
+    expect(screen.getByLabelText('标题')).toHaveValue('正在填的资料')
+    expect(
+      screen.getByRole('button', { name: '移除已选标签 临时想到的标签 ×' }),
+    ).toBeInTheDocument()
+    expect(screen.getByLabelText('新建标签')).toHaveValue('')
+  })
+  it('reports a duplicate name from the server and validates length before asking', async () => {
+    const request = vi.spyOn(api, 'request').mockImplementation(async (path, options) => {
+      if (options?.method === 'POST') throw new ApiError('DUPLICATE_TAG', 409)
+      return reads(path)
+    })
+    renderWithRouter(<Picker />)
+    click('选择主题与标签（选填）')
+    await screen.findByRole('checkbox', { name: '合成标签' })
+    change('新建标签', '字'.repeat(51))
+    click('新建并选用')
+    expect(screen.getByRole('alert')).toHaveTextContent('1～50 字')
+    expect(request.mock.calls.filter(([, o]) => o?.method === 'POST')).toHaveLength(0)
+    change('新建标签', '合成标签')
+    click('新建并选用')
+    expect(await screen.findByRole('alert')).toHaveTextContent('已有同名标签')
+    // A rejected create keeps what was typed so it can be edited rather than retyped.
+    expect(screen.getByLabelText('新建标签')).toHaveValue('合成标签')
+    expect(screen.getByText(/已选 0 个标签/)).toBeInTheDocument()
+  })
+  it('disables creating another tag once twenty are selected', async () => {
+    vi.spyOn(api, 'request').mockImplementation(async (path) => reads(path))
+    const selected = Array.from({ length: 20 }, (_, i) => ({ id: String(i), name: `已选 ${i}` }))
+    renderWithRouter(<Picker initial={{ topic: null, tags: selected }} />)
+    click('选择主题与标签（选填）')
+    expect(await screen.findByLabelText('新建标签')).toBeDisabled()
+    expect(screen.getByText('已选满 20 个标签，先移除一个再新建。')).toBeInTheDocument()
+    click('移除已选标签 已选 0 ×')
+    expect(screen.getByLabelText('新建标签')).toBeEnabled()
+  })
+  it('creates and attaches in one step from the resource detail tag manager', async () => {
+    const request = vi.spyOn(api, 'request').mockImplementation(async (path, options) => {
+      if (options?.method === 'POST' && path === '/api/v1/tags') return { data: fresh }
+      if (options?.method === 'PUT')
+        return {
+          data: {
+            resource_id: resourceId,
+            tag_id: fresh.id,
+            association_version: 1,
+            created_at: '2026-09-03T00:00:00Z',
+          },
+        }
+      if (path.startsWith(`/api/v1/resources/${resourceId}/notes?`))
+        return {
+          data: [],
+          page: { number: 1, size: 20, total_items: 0, total_pages: 0, has_more: false },
+        }
+      if (path === `/api/v1/resources/${resourceId}`)
+        return { data: sample({ tags: [{ id: fresh.id, name: fresh.name }] }) }
+      return reads(path)
+    })
+    renderWithRouter(<App />, `/resources/${resourceId}`)
+    await screen.findByText('合成阅读资料')
+    click('管理这份资料的标签')
+    await screen.findByRole('button', { name: '添加标签 合成标签' })
+    change('新建标签', '临时想到的标签')
+    click('新建并选用')
+    await waitFor(() =>
+      expect(
+        request.mock.calls.some(
+          ([path, o]) => o?.method === 'PUT' && path.endsWith(`/tags/${fresh.id}`),
+        ),
+      ).toBe(true),
+    )
+  })
+})
