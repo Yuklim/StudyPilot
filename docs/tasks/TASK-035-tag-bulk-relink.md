@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-035"
-status = "IN_ACCEPTANCE"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "新增两个公共 API 操作（`detachAllTagResources`、`mergeTag`）与一个新错误码，属「公共 API 契约」这一 L3 判入条件。二者都是**批量写**：一次请求可删除或移动任意多条 `resource_tags` 关联，且 `mergeTag` 还会删除源标签本身 —— 这是本仓库此前没有过的写入形态（既有关联端点一次只动一条），事务边界、并发守卫与失败回滚都必须新设计。合并还涉及一处关键数据语义：目标标签已有的关联不得产生重复主键，源标签的 FK 是 `ON DELETE RESTRICT`，因此删除源标签前必须确保其关联已全部移走或删除，顺序错了会在数据库层报错而非给出可理解的响应。无数据库 schema 变更、无迁移。"
 risk_flags = ["public-api", "critical-data", "business", "tests"]
@@ -261,8 +261,70 @@ checks = []
   - **Reviewer 的自我更正已附记**：第一轮报告原文中把 `backend/src/studypilot/api/notes.py:112` 的函数写作 `relink_body`，实名为 **`move_body`**。原文照贴不改，更正记在此处 —— 这比回头修改已写回的原文干净，也保住了「原文写回」的意义。其援引的代码内容与 428 结论不受影响。
   - **第 5 点的覆盖真实性已如实登记**（见上方对第一轮处置的更正，以及下方遗留项）。这是本轮最有价值的发现：我加的那句断言看起来覆盖了新改动，实际锁不住它。按 Reviewer 定性记为「已读码核实、无机械覆盖」，**不写成「已加测试覆盖」**。
   - **F4 记录接受，不修**：契约 4.7 新句把 §2.4 的节号误引为「第 6 节」。修它需改 `docs/contracts/API与数据契约基线.md`（EVIDENCE 标记区**外**），会形成新候选、触发 check_task 重跑与第三轮复核。Reviewer 独立权衡后明确「不据此驳回」，理由是零行为影响的指针笔误不值得开第三轮（§7 反对无界 Reviewer 循环），且该句已内联引用规则原文、规则本身不失真、实现也已真正对齐 428。责任角色 coordinator；**重评触发条件：下一次因任何其他原因触碰该契约文件时顺手更正**。
-- Acceptance：**待执行**，由独立于实现者与两轮 Reviewer 的第三个只读实例执行，核对 15 条完成条件与跨模块证据。
-- 最终状态/风险/用户操作：status=**IN_ACCEPTANCE**（两轮独立只读 Review：第一轮 CHANGES_REQUIRED → 处置 → 第二轮 PASS；等待独立 Acceptance）。分支 `agent/coordinator/TASK-035-tag-bulk-relink` 仅在本地，未推送、未开 PR。
+- Acceptance（L3 独立只读，第三个实例，独立于实现者与两轮 Reviewer）：**PASS，No new findings**。
+
+  身份与权限证据：`.claude/agents/reviewer.md` 定义的**第五个**全新只读实例（`tools: Read, Grep, Glob`，运行器层无 Bash、无写工具），无上下文继承。职责按 §4 限于核对 15 条完成条件与跨模块/运行证据。
+
+  报告原文（逐字，仅还原传输转义的 `<`/`>`）：
+
+  > ## 只读证明与审查对象
+  >
+  > 本实例工具白名单仅 `Read`/`Grep`/`Glob`，无 `Write`/`Edit`/`NotebookEdit`、无 `Bash`；本次未写任何文件、未提交、未推送、未重跑任何测试。
+  > 核对对象：base `113f765` → **冻结候选 `7654ff7`（代码 `5de653b`）**，依据你提供的 `113f765..7654ff7` 完整 patch，并在工作树（现 HEAD `eb09a2c` = 候选 + 两次仅动 EVIDENCE/status 的写回）上定点交叉验证源码与契约。全部机械证据（check_task PASS / 505 / 360 / 40）**未复跑，按 NOT_RUN**；F1 的变异验证为**实现者自述、无第三方复核**，我的结论不依赖它。
+  >
+  > ## 15 条完成条件逐条核对
+  >
+  > | # | 证据位置 | 结论 |
+  > |---|---|---|
+  > | 1 | `backend/tests/test_taxonomy.py::test_detach_all_clears_links_but_keeps_the_tag_and_the_resources`：断言响应 `{**clear, "resource_count": 0}`、清空后 `GET tag` 仍 200 且计数 0（标签保留）、另一标签计数仍 2、每份资料 `tag_names == ["保留标签"]` 且 `version == 1` | 满足（"心得/学习记录不变"未直接断言——夹具未创建心得/记录，且实现只写 `resource_tags`，已由 Reviewer 逐行核实；见观察 O1） |
+  > | 2 | 同一用例末尾对已清空标签重复调用 `{"expected_resource_count": 0}` → 200 且计数 0 | 满足 |
+  > | 3 | `test_merge_moves_links_deduplicates_and_removes_the_source_tag`：三份资料（只有源/两者都有/只有目标）合并后 `tag_names` 均为 `["目标标签"]`；响应 `resource_count == 3`；`GET 源标签` → 404；DB 层 `count(Tag)==1`、`count(ResourceTag where tag_id=target)==3` | 满足（去重被 DB 行数与计数双重锁住） |
+  > | 4 | 同上 + `test_bulk_operations_...` 中 `GET resource == before`（整份投影相等，含 version/标题/主题/其他标签） | 满足 |
+  > | 5 | `test_bulk_operations_refuse_stale_counts_...`：detach-all 与 merge 各一次 409 `TAXONOMY_USAGE_CHANGED`；`check_error`（`test_taxonomy.py:43`）断言 `details == {"resource_count": 1}` **完全相等**，故"只含 resource_count"被真正锁住；用例末尾三条断言标签投影（含计数）与资料投影未变。实现侧 `taxonomy_store.py:check_usage` 严格早于任何 `add/delete` | 满足 |
+  > | 6 | 同一用例 `expected_version: 7` → 409 `VERSION_CONFLICT` + `{"current_version": 1}`；末尾无写入断言覆盖 | 满足 |
+  > | 7 | 同一用例：`target_tag_id` 不存在 → 404、源不存在 → 404、`target_tag_id == 源` → 422；`merge()` 中自合并判定位于任何写入前 | 满足 |
+  > | 8 | 清空与合并两个用例各自断言相关资料 `version == 1`；实现两条路径均不触碰 `LearningResource` | 满足 |
+  > | 9 | `test_bulk_commit_failure_rolls_everything_back`（`parametrize` 覆盖 detach-all 与 merge）：注入 `before_commit` 异常 → 500 `UNKNOWN_ERROR`，随后源标签、目标标签、资料三份投影与操作前逐字段相等 | 满足 |
+  > | 10 | openapi 两个新 path + `TagDetachAll`/`TagMerge` schema + `TaxonomyUsageConflict` 组件；两处 `x-error-codes` 均含 `TAXONOMY_USAGE_CHANGED`；openapi 全部 hunk **纯新增、0 删除**，故 `Tag`/`Topic`/`TagUsage`/`TopicUsage`/`ResourceProjection` 定义与引用按构造未动（我另独立确认 `TagEnvelope`→`TagUsage`，与实际响应含 `resource_count` 一致）。check_task 的结构检查 **NOT_RUN** | 满足（结构检查部分依赖 check_task，NOT_RUN） |
+  > | 11 | 中文契约 6 处：交付状态段（`:52`）、操作清单新增一行、错误码表新增 `TAXONOMY_USAGE_CHANGED`、操作表两行（含 400/428）、逐操作错误码两行、4.7 三段（并存说明 + 不推进资料版本 + 份数守卫 vs 令牌的取舍 + 去重/删除顺序/自合并 422） | 满足（含一处已登记的章节号笔误 F4，见下） |
+  > | 12 | `ClassificationManager.tsx` `TagBulkPanel`：两种模式都渲染份数与二次确认按钮；`ClassificationPages.test.tsx` 4 条用例覆盖清空成功（断言 POST body `expected_resource_count: 3`）、合并成功（断言 `target_tag_id/expected_version/expected_resource_count`）、**409 路径**（断言带真实份数的提示 + `POST` 仅 1 次 + 无成功提示）、主题不出现这两个入口；`useOperation.ts` 无重试逻辑 | 满足（按条件原文；覆盖边界见下节关键复核） |
+  > | 13 | EVIDENCE：pytest 505（基线 500）、vitest 360（356）、e2e 40（39）、ruff/mypy/format/lint/typecheck/build 全绿；e2e 新增 `merging one tag into another...` 走真实后端（含"两个都有"资料验证去重） | 记录一致，**我 NOT_RUN**，不声称已验证 |
+  > | 14 | EVIDENCE：`check_task --candidate 5de653b` CHECKS PASS，files=17、profiles=backend,contracts,frontend、fingerprint `723d881d…` | 记录一致，**我 NOT_RUN** |
+  > | 15 | 第一轮报告（CHANGES_REQUIRED，F1/F2/F3 + 5 条非阻断 + 缺口 + 剩余风险）原文在记录 `:153-195`；第二轮报告（PASS，含继承声明、六点核查、F4/F5、自我更正、缺口）原文在 `:213-257`；本报告为第三个独立只读实例 | **写回完成后满足**：两轮报告均已在 EVIDENCE 且结构完整；我无法逐字节比对原文（无原始副本），只能确认结论与全部 findings 未被删改软化。本条最终闭合取决于本报告的原文写回 |
+  >
+  > ## 关键判断的独立复核（份数断言"只绑定了一半"）
+  >
+  > **① 分析成立，我独立复核确认。** `ClassificationPages.test.tsx` 的 409 用例 mock 的是 `api.request` 并直接 `throw new ApiError('TAXONOMY_USAGE_CHANGED', 409, undefined, { resource_count: 5 })`，完全绕过 `client.ts` 的 `failure()`。因此把 `client.ts:301` 的 `|| code === 'TAXONOMY_USAGE_CHANGED'` 回退（甚至把 `:271` 的 `serverCodes` 新条目一并回退），该断言仍会通过。我另独立确认了唯一能锁住它的位置：`frontend/src/api/client.test.ts:337-342` 的 `it.each` 参数表（用 mock fetch 真正跑 `failure()`），表中只有 `VERSION_CONFLICT`/`TAXONOMY_IN_USE`/`DUPLICATE_TOPIC` 行，**无新错误码**；该文件不在 `allowed_paths`，任务内确实无法补。
+  >
+  > **② 完成条件 12 按原文措辞仍算满足。** 条件 12 要求的是"`TAXONOMY_USAGE_CHANGED` 有可理解提示且不自动重试；**有前端测试覆盖成功路径与该 409 路径**"。该 409 路径在组件层确有测试覆盖（提示文案 + 单次请求 + 不进成功分支），条件并未要求覆盖 `client.ts` 的传输层 details 解码。此外该缺口的失效模式是"提示退化为不带份数的通用文案"（`classificationError` 回落 `error.message`，仍是可理解提示），不会造成数据风险或错误重试。故判为**满足 + 一条真实的覆盖缺口**，而非条件未达成——实现者已按此定性在 `:271` 如实登记（含责任角色与重评触发条件），登记措辞准确，"已加测试覆盖"的夸大已被更正。
+  >
+  > ## 跨模块 / 治理核对
+  >
+  > - **范围**：diff 恰 17 文件，逐一比对 `allowed_paths`，全部命中；`api.test.ts`、`styles.css` 获授权未用并已声明。禁止范围的 `ClassificationPicker`/`ClassificationBrowser`/`ResourceTagEditor`/`TagCreateField`/`ResourceLibrary`、契约 `:146`（OR 筛选）、幂等关联端点语义、`deleteTag` 的 `TAXONOMY_IN_USE`、DB schema/迁移 —— **均未出现在 diff 中**。
+  > - **旧任务记录**：TASK-032 一处（EVIDENCE 非阻断遗留项加注）；TASK-033 一处（EVIDENCE 非阻断遗留项加注 + 订正说明）；TASK-034 两处（TOML `status: ACCEPTED→MERGED` + EVIDENCE 最终状态行改写为 MERGED 并**保留原 ACCEPTED 记述全文**）；索引新增一行 + 改一行状态。我独立核对该三文件在 diff 中的**全部 hunk**：无一触及目标、风险、`allowed_paths`、checks、实现与测试记录。三处订正均在 TASK-035 登记时已明确授权。
+  > - **证据写回纪律**：TASK-035 为新增文件，"实现与测试"段记第一轮 `e4b4401`/`442379cc…`，最终 `5de653b`/`723d881d…` 仅在 EVIDENCE —— §6「避免提交引用自身」的必然结果，非违规。第二轮的修订本就应形成新候选（`63b64c6`→`7654ff7`），合规。候选后的两次写回（`b11ca14`、`eb09a2c`）我按你的 git 核实采信：标记区外仅 `status: IN_REVIEW→IN_ACCEPTANCE`，属 §6 明确允许的 status 更新；**未把 F4 的契约修改夹带进证据写回**（这曾是我最担心的一点——改 `docs/contracts/*.md` 会形成新候选并使两轮 Review 结论失效，实现者正确地避开了）。
+  > - **F4 的"记录接受不修"是否站得住：独立判断成立。** 按《风险分级与检查规则》"可记录后继续"三要件：影响轻微（读者顺号跳转落空，但规则原文已内联，语义不失真，实现已真正对齐 428）、可恢复/可绕过、不触碰安全/数据/契约实质；修复本身零成本但**修复动作的成本**是重新冻结候选 + check_task 重跑 + 第三轮复核，与收益不成比例（§7 明确反对无界 Reviewer 循环）。登记要素齐全：影响、为何暂不修、责任角色 `coordinator`、重评触发条件（下次触碰该契约文件时顺手更正）。我另独立核实了事实本身：`docs/contracts/API与数据契约基线.md` 中 §2.4「乐观并发」在 `:164`，§6「学习状态、进度与复习一致性」在 `:385`，故 `:292` 的"第 6 节"确为笔误。
+  > - **F5 已修**：`- Acceptance` 条目现仅 `:264` 一条。
+  >
+  > ## Findings
+  >
+  > **No new findings.** 未发现两轮 Reviewer 遗漏的真实缺陷；未发现完成条件不满足项。两条观察（均非缺陷、不要求返工）：
+  >
+  > - **O1**：条件 1/4 中"心得、学习记录不变"没有直接断言——测试夹具未给相关资料创建心得或学习记录，故该断言即便写上也是平凡真。实际保证来自"两条路径只写 `resource_tags` 与 `tags`"（Reviewer 已逐行核实，我复核 `taxonomy_store.py` 的 `detach_all`/`merge` 确认无其他表写入），且 `test_bulk_operations_...` 与回滚用例对资料做了整份投影相等断言。属可接受的覆盖深度，无需补。
+  > - **O2**：候选的"实现与测试"段（标记区外）只描述第一轮实现，最终候选的 428 前置等改动只在 EVIDENCE 区描述。这是 §6 写回边界的必然取舍（与 TASK-032/034 做法一致），但读者若只看标记区外会得到不完整的实现图景。建议后续任务模板层面考虑，本任务不必改。
+  >
+  > ## 剩余风险与是否阻断
+  >
+  > 剩余风险**低**，不阻断交付。已登记的非阻断遗留项（份数守卫非集合守卫、不推进资料版本与 B4 同类、一对一合并、主题无对应操作、`client.ts:failure()` 新错误码解析无机械覆盖、`merge` 应用层异常分类分支无专用用例、契约章节号笔误 F4）全部**如实登记且真实不阻断**：无数据损坏、越权或泄密路径；最坏失效模式是提示文案退化或并发窗口内一次可由用户重做的多余迁移。需向用户明确的三点：① 全部机械证据由实现者单方运行，两轮 Reviewer 与我均 NOT_RUN；② F1 的变异验证为实现者自述，无第三方复核，Reviewer 与我的结论均不依赖它；③ 分支仅在本地，合并须由用户本人执行。
+  >
+  > ## 结论
+  >
+  > **PASS**（针对最终冻结候选 `7654ff7`，代码 `5de653b`；15 条完成条件逐条核对，条件 15 在本报告原文写回后闭合）。含上述已明确处置的非阻断项与两条观察 —— PASS 不等于零问题。若此后**再动任何产品文件**（含顺手修 F4 的契约章节号），必须重新冻结候选、由同一 Reviewer 增量复核，并请我对增量做一次一句话再确认；仅 EVIDENCE 标记区与 `status` 的写回不改变本结论。
+
+- **本 PASS 的失效边界（Acceptance 明确划定，写入此处以便后来者判断其是否仍然有效）**：此后**再动任何产品文件**——包括顺手修 F4 的契约章节号——都必须重新冻结候选、由同一 Reviewer 做增量复核，并请 Acceptance 对增量做一次再确认；**仅 EVIDENCE 标记区与 `status` 的写回不改变本结论**。本次写回（Acceptance 报告 + status → ACCEPTED）正属后者。
+- **须向用户明确的三点（Acceptance 要求原样保留）**：① 全部机械证据（check_task、pytest 505、vitest 360、e2e 40、ruff/mypy）由**实现者单方运行**，两轮 Reviewer 与 Acceptance 三个只读实例均按 **NOT_RUN** 处理，无人复跑；② F1 的变异验证（移除 428 前置 → 用例转红 → 恢复转绿）为**实现者自述、无第三方复核**，Reviewer 与 Acceptance 的相应结论均建立在独立读码之上、不依赖该自述；③ 分支仅在本地，合并须由用户本人执行。
+- Acceptance 的两条观察（非缺陷，不要求返工，如实登记）：**O1** 条件 1/4 中「心得、学习记录不变」无直接断言 —— 夹具未创建心得/学习记录，写上也是平凡真；实际保证来自「两条路径只写 `resource_tags` 与 `tags`」（Reviewer 逐行核实、Acceptance 复核确认），且守卫用例与回滚用例对资料做了整份投影相等断言。**O2** 「实现与测试」段（标记区外）只描述第一轮实现，最终候选的 428 前置等改动只在 EVIDENCE 区 —— 这是 §6 写回边界的必然取舍（与 TASK-032/034 一致），只看标记区外会得到不完整的实现图景；Acceptance 建议在后续任务的模板层面考虑，本任务不改。
+- 最终状态/风险/用户操作：status=**ACCEPTED**。L3 执行链完整：Worker → 自动检查（CHECKS PASS）→ 独立只读 Reviewer 两轮（CHANGES_REQUIRED → 处置 → PASS）→ 独立只读 Acceptance（PASS，No new findings）。**三个审查实例互不相同**（本任务用到的是第四、第四、第五个 reviewer 实例；其中第二轮为同一实例做增量复核），均只有 Read/Grep/Glob、无 Bash 与写工具、无上下文继承。最终候选 `7654ff7`（代码 `5de653b`）待**用户本人执行合并**（Agent 不合并、不推 main）。合并后按既有做法把记录/索引标 MERGED，可并入下个已授权任务的控制面提交。
 - 非阻断遗留项（第一轮 Reviewer 列出的 5 条**已全部实修**，故不作为遗留；下列为实现本身的取舍）：
   - `expected_resource_count` 守的是份数而非集合：一增一减总数不变、或校验与随后查询之间新增的关联，都不会被拦下。已在契约 4.7 完整登记（含后一种情形）。责任角色 coordinator；若批量操作扩展到会删除资料或需要集合级保证，须重评。
   - 两个操作不推进资料版本，与 TASK-032 登记的跨路径并发覆盖属同类；B4 是本任务明示非目标。
