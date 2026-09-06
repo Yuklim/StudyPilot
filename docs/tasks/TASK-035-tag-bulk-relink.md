@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-035"
-status = "IN_REVIEW"
+status = "IN_ACCEPTANCE"
 risk = "L3"
 risk_reason = "新增两个公共 API 操作（`detachAllTagResources`、`mergeTag`）与一个新错误码，属「公共 API 契约」这一 L3 判入条件。二者都是**批量写**：一次请求可删除或移动任意多条 `resource_tags` 关联，且 `mergeTag` 还会删除源标签本身 —— 这是本仓库此前没有过的写入形态（既有关联端点一次只动一条），事务边界、并发守卫与失败回滚都必须新设计。合并还涉及一处关键数据语义：目标标签已有的关联不得产生重复主键，源标签的 FK 是 `ON DELETE RESTRICT`，因此删除源标签前必须确保其关联已全部移走或删除，顺序错了会在数据库层报错而非给出可理解的响应。无数据库 schema 变更、无迁移。"
 risk_flags = ["public-api", "critical-data", "business", "tests"]
@@ -141,7 +141,8 @@ checks = []
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA（最终）：待第二轮复核后填。第一轮候选：`63b64c6`（代码 `e4b4401`）。
+- 候选 SHA（最终）：**`7654ff7`**（代码 SHA **`5de653b`**，base `113f765`）。第一轮候选：`63b64c6`（代码 `e4b4401`）。
+  **注意 SHA 与指纹的两处并存值**：「实现与测试」段（EVIDENCE 标记区**外**，按 §6 不得在证据写回阶段修改）仍记第一轮的实现 SHA `e4b4401` 与 fingerprint `442379cc…`；最终代码为 `5de653b`、fingerprint **`723d881d3cdf95c2854e8438d542777ed97ae48428ab13587b00e5ef68ea61ac`**，只出现在本区。核对完成条件 14 时以本区的值为准。这是 §6 的必然结果，不是记录不一致。
 - Review 第一轮（L3 独立只读，`113f765..63b64c6`）：**CHANGES_REQUIRED**（F1、F2 必修，F3 建议同轮修，另 5 条非阻断记录项）。
 
   派发与身份：本实现会话未注册项目级 reviewer（注册表在会话启动时构建，已实测用户级放文件无效），故由同机在项目目录下启动的会话 `studypilot-05` 代为派发。执行审查的是 `.claude/agents/reviewer.md` 定义的**第四个**全新只读实例（`tools: Read, Grep, Glob`，无 Bash、无写工具），与审 TASK-033/034 的均不是同一个，无上下文继承，独立于实现者。
@@ -198,19 +199,78 @@ checks = []
   - **F2 已修**：两个新操作的 `responses` 各补 `400 BadRequest`，中文契约操作表两行状态码补 400。
   - **F3 已修**：把 `fill('合并 · ' + suffix)` 改为 `fill(source)`，并留注释说明「匹配不到任何标签的搜索词会让这条断言恒真」。这条的价值不在严重度而在类型 —— 一条**恒真**断言比没有断言更糟，因为它看起来有覆盖却永远不会告诉你任何事。
   - **非阻断第 1 条已修**：`api/taxonomy.py` 的 docstring 由「twelve」改为「fourteen」。
-  - **非阻断第 2 条已修，并顺带加强了测试**：`client.ts` 现在也为 `TAXONOMY_USAGE_CHANGED` 解析 `details.resource_count`，`classificationError` 据此给出带真实份数的提示；对应 vitest 断言由泛化的「份数已经变化」改为核对「现在有 5 份资料使用这个分类，与你看到的份数不一致」—— 这同时消除了 Reviewer 指出的「构造的 details 在真实链路上不流通、读者易误解」。
+  - **非阻断第 2 条已修**：`client.ts` 现在也为 `TAXONOMY_USAGE_CHANGED` 解析 `details.resource_count`，`classificationError` 据此给出带真实份数的提示；对应 vitest 断言由泛化的「份数已经变化」改为核对「现在有 5 份资料使用这个分类，与你看到的份数不一致」。
+    **（第二轮更正：此处原写「并顺带加强了测试」，是夸大，已按第二轮 Reviewer 的定性改写。）** 该 vitest 断言直接构造 `ApiError(..., {resource_count: 5})`，**绕过了 `client.ts:failure()`**，因此它锁住的只是 `classificationError` 的文案生成，锁不住 details 解析本身 —— 把 `client.ts` 的那半行回退，断言照样通过。能真正锁住解析的 `frontend/src/api/client.test.ts` **不在本任务 `allowed_paths`**，在本任务内无法补。故这半行的正确定性是「**已读码核实、无机械覆盖**」，已作为遗留项登记。
   - **非阻断第 3 条已修**：`detachAllTagResources` 补上与 `mergeTag` 同款的响应 id 校验。
   - **非阻断第 4、5 条已修**：契约中「清空后可重新逐个加回」改为明确区分「可手工重建」与「可撤销」（原关联集合不留痕，但重建所需信息在清空前于界面可见，且不涉及内容丢失）；守卫窗口的登记补上「校验与随后查询之间新增的关联同样不被拦截、会被一并迁移或清除」。
 - 修订后的检查（真实运行）：`check_task.py --candidate 5de653b` → **CHECKS PASS**，base=`113f765`、files=17、profiles=backend,contracts,frontend、product_fingerprint=`723d881d3cdf95c2854e8438d542777ed97ae48428ab13587b00e5ef68ea61ac`。backend `pytest` **505 passed**（新增的 428 断言并入既有用例，用例数不变）、ruff/mypy 全绿；frontend format/lint/typecheck/build 全绿、vitest **360 passed**；`npm run test:e2e` **40 passed**。跑检查前后未跟踪文件哈希一致（`f56cad6b…`），本轮仍无并发写入。
-- Review 第二轮（增量 `63b64c6..新候选`）：**待执行**。
+- Review 第二轮（L3 独立只读，增量 `63b64c6..7654ff7`，同一 Reviewer）：**PASS**，含 F4、F5 两条非阻断项与 Reviewer 的一条自我更正。
+
+  外部核实（派发会话以 git/grep 提供）：增量 patch 与 `git diff 63b64c6..7654ff7` 逐字节一致（9 文件）；F4 属实 —— §2.4「乐观并发」在 `:164`，而第 6 节（`:385`）是「学习状态、进度与复习一致性」，全节无 `expected_version`。
+
+  报告原文（逐字，仅还原传输转义的 `<`/`>`）：
+
+  > ## 只读证明
+  > 本实例仍只有 `Read`/`Grep`/`Glob`，无 `Write`/`Edit`/`Bash`；本轮未写任何文件、未提交、未推送。审查对象：previous_candidate `63b64c6` → new_candidate `7654ff7`（代码 `5de653b`）。依据你已逐字节核实的增量 patch，并在工作树（HEAD=新候选）上对每条结论定点复核源码。机械证据（check_task `5de653b` PASS / fingerprint `723d881d…` / 505·360·40）**未复跑，按 NOT_RUN**。F1 的变异验证（移除前置→转红→恢复→转绿）是**实现者自述、你我均无法复核**；我下面的结论不依赖它，全部建立在独立读码之上。
+  >
+  > ## 继承声明
+  > **显式继承第一轮对 `113f765..63b64c6` 的全部覆盖**：`merge()` 的 flush 顺序/去重/FK RESTRICT 正确性、`check_usage` 早于任何写入、事务回滚、不推进资料版本的取舍、`json_body()` 抽取对既有四模型零行为改变、两个新端点由 `local_access.py` 按方法+前缀统一鉴权、17 文件范围合规、既有断言无删除或弱化——这些结论所依赖的代码在本轮**未被触及**，继续对 `7654ff7` 有效。本轮只复核 9 个变更文件及受影响上下文。
+  >
+  > ## 逐点核查（你列的六条）
+  >
+  > **1. 428 条件写法：稳妥，且比硬编码更好。**`backend/src/studypilot/api/taxonomy.py:104-109`。`TagMerge.model_fields` 含继承字段 → 命中；`TagDetachAll.model_fields` 只有 `expected_resource_count` → **不命中，不误伤**。将来任何声明了 `expected_version` 的命令模型自动获得与 PATCH/`deleteTag` 一致的 428，方向与 §2.4 通则一致，属正确的默认。写法与 `command_body:120`、`notes.py:112 move_body` 一致（同样带 `isinstance(value, dict)` 守卫，非 dict 体仍落 422）。链路顺序 404(identity) → 415 → 400 → **428** → 422 与 `update_item` 相同。**反向锁**：既有断言「detach-all 传 `{}` → 422」仍在，若条件误写成检查请求体而非模型，该断言会转红——即误伤情形已被既有断言覆盖。
+  >
+  > **2. 契约与实现真正对齐。**openapi `mergeTag` 补 `"428": PreconditionRequired`（该组件既有、`updateTag` 已引用，无悬空 `$ref`）+ `x-error-codes` 补 `VERSION_REQUIRED`；`detachAllTagResources` **正确地未加** 428/`VERSION_REQUIRED`；两者各补 `400 BadRequest`。中文契约 `:516` 补 400、`:517` 补 400+428、逐操作错误码 `mergeTag` 补 `VERSION_REQUIRED` 而 `detachAllTagResources` 不加。三方（openapi 响应 ↔ x-error-codes ↔ 中文两表 ↔ 实现）一致。**唯一瑕疵见 F4。**
+  >
+  > **3. `client.ts` 无波及。**`frontend/src/api/client.ts:298-303` 三元链逐分支比对：`VERSION_CONFLICT→current_version` 未变；`TAXONOMY_IN_USE→resource_count` 未变（`||` 仅并入新码）；其余码仍 `undefined`；后续 `value >= (key === 'current_version' ? 1 : 0)` 与 details 白名单未动。`api.ts:180-184` 的新分支排在 `TAXONOMY_IN_USE` 分支之后、`error.message` 兜底之前，不改任何既有码的文案。
+  >
+  > **4. e2e 现在可失效。**`fill(source)`（`合并源 · <suffix>`）精确命中源标签名；若源未被删除，列表会出现该 heading，`toHaveCount(0)` 转红。断言已真实绑定，注释也点明了空断言的成因。
+  >
+  > **5. 零新增用例下的覆盖真实性 —— 一半真、一半无覆盖，如实分列：**
+  > - **F1 的 428 断言：真实绑定、可失效。**`backend/tests/test_taxonomy.py`（并入既有守卫用例）请求体只缺 `expected_version`，其余字段全部合法（目标存在、`expected_resource_count: 1` 与真实份数相符），旧代码必返 422，断言必红；且它位于该用例结尾「标签/关联/资料一律未变」的断言之前，428 路径顺带被"无写入"覆盖。
+  > - **非阻断第 2 条的份数断言：只绑定了一半。**`ClassificationPages.test.tsx:505` 直接 `new ApiError('TAXONOMY_USAGE_CHANGED', 409, undefined, {resource_count: 5})`，**绕过** `client.ts:failure()`。因此若把 `client.ts:301` 的 `|| code === 'TAXONOMY_USAGE_CHANGED'` 回退，该断言**仍会通过**——它锁住的是 `classificationError` 的文案生成，不是 details 解析。真正能锁住解析的是 `frontend/src/api/client.test.ts:339-340` 那张既有参数表，而**该文件不在 `allowed_paths`**，实现者在本任务内无法加行。故这半行属「已读码核实、无机械覆盖」，我不当作已验证的覆盖。
+  >
+  > **6. 范围与写回合规。**9 个文件全在 `allowed_paths`。`TASK-035` 的改动**全部落在 `<!-- EVIDENCE:BEGIN/END -->` 之内**（hunk 起于 BEGIN 行、止于"此区禁止…"前），未触碰目标/风险/路径/检查/实现与测试段——符合 §6「审查后仅可更新 status 与 EVIDENCE 标记区」，也正因如此才是合规写法。第一轮报告为**逐字原文**写回：我逐段比对，除 `<`/`>` 转义还原外无删改、无软化，`CHANGES_REQUIRED` 结论与全部 findings、缺口均完整保留。
+  >
+  > ## 本轮 Findings
+  >
+  > **F4（非阻断，建议顺手修）契约 4.7 新句的章节号引错**
+  > `docs/contracts/API与数据契约基线.md:292`：「与本文**第 6 节**「JSON 修改请求携带 `expected_version`，缺失返回 428」的通则一致」。该通则实际在 **§2.4 乐观并发（`:166`）**；`:385` 的第 6 节是「学习状态、进度与复习一致性」，全节无 `expected_version`（全文命中行 52/64/128/166/288/292/630/631，无一落在 385-414）。同段前文引「第 9 节」（删除确认协议）是对的，所以这是孤立笔误——很可能是把我第一轮的**行号**引用 `:166` 读成了节号。
+  > 影响：读者顺号跳转会落空；但该句已把规则原文**内联引用**，规则本身不失真，实现也已真正对齐 428，无语义或行为损失。修法：「第 6 节」→「第 2.4 节」。
+  > **为何不据此驳回**：改它会形成新候选并触发 check_task 重跑与又一轮复核，为一个零行为影响的指针笔误开第三轮不划算（§7 反对无界 Reviewer 循环）。处置权在主 Agent：**若因任何其他原因需要再次冻结，请顺手并入**；否则记为遗留、下次触碰契约时更正。
+  >
+  > **F5（记录级）EVIDENCE 区残留重复条目**
+  > 新增的「- Acceptance：**待执行**，在第二轮之后…」与旧行「- Acceptance：L3 独立只读 Integration/Acceptance，待填。」并存。独立 Acceptance 实例会读这一段，建议在写回第二轮结论时删掉残留行。
+  >
+  > **自我更正（我的错，需记一行）**：第一轮我把 `backend/src/studypilot/api/notes.py:112` 的函数写成 `relink_body`，实名为 **`move_body`**（我引用的代码内容与 428 结论不受影响；实现者的 docstring 与你的简报用的都是正确名字）。该错字已随原文写进 EVIDENCE，建议在写回时附一行更正。
+  >
+  > **另一条供 Acceptance 定位（非缺陷）**：任务「实现与测试」段（标记区外）仍记实现 SHA `e4b4401` 与 fingerprint `442379cc…`，最终代码为 `5de653b`、fingerprint `723d881d…`，后者只在 EVIDENCE 区。这是 §6 的必然结果，不是违规；核完成条件 14 时应以 EVIDENCE 区的 `723d881d…` 为准。
+  >
+  > ## 覆盖与缺口
+  > 覆盖：增量全部 9 文件 + 受影响上下文（`bulk_body`/`command_body`/`move_body` 三处并列比对、`TagDetachAll`/`TagMerge` 字段集、openapi 两个 path 的响应与 x-error-codes、中文契约三处表格与 §2.4/§6/§9 章节结构、`client.ts` details 三元链全分支、`api.ts` 两个校验点、两处测试断言的可失效性、任务记录写回边界）。第一轮覆盖按上文继承。
+  > 缺口：① 全部机械检查 NOT_RUN；② F1 的变异验证为实现者自述，我未复核（结论不依赖它）；③ `client.ts:failure()` 对新错误码的 details 解析**无机械覆盖**，因唯一合适的测试文件不在 `allowed_paths`；④ `merge` 应用层 `IntegrityError`/`StaleDataError` 分类分支仍无专用用例（继承自第一轮，本轮未变，已在任务记录登记为保留缺口）。
+  >
+  > ## 剩余风险
+  > 低，且低于第一轮。F1/F2/F3 与 5 条非阻断项均已实修并经我独立读码确认；无数据损坏、越权、泄密路径；本轮改动未引入任何新的写入语义。剩余为一处契约章节号笔误（F4）与一条记录残留（F5）。
+  >
+  > ## 结论
+  > **PASS**（针对最终候选 `7654ff7`，代码 `5de653b`；继承第一轮对 `113f765..63b64c6` 的完整覆盖）。含 F4、F5 两项已明确处置建议的**非阻断**项与一条我的自我更正——PASS 不等于零问题。合并仍须由用户本人执行；后续由独立于实现者与我的第三个只读实例做 Acceptance。
+
+- 第二轮 findings 的处置（均在 EVIDENCE 标记区内，**不形成新候选**）：
+  - **F5 已修**：删去并列重复的 Acceptance 条目，本区现在只有一条。
+  - **Reviewer 的自我更正已附记**：第一轮报告原文中把 `backend/src/studypilot/api/notes.py:112` 的函数写作 `relink_body`，实名为 **`move_body`**。原文照贴不改，更正记在此处 —— 这比回头修改已写回的原文干净，也保住了「原文写回」的意义。其援引的代码内容与 428 结论不受影响。
+  - **第 5 点的覆盖真实性已如实登记**（见上方对第一轮处置的更正，以及下方遗留项）。这是本轮最有价值的发现：我加的那句断言看起来覆盖了新改动，实际锁不住它。按 Reviewer 定性记为「已读码核实、无机械覆盖」，**不写成「已加测试覆盖」**。
+  - **F4 记录接受，不修**：契约 4.7 新句把 §2.4 的节号误引为「第 6 节」。修它需改 `docs/contracts/API与数据契约基线.md`（EVIDENCE 标记区**外**），会形成新候选、触发 check_task 重跑与第三轮复核。Reviewer 独立权衡后明确「不据此驳回」，理由是零行为影响的指针笔误不值得开第三轮（§7 反对无界 Reviewer 循环），且该句已内联引用规则原文、规则本身不失真、实现也已真正对齐 428。责任角色 coordinator；**重评触发条件：下一次因任何其他原因触碰该契约文件时顺手更正**。
+- Acceptance：**待执行**，由独立于实现者与两轮 Reviewer 的第三个只读实例执行，核对 15 条完成条件与跨模块证据。
 - Acceptance：**待执行**，在第二轮之后，由独立于实现者与 Reviewer 的第三个只读实例执行。
-- Acceptance：L3 独立只读 Integration/Acceptance，待填。
-- 最终状态/风险/用户操作：status=**IN_REVIEW**（第一轮 CHANGES_REQUIRED，F1/F2/F3 与 5 条非阻断项已全部处置，等待同一 Reviewer 增量复核，之后再做独立 Acceptance）。分支仅在本地，未推送、未开 PR。
+- 最终状态/风险/用户操作：status=**IN_ACCEPTANCE**（两轮独立只读 Review：第一轮 CHANGES_REQUIRED → 处置 → 第二轮 PASS；等待独立 Acceptance）。分支 `agent/coordinator/TASK-035-tag-bulk-relink` 仅在本地，未推送、未开 PR。
 - 非阻断遗留项（第一轮 Reviewer 列出的 5 条**已全部实修**，故不作为遗留；下列为实现本身的取舍）：
   - `expected_resource_count` 守的是份数而非集合：一增一减总数不变、或校验与随后查询之间新增的关联，都不会被拦下。已在契约 4.7 完整登记（含后一种情形）。责任角色 coordinator；若批量操作扩展到会删除资料或需要集合级保证，须重评。
   - 两个操作不推进资料版本，与 TASK-032 登记的跨路径并发覆盖属同类；B4 是本任务明示非目标。
   - 合并只支持一对一；多选批量合并、改名撞名时的自动合并引导均未做。
   - 主题无对应操作（一对多且契约要求逐份改 `resources`）—— 明示非目标。
+  - **`client.ts:failure()` 对 `TAXONOMY_USAGE_CHANGED` 的 details 解析无机械覆盖**：唯一能锁住它的 `frontend/src/api/client.test.ts` 不在本任务 `allowed_paths`，本任务内无法补。现状为「已读码核实（第二轮 Reviewer 独立确认解析链正确、未波及其他错误码）、无机械覆盖」。责任角色 coordinator；**重评触发条件：下个任务若 `allowed_paths` 能覆盖 `client.test.ts`，在那张既有参数表里补一行**。
+  - **契约 4.7 的章节号笔误（F4）**：「第 6 节」应为「第 2.4 节」。零行为影响，Reviewer 独立判定不值得为此开第三轮复核。责任角色 coordinator；重评触发条件：下次触碰该契约文件时顺手更正。
   - Reviewer 指出的两处覆盖缺口保留：`merge` 应用层 `IntegrityError`/`StaleDataError` 分类分支无专用用例（现有回滚用例走通用 500 路径）；合并面板的目标选择走分页浏览器、标签多时需搜索翻页。
 - 日期与决定日志：2026-09-06 用户在 PR #39 合并后要求先做完 B 再讨论阅读器方向；主 Agent 拉全遗留清单后指出 B 实际只剩四项、其中 B1/B2 同源、B4 需推翻既有契约规则，用户选定先做 B1+B2。同日主 Agent 在基线 `113f765` 亲自复核 6 项现状事实（含 `ResourceTag` 复合主键与 `ON DELETE RESTRICT` 决定的操作顺序）后登记为 L3；并入 TASK-034 的 MERGED 状态收尾，以及三处已过期遗留登记的订正。
 
