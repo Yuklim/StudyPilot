@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-033"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L2"
 risk_reason = "三个目标全部落在前端，已批准的公共契约、后端、数据模型与迁移一律不动：新建标签复用既有 `POST /api/v1/tags`（TASK-011 交付），筛选进 URL 只改变客户端如何组装同一个既有查询串，chip 可点只是把纯文本换成链接。不新增接口、不改请求/响应形状、不改 AND 筛选语义。判 L2 而非 L1 的原因：目标 3 是对 `ResourceLibrary` 筛选机制的一次真实重构（七个维度与 URL 双向同步、要处理浏览器前进后退与非法参数），资料库是核心页面，回归面覆盖搜索/筛选/排序/分页；目标 1 又在原本只读的选择器里首次引入写操作。判 L3 的条件均未命中：无契约、无迁移、无安全/认证、无关键数据模型、无跨模块写。"
 risk_flags = ["business", "internal-refactor", "small-ui", "tests"]
@@ -223,7 +223,7 @@ checks = []
 - 一处主 Agent 口径更正：我在派发第二轮时把增量说成「212 行 / 6 文件」，实测 `git diff --stat dcd0301..26b2818` 为 **5 个文件**（TASK-033 记录、任务索引、`ResourceLibrary.tsx`、`ResourcePages.test.tsx`、`ClassificationPages.test.tsx`），由派发会话指出、主 Agent 复核确认。以 5 为准。
 - 变异验证的证据等级说明：F1 回归测试的变异验证（临时移除修复→用例转红→恢复→转绿）由主 Agent 本人执行，**未经独立第三方复核**。派发会话说明未复核的理由是：复核需临时改动实现者正在使用的同一个工作树，按 AGENTS.md「共享目录同一时刻一个写入者」不宜并发写入。Reviewer 的结论不依赖该声明，它是独立读测试代码得出的同向判断。此处如实标注来源与等级，不把它当作已被独立验证的事实。
 - Acceptance：L2 → N/A（风险路由不要求独立验收）。
-- 最终状态/风险/用户操作：status=**ACCEPTED**。L2 执行链完整（Worker → 自动检查 → 独立只读 Reviewer 两轮 → PASS）；L2 不要求独立验收，Acceptance 为 N/A。最终候选 `26b2818` 待**用户本人执行合并**（Agent 不合并、不推 main）。合并后按既有做法把记录/索引标 MERGED，可并入下个已授权任务的控制面提交。
+- 最终状态/风险/用户操作：status=**MERGED**。L2 执行链完整（Worker → 自动检查 → 独立只读 Reviewer 两轮 → PASS）；L2 不要求独立验收，Acceptance 为 N/A。最终候选 `26b2818` 已由**用户本人于 2026-09-06 05:40Z 执行合并**（PR #38，merge commit `1a72eb9`）；本状态登记按既有做法并入 TASK-034 的控制面提交。
 - 非阻断遗留项：
   - **F3** —— 翻页或再次应用筛选会清掉「读不到名称」的红字告警，而该坏 id 仍在筛选中；chip 上仍显示「（已不存在）」，信号未完全丢失。暂不修的成本取舍见上（两种修法各有代价）。责任角色 coordinator；筛选区若改为不展示 chip 则需重评。
   - **F4** —— `sort`/`source_type`/`learning_status`/超长 `q` 手改地址时不做前端白名单校验，由后端校验 + 既有错误页兜底。责任角色 coordinator；资料库若对外暴露或引入自动生成的分享链接则需重评。
