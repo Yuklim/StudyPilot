@@ -239,6 +239,59 @@ class LearningProgress(Versioned, Base):
     )
 
 
+class ContentSnapshot(Identified, Created, Versioned, Base):
+    """A frozen copy of the resource's text, taken when it was saved.
+
+    Kept out of `learning_resources` on purpose: that table's source-exclusivity
+    CHECK requires a WEB resource to have no inline content, and a snapshot must be
+    able to sit beside `source_url` without relaxing it. A snapshot is also not an
+    uploaded original — it is system-generated, text-only, and never enters the
+    controlled file directory.
+    """
+
+    __tablename__ = "content_snapshots"
+    __table_args__ = (
+        CheckConstraint("format IN ('MARKDOWN')", name="format"),
+        CheckConstraint("status IN ('READY', 'FAILED')", name="status"),
+        # READY carries the text; FAILED records why there is none. The two states
+        # never overlap, mirroring OriginalFile.failure_state. The `IS NOT NULL` is
+        # load-bearing, not redundant: without it `length(NULL) > 0` makes the FAILED
+        # branch NULL, the whole CHECK NULL, and SQLite accepts NULL as satisfied.
+        CheckConstraint(
+            "(status = 'READY' AND failure_code IS NULL AND content IS NOT NULL "
+            "AND char_count IS NOT NULL AND sha256 IS NOT NULL) OR "
+            "(status = 'FAILED' AND failure_code IS NOT NULL AND length(failure_code) > 0 "
+            "AND content IS NULL "
+            "AND char_count IS NULL AND sha256 IS NULL)",
+            name="capture_state",
+        ),
+        CheckConstraint(
+            "content IS NULL OR length(content) BETWEEN 1 AND 1000000", name="content_length"
+        ),
+        CheckConstraint(
+            "char_count IS NULL OR char_count BETWEEN 1 AND 1000000", name="char_count_bounds"
+        ),
+        CheckConstraint("sha256 IS NULL OR length(sha256) = 64", name="sha256_length"),
+        CheckConstraint("length(extractor) BETWEEN 1 AND 80", name="extractor_length"),
+        positive_version(),
+        {"info": {"owner": "resources"}},
+    )
+    resource_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("learning_resources.id", ondelete="CASCADE"), unique=True
+    )
+    format: Mapped[str] = mapped_column(choices("format", "MARKDOWN"), default="MARKDOWN")
+    content: Mapped[str | None] = mapped_column(Text)
+    char_count: Mapped[int | None] = mapped_column(Integer)
+    sha256: Mapped[str | None] = mapped_column(String(64))
+    captured_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utc_now)
+    # The URL actually read, which may differ from source_url after a redirect.
+    captured_from_url: Mapped[str | None] = mapped_column(String(2048))
+    # Which producer made this text, so a later reader can judge its quality.
+    extractor: Mapped[str] = mapped_column(String(80))
+    status: Mapped[str] = mapped_column(choices("status", "READY", "FAILED"), default="READY")
+    failure_code: Mapped[str | None] = mapped_column(Text)
+
+
 class ResourceTag(Created, Base):
     __tablename__ = "resource_tags"
     __table_args__ = (

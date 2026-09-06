@@ -13,6 +13,7 @@ from studypilot.api.learning import router as learning_router
 from studypilot.api.notes import router as notes_router
 from studypilot.api.notes import standalone_router as standalone_notes_router
 from studypilot.api.resources import router as resources_router
+from studypilot.api.snapshots import router as snapshots_router
 from studypilot.api.taxonomy import router as taxonomy_router
 from studypilot.application.files import FileService
 from studypilot.infrastructure.config import get_settings
@@ -51,6 +52,7 @@ def create_app() -> FastAPI:
     application.add_middleware(LocalAccessMiddleware, session=session)
     application.state.files = files
     application.include_router(files_router)
+    application.include_router(snapshots_router)
     application.include_router(health_router)
     application.include_router(resources_router)
     application.include_router(taxonomy_router)

@@ -475,3 +475,102 @@ describe('resource library filters in the address bar', () => {
     expect(screen.queryByLabelText('新建标签')).not.toBeInTheDocument()
   })
 })
+
+describe('content snapshot', () => {
+  const detailPath = `/api/v1/resources/${resourceId}`
+  const snapshotPath = `${detailPath}/snapshot`
+  const frozen = {
+    id: tagId,
+    resource_id: resourceId,
+    format: 'MARKDOWN',
+    content: '# 冻结的标题\n\n正文。\n',
+    char_count: 12,
+    sha256: 'a'.repeat(64),
+    captured_at: '2026-09-06T00:00:00Z',
+    captured_from_url: null,
+    extractor: 'manual',
+    status: 'READY',
+    failure_code: null,
+    version: 1,
+    created_at: '2026-09-06T00:00:00Z',
+    updated_at: '2026-09-06T00:00:00Z',
+  }
+  const detail = (path: string) =>
+    path.startsWith(`${detailPath}/notes?`)
+      ? { data: [], page: { number: 1, size: 20, total_items: 0, total_pages: 0, has_more: false } }
+      : path === detailPath
+        ? { data: sample() }
+        : undefined
+
+  it('offers to paste the text when a resource has none, and saves it without a version', async () => {
+    let stored: unknown = undefined
+    const request = vi.spyOn(api, 'request').mockImplementation(async (path, options) => {
+      if (path === snapshotPath && options?.method === 'PUT') {
+        stored = options.body
+        return { data: frozen }
+      }
+      if (path === snapshotPath) {
+        if (stored === undefined) throw new ApiError('SNAPSHOT_NOT_FOUND', 404)
+        return { data: frozen }
+      }
+      return detail(path) ?? samplePage([])
+    })
+    renderWithRouter(<App />, `/resources/${resourceId}`)
+    expect(await screen.findByText(/还没有保存正文/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '粘贴正文' }))
+    fireEvent.change(screen.getByLabelText('正文（Markdown）'), {
+      target: { value: '# 冻结的标题\n\n正文。\n' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '保存正文' }))
+    // Wait for the stored metadata, not the text: the draft textarea holds the same
+    // characters, so matching on the body would pass before the write finished.
+    await screen.findByText(/共 12 字/)
+    // First write carries no expected_version: there is nothing to replace yet.
+    expect(request.mock.calls.find(([, o]) => o?.method === 'PUT')?.[1]?.body).toEqual({
+      content: '# 冻结的标题\n\n正文。\n',
+    })
+    expect(screen.getByRole('region', { name: '正文快照' })).toHaveTextContent('不随原文更新')
+  })
+  it('replaces an existing snapshot with its version and can delete it', async () => {
+    const request = vi.spyOn(api, 'request').mockImplementation(async (path, options) => {
+      if (path === snapshotPath && options?.method === 'PUT')
+        return { data: { ...frozen, content: '# 换过了\n', version: 2 } }
+      if (path === snapshotPath && options?.method === 'DELETE') return undefined
+      if (path === snapshotPath) return { data: frozen }
+      return detail(path) ?? samplePage([])
+    })
+    renderWithRouter(<App />, `/resources/${resourceId}`)
+    await screen.findByText(/共 12 字/)
+    fireEvent.click(screen.getByRole('button', { name: '替换正文' }))
+    fireEvent.change(screen.getByLabelText('正文（Markdown）'), { target: { value: '# 换过了\n' } })
+    fireEvent.click(screen.getByRole('button', { name: '替换正文' }))
+    await waitFor(() =>
+      expect(request.mock.calls.find(([, o]) => o?.method === 'PUT')?.[1]?.body).toEqual({
+        content: '# 换过了\n',
+        expected_version: 1,
+      }),
+    )
+    fireEvent.click(await screen.findByRole('button', { name: '删除正文' }))
+    await waitFor(() =>
+      expect(request.mock.calls.find(([, o]) => o?.method === 'DELETE')?.[1]).toEqual({
+        method: 'DELETE',
+        ifMatchVersion: 1,
+      }),
+    )
+  })
+  it('reports a version conflict without retrying', async () => {
+    const request = vi.spyOn(api, 'request').mockImplementation(async (path, options) => {
+      if (path === snapshotPath && options?.method === 'PUT')
+        throw new ApiError('VERSION_CONFLICT', 409, undefined, { current_version: 3 })
+      if (path === snapshotPath) return { data: frozen }
+      return detail(path) ?? samplePage([])
+    })
+    renderWithRouter(<App />, `/resources/${resourceId}`)
+    await screen.findByText(/共 12 字/)
+    fireEvent.click(screen.getByRole('button', { name: '替换正文' }))
+    fireEvent.change(screen.getByLabelText('正文（Markdown）'), { target: { value: '新的' } })
+    fireEvent.click(screen.getByRole('button', { name: '替换正文' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('没有自动重试')
+    expect(request.mock.calls.filter(([, o]) => o?.method === 'PUT')).toHaveLength(1)
+  })
+})

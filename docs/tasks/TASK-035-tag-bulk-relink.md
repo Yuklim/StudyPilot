@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-035"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "新增两个公共 API 操作（`detachAllTagResources`、`mergeTag`）与一个新错误码，属「公共 API 契约」这一 L3 判入条件。二者都是**批量写**：一次请求可删除或移动任意多条 `resource_tags` 关联，且 `mergeTag` 还会删除源标签本身 —— 这是本仓库此前没有过的写入形态（既有关联端点一次只动一条），事务边界、并发守卫与失败回滚都必须新设计。合并还涉及一处关键数据语义：目标标签已有的关联不得产生重复主键，源标签的 FK 是 `ON DELETE RESTRICT`，因此删除源标签前必须确保其关联已全部移走或删除，顺序错了会在数据库层报错而非给出可理解的响应。无数据库 schema 变更、无迁移。"
 risk_flags = ["public-api", "critical-data", "business", "tests"]
@@ -324,7 +324,7 @@ checks = []
 - **本 PASS 的失效边界（Acceptance 明确划定，写入此处以便后来者判断其是否仍然有效）**：此后**再动任何产品文件**——包括顺手修 F4 的契约章节号——都必须重新冻结候选、由同一 Reviewer 做增量复核，并请 Acceptance 对增量做一次再确认；**仅 EVIDENCE 标记区与 `status` 的写回不改变本结论**。本次写回（Acceptance 报告 + status → ACCEPTED）正属后者。
 - **须向用户明确的三点（Acceptance 要求原样保留）**：① 全部机械证据（check_task、pytest 505、vitest 360、e2e 40、ruff/mypy）由**实现者单方运行**，两轮 Reviewer 与 Acceptance 三个只读实例均按 **NOT_RUN** 处理，无人复跑；② F1 的变异验证（移除 428 前置 → 用例转红 → 恢复转绿）为**实现者自述、无第三方复核**，Reviewer 与 Acceptance 的相应结论均建立在独立读码之上、不依赖该自述；③ 分支仅在本地，合并须由用户本人执行。
 - Acceptance 的两条观察（非缺陷，不要求返工，如实登记）：**O1** 条件 1/4 中「心得、学习记录不变」无直接断言 —— 夹具未创建心得/学习记录，写上也是平凡真；实际保证来自「两条路径只写 `resource_tags` 与 `tags`」（Reviewer 逐行核实、Acceptance 复核确认），且守卫用例与回滚用例对资料做了整份投影相等断言。**O2** 「实现与测试」段（标记区外）只描述第一轮实现，最终候选的 428 前置等改动只在 EVIDENCE 区 —— 这是 §6 写回边界的必然取舍（与 TASK-032/034 一致），只看标记区外会得到不完整的实现图景；Acceptance 建议在后续任务的模板层面考虑，本任务不改。
-- 最终状态/风险/用户操作：status=**ACCEPTED**。L3 执行链完整：Worker → 自动检查（CHECKS PASS）→ 独立只读 Reviewer 两轮（CHANGES_REQUIRED → 处置 → PASS）→ 独立只读 Acceptance（PASS，No new findings）。**三个审查实例互不相同**（本任务用到的是第四、第四、第五个 reviewer 实例；其中第二轮为同一实例做增量复核），均只有 Read/Grep/Glob、无 Bash 与写工具、无上下文继承。最终候选 `7654ff7`（代码 `5de653b`）待**用户本人执行合并**（Agent 不合并、不推 main）。合并后按既有做法把记录/索引标 MERGED，可并入下个已授权任务的控制面提交。
+- 最终状态/风险/用户操作：status=**MERGED**（最终候选 `7654ff7` 已由用户本人于 2026-09-06 执行合并，PR #40，merge commit `3fbca1f`；本状态登记按既有做法并入 TASK-036 的控制面提交。Acceptance 划定的失效边界不受影响 —— 合并后未再动任何产品文件）。原 ACCEPTED 记述：L3 执行链完整：Worker → 自动检查（CHECKS PASS）→ 独立只读 Reviewer 两轮（CHANGES_REQUIRED → 处置 → PASS）→ 独立只读 Acceptance（PASS，No new findings）。**三个审查实例互不相同**（本任务用到的是第四、第四、第五个 reviewer 实例；其中第二轮为同一实例做增量复核），均只有 Read/Grep/Glob、无 Bash 与写工具、无上下文继承。最终候选 `7654ff7`（代码 `5de653b`）待**用户本人执行合并**（Agent 不合并、不推 main）。合并后按既有做法把记录/索引标 MERGED，可并入下个已授权任务的控制面提交。
 - 非阻断遗留项（第一轮 Reviewer 列出的 5 条**已全部实修**，故不作为遗留；下列为实现本身的取舍）：
   - `expected_resource_count` 守的是份数而非集合：一增一减总数不变、或校验与随后查询之间新增的关联，都不会被拦下。已在契约 4.7 完整登记（含后一种情形）。责任角色 coordinator；若批量操作扩展到会删除资料或需要集合级保证，须重评。
   - 两个操作不推进资料版本，与 TASK-032 登记的跨路径并发覆盖属同类；B4 是本任务明示非目标。
