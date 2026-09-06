@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 
 import { ClassificationBrowser } from './ClassificationBrowser'
 import {
@@ -10,6 +11,20 @@ import {
   type Kind,
 } from './api'
 import { useOperation } from './useOperation'
+
+// The library filters by id, and TASK-033 put those filters in the address bar,
+// so "see what uses this" is just a link.
+function usageHref(kind: Kind, id: string): string {
+  return `/resources?${kind === 'topics' ? 'topic_id' : 'tag_id'}=${id}`
+}
+function UsageLink({ kind, item }: { kind: Kind; item: Classification }) {
+  if (!item.resource_count) return <span className="classification-usage">暂无资料使用</span>
+  return (
+    <Link className="classification-usage usage-link" to={usageHref(kind, item.id)}>
+      {item.resource_count} 份资料在用
+    </Link>
+  )
+}
 
 type Editor = { mode: 'edit' | 'delete'; item?: Classification }
 function ClassificationEditor({
@@ -61,6 +76,15 @@ function ClassificationEditor({
               <p className="resource-hint">
                 只删除这个未使用的{label}，不能撤销。若仍被资料使用，系统会拒绝；不会连带删除资料。
               </p>
+              {item && item.resource_count > 0 && (
+                <p className="resource-hint">
+                  这个{label}正被 {item.resource_count} 份资料使用，删除会被拒绝。
+                  <Link className="usage-link" to={usageHref(kind, item.id)}>
+                    查看这 {item.resource_count} 份资料
+                  </Link>
+                  ，先解除后再回来删除。
+                </p>
+              )}
             </>
           ) : (
             <>
@@ -182,6 +206,7 @@ function ClassificationPanel({ kind }: { kind: Kind }) {
             <div>
               <h3>{item.name}</h3>
               {kind === 'topics' && <p>{item.description || '留一页空白，慢慢补充。'}</p>}
+              <UsageLink kind={kind} item={item} />
             </div>
             <div className="resource-actions">
               <button

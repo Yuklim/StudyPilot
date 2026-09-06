@@ -19,10 +19,14 @@ MODELS: dict[Kind, type[Topic | Tag]] = {"topic": Topic, "tag": Tag}
 FIELDS = ("id", "name", "version", "created_at", "updated_at")
 
 
-def project(record: Topic | Tag) -> dict[str, Any]:
+def project(record: Topic | Tag, resource_count: int) -> dict[str, Any]:
     result = {field: getattr(record, field) for field in FIELDS}
     if isinstance(record, Topic):
         result["description"] = record.description
+    # Read-only maintenance signal: how many resources use this classification.
+    # Deliberately absent from the tags embedded in resource responses, which would
+    # otherwise need one count per tag per resource.
+    result["resource_count"] = resource_count
     return result
 
 
@@ -38,7 +42,8 @@ class TaxonomyStore:
         return record
 
     def detail(self, kind: Kind, identity: UUID) -> dict[str, Any]:
-        return project(self.find(kind, identity))
+        record = self.find(kind, identity)
+        return project(record, self.references(kind, identity))
 
     def unique(self, kind: Kind, name: str, identity: UUID | None = None) -> None:
         model = MODELS[kind]
@@ -53,7 +58,8 @@ class TaxonomyStore:
         record = MODELS[kind](**values)
         self.session.add(record)
         self.session.flush()
-        return project(record)
+        # A classification that was just created cannot be referenced yet.
+        return project(record, 0)
 
     def check_version(self, record: Topic | Tag, expected: int) -> None:
         if record.version != expected:
@@ -69,7 +75,23 @@ class TaxonomyStore:
                 setattr(record, key, value)
         # ORM version guards and timestamps apply only to actual dirty columns.
         self.session.flush()
-        return project(record)
+        return project(record, self.references(kind, identity))
+
+    def usage(self, kind: Kind, identities: list[UUID]) -> dict[UUID, int]:
+        """Counts for a whole page in one grouped query, never one count per row."""
+        if not identities:
+            return {}
+        grouped = (
+            select(LearningResource.topic_id, func.count())
+            .where(LearningResource.topic_id.in_(identities))
+            .group_by(LearningResource.topic_id)
+            if kind == "topic"
+            else select(ResourceTag.tag_id, func.count())
+            .where(ResourceTag.tag_id.in_(identities))
+            .group_by(ResourceTag.tag_id)
+        )
+        counts = {key: int(value) for key, value in self.session.execute(grouped)}
+        return {identity: counts.get(identity, 0) for identity in identities}
 
     def references(self, kind: Kind, identity: UUID) -> int:
         statement = (
@@ -112,8 +134,9 @@ class TaxonomyStore:
                 if needle in normalized_name(row.name)
             ]
             total, selected = len(matches), matches[offset : offset + query.page_size]
+        counts = self.usage(kind, [row.id for row in selected])
         return {
-            "data": [project(row) for row in selected],
+            "data": [project(row, counts[row.id]) for row in selected],
             "page": {
                 "number": query.page,
                 "size": query.page_size,

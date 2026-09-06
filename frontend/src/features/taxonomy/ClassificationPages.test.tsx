@@ -399,3 +399,52 @@ describe('creating a tag where it is used', () => {
     )
   })
 })
+
+describe('classification usage', () => {
+  it('shows how many resources use each classification and links to them', async () => {
+    vi.spyOn(api, 'request').mockImplementation(async (path) => {
+      if (path.startsWith('/api/v1/tags?'))
+        return categoryPage([
+          category({ id: tagId, name: '在用标签', resource_count: 3 }),
+          category({ id: resourceId, name: '僵尸标签', resource_count: 0 }),
+        ])
+      return reads(path)
+    })
+    renderWithRouter(<App />, '/classifications')
+    click('标签')
+    const used = await screen.findByRole('link', { name: '3 份资料在用' })
+    expect(used).toHaveAttribute('href', `/resources?tag_id=${tagId}`)
+    // A zero count is stated plainly and is not a link.
+    expect(screen.getByText('暂无资料使用')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '0 份资料在用' })).not.toBeInTheDocument()
+  })
+  it('uses topic_id for topics, not tag_id', async () => {
+    vi.spyOn(api, 'request').mockImplementation(async (path) => {
+      if (path.startsWith('/api/v1/topics?'))
+        return categoryPage([category({ id: topicId, name: '在用主题', resource_count: 2 })])
+      return reads(path)
+    })
+    renderWithRouter(<App />, '/classifications')
+    expect(await screen.findByRole('link', { name: '2 份资料在用' })).toHaveAttribute(
+      'href',
+      `/resources?topic_id=${topicId}`,
+    )
+  })
+  it('offers the same link from the delete panel when the classification is in use', async () => {
+    vi.spyOn(api, 'request').mockImplementation(async (path) => {
+      if (path.startsWith('/api/v1/tags?'))
+        return categoryPage([category({ id: tagId, name: '在用标签', resource_count: 4 })])
+      return reads(path)
+    })
+    renderWithRouter(<App />, '/classifications')
+    click('标签')
+    await screen.findByRole('heading', { name: '在用标签' })
+    click('删除标签 在用标签')
+    const panel = await screen.findByRole('region', { name: '删除确认标签' })
+    expect(panel).toHaveTextContent('正被 4 份资料使用')
+    expect(within(panel).getByRole('link', { name: '查看这 4 份资料' })).toHaveAttribute(
+      'href',
+      `/resources?tag_id=${tagId}`,
+    )
+  })
+})

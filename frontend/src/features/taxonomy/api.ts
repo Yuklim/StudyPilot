@@ -12,6 +12,9 @@ export interface Classification extends Choice {
   description?: string | null
   created_at: string
   updated_at: string
+  // How many resources use this classification. Read-only, taxonomy endpoints only:
+  // the tags embedded in resource responses deliberately do not carry it.
+  resource_count: number
 }
 export interface ClassificationPage {
   data: Classification[]
@@ -59,6 +62,7 @@ function classification(value: unknown, kind: Kind): Classification {
     version: integer(item.version, 1),
     created_at: instant(item.created_at),
     updated_at: instant(item.updated_at),
+    resource_count: integer(item.resource_count),
     ...(kind === 'topics' ? { description: item.description as string | null } : {}),
   }
 }

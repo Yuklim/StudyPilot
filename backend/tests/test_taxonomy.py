@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import event, func, select
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.orm.exc import StaleDataError
 from starlette.requests import Request
@@ -57,9 +58,15 @@ def test_lifecycle_projection_versions_and_restart(authorized: TestClient, kind:
     path = f"/api/v1/{kind}s/{record['id']}"
     assert record["name"] == FULLWIDTH_PYTHON and record["version"] == 1
     assert UUID(record["id"]).version == 4
-    assert set(record) == {"id", "name", "version", "created_at", "updated_at"} | (
-        {"description"} if kind == "topic" else set()
-    )
+    assert set(record) == {
+        "id",
+        "name",
+        "version",
+        "created_at",
+        "updated_at",
+        "resource_count",
+    } | ({"description"} if kind == "topic" else set())
+    assert record["resource_count"] == 0
     assert datetime.fromisoformat(record["created_at"]).tzinfo == UTC
     check_error(
         authorized.post(f"/api/v1/{kind}s", json={"name": "python"}),
@@ -411,15 +418,23 @@ def test_write_commit_failure_preserves_all_existing_state(
     def reject(session: Session) -> None:
         raise RuntimeError("synthetic private rollback detail")
 
+    # Snapshot the state the failing operation must preserve, not the state at
+    # creation time: `topic` now reports a resource_count that this setup changed.
+    before = {
+        path: authorized.get(path).json()["data"]
+        for path in (resource_path, topic_path, unused_path)
+    }
+    assert before[topic_path]["resource_count"] == 1
+    assert before[unused_path]["resource_count"] == 0
+
     event.listen(Session, "before_commit", reject)
     try:
         method, path, kwargs = actions[operation]
         check_error(authorized.request(method, path, **kwargs), 500, "UNKNOWN_ERROR")
     finally:
         event.remove(Session, "before_commit", reject)
-    assert authorized.get(resource_path).json()["data"] == resource
-    assert authorized.get(topic_path).json()["data"] == topic
-    assert authorized.get(unused_path).json()["data"] == unused
+    for path, snapshot in before.items():
+        assert authorized.get(path).json()["data"] == snapshot
 
 
 def test_description_and_duplicate_version_headers_rejected_before_database(
@@ -513,3 +528,114 @@ def test_delivery_catalog_matches_taxonomy_routes_and_preserves_resource_limits(
         if isinstance(value, dict) and "operationId" in value
     }
     assert available <= operations
+
+
+def test_resource_count_tracks_real_usage_for_both_kinds(
+    authorized: TestClient, database: Any
+) -> None:
+    topic = create(authorized, "topic", name="计数主题")
+    tag = create(authorized, "tag", name="计数标签")
+    other = create(authorized, "tag", name="没人用的标签")
+    topic_path, tag_path, other_path = (
+        f"/api/v1/topics/{topic['id']}",
+        f"/api/v1/tags/{tag['id']}",
+        f"/api/v1/tags/{other['id']}",
+    )
+    assert authorized.get(topic_path).json()["data"]["resource_count"] == 0
+
+    resources = [
+        authorized.post(
+            "/api/v1/resources",
+            json={
+                "source_type": "PASTE",
+                "title": f"计数资料 {index}",
+                "pasted_content": "synthetic",
+                "topic_id": topic["id"],
+                "tag_ids": [tag["id"]],
+            },
+        ).json()["data"]
+        for index in range(2)
+    ]
+    assert authorized.get(topic_path).json()["data"]["resource_count"] == 2
+    assert authorized.get(tag_path).json()["data"]["resource_count"] == 2
+    assert authorized.get(other_path).json()["data"]["resource_count"] == 0
+
+    # Re-attaching the same tag is idempotent, so it must not double count.
+    link = f"/api/v1/resources/{resources[0]['id']}/tags/{tag['id']}"
+    assert authorized.put(link).status_code == 200
+    assert authorized.get(tag_path).json()["data"]["resource_count"] == 2
+
+    assert authorized.delete(link).status_code == 204
+    assert authorized.get(tag_path).json()["data"]["resource_count"] == 1
+    # The topic keeps both resources; detaching a tag says nothing about topics.
+    assert authorized.get(topic_path).json()["data"]["resource_count"] == 2
+
+    # Clearing the topic on one resource lowers only the topic count.
+    assert (
+        authorized.patch(
+            f"/api/v1/resources/{resources[1]['id']}",
+            json={"expected_version": 1, "topic_id": None},
+        ).status_code
+        == 200
+    )
+    assert authorized.get(topic_path).json()["data"]["resource_count"] == 1
+    assert authorized.get(tag_path).json()["data"]["resource_count"] == 1
+
+    listed = {
+        row["name"]: row["resource_count"] for row in authorized.get("/api/v1/tags").json()["data"]
+    }
+    assert listed == {"计数标签": 1, "没人用的标签": 0}
+
+
+def test_listing_counts_use_one_grouped_query_regardless_of_page_size(
+    authorized: TestClient, database: Any
+) -> None:
+    resource = authorized.post(
+        "/api/v1/resources",
+        json={"source_type": "PASTE", "title": "计数用资料", "pasted_content": "synthetic"},
+    ).json()["data"]
+    for index in range(20):
+        tag = create(authorized, "tag", name=f"批量标签 {index:02d}")
+        assert (
+            authorized.put(f"/api/v1/resources/{resource['id']}/tags/{tag['id']}").status_code
+            == 200
+        )
+
+    statements: list[str] = []
+
+    def record(conn: Any, cursor: Any, statement: str, *rest: Any) -> None:
+        statements.append(statement)
+
+    # The application opens its own engine per transaction, so listen on the class.
+    event.listen(Engine, "before_cursor_execute", record)
+    try:
+        page = authorized.get("/api/v1/tags?page_size=20").json()
+    finally:
+        event.remove(Engine, "before_cursor_execute", record)
+
+    assert len(page["data"]) == 20
+    assert all(row["resource_count"] == 1 for row in page["data"])
+    # One grouped count for the whole page, not one per tag.
+    counting = [text for text in statements if "resource_tags" in text and "count(" in text.lower()]
+    assert len(counting) == 1, counting
+
+
+def test_tags_embedded_in_resources_carry_no_usage_count(
+    authorized: TestClient, database: Any
+) -> None:
+    tag = create(authorized, "tag", name="内嵌标签")
+    resource = authorized.post(
+        "/api/v1/resources",
+        json={
+            "source_type": "PASTE",
+            "title": "内嵌投影资料",
+            "pasted_content": "synthetic",
+            "tag_ids": [tag["id"]],
+        },
+    ).json()["data"]
+    detail = authorized.get(f"/api/v1/resources/{resource['id']}").json()["data"]
+    summary = authorized.get("/api/v1/resources").json()["data"][0]
+    for projection in (detail, summary):
+        assert set(projection["tags"][0]) == {"id", "name", "version", "created_at", "updated_at"}
+    # The taxonomy endpoint for the same tag does carry it.
+    assert authorized.get(f"/api/v1/tags/{tag['id']}").json()["data"]["resource_count"] == 1

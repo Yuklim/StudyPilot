@@ -179,3 +179,48 @@ test('classification search, paging and uncertain writes use the real backend', 
   await expect(page.getByLabel('标签名称', { exact: true })).toHaveValue('保留失败草稿')
   expect(attempts).toBe(1)
 })
+
+test('the classification page shows real usage counts and links straight to those resources', async ({
+  page,
+}) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  const suffix = String(Date.now())
+  const used = '使用计数 · 在用 ' + suffix
+  const idle = '使用计数 · 闲置 ' + suffix
+
+  await page.goto('/classifications')
+  await button(page, '标签').click()
+  await create(page, '标签', used)
+  await create(page, '标签', idle)
+
+  // Attach the tag through the real resource form, not a seeded API call.
+  await page.goto('/resources/new')
+  await page.getByLabel('标题').fill('使用计数用资料 ' + suffix)
+  await page.getByLabel('网页地址（必填）').fill('https://example.com/usage-count')
+  await button(page, '选择主题与标签（选填）').click()
+  await page.getByLabel('搜索标签').fill(used)
+  await button(page, '查找标签').click()
+  await page.getByRole('checkbox', { name: used, exact: true }).check()
+  await button(page, '保存到资料库').click()
+  await expect(page.getByRole('heading', { name: '使用计数用资料 ' + suffix })).toBeVisible()
+
+  await page.goto('/classifications')
+  await button(page, '标签').click()
+  await page.getByLabel('搜索标签').fill('使用计数 · ')
+  await button(page, '查找标签').click()
+  await expect(page.getByRole('heading', { name: used })).toBeVisible()
+  const link = page.getByRole('link', { name: '1 份资料在用' })
+  await expect(link).toBeVisible()
+  // The idle one states zero plainly and offers nothing to click.
+  await expect(page.getByText('暂无资料使用')).toBeVisible()
+
+  await link.click()
+  await expect(page).toHaveURL(/\/resources\?tag_id=[0-9a-f-]{36}$/)
+  await expect(
+    page.getByRole('list', { name: '资料结果' }).getByRole('heading', {
+      name: '使用计数用资料 ' + suffix,
+    }),
+  ).toBeVisible()
+  expect(errors).toEqual([])
+})

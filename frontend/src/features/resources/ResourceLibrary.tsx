@@ -16,6 +16,17 @@ const UNASSIGNED = 'unassigned'
 const PENDING_NAME = '正在读取名称…'
 const MISSING_NAME = '（已不存在）'
 
+const SORTS: [string, string][] = [
+  ['-created_at', '最近添加'],
+  ['created_at', '最早添加'],
+  ['-updated_at', '最近更新'],
+  ['updated_at', '最早更新'],
+  ['title', '标题升序'],
+  ['-title', '标题降序'],
+  ['progress_percent', '进度升序'],
+  ['-progress_percent', '进度降序'],
+]
+
 interface Applied {
   q: string
   source: string
@@ -24,6 +35,8 @@ interface Applied {
   topicId: string
   tagIds: string[]
   page: number
+  // Values the address bar asked for that this page refuses to forward.
+  ignored: string[]
 }
 
 // The address bar is the single source of truth for applied filters, so refreshing,
@@ -31,15 +44,33 @@ interface Applied {
 // preference, and putting it in a shared link would impose one reader's choice on another.
 function readApplied(params: URLSearchParams): Applied {
   const page = Number(params.get('page'))
+  const ignored: string[] = []
+  // A hand-edited address must not push unchecked values at the backend; an
+  // unusable one falls back to "not specified" and is reported, never forwarded.
+  const allowed = (key: string, label: string, values: string[]) => {
+    const value = params.get(key)
+    if (!value) return ''
+    if (values.includes(value)) return value
+    ignored.push(label)
+    return ''
+  }
+  const q = params.get('q') ?? ''
+  if (Array.from(q).length > 200) ignored.push('搜索词')
   return {
-    q: params.get('q') ?? '',
-    source: params.get('source_type') ?? '',
-    status: params.get('learning_status') ?? '',
-    sort: params.get('sort') || DEFAULT_SORT,
+    q: Array.from(q).length > 200 ? '' : q,
+    source: allowed('source_type', '资料类型', Object.keys(sourceLabels)),
+    status: allowed('learning_status', '学习状态', Object.keys(statusLabels)),
+    sort:
+      allowed(
+        'sort',
+        '排序',
+        SORTS.map(([value]) => value),
+      ) || DEFAULT_SORT,
     topicId:
       params.get('topic_unassigned') === 'true' ? UNASSIGNED : (params.get('topic_id') ?? ''),
     tagIds: params.getAll('tag_id'),
     page: Number.isInteger(page) && page >= 1 ? page : 1,
+    ignored,
   }
 }
 
@@ -79,7 +110,6 @@ export function ResourceLibrary() {
   const applied = useMemo(() => readApplied(new URLSearchParams(address)), [address])
   // Ids come from the address bar without names; resolve them so the chips stay readable.
   const [names, setNames] = useState<Record<string, string>>({})
-  const [lookupFailed, setLookupFailed] = useState(false)
   const [draft, setDraft] = useState(() => draftOf(applied))
   const [shown, setShown] = useState(address)
   const [view, setView] = useState<'cards' | 'list'>('list')
@@ -113,7 +143,6 @@ export function ResourceLibrary() {
     ).then((rows) => {
       if (!alive) return
       setNames((current) => ({ ...current, ...Object.fromEntries(rows) }))
-      if (rows.some(([, name]) => !name)) setLookupFailed(true)
     })
     return () => {
       alive = false
@@ -152,8 +181,14 @@ export function ResourceLibrary() {
   const page = applied.page
   const data = result?.data
 
+  // Derived, not stored: the warning stands exactly as long as an unreadable id is
+  // still filtering, so paging or re-applying cannot quietly drop it.
+  const unreadable = [
+    ...(applied.topicId && applied.topicId !== UNASSIGNED ? [applied.topicId] : []),
+    ...applied.tagIds,
+  ].filter((id) => names[id] === '')
+
   function apply(next: Applied) {
-    setLookupFailed(false)
     setParams(writeApplied(next))
   }
 
@@ -172,6 +207,8 @@ export function ResourceLibrary() {
       topicId: draft.classification.topic?.id ?? '',
       tagIds: draft.classification.tags.map((tag) => tag.id),
       page: 1,
+      // Built from the form, so nothing was rejected on the way in.
+      ignored: [],
     })
   }
 
@@ -202,7 +239,6 @@ export function ResourceLibrary() {
               type="button"
               onClick={() => {
                 setValidation('')
-                setLookupFailed(false)
                 // An already empty address means the render-time sync will not fire,
                 // so the unapplied draft has to be cleared here as it was before.
                 setDraft(draftOf(readApplied(new URLSearchParams())))
@@ -259,16 +295,7 @@ export function ResourceLibrary() {
               value={draft.sort}
               onChange={(e) => setDraft({ ...draft, sort: e.target.value })}
             >
-              {[
-                ['-created_at', '最近添加'],
-                ['created_at', '最早添加'],
-                ['-updated_at', '最近更新'],
-                ['updated_at', '最早更新'],
-                ['title', '标题升序'],
-                ['-title', '标题降序'],
-                ['progress_percent', '进度升序'],
-                ['-progress_percent', '进度降序'],
-              ].map(([value, label]) => (
+              {SORTS.map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
                 </option>
@@ -304,9 +331,15 @@ export function ResourceLibrary() {
           )}
         </div>
       </form>
-      {lookupFailed && (
+      {unreadable.length > 0 && (
         <p role="alert" className="resource-filter-note">
-          网址里有已不存在或读不到的主题/标签，它对应的筛选条件仍在生效但显示不出名称；其余筛选条件不受影响。
+          网址里有 {unreadable.length}{' '}
+          个已不存在或读不到的主题/标签，它对应的筛选条件仍在生效但显示不出名称；其余筛选条件不受影响。
+        </p>
+      )}
+      {applied.ignored.length > 0 && (
+        <p role="alert" className="resource-filter-note">
+          网址里的{applied.ignored.join('、')}读不懂，已忽略；其余筛选条件照常生效。
         </p>
       )}
       <div className="resource-toolbar">
