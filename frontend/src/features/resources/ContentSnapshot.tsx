@@ -5,12 +5,35 @@ import {
   failureText,
   getResourceSnapshot,
   putResourceSnapshot,
+  type Source,
 } from './api'
 import { useResourceQuery } from './useResourceQuery'
 
+// The wording depends on what else the detail page shows below this block, so the
+// component has to know the source type: a WEB resource has an "open the original
+// page" link, a PASTE resource has its pasted text, a FILE resource has its file.
+// Writing WEB-only wording for all three told PASTE and FILE users something untrue.
+const snapshotHints: Record<Source, string> = {
+  WEB: '这是保存当时的副本，不随原文更新；需要最新内容请用下方的「打开原网页」。',
+  PASTE: '这是另存的一份正文副本，与下方的「粘贴原文」各自独立保存。',
+  FILE: '这是另存的一份纯文本正文，不随下方的原件变化。',
+}
+
+const emptyHints: Record<Source, string> = {
+  WEB: '还没有保存正文。只存链接的话，原文改版或消失后这份资料就找不回来了；可以把正文粘贴进来存一份。',
+  PASTE: '还没有另存正文。粘贴的原文见下方；如果想再留一份整理过的正文，可以粘贴进来。',
+  FILE: '还没有保存正文。原件见下方；如果想留一份可检索的纯文本正文，可以粘贴进来。',
+}
+
 // The frozen copy of the resource's text. This page only stores and shows the
 // Markdown source: rendering it as a document belongs to the reader, not here.
-export function ContentSnapshot({ resourceId }: { resourceId: string }) {
+export function ContentSnapshot({
+  resourceId,
+  sourceType,
+}: {
+  resourceId: string
+  sourceType: Source
+}) {
   const [revision, setRevision] = useState(0)
   const load = useCallback(() => getResourceSnapshot(resourceId), [resourceId])
   const { result, retry } = useResourceQuery(`${resourceId}:snapshot:${revision}`, load)
@@ -72,18 +95,13 @@ export function ContentSnapshot({ resourceId }: { resourceId: string }) {
             保存于 {snapshot.captured_at.slice(0, 10)} · 共 {snapshot.char_count} 字 · 来源标识{' '}
             {snapshot.extractor} · 第 {snapshot.version} 版
           </p>
-          <p className="resource-hint">
-            这是保存当时的副本，不随原文更新；需要最新内容请用上方的「打开原网页」。
-          </p>
+          <p className="resource-hint">{snapshotHints[sourceType]}</p>
           <pre className="snapshot-body" tabIndex={0}>
             {snapshot.content}
           </pre>
         </>
       ) : (
-        <p className="resource-hint">
-          还没有保存正文。只存链接的话，原文改版或消失后这份资料就找不回来了；
-          可以把正文粘贴进来存一份。
-        </p>
+        <p className="resource-hint">{emptyHints[sourceType]}</p>
       )}
       {result &&
         !unreadable &&

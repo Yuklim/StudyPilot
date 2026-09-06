@@ -235,6 +235,20 @@ TASK-020 增加既定 `PATCH /api/v1/resources/{id}`，TASK-021 接入详情页�
 
 本次使用已有数据库结构，无新迁移。所有写入确认提交后才返回成功；遇到 SQLite 写锁竞争可能返回受控失败，不自动重放写操作。只有主题/标签分类删除可用，**不代表资料删除已实现**。分类页面经共享客户端的受控版本选项完成删除，不要手工复制临时令牌或绕过保护。
 
+### 浏览器扩展工程骨架（TASK-037）
+
+`extension/` 是仓库的第三个顶层代码目录，放浏览器扩展。**目前只有工程骨架，网页采集功能尚未实现**，弹窗会直接这么写。它是独立的 npm 工程，不与 `frontend/` 共用依赖。
+
+```bash
+cd extension
+npm ci
+npm run build
+```
+
+构建产物在 `extension/dist/`。在 Chrome 打开 `chrome://extensions`，开启右上角「开发者模式」，点「加载已解压的扩展程序」并选择该目录即可加载。改代码后重新 `npm run build`，再在扩展页点一次刷新。
+
+当前 manifest **不申请任何权限**；`extension/src/manifest.test.ts` 会在有人新增权限时失败，以保证这类改动必须经过任务与独立审查。扩展将来也不会直接调用后端 API，内容一律经本机 UI 页面转交，边界与理由见 `extension/AGENTS.md`。
+
 ## 如何停止
 
 分别切换到正在运行后端和前端的终端，按下 `Control + C`。看到终端重新出现命令提示符，就表示该服务已经停止。停止服务不会删除代码或已安装依赖。
@@ -295,6 +309,21 @@ npm run build
 - TypeScript 在构建前检查类型；
 - Vitest 和 React Testing Library 按用户能看到的页面内容运行组件测试；
 - `npm run build` 生成正式发布所需的静态文件到 `frontend/dist/`。该目录是生成物，不会提交到 Git。
+
+### 浏览器扩展检查
+
+在 `extension/` 中运行：
+
+```bash
+npm ci
+npm run format:check
+npm run lint
+npm run typecheck
+npm run test -- --run
+npm run build
+```
+
+命令与前端同名，但依赖、配置和产物都属于 `extension/` 自己。`scripts/governance/check_task.py` 会在变更涉及 `extension/` 时自动选中这一组，不需要在任务里手工列出。
 
 ## 配置与本地数据
 
@@ -401,13 +430,13 @@ uv run alembic check
 
 ### `npm ci` 提示 npm 缓存没有权限怎么办？
 
-如果错误中包含 `EACCES` 或 `permission denied`，表示 npm 以前留下的用户缓存权限异常，并不是 StudyPilot 代码损坏。不要使用 `sudo npm ci`。可以在 `frontend/` 中改用仓库内、已被 Git 忽略的临时缓存：
+如果错误中包含 `EACCES` 或 `permission denied`，表示 npm 以前留下的用户缓存权限异常，并不是 StudyPilot 代码损坏。不要使用 `sudo npm ci`。可以在 `frontend/` 或 `extension/` 中改用仓库内、已被 Git 忽略的临时缓存：
 
 ```bash
 npm ci --cache ../.npm-cache
 ```
 
-正常机器仍然直接使用 `npm ci`；这个替代命令只改变下载缓存位置，不改变 `package-lock.json` 中的依赖版本。
+正常机器仍然直接使用 `npm ci`；这个替代命令只改变下载缓存位置，不改变 `package-lock.json` 中的依赖版本。`extension/` 与 `frontend/` 是各自独立的 npm 工程，缓存目录可以共用，`node_modules` 不共用。
 
 ### 可以直接部署到公网展示吗？
 

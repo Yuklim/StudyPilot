@@ -4,8 +4,9 @@ import { describe, expect, it, vi } from 'vitest'
 
 import App from '../../App'
 import { api, ApiError } from '../../api/client'
+import type { Resource } from './api'
 import { renderWithRouter } from '../../test/render'
-import { resourceId, sample, samplePage } from './fixtures'
+import { resourceId, sample, sampleFile, samplePage } from './fixtures'
 import { category, categoryPage, tagId } from '../taxonomy/fixtures'
 
 function change(label: string, value: string) {
@@ -558,6 +559,63 @@ describe('content snapshot', () => {
       }),
     )
   })
+  // TASK-036 shipped WEB-only wording for all three source types and the existing
+  // assertions could not catch it: they checked that a sentence was on screen, not
+  // that it was true. These pin the sentence each source type should get, and the
+  // WEB-only ones it must not get.
+  const sources = [
+    ['WEB', sample(), '下方的「打开原网页」', '只存链接的话'],
+    [
+      'PASTE',
+      sample({ source_type: 'PASTE', pasted_content: '合成原文' }),
+      '下方的「粘贴原文」',
+      '粘贴的原文见下方',
+    ],
+    ['FILE', sampleFile(), '下方的原件', '原件见下方'],
+  ] as const
+
+  const mount = (item: Resource, snapshot: typeof frozen | undefined) => {
+    vi.spyOn(api, 'request').mockImplementation(async (path) => {
+      if (path === snapshotPath) {
+        if (!snapshot) throw new ApiError('SNAPSHOT_NOT_FOUND', 404)
+        return { data: snapshot }
+      }
+      if (path.startsWith(`${detailPath}/notes?`))
+        return {
+          data: [],
+          page: { number: 1, size: 20, total_items: 0, total_pages: 0, has_more: false },
+        }
+      if (path === detailPath) return { data: item }
+      return samplePage([])
+    })
+    renderWithRouter(<App />, `/resources/${resourceId}`)
+  }
+
+  it.each(sources)(
+    'points a %s resource at the original it actually has',
+    async (source, item, hint) => {
+      mount(item, frozen)
+      await screen.findByText(/共 12 字/)
+      const region = screen.getByRole('region', { name: '正文快照' })
+      expect(region).toHaveTextContent(hint)
+      // The link only exists for WEB, and it sits below this block, never above.
+      if (source !== 'WEB') expect(region).not.toHaveTextContent('打开原网页')
+      expect(region).not.toHaveTextContent('上方')
+    },
+  )
+
+  it.each(sources)(
+    'tells a %s resource with no snapshot what it is missing',
+    async (source, item, _hint, empty) => {
+      mount(item, undefined)
+      const region = await screen.findByRole('region', { name: '正文快照' })
+      await waitFor(() => expect(region).toHaveTextContent(empty))
+      // "只存链接的话" is only true of a WEB resource: PASTE and FILE keep their own
+      // original in the record, so losing the link is not what is at stake for them.
+      if (source !== 'WEB') expect(region).not.toHaveTextContent('只存链接的话')
+    },
+  )
+
   it('reports a version conflict without retrying', async () => {
     const request = vi.spyOn(api, 'request').mockImplementation(async (path, options) => {
       if (path === snapshotPath && options?.method === 'PUT')
