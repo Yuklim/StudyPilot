@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-034"
-status = "IN_REVIEW"
+status = "IN_ACCEPTANCE"
 risk = "L3"
 risk_reason = "目标 1 放宽已批准的公共契约：分类页端点（listTopics/listTags/getTopic/getTag/createTopic/createTag/updateTopic/updateTag）的响应对象新增 `resource_count`。这不是给现有 `Tag`/`Topic` schema 加字段就能了事 —— 二者被 `ResourceProjection.tags` 内嵌复用（openapi 中 `ResourceProjection.properties.tags.items.$ref = Tag`，且 `Tag` 为 `additionalProperties:false`），直接加必填字段会让每份资料响应违反契约，并迫使资料列表为每个内嵌标签算 N+1 次计数。因此必须引入新的响应 schema 并改动多个既有 schema 的引用指向，属「公共 API 契约」这一 L3 判入条件。另有一处性能语义决定：分页列表的计数必须用一次聚合查询得出，不能对 20 个分类各查一次。目标 2、3 为纯前端小改动，随最高风险并入。无数据库 schema 变更、无迁移。"
 risk_flags = ["public-api", "business", "tests", "small-ui"]
@@ -149,31 +149,42 @@ checks = []
 
   报告原文：
   > ## 只读证明
+  >
   > 本实例工具白名单仅 `Read`/`Grep`/`Glob`，无 `Write`/`Edit`/`NotebookEdit`、无 `Bash`。本次未写入、未提交、未推送任何文件。
   >
   > ## 覆盖
-  > 审查对象：`1a72eb9..bc090fb` 完整最终 diff（导出件与 git diff 逐字节一致，为派发会话已核实的外部事实），15 文件 971 行；并对关键点回读工作树（HEAD=候选）交叉验证。机械检查：**NOT_RUN**（无 Bash），仅做自洽核对：pytest 497→500 = 新增 3 个后端用例；vitest 350→356 = ResourcePages +3、ClassificationPages +3；e2e 38→39 = 新增 1 条。数字与 diff 自洽，但我未复跑，不声称验证。范围：15 个文件全部在 `allowed_paths` 内；`application/taxonomy.py` 与 `taxonomy/api.test.ts` 获授权但未改动（授权非义务）。未越界。
+  >
+  > - 审查对象：`1a72eb9..bc090fb` 完整最终 diff（导出件与 git diff 逐字节一致，为派发会话已核实的外部事实），15 文件 971 行；并对关键点回读工作树（HEAD=候选）交叉验证：`taxonomy_store.py`、`test_taxonomy.py`、`openapi-v1.json` 引用图、`API与数据契约基线.md`、`taxonomy/api.ts`、`ClassificationManager.tsx`、`ResourceLibrary.tsx`、`resources/contracts.py`、`resources/api.ts`、`styles.css`、`任务索引.md`、根/前后端 AGENTS.md、风险规则「实际风险」节。
+  > - 机械检查：**NOT_RUN**（无 Bash）。仅做自洽核对：pytest 497→500 = 新增 3 个后端用例 ✓；vitest 350→356 = ResourcePages +3、ClassificationPages +3 ✓；e2e 38→39 = 新增 1 条 ✓。数字与 diff 自洽，但我未复跑，不声称验证。
+  > - 范围：15 个文件全部在 `allowed_paths` 内；`application/taxonomy.py` 与 `taxonomy/api.test.ts` 获授权但未改动（授权非义务）。未越界。
   >
   > ## 七个重点的独立结论
-  > **1. 契约形状**：独立 grep 证实 `#/components/schemas/Tag"` 仅剩 2 处（`ResourceProjection`、`ResourceSummaryProjection`），`#/components/schemas/Topic"` 仅剩 1 处（`TopicAnalytics`）；`TopicUsage`/`TagUsage` 只被四个 page/envelope 引用，而这四个只被 `/topics`、`/tags` 的 8 个操作引用，`ResourceTagEnvelope` 未被波及（已核对它不是 `TagEnvelope` 的子串误配）。无遗漏引用。两个 Usage 的必填字段与 `project()` 实际输出逐字段一致；中文契约 4.5/4.6/9 节与操作清单表述与 openapi 一致。
-  > **2. 计数语义**：`usage()`、既有 `references()`、409 的 `details.resource_count` 三者同源同义，契约里「同义」的说法成立。`ResourceTag` 主键为 (resource_id, tag_id)，幂等 attach 不重复计数，测试直接覆盖。`create()` 返 0 的前提成立：客户端不能自带 id（已有 422 断言），`store.create` 全仓仅被一处调用，无「创建即绑定」复合路径；并发下他人无法引用尚未返回的新 id。且 `test_lifecycle` 的 `GET == POST body` 把「硬编码 0」与「实查 references()」钉在一起，防止二者漂移。
-  > **3. N+1**：`page()` 一次 `GROUP BY`，缺席 id 由字典补零（语义等价于 LEFT JOIN，且对 NULL topic_id 天然排除）；空集提前返回，`project(row, counts[row.id])` 不会 KeyError；搜索与非搜索两个分支都在切片后才计数，分页边界正确。守门测试的匹配条件真实可失效：列表总数查询不含 `resource_tags`，逐条 `references()` 则会含。
-  > **4. 两处既有断言**：均**不是**放宽。(a) 字段集合精确等式仍在，仅按授权补字段并**加**断言 `resource_count == 0`。(b) 快照改为「失败操作前重取」且在 `event.listen` 之前取，逐路径比对，另加值断言；旧写法在正确实现下必然失败。唯一被牺牲的是「POST 响应体 == 后续 GET」这条附带性质，而它在同文件另一处仍被独立断言。无阻断。
-  > **5. F3**：`unreadable` 由 `applied` 过滤 `names[id] === ''` 派生；成功解析写 `name || ' '`、失败写 `''`，两者可区分，判据准确；`useState` 与三处 setter 已全部删除（grep 全仓无残留），无重复计算或双源。
-  > **6. F4**：白名单与后端 `ResourceQuery` 逐项对齐 —— `SORTS` 的 8 个值 == `Literal[...]` 的 8 个值；`Object.keys(sourceLabels)` == WEB/PASTE/FILE；`statusLabels` == 五个状态；`q` 200 字 == 后端 `max_length=200`。非法值不进入 `query`（`query` 只由已清洗的 `applied` 组装），确实不转发。下拉与校验共用同一 `SORTS`。两条提示是各自独立的 `role="alert"` 段落，条件互不覆盖，不会互相抹除。
-  > **7. 范围与叙述**：记录的「12 代码/契约 + 3 文档 = 15」与实际一致；「删掉 useState 与三处 setter」属实；未发现夸大的能力声明或被删除的既有断言。
+  >
+  > 1. **契约形状**：独立 grep 证实 `#/components/schemas/Tag"` 仅剩 2 处（`ResourceProjection`:343、`ResourceSummaryProjection`:344），`#/components/schemas/Topic"` 仅剩 1 处（`TopicAnalytics`:374）；`TopicUsage`/`TagUsage` 只被 `TopicPage`/`TopicEnvelope`/`TagPage`/`TagEnvelope` 引用（379/380/387/388），而这四个 envelope/page 只被 `/topics`、`/tags` 的 8 个操作引用（117/118/122/132/139/140/144/145），`ResourceTagEnvelope`（112）未被波及（我核对过它不是 `TagEnvelope` 的子串误配）。无遗漏引用。`TopicUsage` 必填 = Topic 六字段 + `resource_count`，`TagUsage` = Tag 五字段 + `resource_count`，与 `project()` 实际输出逐字段一致；中文契约 4.5/4.6/9 节与操作清单表述与 openapi 一致。
+  > 2. **计数语义**：`usage()`（topic 走 `LearningResource.topic_id`、tag 走 `ResourceTag.tag_id`）与既有 `references()`、与 409 `details.resource_count` 三者同源同义，契约里「同义」的说法成立。`ResourceTag` 主键为 (resource_id, tag_id)，幂等 attach 不重复计数，测试直接覆盖。`create()` 返 0 的前提成立：客户端不能自带 id（`{"name":"x","id":...}` → 422 已有断言），`store.create` 全仓仅被 `application/taxonomy.py:35` 调用，无「创建即绑定」复合路径；并发下他人无法引用尚未返回的新 id。且 `test_lifecycle` 第 76 行 `GET == POST body` 把「硬编码 0」与「实查 references()」钉在一起，防止二者漂移。
+  > 3. **N+1**：`page()` 一次 `GROUP BY`，缺席 id 由 `{identity: counts.get(identity, 0)}` 补齐（是 GROUP BY + 字典补零，非 LEFT JOIN，语义等价且对 NULL topic_id 天然排除）；空集提前返回 `{}`，`project(row, counts[row.id])` 不会 KeyError；搜索分支与非搜索分支都在切片后才计数，分页边界正确。守门测试 `"resource_tags" in text and "count(" in text` 断言恰好 1 条——列表总数查询走 `select_from(Tag)` 不含 `resource_tags`，逐条 `references()` 则会含，故该断言真实可失效。
+  > 4. **两处既有断言**：均**不是**放宽。(a) 字段集合精确等式仍在，仅按授权补字段并**加**断言 `resource_count == 0`。(b) 快照改为「失败操作前重取」且在 `event.listen` 之前取，逐路径比对，另加 `topic=1 / unused=0` 的值断言；旧写法在正确实现下必然失败（快照取于建立引用之前）。唯一被牺牲的是「POST 响应体 == 后续 GET」这条附带性质，而它在同文件 `test_taxonomy.py:76` 仍被独立断言。无阻断。
+  > 5. **F3**：`unreadable` 由 `applied.topicId/tagIds` 过滤 `names[id] === ''` 派生；`names` 里成功解析写 `name || ' '`、失败写 `''`，两者可区分，判据准确；`useState` 与三处 `setLookupFailed` 已全部删除（grep 全仓无残留），无重复计算或双源。
+  > 6. **F4**：白名单与后端 `ResourceQuery` 逐项对齐——`SORTS` 的 8 个值 == `Literal[...]` 的 8 个值；`Object.keys(sourceLabels)` == WEB/PASTE/FILE；`statusLabels` == 五个状态；`q` 200 字 == 后端 `max_length=200`。非法值不进入 `query`（`query` 只由已清洗的 `applied` 组装），确实不转发。下拉与校验共用同一 `SORTS`。两条提示是各自独立的 `role="alert"` 段落，条件互不覆盖（`unreadable` 关分类 id，`ignored` 关四个维度），不会互相抹除。
+  > 7. **范围与叙述**：记录的「12 代码/契约 + 3 文档 = 15」与实际一致；「删掉 useState 与三处 setter」属实；未发现夸大的能力声明或被删除的既有断言。
   >
   > ## Findings（均为非阻断，`可记录后继续`）
-  > 1. `docs/tasks/TASK-034-taxonomy-usage.md:128` —— 小标题写「**两条**测试的变异验证」，其下只列出一条。影响：证据描述与实际不符（并未虚报第二条的结果，只是计数悬空），等级低。最小修正：改为「一条」或补上第二条。
-  > 2. `docs/tasks/任务索引.md:24` 记 `IN_PROGRESS`，而记录 TOML 已是 `IN_REVIEW`。仅索引可读性，随证据写回同步即可。
-  > 3. `frontend/src/features/taxonomy/ClassificationManager.tsx:79` —— 删除面板的「查看这 N 份资料」链接依据列表快照的 `resource_count`。触发：列表加载后、点删除前该分类被别处引用（本机单用户，概率低）。此时 409 文案仍如实给出份数，但缺链接；用户点「放弃草稿，载入最新版本」刷新后链接出现，可恢复。完成条件 9 的常规路径已满足。建议仅记录，不修。
   >
-  > 无安全、隐私、越权、数据损坏问题；`resource_count` 为聚合数字，不含用户正文；无新路由绕过安全中间件，前端仍只调同源 `/api`。
+  > 1. `/Users/yuklimching/Desktop/StudyPilot/docs/tasks/TASK-034-taxonomy-usage.md:128` —— 小标题写「**两条**测试的变异验证」，其下只列出一条（聚合查询那条）。触发：读者据此认为有两条已做变异验证。影响：证据描述与实际不符（并未虚报第二条的结果，只是计数悬空），等级低。最小修正：改为「一条」或补上第二条；因该段在 EVIDENCE 标记区外，修正会形成新候选——也可由主 Agent 在 EVIDENCE 区如实记一行更正（与 TASK-033 处理口径更正的做法相同）。
+  > 2. `/Users/yuklimching/Desktop/StudyPilot/docs/tasks/任务索引.md:24` 记 `IN_PROGRESS`，而 `TASK-034-taxonomy-usage.md:6` 已是 `IN_REVIEW`。触发：候选时点两处状态不一致。影响：仅索引可读性，属证据写回阶段本就要更新的字段。最小修正：随 Review 写回一并同步。
+  > 3. `/Users/yuklimching/Desktop/StudyPilot/frontend/src/features/taxonomy/ClassificationManager.tsx:79` —— 删除面板的「查看这 N 份资料」链接依据列表快照的 `resource_count`。触发：列表加载后、点删除前该分类被别处引用（本机单用户，概率低）。影响：此时 409 文案仍如实给出份数，但缺链接；用户点「放弃草稿，载入最新版本」即刷新 `item` 后链接出现，可恢复。完成条件 9 的常规路径已满足。建议仅记录，不修。
+  >
+  > 无安全、隐私、越权、数据损坏问题；`resource_count` 为聚合数字，不含用户正文；无新路由绕过安全中间件，无基础设施泄漏进业务模块，前端仍只调同源 `/api`。
   >
   > ## 缺口与剩余风险
-  > 我未执行任何命令，实跑证据对我是 NOT_RUN，其复核属 Acceptance 环节。「一次聚合查询」的变异验证由实现者自述、未经第三方复核；我的同向判断来自独立读测试代码，不依赖其自述。完成条件 10 的后半段「移除该条件后提示消失」无直接用例，但由派生式实现结构性保证；条件原文只要求覆盖「翻页后仍在」，已覆盖。`topic_id`/`tag_id` 的格式在 URL 侧仍不做白名单（本任务 F4 明示只含四项），属既有行为与已登记非目标。
+  >
+  > - 我未执行任何命令：`check_task`、pytest/vitest/e2e、ruff/mypy 的结果对我是 **NOT_RUN**，仅做上述数量自洽核对；实跑证据的复核属 Acceptance 环节。
+  > - 「一次聚合查询」的变异验证由实现者自述、未经第三方复核；我的同向判断来自独立读测试代码（该断言可真实失效），不依赖其自述。
+  > - 完成条件 10 的后半段「移除该条件后提示消失」无直接用例，但由派生式实现结构性保证；条件原文只要求覆盖「翻页后仍在」，已覆盖。
+  > - `topic_id`/`tag_id` 的格式在 URL 侧仍不做白名单（本任务 F4 明示只含四项），非法 id 仍会到后端；属既有行为与已登记非目标。
   >
   > ## 结论
+  >
   > **PASS**（含上述 3 条已明确处置建议的非阻断项，非 No findings）。
 
 - 第一轮 findings 的处置：
@@ -181,9 +192,54 @@ checks = []
   - **F2 已修**：`任务索引.md` 的 TASK-034 行由 `IN_PROGRESS` 改为 `IN_REVIEW`，与记录 TOML 一致。
   - **F3 记录接受，不修**（见下方非阻断遗留项）。
   - 一处需要 Reviewer 知情的说明：修 F1 改动的是「实现与测试」段（EVIDENCE 标记区**外**），因此形成新候选而非证据写回；这正是 §6 所要求的路径，不是借证据写回变更标记区外内容。
-- Review 第二轮（增量）：**待执行**。
-- Acceptance：**待执行**，在 Review 第二轮之后，由独立于实现者与两轮 Reviewer 的第三个只读实例执行。
-- Acceptance：L3 独立只读 Integration/Acceptance，待填。
+- Review 第二轮（L3 独立只读，增量 `bc090fb..cad70bc`，同一 Reviewer）：**PASS**，含 2 条非阻断记录项。
+
+  外部核实（派发会话以 Bash 提供）：增量 patch 与 `git diff bc090fb..cad70bc` 逐字节一致；增量只有 2 个 `docs/tasks/` 文件、无代码/契约改动；HEAD = `cad70bc`，工作树除未跟踪的 `docs/research/` 外干净（即变异验证无残留）。
+
+  报告原文（逐字，仅还原传输转义的 `&lt;`/`&gt;`）：
+
+  > # TASK-034 第二轮（修订/增量）Review — 候选 `cad70bc`
+  >
+  > ## 只读证明
+  >
+  > 工具白名单仍只有 `Read`/`Grep`/`Glob`，无写工具、无 Bash。本轮未写入、未提交、未推送。
+  >
+  > ## 继承的第一轮覆盖（显式声明）
+  >
+  > 我在 `1a72eb9..bc090fb`（15 文件 971 行）上做过完整审查并给出 PASS + 3 条非阻断项。派发会话以 git 核实：`bc090fb..cad70bc` 仅 2 个文件（`docs/tasks/TASK-034-taxonomy-usage.md`、`docs/tasks/任务索引.md`），55 增 6 删，**无任何代码/测试/契约改动**；HEAD = `cad70bc`，工作树除无关未跟踪文件外干净。据此我**完整继承**第一轮对后端 store、后端测试、`openapi-v1.json` 引用图、中文契约、`taxonomy/api.ts`、`ClassificationManager.tsx`、`ResourceLibrary.tsx`、`fixtures.ts`、`styles.css`、e2e 与两份前端测试的全部结论（含七个重点的独立判断），本轮不重复审查。本轮新审的只有两份文档的增量。我另回读了 `useOperation.ts` 与 `ResourcePages.test.tsx:429-451`、`scripts/governance/check_task.py:343-349` 作定向验证。本轮结论覆盖新最终候选 `cad70bc`。
+  >
+  > ## 四个重点的独立判断
+  >
+  > 1. **第二条变异验证的叙述与代码自洽 —— 成立（我独立读代码得出，不依赖实现者自述）。** 变异点 `readApplied` 的 `allowed()`（`ResourceLibrary.tsx:50-56`）若去掉白名单判断、原样返回，则 `source='BOGUS'`、`status='BOGUS'`、`sort='bogus'` 且 `ignored` 不再收到「资料类型/学习状态/排序」。指名的用例 `ResourcePages.test.tsx:429`「ignores filter values in the address it cannot understand, and says so」会在**两处**转红：`toHaveTextContent('排序'/'资料类型'/'学习状态')`（`:440-441`），以及出站查询串 `toEqual({page,page_size,sort:'-created_at'})`（`:444-448`，变异后会多出三个非法参数）。断言确实绑定这一行，不是形式通过。补充一点精确性：`q` 的长度校验不在 `allowed()` 内，所以变异后「搜索词」仍会被报告——用例转红靠的是另外那些断言，记录里「用例转红」的表述成立。变异**执行过程**为实现者自述、无第三方复核，我如实标注；我的同向判断来自读代码。
+  > 2. **三条 findings 的处置记录如实。** F1 未采纳我给的两个「改小」选项而是补做了第二条验证，记录里「两条」现在有对应内容，且明确标注「均由主 Agent 本人执行、未经独立第三方复核」，未冒充第三方证据；F2 索引已改 `IN_REVIEW`，与 TOML 一致（增量 patch 可见）；F3 明确写成「记录接受，不修」并进入非阻断遗留项，**没有**被写成「已修」。无夸大。
+  > 3. **EVIDENCE 标记区外的改动仅一处**：`@@ -125,8 +125,10 @@` 落在「实现与测试」段的变异验证条目内；另一 hunk 完全位于 `EVIDENCE:BEGIN/END` 之内；索引只改状态列。TOML 块（status/risk/risk_flags/base/allowed_paths/checks）、需求与范围、目标、非目标、完成条件、上下文包**一字未动**。修 F1 走的是「形成新候选」而非借证据写回改标记区外内容，符合 §6；标记区内也未夹带目标/风险/路径/检查的变更。
+  > 4. **F3「记录接受」按《风险分级与检查规则》站得住（我独立复核，非采信其理由）。** 触发条件是本机单用户在列表加载后、打开删除面板前于别处引用该分类的时序窗口；影响仅限缺一条便捷链接（409 文案仍如实给出份数），面板内点「放弃草稿，载入最新版本」即刷新并出现链接，可恢复；不触碰安全/隐私/数据完整性/契约，完成条件 9 的常规路径已满足。修复成本还比记录里写的更高一层：看似更便宜的做法（直接用 409 的 `details.resource_count` 渲染链接）行不通，因为 `useOperation.ts:10,26` 只保留格式化后的字符串、丢弃了 `ApiError.details`，而 `useOperation.ts` **不在本任务 allowed_paths 内**，改它需要扩权。属「可记录后继续」，与第一轮判断一致，无新证据支持升级。
+  >
+  > ## 证据复用评估（机械检查仍 NOT_RUN）
+  >
+  > 我未复跑任何命令。但实现者关于 `product_fingerprint` 不变的推断**可从代码独立验证**：`scripts/governance/check_task.py:347` 在计算 digest 时显式排除 `args.task` 与 `docs/tasks/任务索引.md`，本轮改的恰好只有这两个文件，因此指纹相对 `67b6145` 按构造不变、被测产品内容逐字节未变。据 §6「无变化的有效证据不重复执行」，第一轮 pytest 500 / vitest 356 / e2e 39 / ruff / mypy 可直接覆盖 `cad70bc`——但这些结果对我始终是 NOT_RUN，实跑复核属 Acceptance 环节。
+  >
+  > ## 本轮 findings（2 条，均非阻断 `可记录后继续`）
+  >
+  > 1. `/Users/yuklimching/Desktop/StudyPilot/docs/tasks/TASK-034-taxonomy-usage.md:185-186` —— EVIDENCE 区出现**两条并列的 Acceptance 项**（新增的「待执行…」与旧的「L3 独立只读 Integration/Acceptance，待填。」）。触发：读者/Acceptance 实例不确定该填哪一条。影响：仅记录整洁度，二者语义不冲突。最小修正：删去其一，可在 Acceptance 写回时顺手完成（属 EVIDENCE 区，无需新候选）。
+  > 2. `/Users/yuklimching/Desktop/StudyPilot/docs/tasks/TASK-034-taxonomy-usage.md:150` —— 标为「报告原文：」的引用块实为我第一轮报告的**压缩改写**（覆盖段的回读文件清单被删、findings 的 `path:line` 与我给出的两种修法之一被删减、七点结论逐条重写）。§6 要求 L3 独立报告原文写回。影响有限：结论 PASS、三条 findings 及其严重度、NOT_RUN 标注、剩余风险与缺口均在，未软化任何一条，也**未加入我没说过的内容**（我逐句比对过）。最小修正：要么贴逐字原文，要么把标题改为「摘要（经 Reviewer 确认无实质删改）」；同属 EVIDENCE 区，可在下次写回时处理，不必为此再造候选。
+  >
+  > 第一轮的 3 条 findings 处置结果我确认：F1 已实修（证据强度提高）、F2 已修、F3 记录接受且理由成立。无新增阻断项，无安全/隐私/越权/数据问题。
+  >
+  > ## 缺口与剩余风险
+  >
+  > - 变异验证的执行过程仍是实现者自述、未经第三方复核（其一由我读代码同向确认，其二第一轮已同向确认）；工作树无残留、HEAD=候选为派发会话以 git 核实的外部事实。
+  > - 全部机械检查对我 NOT_RUN；复用理由虽可由 `check_task.py` 代码验证，但实跑仍待 Acceptance 核对。
+  > - 继承第一轮的剩余风险不变：完成条件 10 后半段无直接用例（由派生结构保证，条件原文未要求）、`topic_id`/`tag_id` 的 URL 侧格式不校验、计数为响应时快照、删除面板链接依赖列表快照。
+  >
+  > ## 结论
+  >
+  > **PASS**（针对新候选 `cad70bc`；继承第一轮对 `1a72eb9..bc090fb` 的完整覆盖。含 2 条已给处置建议的非阻断记录项，非 No findings）。
+
+- 第二轮 findings 的处置（均在 EVIDENCE 标记区内，不形成新候选）：
+  - **本轮 F1 已修**：删去并列重复的 Acceptance 条目，本区现在只有一条 Acceptance 项。
+  - **本轮 F2 已修，且按 Reviewer 的第一个方案办 —— 贴逐字原文，而不是改标题。** 我原先把第一轮报告的压缩改写标成了「报告原文」，这违反 §6 的原文写回要求。虽然 Reviewer 逐句比对后确认摘要未软化结论、未增删严重度、也没加入它没说过的内容，但摘要删掉了 findings 的 `path:line`，而那正是 findings 可被后来者复核的关键。现两轮报告均已替换为逐字原文（唯一改动是还原传输过程中被转义的 `&lt;`/`&gt;`）。
+- Acceptance：**待执行**，由独立于实现者与两轮 Reviewer 的第三个只读实例执行，核对 15 条完成条件与跨模块证据。
 - 最终状态/风险/用户操作：status=**IN_REVIEW**（第一轮 PASS，F1/F2 已处置，等待同一 Reviewer 对增量做复审，之后再做独立 Acceptance）。分支 `agent/coordinator/TASK-034-taxonomy-usage` 目前仅在本地，未推送、未开 PR。
 - 非阻断遗留项：
   - **删除面板链接依据列表快照**（Reviewer Finding 3，`ClassificationManager.tsx`）：列表加载后、点删除前若该分类被别处引用，此时 409 文案仍如实给出份数，但「查看这 N 份资料」链接不出现；点「放弃草稿，载入最新版本」刷新后即出现，可恢复。暂不修的理由：要消除它就得在打开删除面板时再查一次分类详情，为本机单用户下概率很低的时序问题增加一次请求与一处加载态，收益不抵成本。责任角色 coordinator；若将来分类页面向多人协作或引入实时刷新，需重评。
