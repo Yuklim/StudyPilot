@@ -172,3 +172,41 @@ test('real pagination retains search and order and is keyboard operable', async 
   await expect(page.getByRole('link', { name: '分页合成 01' })).toBeVisible()
   await expect(page.getByRole('button', { name: '上一页' })).toBeDisabled()
 })
+
+test('a tag created while saving becomes a clickable filter that survives reload and Back', async ({
+  page,
+}) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  const name = '就地新建 · ' + Date.now()
+
+  await page.goto('/resources/new')
+  await page.getByLabel('标题').fill('带新标签的资料')
+  await page.getByLabel('网页地址（必填）').fill('https://example.com/inline-tag')
+  await page.getByRole('button', { name: '选择主题与标签（选填）' }).click()
+  await page.getByLabel('新建标签').fill(name)
+  await page.getByRole('button', { name: '新建并选用' }).click()
+  // Created and selected in place: the half-written form is still standing.
+  await expect(page.getByRole('button', { name: `移除已选标签 ${name} ×` })).toBeVisible()
+  await expect(page.getByLabel('标题')).toHaveValue('带新标签的资料')
+  await page.getByRole('button', { name: '保存到资料库' }).click()
+  await expect(page.getByRole('heading', { name: '带新标签的资料' })).toBeVisible()
+
+  await page.goto('/resources')
+  await page.getByRole('link', { name, exact: true }).first().click()
+  await expect(page).toHaveURL(/\/resources\?tag_id=[0-9a-f-]{36}$/)
+  const filtered = page.getByRole('list', { name: '资料结果' })
+  await expect(filtered.getByRole('heading', { name: '带新标签的资料' })).toBeVisible()
+  await expect(page.getByRole('button', { name: `移除已选标签 ${name} ×` })).toBeVisible()
+
+  const address = page.url()
+  await page.reload()
+  await expect(page).toHaveURL(address)
+  await expect(filtered.getByRole('heading', { name: '带新标签的资料' })).toBeVisible()
+  await expect(page.getByRole('button', { name: `移除已选标签 ${name} ×` })).toBeVisible()
+
+  await page.goBack()
+  await expect(page).toHaveURL(/\/resources$/)
+  await expect(page.getByText('已选 0 个标签')).toBeVisible()
+  expect(errors).toEqual([])
+})

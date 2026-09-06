@@ -1,10 +1,12 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { useLocation } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
 import App from '../../App'
 import { api, ApiError } from '../../api/client'
 import { renderWithRouter } from '../../test/render'
 import { resourceId, sample, samplePage } from './fixtures'
+import { category, categoryPage, tagId } from '../taxonomy/fixtures'
 
 function change(label: string, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } })
@@ -15,6 +17,11 @@ function submit() {
 function openSupplementary() {
   fireEvent.click(screen.getByText('补充信息（选填）'))
 }
+function Address() {
+  // Exposes the router's query string so the tests can assert what lands in the URL.
+  return <output data-testid="address">{useLocation().search}</output>
+}
+const address = () => screen.getByTestId('address').textContent
 function deferred<T>() {
   let resolve!: (value: T) => void
   const promise = new Promise<T>((done) => {
@@ -293,4 +300,83 @@ describe('resource detail', () => {
       }
     },
   )
+})
+
+describe('resource library filters in the address bar', () => {
+  it('applies filters to the URL, restores them on load and clears them on reset', async () => {
+    const request = vi.spyOn(api, 'request').mockResolvedValue(samplePage([]))
+    renderWithRouter(
+      <>
+        <App />
+        <Address />
+      </>,
+      '/resources?q=%E5%B7%B2%E5%AD%98&learning_status=ARCHIVED&sort=title&page=3',
+    )
+    // Seeded from the address bar: both the request and the form reflect it.
+    await waitFor(() => expect(request).toHaveBeenCalled())
+    const seeded = new URL(request.mock.lastCall![0], 'http://example.test')
+    expect(Object.fromEntries(seeded.searchParams)).toEqual({
+      page: '3',
+      page_size: '20',
+      sort: 'title',
+      q: '已存',
+      learning_status: 'ARCHIVED',
+    })
+    expect(screen.getByLabelText('搜索资料')).toHaveValue('已存')
+    expect(screen.getByLabelText('学习状态')).toHaveValue('ARCHIVED')
+
+    change('搜索资料', ' 新词 ')
+    change('资料类型', 'PASTE')
+    fireEvent.click(screen.getByRole('button', { name: '搜索 / 应用筛选' }))
+    await waitFor(() => expect(address()).toContain('q=%E6%96%B0%E8%AF%8D'))
+    // Applying a filter returns to the first page, so `page` drops out of the URL.
+    expect(address()).toContain('source_type=PASTE')
+    expect(address()).not.toContain('page=')
+
+    fireEvent.click(screen.getByRole('button', { name: '重置' }))
+    await waitFor(() => expect(address()).toBe(''))
+    expect(screen.getByLabelText('搜索资料')).toHaveValue('')
+  })
+  it('renders every tag as a link that filters the library by that tag', async () => {
+    vi.spyOn(api, 'request').mockResolvedValue(
+      samplePage([sample({ tags: [{ id: tagId, name: '合成标签' }] })]),
+    )
+    renderWithRouter(<App />, '/resources')
+    const link = await screen.findByRole('link', { name: '合成标签' })
+    expect(link).toHaveAttribute('href', `/resources?tag_id=${tagId}`)
+    fireEvent.click(screen.getByRole('button', { name: '卡片' }))
+    expect(await screen.findByRole('link', { name: '合成标签' })).toHaveAttribute(
+      'href',
+      `/resources?tag_id=${tagId}`,
+    )
+  })
+  it('resolves the tag name behind an id in the URL and reports one it cannot read', async () => {
+    const request = vi.spyOn(api, 'request').mockImplementation(async (path) => {
+      if (path === `/api/v1/tags/${tagId}`)
+        return { data: category({ id: tagId, name: '来自网址' }) }
+      if (path.startsWith('/api/v1/tags/')) throw new ApiError('TAG_NOT_FOUND', 404)
+      return samplePage([])
+    })
+    const missing = '00000000-0000-4000-8000-0000000000ff'
+    renderWithRouter(<App />, `/resources?tag_id=${tagId}&tag_id=${missing}`)
+    expect(await screen.findByText(/已不存在或读不到/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /移除已选标签 来自网址/ })).toBeInTheDocument()
+    // The unreadable id keeps filtering; it is only its name that cannot be shown.
+    const sent = new URL(
+      request.mock.calls.filter(([path]) => path.startsWith('/api/v1/resources')).at(-1)![0],
+      'http://example.test',
+    )
+    expect(sent.searchParams.getAll('tag_id')).toEqual([tagId, missing])
+  })
+  it('offers no tag creation while filtering, only while choosing tags for a resource', async () => {
+    vi.spyOn(api, 'request').mockImplementation(async (path) =>
+      path.startsWith('/api/v1/tags?') || path.startsWith('/api/v1/topics?')
+        ? categoryPage([])
+        : samplePage([]),
+    )
+    renderWithRouter(<App />, '/resources')
+    fireEvent.click(await screen.findByRole('button', { name: '按主题与标签筛选' }))
+    expect(await screen.findByRole('heading', { name: '标签' })).toBeInTheDocument()
+    expect(screen.queryByLabelText('新建标签')).not.toBeInTheDocument()
+  })
 })

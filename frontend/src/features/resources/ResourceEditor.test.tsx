@@ -189,6 +189,26 @@ describe('resource editor', () => {
     await screen.findByText('资料修改已保存。')
     expect(request.mock.calls.at(-1)?.[1]?.body).toEqual({ tag_ids: [], expected_version: 3 })
   })
+  it('creates a tag from the edit page and includes it in the replacement set', async () => {
+    const fresh = category({ id: tagId, name: '边改边建的标签' })
+    const request = vi.spyOn(api, 'request').mockImplementation(async (path, options) => {
+      if (options?.method === 'POST' && path === '/api/v1/tags') return { data: fresh }
+      if (path.startsWith('/api/v1/tags?')) return categoryPage([])
+      return { data: sample({ version: 2 }) }
+    })
+    open(sample({ tags: [{ id: oldTagId, name: '旧标签' }] }))
+    fireEvent.click(screen.getByRole('button', { name: '更改标签' }))
+    fireEvent.change(await screen.findByLabelText('新建标签'), {
+      target: { value: '边改边建的标签' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '新建并选用' }))
+    await screen.findByRole('button', { name: '移除已选标签 边改边建的标签 ×' })
+    submit()
+    await screen.findByText('资料修改已保存。')
+    expect(
+      request.mock.calls.find(([, options]) => options?.method === 'PATCH')?.[1]?.body,
+    ).toEqual({ tag_ids: [oldTagId, tagId], expected_version: 1 })
+  })
   it.each([
     new ApiError('VERSION_CONFLICT', 409, undefined, { current_version: 99 }),
     new ApiError('VERSION_REQUIRED', 428),

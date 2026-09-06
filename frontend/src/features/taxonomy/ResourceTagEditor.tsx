@@ -2,11 +2,14 @@ import { useState } from 'react'
 
 import type { Resource } from '../resources/api'
 import { ClassificationBrowser } from './ClassificationBrowser'
+import { TagCreateField } from './TagCreateField'
 import { changeResourceTag } from './api'
 import { useOperation } from './useOperation'
 
 function TagActions({ resource, refreshed }: { resource: Resource; refreshed: () => void }) {
   const { pending, error, run } = useOperation()
+  const [revision, setRevision] = useState(0)
+  const full = resource.tags.length >= 20
   return (
     <fieldset disabled={pending} className="classification-browser">
       <legend className="sr-only">编辑资料标签</legend>
@@ -25,9 +28,19 @@ function TagActions({ resource, refreshed }: { resource: Resource; refreshed: ()
           </button>
         ))}
       </div>
+      {/* Here "select" means attach: a tag created from this page belongs to this resource. */}
+      <TagCreateField
+        disabled={full}
+        hint={full ? '这份资料已有 20 个标签，先解除一个再新建。' : undefined}
+        created={(tag) => {
+          setRevision(revision + 1)
+          void run(() => changeResourceTag(resource.id, tag.id, true), refreshed)
+        }}
+      />
       <ClassificationBrowser
         kind="tags"
         disabled={pending}
+        revision={revision}
         render={(tag) => (
           <div className="classification-card">
             <span>{tag.name}</span>
