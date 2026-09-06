@@ -29,7 +29,7 @@ SECRET_PATTERNS = {
         r"(?im)^\s*(?:api[_-]?key|password|secret|access[_-]?token)\s*[:=]\s*[\x22\x27]?[A-Za-z0-9_+/=-]{16,}[\x22\x27]?\s*$"
     ),
 }
-PROFILE_NAMES = {"governance", "backend", "frontend", "contracts"}
+PROFILE_NAMES = {"governance", "backend", "frontend", "extension", "contracts"}
 
 
 def valid_task_branch(branch: str) -> bool:
@@ -63,6 +63,8 @@ def selected_profiles(paths: list[str], explicit: list[str]) -> set[str]:
             groups.add("backend")
         if path.startswith("frontend/"):
             groups.add("frontend")
+        if path.startswith("extension/"):
+            groups.add("extension")
         if path.startswith("docs/contracts/"):
             groups.add("contracts")
     return groups
@@ -212,6 +214,16 @@ def commands(group: str) -> list[tuple[str, list[str]]]:
         ] + [
             ("frontend", ["npm", "run", "test", "--", "--run"]),
             ("frontend", ["npm", "run", "build"]),
+        ]
+    if group == "extension":
+        # The browser extension is its own npm project: same script names as the
+        # frontend, separate node_modules, no workspace link between them.
+        return [
+            ("extension", ["npm", "run", command])
+            for command in ("format:check", "lint", "typecheck")
+        ] + [
+            ("extension", ["npm", "run", "test", "--", "--run"]),
+            ("extension", ["npm", "run", "build"]),
         ]
     if group == "contracts":
         script = (

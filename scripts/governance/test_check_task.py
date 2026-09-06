@@ -21,6 +21,7 @@ class CheckTests(unittest.TestCase):
     def test_profiles_cannot_be_omitted_by_task(self):
         self.assertEqual({"backend"}, check.selected_profiles(["backend/src/main.py"], []))
         self.assertEqual({"frontend"}, check.selected_profiles(["frontend/src/a.tsx"], []))
+        self.assertEqual({"extension"}, check.selected_profiles(["extension/src/a.ts"], []))
         self.assertEqual({"governance"}, check.selected_profiles(["AGENTS.md"], []))
         self.assertEqual({"contracts"}, check.selected_profiles(["docs/contracts/api.json"], []))
         self.assertEqual(set(), check.selected_profiles(["docs/help.md"], []))
