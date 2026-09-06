@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-038"
-status = "IN_REVIEW"
+status = "IN_ACCEPTANCE"
 risk = "L3"
 risk_reason = "本任务把扩展从「零权限」变成「能读用户当前打开的任意网页、并向本机 UI 页面注入脚本」。浏览器扩展权限是一次性授予、长期生效的，用户不会重新审视，因此这次授予的边界就是它此后的边界。同时新增一条**新的数据写入路径**：正文不再只由用户手工粘贴，而是由页面内容自动提取后进入永久快照（快照一旦写入即不可回溯重建）。第三处实质风险在信任边界：`/capture` 页面要接收来自扩展内容脚本的 postMessage，而任何网页都能向同源页面发 postMessage，所以「谁可以让 StudyPilot 写一条资料」这个问题必须在本任务里答对。命中 `**/AGENTS.md` 高风险路径下限。不改后端、不改契约、不改 `infrastructure/security/local_access.py`。"
 risk_flags = ["security", "architecture", "business", "tests"]
