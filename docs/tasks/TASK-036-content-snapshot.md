@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-036"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "新增数据库表与迁移（0004）、新增公共 API 操作与契约对象，三项各自都是 L3 判入条件。更实质的是：本任务确立「资料的正文可以与 source_url 并存」这一新的数据语义 —— 在此之前 `learning_resources` 的来源互斥 CHECK 意味着 WEB 资料只有链接、没有正文。快照一旦开始写入即成为**不可回溯**的资产（原文改版或消失后无法重建），因此表结构、正文格式与降级语义在第一版就必须定对，事后迁移无法补齐历史内容。此外新表与 `learning_resources` 之间是 CASCADE 外键，删除资料会连带删除快照，属关键数据模型。不改核心表、不改既有互斥 CHECK。"
 risk_flags = ["public-api", "migration", "critical-data", "business", "tests"]
@@ -116,9 +116,31 @@ checks = []
 
 ## 实现与测试
 
-- 实现 SHA/变更摘要：待填。
-- 命令、真实退出结果、product_fingerprint、环境、未运行原因：待填。
-- 已知限制/未完成项：待填。
+- 实现 SHA/变更摘要：`ce22d2a`，相对基线 `3fbca1f` 共 18 个代码/契约文件（加任务记录、TASK-035 收尾与索引，`check_task` 记 files=21）。
+  - **数据层**：`models.py` 新增 `ContentSnapshot`；`0004_content_snapshots.py` 建表。READY 与 FAILED 两态由一条 `capture_state` CHECK 互斥约束（READY 必有 `content`/`char_count`/`sha256` 且无 `failure_code`，FAILED 反之），形态照搬 `OriginalFile.failure_state`。FAILED 本任务不产生，但形态先建好，避免后续自动抓取时再来一次迁移。
+  - **新模块**：`modules/resources/snapshots.py`（`SnapshotPut` 校验，纯空白正文拒绝但其余空白原样保留）、`infrastructure/database/snapshot_store.py`（读/整份写/删，含版本前置）、`application/snapshots.py`（短事务，`StaleDataError` 经新事务重新分类为 `VERSION_CONFLICT`，不重放写）、`api/snapshots.py`（三条路由）。
+  - **写入语义**（实现中定稿的一处设计）：首次写入省略 `expected_version` 返回 **201**；已有快照必须携带，缺失 **428**、不匹配 **409**；对**尚不存在**的快照携带 `expected_version` 返回 **404 SNAPSHOT_NOT_FOUND**。最后一条是刻意的：调用方声称要替换第 N 版，而根本没有快照，这是过期认知而非一次新写入，静默当作创建会掩盖客户端的状态错误。
+  - **契约**：openapi 新增 `ContentSnapshot`/`SnapshotPut`/`ContentSnapshotEnvelope` 三个 schema、`ResourceOrSnapshotNotFound` 响应组件与三个操作（纯新增，0 删除）。中文契约新增 **4.13 ContentSnapshot** 小节（含「为什么另建表而不放宽互斥 CHECK」「冻结语义」「写入语义」「本阶段边界」四段）、交付状态段、操作清单、操作表三行、错误码 `SNAPSHOT_NOT_FOUND`、逐操作错误码三行，以及 4.12 关系表新增一行。**节号选 4.13 而非插队为 4.12**：4.12 被已合并的 TASK-022 记录引用，改号会波及旧记录。
+  - **前端**：`api/client.ts` 注册 `SNAPSHOT_NOT_FOUND`；`resources/api.ts` 新增三个调用（读到 404 时返回 `null` 而非抛错 —— 没有快照是正常状态）；新增 `ContentSnapshot.tsx` 挂在资料详情页，可粘贴/替换/删除并展示 Markdown **源码**（渲染属阅读器范畴，非本任务）。
+- 实现中发现并修正的三个真问题（两个是我自己引入的缺陷，一个是既有防线拦住了我）：
+  1. **重新读取时整个区块会闪没**。首版把加载态写成组件级早返回（`if (!result) return <p>正在读取正文…</p>`），于是保存后触发重读时，连标题带按钮整块消失。这是真实体验缺陷，不只是测试问题。改为把加载/错误态放进 `<section>` 内部，区块本身常驻。
+  2. **读取失败抢占了页面级警报**。首版读取失败复用 `ResourceError`（`role="alert"`），导致资料详情页出现第二个 alert，撞红了 `ClassificationPages.test.tsx` 里既有的无作用域 `findByRole('alert')`。判断：一个可选次级区块的**后台读取**失败不该发出 assertive 警报，`role="alert"` 应留给用户主动发起的**写入**失败。改为礼貌提示 + 「重新读取正文」按钮。**未修改那个既有测试**（它不在本任务 allowed_paths 内，且问题出在我的设计而非它）。
+  3. **删除被客户端白名单拦下**。`client.ts` 有一份「哪些 DELETE 可携带 `If-Match`」的显式路径白名单，快照路径不在其中，删除时报 `INVALID_REQUEST`。这是既有防线正确工作，按需在白名单里显式加入 `/resources/{id}/snapshot`（长度 6 段、末段为 `snapshot`）。
+- 测试侧的一处坑，记下来免得后来者再踩：`findByText('# 冻结的标题', { exact: false })` 会匹配到 **textarea 的内容**（React 给受控 textarea 设 `defaultValue`，在 DOM 里是文本子节点），因此断言会在写入完成前就通过。三条前端用例改为断言已存快照的元数据（`共 N 字`），它只在快照真正落库后才出现。
+- 命令、真实退出结果、product_fingerprint、环境、未运行原因：
+  - `check_task.py --task docs/tasks/TASK-036-content-snapshot.md --candidate ce22d2a` → **CHECKS PASS**。base=`3fbca1f`、risk=L3、stages=(worker, review, acceptance)、files=21、profiles=**backend,contracts,frontend**、product_fingerprint=`f30a93e1c787894ff383307f126a3c0ee86c31c7c535544d56c4ec9f2cc14c4c`。
+  - `cd backend && ruff format --check .`（71 files already formatted）/ `ruff check .` / `mypy .`（70 source files）全绿；`pytest` → **513 passed**，基线 **505**，净增 8。
+  - `cd frontend && npm run format:check && lint && typecheck && test && build` 全绿；vitest **363 passed**，基线 **360**，净增 3。
+  - `npm run test:e2e` → **41 passed**，基线 **40**，净增 1（真实后端上粘贴正文、刷新后仍在、删除后回到空态，并断言快照与原文链接并存）。
+  - 环境：本地 macOS（Darwin 25.5.0）、Python 3.13.9 / pytest 8.4.2、Node 24、Vitest 4.1.11、Playwright chromium、Vite 8.2.2。
+  - 未运行：无 —— 本任务含迁移、契约与前后端，`check_task` 自动选组已覆盖三组。
+  - 共享工作树监测：跑长检查前后各记一次未跟踪文件 `docs/research/阅读器与标注能力调研.md` 的 sha256，两次均为 `f56cad6b…`，**本次无第三方并发写入**。运行 `check_task` 时按既有做法把该未跟踪目录临时移出、跑完原样放回，未删除或修改。
+- 已知限制/未完成项：
+  - **图片未冻结**：快照中的图片引用仍指向原站，原站失效时图片一并失效，因此当前冻结**并不完整**。这不是疏漏而是排期：可靠取回图片字节需要绕开 CORS，只有浏览器扩展做得到（后端取得到但本任务明示不出网）。已写入契约 4.13。
+  - **不渲染 Markdown**：详情页展示的是源码。渲染与阅读体验属阅读器任务。
+  - **无自动抓取**：正文只能手动粘贴。`FAILED` 状态形态已建好但本阶段不产生。
+  - `SnapshotStore.require_resource` 直接查 `learning_resources`，未复用 `ResourceStore.find` 的「FILE 资料须 READY 才算可见」规则。差异只在一个理论边界：对一个仍在 PENDING 的 FILE 资料，快照端点会返回 404 SNAPSHOT_NOT_FOUND 而不是 404 RESOURCE_NOT_FOUND —— 两者同码同状态，不泄露信息也不改变行为。为避免与 `resource_store.py`（不在 allowed_paths）耦合而未复用。
+  - 一份资料仍限一份快照（`UNIQUE(resource_id)`）。多版本快照与版本对比未做，放宽该唯一约束即可支持。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
