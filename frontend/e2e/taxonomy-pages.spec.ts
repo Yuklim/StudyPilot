@@ -271,7 +271,9 @@ test('merging one tag into another moves the resources and removes the source', 
   await expect(page.getByText('操作成功，已重新读取分类列表。')).toBeVisible()
 
   // The source is gone and the target now covers both resources, counted once each.
-  await page.getByLabel('搜索标签').fill('合并 · ' + suffix)
+  // Search for the source itself: a needle that matches no tag would make this
+  // assertion vacuously true whether or not the source survived.
+  await page.getByLabel('搜索标签').fill(source)
   await button(page, '查找标签').click()
   await expect(page.getByRole('heading', { name: source })).toHaveCount(0)
   await page.getByLabel('搜索标签').fill(target)

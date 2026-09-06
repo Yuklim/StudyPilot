@@ -298,7 +298,7 @@ async function failure(response: Response): Promise<ApiError> {
   const key =
     code === 'VERSION_CONFLICT'
       ? 'current_version'
-      : code === 'TAXONOMY_IN_USE'
+      : code === 'TAXONOMY_IN_USE' || code === 'TAXONOMY_USAGE_CHANGED'
         ? 'resource_count'
         : undefined
   const value = key && object(error?.details) ? error.details[key] : undefined

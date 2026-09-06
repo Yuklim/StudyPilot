@@ -289,7 +289,7 @@ PUT 添加与 DELETE 移除是幂等的，避免整组标签覆盖造成并发�
 
 TASK-035 起另有两条**批量**路径：`detachAllTagResources` 与 `mergeTag`。它们一次事务内处理任意多条关联，**不推进任何资料 `version`**（与逐条幂等端点一致，而与 `updateResource` 的 `tag_ids` 整组替换不同）。因此它们与本节上文所述的跨路径并发问题属同一类已知取舍：一次批量操作之后，仍持旧 `version` 的整组替换不会因此报 `409`。
 
-两者的并发守卫是 `expected_resource_count` —— 调用方提交它在界面上看到的份数，服务端在同一事务内重算，不符即 `409 TAXONOMY_USAGE_CHANGED` 并且不写入任何数据；`mergeTag` 另要求源标签的 `expected_version`（源标签会被删除，与 `deleteTag` 的强版本前置同理）。**为何不套用资料删除的「预览 + 一次性令牌」模式**（第 9 节）：那套机制是为级联删除资料及其原件、心得与历史设计的，影响集合复杂且不可逆，故需 `impact_manifest` 与 256 位一次性令牌；标签批量操作只写 `resource_tags`，不删除任何资料、不改正文，清空后可重新逐个加回，可逆性完全不同。以份数作守卫是与该风险相称的最小充分手段。此取舍在此登记，若将来批量操作扩展到会删除资料或不可恢复的范围，须重评。
+两者的并发守卫是 `expected_resource_count` —— 调用方提交它在界面上看到的份数，服务端在同一事务内重算，不符即 `409 TAXONOMY_USAGE_CHANGED` 并且不写入任何数据；`mergeTag` 另要求源标签的 `expected_version`（源标签会被删除，与 `deleteTag` 的强版本前置同理）：**缺失该字段返回 `428`**，与本文第 6 节「JSON 修改请求携带 `expected_version`，缺失返回 428」的通则一致，不构成例外。**为何不套用资料删除的「预览 + 一次性令牌」模式**（第 9 节）：那套机制是为级联删除资料及其原件、心得与历史设计的，影响集合复杂且不可逆，故需 `impact_manifest` 与 256 位一次性令牌；标签批量操作只写 `resource_tags`，不删除任何资料、不改正文，清空后可由用户逐个重新添加。需说明清楚：原关联集合**不留痕**，所以这是「可手工重建」而非「可撤销」——但重建所需的信息（哪些资料带过这个标签）在清空前于界面上可见，且不涉及任何内容丢失，与删除资料及其正文/原件/心得的不可逆性仍属不同量级。以份数作守卫是与该风险相称的最小充分手段。守卫的是**份数**而非具体集合：若在读数与执行之间发生一增一减而总数不变，或在校验与随后的关联查询之间新增了关联，守卫都不会拦下，新增的那条会被一并迁移或清除。此取舍在此登记，若将来批量操作扩展到会删除资料或不可恢复的范围、或需要精确到集合的保证，须重评。
 
 合并的语义细节：目标标签已持有的资料**不重复插入**（`(resource_id, tag_id)` 是复合主键）；源标签的全部关联在删除源标签**之前**移走或删除（`ResourceTag.tag_id` 的外键为 `ON DELETE RESTRICT`）；`target_tag_id` 等于源标签时返回 `422`。
 
@@ -513,8 +513,8 @@ OpenAPI 中 `ReviewRecord` 用条件 schema 固化上述规则：`NEEDS_REVIEW` 
 | PATCH `/resources/{resource_id}` | 修改元数据/同源内容 / resources | `ResourcePatch`；200 详情 | 200/400/403/404/409/415/422/428/500；写入并递增版本 |
 | POST `/resources/{resource_id}/deletion-preview` | 删除预览 / resources | 写安全；200 `DeletionPreview` | 200/403/404/500；只创建确认记录 |
 | DELETE `/resources/{resource_id}` | 确认删除 / resources | 专用删除头；204 | 204/403/404/409/410/500/503；不可逆删除，按第9节恢复 |
-| POST `/tags/{tag_id}/detach-all` | 清空标签关联 / taxonomy | `TagDetachAll`；200 `TagUsage` | 200/403/404/409/415/422/500；只删关联，保留标签 |
-| POST `/tags/{tag_id}/merge` | 合并标签 / taxonomy | `TagMerge`；200 目标 `TagUsage` | 200/403/404/409/415/422/500；移关联后删除源标签 |
+| POST `/tags/{tag_id}/detach-all` | 清空标签关联 / taxonomy | `TagDetachAll`；200 `TagUsage` | 200/400/403/404/409/415/422/500；只删关联，保留标签 |
+| POST `/tags/{tag_id}/merge` | 合并标签 / taxonomy | `TagMerge`；200 目标 `TagUsage` | 200/400/403/404/409/415/422/428/500；移关联后删除源标签 |
 | PUT `/resources/{resource_id}/tags/{tag_id}` | 幂等关联 / taxonomy | 无体；200 `ResourceTag` | 200/403/404/500；首次创建关联，已有不变 |
 | DELETE `/resources/{resource_id}/tags/{tag_id}` | 幂等解除 / taxonomy | 无体；204 | 204/403/404/500；关联不存在仍 204 |
 | GET `/resources/{resource_id}/notes` | 笔记列表 / notes | 分页；200 `NotePage` | 200/403/404/422/500；只读 |
@@ -581,7 +581,7 @@ DELETE review 带 JSON 是契约列明的例外；它仍是写请求并必须先
 | `updateTag` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `TAG_NOT_FOUND`, `DUPLICATE_TAG`, `VERSION_CONFLICT`, `CONTENT_TYPE_UNSUPPORTED`, `VALIDATION_ERROR`, `VERSION_REQUIRED`, `UNKNOWN_ERROR` |
 | `deleteTag` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `TAG_NOT_FOUND`, `TAXONOMY_IN_USE`, `VERSION_CONFLICT`, `VERSION_REQUIRED`, `UNKNOWN_ERROR` |
 | `detachAllTagResources` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `CONTENT_TYPE_UNSUPPORTED`, `VALIDATION_ERROR`, `TAG_NOT_FOUND`, `TAXONOMY_USAGE_CHANGED`, `UNKNOWN_ERROR` |
-| `mergeTag` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `CONTENT_TYPE_UNSUPPORTED`, `VALIDATION_ERROR`, `TAG_NOT_FOUND`, `TAXONOMY_USAGE_CHANGED`, `VERSION_CONFLICT`, `UNKNOWN_ERROR` |
+| `mergeTag` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `CONTENT_TYPE_UNSUPPORTED`, `VALIDATION_ERROR`, `TAG_NOT_FOUND`, `TAXONOMY_USAGE_CHANGED`, `VERSION_CONFLICT`, `VERSION_REQUIRED`, `UNKNOWN_ERROR` |
 | `listResourceNotes` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `RESOURCE_NOT_FOUND`, `VALIDATION_ERROR`, `UNKNOWN_ERROR` |
 | `createResourceNote` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `RESOURCE_NOT_FOUND`, `CONTENT_TYPE_UNSUPPORTED`, `VALIDATION_ERROR`, `UNKNOWN_ERROR` |
 | `getResourceNote` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `RESOURCE_NOT_FOUND`, `NOTE_NOT_FOUND`, `UNKNOWN_ERROR` |

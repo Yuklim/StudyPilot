@@ -779,6 +779,14 @@ def test_bulk_operations_refuse_stale_counts_versions_and_bad_targets_without_wr
     check_error(
         authorized.post(f"/api/v1/tags/{uuid4()}/merge", json=merge_body), 404, "TAG_NOT_FOUND"
     )
+    # A merge without expected_version is 428, not 422: same rule as PATCH and deleteTag.
+    check_error(
+        authorized.post(
+            merge_path, json={"target_tag_id": target["id"], "expected_resource_count": 1}
+        ),
+        428,
+        "VERSION_REQUIRED",
+    )
     for invalid in (
         {"expected_resource_count": -1},
         {"expected_resource_count": "1"},

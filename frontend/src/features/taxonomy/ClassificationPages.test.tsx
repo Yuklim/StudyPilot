@@ -511,7 +511,10 @@ describe('tag bulk association operations', () => {
     click('清空标签关联 在用标签')
     await screen.findByRole('region', { name: '清空关联确认' })
     click('确认清空 3 份关联')
-    expect(await screen.findByRole('alert')).toHaveTextContent('份数已经变化')
+    // The server's real count has to reach the message, not just a generic warning.
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      '现在有 5 份资料使用这个分类，与你看到的份数不一致',
+    )
     expect(screen.getByRole('alert')).toHaveTextContent('没有自动重试')
     expect(request.mock.calls.filter(([, o]) => o?.method === 'POST')).toHaveLength(1)
     expect(screen.queryByText('操作成功，已重新读取分类列表。')).not.toBeInTheDocument()

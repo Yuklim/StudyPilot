@@ -1,4 +1,4 @@
-"""HTTP adapter for the twelve approved taxonomy operations."""
+"""HTTP adapter for the fourteen approved taxonomy operations."""
 
 import json
 import re
@@ -97,7 +97,16 @@ async def json_body(request: Request) -> tuple[bytes, Any]:
 async def bulk_body(
     request: Request, model: type[TagDetachAll] | type[TagMerge]
 ) -> TagDetachAll | TagMerge:
-    raw, _ = await json_body(request)
+    """Version-guarded where the command carries one: a missing expected_version is
+    428 (read the current version first), invalid content is 422 — same as PATCH and
+    as notes.move_body."""
+    raw, value = await json_body(request)
+    if (
+        "expected_version" in model.model_fields
+        and isinstance(value, dict)
+        and "expected_version" not in value
+    ):
+        raise TaxonomyError("VERSION_REQUIRED", 428)
     try:
         return model.model_validate_json(raw)
     except ValidationError:
