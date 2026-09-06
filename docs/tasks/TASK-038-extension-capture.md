@@ -96,9 +96,44 @@ checks = []
 
 ## 实现与测试
 
-- 实现 SHA/变更摘要：待填
-- 命令、真实退出结果、product_fingerprint、环境、未运行原因：待填
-- 已知限制/未完成项：待填
+- 实现 SHA/变更摘要：**`540027e`**（base `b4a3fd0`，31 个文件；其中 `extension/package-lock.json` 一个文件占了大部分行数）。
+  1. **扩展侧**：`src/shared/protocol.ts`（消息契约与载荷校验）、`src/injected/extract.ts`（在文章页运行，Defuddle 提取 + 转 Markdown）、`src/injected/relay.ts`（只在本机 UI 源运行的中转脚本）、`src/popup/capture.ts`（编排逻辑，与 chrome API 解耦）、`src/popup/bridge.ts`（真实 chrome 接线）、popup 增加「保存这一页的正文」按钮。
+  2. **构建**：内容脚本与注入脚本必须是经典脚本，而 Rollup 只在 es/system 下支持多入口，故新增 `vite.injected.config.ts`，用 `--mode` 选入口各构建一次（`extract.js`、`relay.js`），跟在 popup 构建之后、`emptyOutDir: false`。
+  3. **权限**：`activeTab` + `scripting` + `storage` + 一条只匹配 `http://127.0.0.1:5173/*` 的 `content_scripts`。**未申请 `host_permissions`、未申请 `<all_urls>`**。manifest 白名单断言由五键扩到七键，另新增两条断言分别锁死权限清单的确切三项与内容脚本的唯一匹配源。
+  4. **前端**：`features/capture/protocol.ts`（扩展协议的平行实现）与 `CapturePage.tsx`（确认页），在 `shell/pages.ts` 与 `shell/Screen.tsx` 注册 `/capture`；不放进导航（没有从扩展过来就没有内容可看）。
+  5. **契约**：`docs/contracts/API与数据契约基线.md` 新增 **§14**「浏览器扩展与 UI 页面的消息契约」，含消息表、载荷约束、信任边界与权限边界。**openapi 快照一字未改**（本任务不新增、不修改任何 HTTP 操作）。
+  6. **文档漂移守卫**：`extension/src/boundaries.test.ts` 新增一条断言——manifest 申请的每一项 reach 都必须在 `extension/README.md` 与 `extension/AGENTS.md` 里被提到，否则失败。
+  7. **清掉 TASK-037 遗留 L8**：两处 README 与 `extension/AGENTS.md` 补 Edge 加载路径、改正验证状态表述、写入「只支持 Chrome 与 Edge」。
+
+- 命令、真实退出结果、product_fingerprint、环境、未运行原因：
+
+  **任务检查（全套）**：`check_task.py --task docs/tasks/TASK-038-extension-capture.md --candidate 540027e` → **CHECKS PASS**，base=`b4a3fd0`、files=31、`profiles=contracts,extension,frontend`、`product_fingerprint=f6c1552186cb08ae8c15c344a201c437b9a24f8dd5669ef886a0a4fef2bcc268`。完整输出留存于会话临时目录 `scratchpad/check-038.log`（145 行）；extension 组五条命令在第 7/17/25/33/50 行逐条可见、全部 exit=0，报 **6 files / 44 tests passed**；frontend 组报 **17 files / 380 tests passed**。运行环境沿用 TASK-037 经 Review 认可的路径：主工作区因未跟踪的 `docs/research/` 不满足脚本的干净要求，故 `git worktree add` 一个独立干净的 worktree 检出 `540027e` 后在其中运行（临时分支 `...-capture-check`，零提交差异、未推送，检查后连同 worktree 与 `.git/info/exclude` 的临时行一并删除）。
+
+  **governance 组未被自动选中**：`selected_profiles()` 的治理规则只匹配根 `AGENTS.md` 与 `.codex/`、`.agents/`、`docs/governance/`、`scripts/governance/` 前缀，`extension/AGENTS.md` 不在其中——这与 TASK-037 第一轮 A 部分 Review 核实并接受的既有行为一致（其风险下限仍由 `risk-policy.json` 的 `**/AGENTS.md` 独立兜住 L3）。本任务未改治理脚本，另行单独运行治理组：`validate_governance.py` PASS、`ruff check/format --isolated scripts/governance` 全绿、`unittest discover -s scripts/governance` **23 tests OK**。
+
+  **backend 组未被自动选中**（本任务不改 `backend/**`），另行在主工作区单独运行：`ruff format --check . && ruff check . && mypy src tests && pytest -q` → 全绿，**525 passed**，与基线一致。
+
+  **e2e**：`cd frontend && npm run test:e2e` → **41 passed**，与基线一致。本任务未新增 e2e，原因见「已知限制」第 1 条。
+
+  **变异验证（六项，均已回滚，回滚后复跑全绿）**：
+  1. *信任边界是否真被测住*：删掉 `capturedFrom` 里的 `event.source` 与 `event.origin` 校验 → 采集页测试 **2 failed / 9 passed**。
+  2. *「必须用户确认」是否真被测住*：让页面一收到内容就自动 `createResource` → **2 failed / 9 passed**。
+  3. *内容脚本范围是否被锁死*：把 `matches` 放宽为 `[RELAY_MATCH, '<all_urls>']` → 扩展测试 **1 failed / 42 passed**。
+  4. *扩展是否真的不直连后端*：在 `bridge.ts` 里加一行指向 `http://127.0.0.1:8000/api/v1/resources` 的常量 → **1 failed / 42 passed**。
+  5. *权限清单是否被锁死*：给 manifest 加 `'tabs'` 而不改文档 → **2 failed**（权限断言 + 新增的文档漂移守卫各一条）。
+  6. *文档漂移守卫是否有效*：见上第 5 项；该守卫在首次运行时就真实抓到一处缺漏（`extension/README.md` 未写出内容脚本的确切匹配源），已修。
+
+  **实现过程中自查发现并修正的两处**（记录在案，因为它们都属本任务链上反复出现的缺陷类型）：① `extension/README.md` 与 `AGENTS.md` 仍写「顶层键恰好五个」，而实物已是七个——与 TASK-037 F1「宣称比实物宽」方向相反但同族，是「文档口径落后于实物」，第 6 项守卫即为此而加；② 我最初写的「不可用内容不开确认页」测试实际走的是超时分支，**是一条空断言**，改为让假 bridge 真实回传不可用内容、并断言结论必须是 `unusable` 而非 `timeout`。
+
+  环境：macOS（Darwin 25.5.0）、Node v24、npm 11、Python 3.13（`backend/.venv`）。`extension/` 的依赖安装因用户级 npm 缓存 `EACCES` 需用仓库内 `.npm-cache`（README 既有 FAQ）。
+
+- 已知限制/未完成项：
+  1. **「点扩展图标 → 采集」这一段没有自动化端到端覆盖**：Playwright 驱动不了浏览器扩展。有覆盖的是两端各自的逻辑——扩展侧 `runCapture` 的编排顺序与五种失败分支、`relayHandler` 的消息过滤、`extractFromDocument` 在 jsdom 里的真实提取；前端侧 `/capture` 的握手、伪造消息拒绝、确认写入与半成功状态。**中间那一跳（真实 chrome.storage + 真实 content script）只有靠人实机验证**，见第 2 条。**本记录中的任何组件测试都不得被称作端到端验证。**
+  2. **全流程从未在真实浏览器里跑过**：Agent 无法加载扩展、无法点击图标。完成条件 14 因此须由用户实测后据实补记，与 TASK-037 的做法一致。
+  3. **图片不冻结**：正文里的图片引用仍指向原站，原站改版或删图后这部分内容会失效。属 TASK-039 的范围。
+  4. **提取质量只在合成页面上验证过**：`extract.test.ts` 用的是一个人工构造的典型文章骨架（导航/正文/推荐位/广告/页脚），证明了噪声剔除与 Markdown 转换成立，但真实站点千差万别，尤其是知乎/CSDN 这类重前端框架的页面。首次实机使用时值得留意提取效果。
+  5. **`extract.js` 产物 707 kB**（Defuddle full 含 Markdown 转换）。对本机扩展无实际影响，但它是注入到用户浏览页面的脚本，体积值得知道。
+  6. **创建资料与写快照不是一个事务**：两次 HTTP 请求，第一步成功第二步失败时会留下一份没有正文的资料。页面对此有明确提示与去处（完成条件 5），但状态本身无法避免——除非后端提供「创建资料同时写快照」的合并操作，那属新的 HTTP 契约，不在本任务范围。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
