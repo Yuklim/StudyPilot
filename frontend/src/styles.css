@@ -2075,3 +2075,21 @@ a.source-chip:focus-visible {
   flex: 1 1 100%;
   margin: 0;
 }
+
+/* TASK-034: how many resources use a classification, shown where it is maintained.
+   Not .text-link: that is a 44px standalone target, too heavy for a count in a card. */
+.classification-usage {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.usage-link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.usage-link:hover,
+.usage-link:focus-visible {
+  text-decoration-thickness: 2px;
+}

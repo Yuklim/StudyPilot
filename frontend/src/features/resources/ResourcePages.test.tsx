@@ -411,6 +411,58 @@ describe('resource library filters in the address bar', () => {
       `/resources?tag_id=${tagId}`,
     )
   })
+  it('keeps the unreadable-classification warning while that id is still filtering', async () => {
+    const missing = '00000000-0000-4000-8000-0000000000ff'
+    const request = vi.spyOn(api, 'request').mockImplementation(async (path) => {
+      if (path.startsWith('/api/v1/tags/')) throw new ApiError('TAG_NOT_FOUND', 404)
+      return samplePage([sample()], { total_items: 21, total_pages: 2, has_more: true })
+    })
+    renderWithRouter(<App />, `/resources?tag_id=${missing}`)
+    expect(await screen.findByText(/已不存在或读不到/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '下一页' }))
+    await waitFor(() => expect(request.mock.lastCall?.[0]).toContain('page=2'))
+    // Paging must not quietly drop the warning: the bad id is still filtering.
+    expect(screen.getByText(/已不存在或读不到/)).toBeInTheDocument()
+    expect(
+      new URL(request.mock.lastCall![0], 'http://x.test').searchParams.getAll('tag_id'),
+    ).toEqual([missing])
+  })
+  it('ignores filter values in the address it cannot understand, and says so', async () => {
+    const request = vi.spyOn(api, 'request').mockResolvedValue(samplePage([]))
+    renderWithRouter(
+      <>
+        <App />
+        <Address />
+      </>,
+      `/resources?sort=bogus&source_type=BOGUS&learning_status=BOGUS&q=${'字'.repeat(201)}&page=2`,
+    )
+    const notice = await screen.findByText(/读不懂，已忽略/)
+    for (const label of ['排序', '资料类型', '学习状态', '搜索词'])
+      expect(notice).toHaveTextContent(label)
+    // Nothing unusable reaches the backend; the page number is still honoured.
+    const sent = new URL(request.mock.lastCall![0], 'http://x.test')
+    expect(Object.fromEntries(sent.searchParams)).toEqual({
+      page: '2',
+      page_size: '20',
+      sort: '-created_at',
+    })
+    expect(screen.getByLabelText('搜索资料')).toHaveValue('')
+    expect(screen.getByLabelText('资料类型')).toHaveValue('')
+  })
+  it('leaves a legitimate filter address untouched', async () => {
+    const request = vi.spyOn(api, 'request').mockResolvedValue(samplePage([]))
+    renderWithRouter(<App />, '/resources?sort=title&source_type=PASTE&learning_status=ARCHIVED')
+    await waitFor(() => expect(request).toHaveBeenCalled())
+    expect(screen.queryByText(/读不懂，已忽略/)).not.toBeInTheDocument()
+    const sent = new URL(request.mock.lastCall![0], 'http://x.test')
+    expect(Object.fromEntries(sent.searchParams)).toEqual({
+      page: '1',
+      page_size: '20',
+      sort: 'title',
+      source_type: 'PASTE',
+      learning_status: 'ARCHIVED',
+    })
+  })
   it('offers no tag creation while filtering, only while choosing tags for a resource', async () => {
     vi.spyOn(api, 'request').mockImplementation(async (path) =>
       path.startsWith('/api/v1/tags?') || path.startsWith('/api/v1/topics?')
