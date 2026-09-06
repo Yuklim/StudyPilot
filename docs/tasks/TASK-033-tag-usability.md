@@ -134,11 +134,11 @@ checks = []
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：待填。
-- Review：L2 独立只读 Reviewer，待填（身份、权限证据、base/candidate、findings 或 No findings、结论）。
+- 候选 SHA：`dcd0301`（含需求、实现与测试证据；代码实现 SHA `f801ad1`，`f801ad1..dcd0301` 仅为本记录的证据写回，不含代码改动。`check_task.py --candidate f801ad1` CHECKS PASS，base=`b6ab87e`、files=14、profiles=frontend、product_fingerprint=`cd5e125a92a8fd44ee0f1a6b3115b852176b48bd6cceca400f96d28304d2c3c7`、risk=L2 stages=(worker, review)）。base..candidate 的完整 diff 已导出到 scratchpad 的 `TASK-033-full-diff.patch`，供无 Bash 的只读 Reviewer 直接 Read。
+- Review：**待执行**。本次会话仍以 `/Users/yuklimching` 为启动目录，项目级 `.claude/agents/reviewer.md` 未注册，无法在此派出运行器层面真只读的 Reviewer（沿用 TASK-032 的处理：不用带 Bash 的 Agent 冒充）。接手会话应在 StudyPilot 目录下开启，对 `b6ab87e..dcd0301` 做首次完整 Review。重点建议：`ResourceLibrary` 的 URL ↔ 筛选映射是否与改动前的查询完全等价（尤其默认值不写 URL、page 重置、topic_unassigned 分支）、渲染期 setState 的同步是否会产生额外渲染或状态错位、名称解析缓存是否可能重复请求或泄漏、`TagCreateField` 在三个宿主表单里是否真的不会误提交外层 form。
 - Acceptance：L2 → N/A（风险路由不要求独立验收）。
-- 最终状态/风险/用户操作：待填。
-- 非阻断遗留项：待填。
+- 最终状态/风险/用户操作：status=**IN_REVIEW**。实现与自动检查已完成且全绿，L2 执行链剩独立 Review 一步。分支 `agent/coordinator/TASK-033-tag-usability` 目前仅在本地，未推送、未开 PR。
+- 非阻断遗留项：见「实现与测试」的已知限制段（名称解析的短暂占位、其他页面浏览状态未进 URL、仍无 OR 筛选、管理页无使用量），均为本任务明示的非目标或可接受取舍。
 - 日期与决定日志：2026-09-05 用户在 PR #37 合并后授权本任务；同日在提出的三个 chip 跳转方案中选定「全部筛选条件进 URL」并要求合为一个任务，主 Agent 已当面说明该选择使范围明显大于最初描述的「chip 可点，改动很小」，用户确认按完整范围执行。同日主 Agent 在基线 `b6ab87e` 亲自复核 6 项现状事实后登记为 L2，并入 TASK-032 的 MERGED 状态收尾。
 
 此区禁止放入或变更任务授权、风险等级、允许路径、检查要求、实现或测试记录。
