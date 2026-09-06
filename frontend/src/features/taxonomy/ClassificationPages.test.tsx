@@ -448,3 +448,83 @@ describe('classification usage', () => {
     )
   })
 })
+
+describe('tag bulk association operations', () => {
+  const busy = category({ id: tagId, name: '在用标签', resource_count: 3 })
+  const idle = category({ id: resourceId, name: '闲置标签', resource_count: 0 })
+  const listing = (extra: unknown = undefined) =>
+    vi.spyOn(api, 'request').mockImplementation(async (path, options) => {
+      if (path.startsWith('/api/v1/tags?')) return categoryPage([busy, idle])
+      if (options?.method === 'POST' && extra !== undefined) return extra
+      return reads(path)
+    })
+
+  it('clears every link of a tag, submitting the count the page is showing', async () => {
+    const request = listing({ data: { ...busy, resource_count: 0 } })
+    renderWithRouter(<App />, '/classifications')
+    click('标签')
+    await screen.findByRole('heading', { name: '在用标签' })
+    // A tag nobody uses has nothing to clear, so it offers no such button.
+    expect(screen.queryByRole('button', { name: '清空标签关联 闲置标签' })).not.toBeInTheDocument()
+    click('清空标签关联 在用标签')
+    const panel = await screen.findByRole('region', { name: '清空关联确认' })
+    expect(panel).toHaveTextContent('会解除 3 份资料上的这个标签，标签本身保留')
+    click('确认清空 3 份关联')
+    await screen.findByText('操作成功，已重新读取分类列表。')
+    expect(request.mock.calls.find(([, o]) => o?.method === 'POST')).toEqual([
+      `/api/v1/tags/${tagId}/detach-all`,
+      { method: 'POST', body: { expected_resource_count: 3 } },
+    ])
+  })
+  it('merges a tag into another, sending its version and count', async () => {
+    const request = listing({ data: { ...idle, resource_count: 3 } })
+    renderWithRouter(<App />, '/classifications')
+    click('标签')
+    await screen.findByRole('heading', { name: '在用标签' })
+    click('合并标签 在用标签')
+    const panel = await screen.findByRole('region', { name: '合并标签确认' })
+    expect(panel).toHaveTextContent('然后删除“在用标签”')
+    // The source itself cannot be the target.
+    expect(within(panel).getByRole('radio', { name: '在用标签' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '确认合并' })).toBeDisabled()
+    fireEvent.click(within(panel).getByRole('radio', { name: '闲置标签' }))
+    click('确认合并')
+    await screen.findByText('操作成功，已重新读取分类列表。')
+    expect(request.mock.calls.find(([, o]) => o?.method === 'POST')).toEqual([
+      `/api/v1/tags/${tagId}/merge`,
+      {
+        method: 'POST',
+        body: { target_tag_id: resourceId, expected_version: 1, expected_resource_count: 3 },
+      },
+    ])
+  })
+  it('reports a changed count without retrying', async () => {
+    const request = vi.spyOn(api, 'request').mockImplementation(async (path, options) => {
+      if (path.startsWith('/api/v1/tags?')) return categoryPage([busy, idle])
+      if (options?.method === 'POST')
+        throw new ApiError('TAXONOMY_USAGE_CHANGED', 409, undefined, { resource_count: 5 })
+      return reads(path)
+    })
+    renderWithRouter(<App />, '/classifications')
+    click('标签')
+    await screen.findByRole('heading', { name: '在用标签' })
+    click('清空标签关联 在用标签')
+    await screen.findByRole('region', { name: '清空关联确认' })
+    click('确认清空 3 份关联')
+    expect(await screen.findByRole('alert')).toHaveTextContent('份数已经变化')
+    expect(screen.getByRole('alert')).toHaveTextContent('没有自动重试')
+    expect(request.mock.calls.filter(([, o]) => o?.method === 'POST')).toHaveLength(1)
+    expect(screen.queryByText('操作成功，已重新读取分类列表。')).not.toBeInTheDocument()
+  })
+  it('offers neither bulk operation for topics', async () => {
+    vi.spyOn(api, 'request').mockImplementation(async (path) => {
+      if (path.startsWith('/api/v1/topics?'))
+        return categoryPage([category({ id: topicId, name: '在用主题', resource_count: 2 })])
+      return reads(path)
+    })
+    renderWithRouter(<App />, '/classifications')
+    await screen.findByRole('heading', { name: '在用主题' })
+    expect(screen.queryByRole('button', { name: /清空标签关联/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /合并标签/ })).not.toBeInTheDocument()
+  })
+})

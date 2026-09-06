@@ -12,6 +12,7 @@ from studypilot.infrastructure.database.taxonomy_store import TaxonomyStore
 from studypilot.modules.taxonomy.contracts import (
     Kind,
     TagCreate,
+    TagMerge,
     TagPatch,
     TaxonomyError,
     TaxonomyQuery,
@@ -72,6 +73,23 @@ def delete(kind: Kind, identity: UUID, expected: int) -> None:
             count = store.references(kind, identity)
             if count:
                 raise TaxonomyError("TAXONOMY_IN_USE", 409, {"resource_count": count})
+
+        transaction(classify)
+        raise TaxonomyError("UNKNOWN_ERROR", 500) from None
+
+
+def detach_all(tag_id: UUID, expected_resource_count: int) -> dict[str, Any]:
+    return {"data": transaction(lambda store: store.detach_all(tag_id, expected_resource_count))}
+
+
+def merge(tag_id: UUID, command: TagMerge) -> dict[str, Any]:
+    try:
+        return {"data": transaction(lambda store: store.merge(tag_id, command))}
+    except (IntegrityError, StaleDataError):
+        # Classify a lost race through fresh state; never replay a batch write.
+        def classify(store: TaxonomyStore) -> None:
+            store.check_version(store.find("tag", tag_id), command.expected_version)
+            store.check_usage("tag", tag_id, command.expected_resource_count)
 
         transaction(classify)
         raise TaxonomyError("UNKNOWN_ERROR", 500) from None

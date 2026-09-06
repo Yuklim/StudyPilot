@@ -224,3 +224,63 @@ test('the classification page shows real usage counts and links straight to thos
   ).toBeVisible()
   expect(errors).toEqual([])
 })
+
+test('merging one tag into another moves the resources and removes the source', async ({
+  page,
+}) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  const suffix = String(Date.now())
+  const source = '合并源 · ' + suffix
+  const target = '合并目标 · ' + suffix
+
+  await page.goto('/classifications')
+  await button(page, '标签').click()
+  await create(page, '标签', source)
+  await create(page, '标签', target)
+
+  // Two resources: one carries only the source, one carries both.
+  for (const [title, tags] of [
+    ['只有源 ' + suffix, [source]],
+    ['两个都有 ' + suffix, [source, target]],
+  ] as const) {
+    await page.goto('/resources/new')
+    await page.getByLabel('标题').fill(title)
+    await page.getByLabel('网页地址（必填）').fill('https://example.com/merge')
+    await button(page, '选择主题与标签（选填）').click()
+    for (const name of tags) {
+      await page.getByLabel('搜索标签').fill(name)
+      await button(page, '查找标签').click()
+      await page.getByRole('checkbox', { name, exact: true }).check()
+    }
+    await button(page, '保存到资料库').click()
+    await expect(page.getByRole('heading', { name: title })).toBeVisible()
+  }
+
+  await page.goto('/classifications')
+  await button(page, '标签').click()
+  await page.getByLabel('搜索标签').fill('合并源 · ' + suffix)
+  await button(page, '查找标签').click()
+  await expect(page.getByRole('link', { name: '2 份资料在用' })).toBeVisible()
+  await button(page, '合并标签 ' + source).click()
+  const panel = page.getByRole('region', { name: '合并标签确认' })
+  await panel.getByLabel('搜索标签').fill(target)
+  await panel.getByRole('button', { name: '查找标签' }).click()
+  await panel.getByRole('radio', { name: target, exact: true }).check()
+  await button(page, '确认合并').click()
+  await expect(page.getByText('操作成功，已重新读取分类列表。')).toBeVisible()
+
+  // The source is gone and the target now covers both resources, counted once each.
+  await page.getByLabel('搜索标签').fill('合并 · ' + suffix)
+  await button(page, '查找标签').click()
+  await expect(page.getByRole('heading', { name: source })).toHaveCount(0)
+  await page.getByLabel('搜索标签').fill(target)
+  await button(page, '查找标签').click()
+  await expect(page.getByRole('heading', { name: target })).toBeVisible()
+  await page.getByRole('link', { name: '2 份资料在用' }).click()
+  await expect(page).toHaveURL(/\/resources\?tag_id=[0-9a-f-]{36}$/)
+  const listed = page.getByRole('list', { name: '资料结果' })
+  await expect(listed.getByRole('heading', { name: '只有源 ' + suffix })).toBeVisible()
+  await expect(listed.getByRole('heading', { name: '两个都有 ' + suffix })).toBeVisible()
+  expect(errors).toEqual([])
+})

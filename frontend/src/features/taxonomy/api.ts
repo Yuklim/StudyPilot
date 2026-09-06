@@ -112,6 +112,42 @@ export async function saveClassification(
   if (previous && data.id !== previous.id) return invalid()
   return data
 }
+// Bulk association writes. Both carry the count the user was looking at so a
+// changed set aborts the write instead of silently acting on a stale number.
+export async function detachAllTagResources(item: Classification): Promise<Classification> {
+  if (!isResourceId(item.id)) throw new ApiError('INVALID_REQUEST')
+  return classification(
+    object(
+      await api.request(`/api/v1/tags/${item.id}/detach-all`, {
+        method: 'POST',
+        body: { expected_resource_count: item.resource_count },
+      }),
+    ).data,
+    'tags',
+  )
+}
+
+export async function mergeTag(item: Classification, target: Choice): Promise<Classification> {
+  if (!isResourceId(item.id) || !isResourceId(target.id) || target.id === item.id)
+    throw new ApiError('INVALID_REQUEST')
+  const merged = classification(
+    object(
+      await api.request(`/api/v1/tags/${item.id}/merge`, {
+        method: 'POST',
+        body: {
+          target_tag_id: target.id,
+          expected_version: item.version,
+          expected_resource_count: item.resource_count,
+        },
+      }),
+    ).data,
+    'tags',
+  )
+  // The response is the target's projection, never the source that just disappeared.
+  if (merged.id !== target.id) return invalid()
+  return merged
+}
+
 export async function deleteClassification(kind: Kind, item: Classification): Promise<void> {
   const result = await api.request(target(kind, item.id), {
     method: 'DELETE',

@@ -16,7 +16,7 @@ from sqlalchemy.orm.exc import StaleDataError
 from starlette.requests import Request
 from support import RuntimePaths
 
-from studypilot.infrastructure.database.models import Tag
+from studypilot.infrastructure.database.models import ResourceTag, Tag
 from studypilot.infrastructure.database.taxonomy_store import MODELS, TaxonomyStore
 from studypilot.main import create_app
 from studypilot.modules.taxonomy.contracts import Kind
@@ -639,3 +639,198 @@ def test_tags_embedded_in_resources_carry_no_usage_count(
         assert set(projection["tags"][0]) == {"id", "name", "version", "created_at", "updated_at"}
     # The taxonomy endpoint for the same tag does carry it.
     assert authorized.get(f"/api/v1/tags/{tag['id']}").json()["data"]["resource_count"] == 1
+
+
+def make_resource(client: TestClient, title: str, tag_ids: list[str]) -> dict[str, Any]:
+    response = client.post(
+        "/api/v1/resources",
+        json={
+            "source_type": "PASTE",
+            "title": title,
+            "pasted_content": "synthetic",
+            "tag_ids": tag_ids,
+        },
+    )
+    assert response.status_code == 201, response.text
+    return dict(response.json()["data"])
+
+
+def tag_names(client: TestClient, resource_id: str) -> list[str]:
+    data = client.get(f"/api/v1/resources/{resource_id}").json()["data"]
+    return sorted(tag["name"] for tag in data["tags"])
+
+
+@pytest.mark.usefixtures("database")
+def test_detach_all_clears_links_but_keeps_the_tag_and_the_resources(
+    authorized: TestClient,
+) -> None:
+    keep = create(authorized, "tag", name="保留标签")
+    clear = create(authorized, "tag", name="待清空标签")
+    resources = [
+        make_resource(authorized, f"清空用资料 {index}", [keep["id"], clear["id"]])
+        for index in range(2)
+    ]
+    path = f"/api/v1/tags/{clear['id']}/detach-all"
+    assert authorized.get(f"/api/v1/tags/{clear['id']}").json()["data"]["resource_count"] == 2
+
+    response = authorized.post(path, json={"expected_resource_count": 2})
+    assert response.status_code == 200, response.text
+    assert response.json()["data"] == {**clear, "resource_count": 0}
+
+    # The tag survives, the other tag is untouched, and no resource changed.
+    assert authorized.get(f"/api/v1/tags/{clear['id']}").json()["data"]["resource_count"] == 0
+    assert authorized.get(f"/api/v1/tags/{keep['id']}").json()["data"]["resource_count"] == 2
+    for item in resources:
+        assert tag_names(authorized, item["id"]) == ["保留标签"]
+        assert authorized.get(f"/api/v1/resources/{item['id']}").json()["data"]["version"] == 1
+
+    # Running it again on an already empty tag is a no-op, not an error.
+    repeated = authorized.post(path, json={"expected_resource_count": 0})
+    assert repeated.status_code == 200 and repeated.json()["data"]["resource_count"] == 0
+
+
+@pytest.mark.usefixtures("database")
+def test_merge_moves_links_deduplicates_and_removes_the_source_tag(
+    authorized: TestClient,
+    session_factory: sessionmaker[Session],
+) -> None:
+    source = create(authorized, "tag", name="源标签")
+    target = create(authorized, "tag", name="目标标签")
+    only_source = make_resource(authorized, "只有源", [source["id"]])
+    both = make_resource(authorized, "两个都有", [source["id"], target["id"]])
+    only_target = make_resource(authorized, "只有目标", [target["id"]])
+
+    response = authorized.post(
+        f"/api/v1/tags/{source['id']}/merge",
+        json={
+            "target_tag_id": target["id"],
+            "expected_version": 1,
+            "expected_resource_count": 2,
+        },
+    )
+    assert response.status_code == 200, response.text
+    # The response is the target's projection, counting the merged set without duplicates.
+    assert response.json()["data"] == {**target, "resource_count": 3}
+
+    assert tag_names(authorized, only_source["id"]) == ["目标标签"]
+    assert tag_names(authorized, both["id"]) == ["目标标签"]
+    assert tag_names(authorized, only_target["id"]) == ["目标标签"]
+    for item in (only_source, both, only_target):
+        assert authorized.get(f"/api/v1/resources/{item['id']}").json()["data"]["version"] == 1
+    check_error(authorized.get(f"/api/v1/tags/{source['id']}"), 404, "TAG_NOT_FOUND")
+    with session_factory() as session:
+        assert session.scalar(select(func.count()).select_from(Tag)) == 1
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(ResourceTag)
+                .where(ResourceTag.tag_id == UUID(target["id"]))
+            )
+            == 3
+        )
+
+
+@pytest.mark.usefixtures("database")
+def test_bulk_operations_refuse_stale_counts_versions_and_bad_targets_without_writing(
+    authorized: TestClient,
+) -> None:
+    source = create(authorized, "tag", name="守卫源")
+    target = create(authorized, "tag", name="守卫目标")
+    item = make_resource(authorized, "守卫用资料", [source["id"], target["id"]])
+    before = authorized.get(f"/api/v1/resources/{item['id']}").json()["data"]
+    merge_path = f"/api/v1/tags/{source['id']}/merge"
+    merge_body = {
+        "target_tag_id": target["id"],
+        "expected_version": 1,
+        "expected_resource_count": 1,
+    }
+
+    # The count the caller looked at no longer matches reality.
+    check_error(
+        authorized.post(
+            f"/api/v1/tags/{source['id']}/detach-all", json={"expected_resource_count": 5}
+        ),
+        409,
+        "TAXONOMY_USAGE_CHANGED",
+        {"resource_count": 1},
+    )
+    check_error(
+        authorized.post(merge_path, json={**merge_body, "expected_resource_count": 9}),
+        409,
+        "TAXONOMY_USAGE_CHANGED",
+        {"resource_count": 1},
+    )
+    check_error(
+        authorized.post(merge_path, json={**merge_body, "expected_version": 7}),
+        409,
+        "VERSION_CONFLICT",
+        {"current_version": 1},
+    )
+    check_error(
+        authorized.post(merge_path, json={**merge_body, "target_tag_id": source["id"]}),
+        422,
+        "VALIDATION_ERROR",
+    )
+    check_error(
+        authorized.post(merge_path, json={**merge_body, "target_tag_id": str(uuid4())}),
+        404,
+        "TAG_NOT_FOUND",
+    )
+    check_error(
+        authorized.post(f"/api/v1/tags/{uuid4()}/merge", json=merge_body), 404, "TAG_NOT_FOUND"
+    )
+    for invalid in (
+        {"expected_resource_count": -1},
+        {"expected_resource_count": "1"},
+        {},
+        {"expected_resource_count": 1, "unknown": 1},
+    ):
+        check_error(
+            authorized.post(f"/api/v1/tags/{source['id']}/detach-all", json=invalid),
+            422,
+            "VALIDATION_ERROR",
+        )
+
+    # Nothing above may have written: tags, links and the resource are untouched.
+    assert authorized.get(f"/api/v1/tags/{source['id']}").json()["data"] == {
+        **source,
+        "resource_count": 1,
+    }
+    assert authorized.get(f"/api/v1/tags/{target['id']}").json()["data"] == {
+        **target,
+        "resource_count": 1,
+    }
+    assert authorized.get(f"/api/v1/resources/{item['id']}").json()["data"] == before
+
+
+@pytest.mark.usefixtures("database")
+@pytest.mark.parametrize("operation", ["detach-all", "merge"])
+def test_bulk_commit_failure_rolls_everything_back(authorized: TestClient, operation: str) -> None:
+    source = create(authorized, "tag", name="回滚源")
+    target = create(authorized, "tag", name="回滚目标")
+    item = make_resource(authorized, "回滚用资料", [source["id"]])
+    before = {
+        "source": authorized.get(f"/api/v1/tags/{source['id']}").json()["data"],
+        "target": authorized.get(f"/api/v1/tags/{target['id']}").json()["data"],
+        "resource": authorized.get(f"/api/v1/resources/{item['id']}").json()["data"],
+    }
+
+    def reject(session: Session) -> None:
+        raise RuntimeError("synthetic private rollback detail")
+
+    event.listen(Session, "before_commit", reject)
+    try:
+        body: dict[str, Any] = {"expected_resource_count": 1}
+        if operation == "merge":
+            body |= {"target_tag_id": target["id"], "expected_version": 1}
+        check_error(
+            authorized.post(f"/api/v1/tags/{source['id']}/{operation}", json=body),
+            500,
+            "UNKNOWN_ERROR",
+        )
+    finally:
+        event.remove(Session, "before_commit", reject)
+
+    assert authorized.get(f"/api/v1/tags/{source['id']}").json()["data"] == before["source"]
+    assert authorized.get(f"/api/v1/tags/{target['id']}").json()["data"] == before["target"]
+    assert authorized.get(f"/api/v1/resources/{item['id']}").json()["data"] == before["resource"]

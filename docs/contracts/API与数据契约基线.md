@@ -49,7 +49,7 @@
 
 本文件第 5、8、10 节及 `openapi-v1.json` 的标准 paths/schemas 描述**完整 MVP 目标**，不是当前程序全部已可调用的能力清单。同一操作允许按本节明确的输入子集分阶段交付；TASK-009 当前运行时的可用性及未开放输入响应以本节为准，不能把完整目标中的 FILE 分支视为本阶段已承诺可用。最终字段、媒体类型、成功响应、安全及数据规则仍保留，不删减、不改名，不宣称完整 MVP 已完成。
 
-TASK-011/012 已完成分类后端与页面，TASK-013/014 已完成 FILE 后端和上传/下载页面，TASK-015/016 已完成旧学习记录后端与页面，TASK-017 已提供个人笔记后端。TASK-019 接入轻量心得页面：正文新增/回看/修改/确认删除，只自动显示保存时间；不向学习写接口提交虚构的开始时间、时长、进度或状态。旧历史与状态/归档入口收起保留。TASK-027 提供独立心得：`Note.resource_id` 按用户确认放宽为可空并新增顶层 `/api/v1/notes` 集合——独立心得(resource_id 为 null)可不先收藏资料直接记录/回看/修改/删除；绑定资料(resource_id 非空)的心得仍在资料详情。这是本节首次真实放宽标准 Note 契约与操作清单，随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-029 再次放宽标准资源契约：`title` 改为可空（0003 迁移），WEB/PASTE/FILE 创建均可省略或显式 null 标题，`updateResource` 显式 null 清除标题，资料按 title 排序时未命名(null)固定排在有标题之后；界面以「未命名资料」占位展示、不落库。同样随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-030 提供心得后贴/解除：独立心得(resource_id 为 null)可在「我的心得」页经 `attachNote` 后贴绑定到某份可读资料；已绑定心得可在资料详情经 `detachNote` 解除回独立。绑定移动是专用版本化写（`Note.resource_id` 在专用路径上移动、version+1、content 不变、单事务、不回放），`NoteCreate`/`NotePatch` 请求体仍不得直接写 `resource_id`。同样随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-032 放宽 `ResourcePatch`：新增可选 `tag_ids` 实现「标签可后补」——资料修改页可直接整组替换标签，不必逐个调用幂等关联端点；语义、版本与错误处理见 4.7 与 12 节。既有 `attachResourceTag`/`detachResourceTag` 与资料详情逐个增删路径不变。同样随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-034 为分类端点的响应新增只读 `resource_count`（使用该分类的资料份数），用于分辨在用分类与僵尸分类：新增 `TopicUsage`/`TagUsage` 两个响应 schema，`TopicPage`/`TopicEnvelope`/`TagPage`/`TagEnvelope` 改指向它们；**原 `Topic`/`Tag` schema 一字未动，资料响应内嵌的 `tags` 继续引用 `Tag`、不带该字段**——否则每份资料都要为每个内嵌标签各算一次计数。分页列表的计数由一次聚合查询得出。同样随该任务测试、独立审查、验收通过并由用户合并后交付。
+TASK-011/012 已完成分类后端与页面，TASK-013/014 已完成 FILE 后端和上传/下载页面，TASK-015/016 已完成旧学习记录后端与页面，TASK-017 已提供个人笔记后端。TASK-019 接入轻量心得页面：正文新增/回看/修改/确认删除，只自动显示保存时间；不向学习写接口提交虚构的开始时间、时长、进度或状态。旧历史与状态/归档入口收起保留。TASK-027 提供独立心得：`Note.resource_id` 按用户确认放宽为可空并新增顶层 `/api/v1/notes` 集合——独立心得(resource_id 为 null)可不先收藏资料直接记录/回看/修改/删除；绑定资料(resource_id 非空)的心得仍在资料详情。这是本节首次真实放宽标准 Note 契约与操作清单，随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-029 再次放宽标准资源契约：`title` 改为可空（0003 迁移），WEB/PASTE/FILE 创建均可省略或显式 null 标题，`updateResource` 显式 null 清除标题，资料按 title 排序时未命名(null)固定排在有标题之后；界面以「未命名资料」占位展示、不落库。同样随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-030 提供心得后贴/解除：独立心得(resource_id 为 null)可在「我的心得」页经 `attachNote` 后贴绑定到某份可读资料；已绑定心得可在资料详情经 `detachNote` 解除回独立。绑定移动是专用版本化写（`Note.resource_id` 在专用路径上移动、version+1、content 不变、单事务、不回放），`NoteCreate`/`NotePatch` 请求体仍不得直接写 `resource_id`。同样随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-032 放宽 `ResourcePatch`：新增可选 `tag_ids` 实现「标签可后补」——资料修改页可直接整组替换标签，不必逐个调用幂等关联端点；语义、版本与错误处理见 4.7 与 12 节。既有 `attachResourceTag`/`detachResourceTag` 与资料详情逐个增删路径不变。同样随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-034 为分类端点的响应新增只读 `resource_count`（使用该分类的资料份数），用于分辨在用分类与僵尸分类：新增 `TopicUsage`/`TagUsage` 两个响应 schema，`TopicPage`/`TopicEnvelope`/`TagPage`/`TagEnvelope` 改指向它们；**原 `Topic`/`Tag` schema 一字未动，资料响应内嵌的 `tags` 继续引用 `Tag`、不带该字段**——否则每份资料都要为每个内嵌标签各算一次计数。分页列表的计数由一次聚合查询得出。同样随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-035 新增两个标签批量关联操作 —— `detachAllTagResources`（清空某标签的全部关联，标签保留）与 `mergeTag`（把源标签的关联移到目标标签后删除源标签）。二者都是一次事务内的批量写，都必须携带 `expected_resource_count`（调用方界面上看到的份数），服务端重算不符即 `409 TAXONOMY_USAGE_CHANGED` 且不写入；`mergeTag` 另需源标签的 `expected_version`。两者都不推进任何资料版本。既有的逐条幂等关联端点语义不变。同样随该任务测试、独立审查、验收通过并由用户合并后交付。
 
 | 当前可用操作 | 交付范围 |
 | --- | --- |
@@ -61,6 +61,7 @@ TASK-011/012 已完成分类后端与页面，TASK-013/014 已完成 FILE 后端
 | `downloadOriginalFile` | 按文件 ID 下载 READY 原件；大小/hash 校验、附件头及失败保护遵守第 8 节 |
 | `listTopics` / `createTopic` / `getTopic` / `updateTopic` / `deleteTopic` | TASK-011：既定主题创建/读/改/删除未使用项；保留版本、规范化唯一与引用保护。TASK-034 起前四个的响应为 `TopicUsage`，多一个只读 `resource_count`；新建为 0；列表的计数用一次聚合查询 |
 | `listTags` / `createTag` / `getTag` / `updateTag` / `deleteTag` | TASK-011：既定标签创建/读/改/删除未使用项；不增加颜色字段或级联资料删除。TASK-034 起前四个的响应为 `TagUsage`，多一个只读 `resource_count`；新建为 0；列表的计数用一次聚合查询 |
+| `detachAllTagResources` / `mergeTag` | TASK-035：标签批量关联操作。清空只删关联、保留标签；合并把源标签关联移到目标（目标已有的资料不重复插入）后删除源标签。均为单事务批量写，均带 `expected_resource_count` 守卫，合并另带源标签 `expected_version`；不改资料正文、主题、心得、学习数据，也不推进资料版本 |
 | `attachResourceTag` / `detachResourceTag` | TASK-011：既定幂等关联/解除；不写资料主要主题、正文或学习状态 |
 | `listResourceStudyRecords` / `createResourceStudyRecord` / `listStudyRecords` | TASK-015：既定历史分页与学习记录/当前进度原子写入，遵守版本、状态矩阵、复习计划前置条件和时间规则；不开放复习计划/结果写操作 |
 | `listResourceNotes` / `createResourceNote` / `getResourceNote` / `updateResourceNote` / `deleteResourceNote` | TASK-017：既定个人笔记增删改查与稳定分页；严格正文、所属资料及版本保护，只写 Note，不改变资料、进度或原件，不提供全文搜索或回收站 |
@@ -128,6 +129,7 @@ TASK-011/012 已完成分类后端与页面，TASK-013/014 已完成 FILE 后端
 | 409 | `INVALID_STATE_TRANSITION` / `STATE_CONFLICT` | 当前状态不允许请求动作或额外字段不满足。 |
 | 409 | `SOURCE_TYPE_MISMATCH` | PATCH 提交了与资料已有且不可变的 `source_type` 不匹配的来源字段。 |
 | 409 | `TAXONOMY_IN_USE` | 主题或标签仍被资料使用。 |
+| 409 | `TAXONOMY_USAGE_CHANGED` | 批量关联操作携带的 `expected_resource_count` 与服务端实算不符；`details` 只含当前 `resource_count`，未写入任何数据。 |
 | 409 | `FILE_STATE_UNAVAILABLE` / `FILE_CORRUPTED` | 文件未 READY 或对账发现不一致。 |
 | 409 | `DELETION_TOKEN_REPLAYED` | 一次性删除令牌已经消费。 |
 | 409 | `DELETION_IMPACT_CHANGED` | 预览后资料或关联集合变化；`details.current_impact` 只返回新摘要和 revision，绝不返回新令牌。 |
@@ -284,6 +286,12 @@ FILE 创建时不接受 `source_url`/`pasted_content`，并在同一成功响应
 | `association_version` | int | R | 固定 1 | 否 | taxonomy；复合唯一 `(resource_id,tag_id)`；删除后重加是新关联 |
 
 PUT 添加与 DELETE 移除是幂等的，避免整组标签覆盖造成并发丢失。TASK-032 起另有一条整组替换路径：`updateResource` 的 `tag_ids`。两者并存且防护方式不同——幂等端点无版本前置条件，只增删单个关联；整组替换必须携带 `expected_version`，与另一次**资料写**（含另一次 `updateResource`）并发会得到 `409 VERSION_CONFLICT` 而不是静默覆盖。但两条路径**交叉**并发不受这层保护：幂等端点只写关联行、不推进资料 `version`，因此在它之后、仍持有旧 `version` 的一次整组替换会按提交的集合整体覆盖掉那次单个增删，且不报 `409`。这是本任务的已知取舍（本地单用户、两处入口，重新增删即可恢复），不是已消除的风险。标签集合实际变化时资料 `version` 加一，集合相同（顺序不计）则按上文不加版本；关联行本身仍是 `association_version` 固定 1，删除后重加是新关联。
+
+TASK-035 起另有两条**批量**路径：`detachAllTagResources` 与 `mergeTag`。它们一次事务内处理任意多条关联，**不推进任何资料 `version`**（与逐条幂等端点一致，而与 `updateResource` 的 `tag_ids` 整组替换不同）。因此它们与本节上文所述的跨路径并发问题属同一类已知取舍：一次批量操作之后，仍持旧 `version` 的整组替换不会因此报 `409`。
+
+两者的并发守卫是 `expected_resource_count` —— 调用方提交它在界面上看到的份数，服务端在同一事务内重算，不符即 `409 TAXONOMY_USAGE_CHANGED` 并且不写入任何数据；`mergeTag` 另要求源标签的 `expected_version`（源标签会被删除，与 `deleteTag` 的强版本前置同理）。**为何不套用资料删除的「预览 + 一次性令牌」模式**（第 9 节）：那套机制是为级联删除资料及其原件、心得与历史设计的，影响集合复杂且不可逆，故需 `impact_manifest` 与 256 位一次性令牌；标签批量操作只写 `resource_tags`，不删除任何资料、不改正文，清空后可重新逐个加回，可逆性完全不同。以份数作守卫是与该风险相称的最小充分手段。此取舍在此登记，若将来批量操作扩展到会删除资料或不可恢复的范围，须重评。
+
+合并的语义细节：目标标签已持有的资料**不重复插入**（`(resource_id, tag_id)` 是复合主键）；源标签的全部关联在删除源标签**之前**移走或删除（`ResourceTag.tag_id` 的外键为 `ON DELETE RESTRICT`）；`target_tag_id` 等于源标签时返回 `422`。
 
 ### 4.8 Note（notes 所有）
 
@@ -505,6 +513,8 @@ OpenAPI 中 `ReviewRecord` 用条件 schema 固化上述规则：`NEEDS_REVIEW` 
 | PATCH `/resources/{resource_id}` | 修改元数据/同源内容 / resources | `ResourcePatch`；200 详情 | 200/400/403/404/409/415/422/428/500；写入并递增版本 |
 | POST `/resources/{resource_id}/deletion-preview` | 删除预览 / resources | 写安全；200 `DeletionPreview` | 200/403/404/500；只创建确认记录 |
 | DELETE `/resources/{resource_id}` | 确认删除 / resources | 专用删除头；204 | 204/403/404/409/410/500/503；不可逆删除，按第9节恢复 |
+| POST `/tags/{tag_id}/detach-all` | 清空标签关联 / taxonomy | `TagDetachAll`；200 `TagUsage` | 200/403/404/409/415/422/500；只删关联，保留标签 |
+| POST `/tags/{tag_id}/merge` | 合并标签 / taxonomy | `TagMerge`；200 目标 `TagUsage` | 200/403/404/409/415/422/500；移关联后删除源标签 |
 | PUT `/resources/{resource_id}/tags/{tag_id}` | 幂等关联 / taxonomy | 无体；200 `ResourceTag` | 200/403/404/500；首次创建关联，已有不变 |
 | DELETE `/resources/{resource_id}/tags/{tag_id}` | 幂等解除 / taxonomy | 无体；204 | 204/403/404/500；关联不存在仍 204 |
 | GET `/resources/{resource_id}/notes` | 笔记列表 / notes | 分页；200 `NotePage` | 200/403/404/422/500；只读 |
@@ -570,6 +580,8 @@ DELETE review 带 JSON 是契约列明的例外；它仍是写请求并必须先
 | `getTag` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `TAG_NOT_FOUND`, `UNKNOWN_ERROR` |
 | `updateTag` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `TAG_NOT_FOUND`, `DUPLICATE_TAG`, `VERSION_CONFLICT`, `CONTENT_TYPE_UNSUPPORTED`, `VALIDATION_ERROR`, `VERSION_REQUIRED`, `UNKNOWN_ERROR` |
 | `deleteTag` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `TAG_NOT_FOUND`, `TAXONOMY_IN_USE`, `VERSION_CONFLICT`, `VERSION_REQUIRED`, `UNKNOWN_ERROR` |
+| `detachAllTagResources` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `CONTENT_TYPE_UNSUPPORTED`, `VALIDATION_ERROR`, `TAG_NOT_FOUND`, `TAXONOMY_USAGE_CHANGED`, `UNKNOWN_ERROR` |
+| `mergeTag` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `CONTENT_TYPE_UNSUPPORTED`, `VALIDATION_ERROR`, `TAG_NOT_FOUND`, `TAXONOMY_USAGE_CHANGED`, `VERSION_CONFLICT`, `UNKNOWN_ERROR` |
 | `listResourceNotes` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `RESOURCE_NOT_FOUND`, `VALIDATION_ERROR`, `UNKNOWN_ERROR` |
 | `createResourceNote` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `RESOURCE_NOT_FOUND`, `CONTENT_TYPE_UNSUPPORTED`, `VALIDATION_ERROR`, `UNKNOWN_ERROR` |
 | `getResourceNote` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `RESOURCE_NOT_FOUND`, `NOTE_NOT_FOUND`, `UNKNOWN_ERROR` |

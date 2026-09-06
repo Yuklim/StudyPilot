@@ -16,6 +16,8 @@ from studypilot.application import taxonomy
 from studypilot.modules.taxonomy.contracts import (
     Kind,
     TagCreate,
+    TagDetachAll,
+    TagMerge,
     TagPatch,
     TaxonomyError,
     TaxonomyQuery,
@@ -30,6 +32,7 @@ MESSAGES = {
     "DUPLICATE_TOPIC": "已存在同名主题。",
     "DUPLICATE_TAG": "已存在同名标签。",
     "TAXONOMY_IN_USE": "该分类仍被资料使用。不能删除。",
+    "TAXONOMY_USAGE_CHANGED": "使用这个分类的资料份数已经变化。请重新读取后再操作。",
     "VERSION_REQUIRED": "请先读取当前版本再执行此操作。",
     "VERSION_CONFLICT": "数据已发生变化。请刷新后重试。",
     "VALIDATION_ERROR": "输入不符合要求。请检查字段或查询条件。",
@@ -78,9 +81,7 @@ def reject_constant(value: str) -> None:
     raise ValueError("invalid JSON constant")
 
 
-async def command_body(
-    request: Request, kind: Kind, *, patch: bool
-) -> TopicCreate | TagCreate | TopicPatch | TagPatch:
+async def json_body(request: Request) -> tuple[bytes, Any]:
     if (
         request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
         != "application/json"
@@ -88,9 +89,25 @@ async def command_body(
         raise TaxonomyError("CONTENT_TYPE_UNSUPPORTED", 415)
     try:
         raw = await request.body()
-        value = json.loads(raw, parse_constant=reject_constant)
+        return raw, json.loads(raw, parse_constant=reject_constant)
     except (ValueError, RecursionError):
         raise TaxonomyError("MALFORMED_REQUEST", 400) from None
+
+
+async def bulk_body(
+    request: Request, model: type[TagDetachAll] | type[TagMerge]
+) -> TagDetachAll | TagMerge:
+    raw, _ = await json_body(request)
+    try:
+        return model.model_validate_json(raw)
+    except ValidationError:
+        raise TaxonomyError("VALIDATION_ERROR", 422) from None
+
+
+async def command_body(
+    request: Request, kind: Kind, *, patch: bool
+) -> TopicCreate | TagCreate | TopicPatch | TagPatch:
+    raw, value = await json_body(request)
     if patch and isinstance(value, dict) and "expected_version" not in value:
         raise TaxonomyError("VERSION_REQUIRED", 428)
     model = (
@@ -173,6 +190,30 @@ def classification_router(kind: Kind) -> APIRouter:
 router = APIRouter(redirect_slashes=False)
 router.include_router(classification_router("topic"))
 router.include_router(classification_router("tag"))
+
+
+@router.post("/api/v1/tags/{tag_id}/detach-all")
+async def detach_all_tag_resources(request: Request, tag_id: str) -> Response:
+    try:
+        record_id = identity(tag_id, "tag")
+        command = await bulk_body(request, TagDetachAll)
+    except TaxonomyError as error:
+        return failure(request, error)
+    assert isinstance(command, TagDetachAll)
+    return await run_in_threadpool(
+        respond, request, lambda: taxonomy.detach_all(record_id, command.expected_resource_count)
+    )
+
+
+@router.post("/api/v1/tags/{tag_id}/merge")
+async def merge_tag(request: Request, tag_id: str) -> Response:
+    try:
+        record_id = identity(tag_id, "tag")
+        command = await bulk_body(request, TagMerge)
+    except TaxonomyError as error:
+        return failure(request, error)
+    assert isinstance(command, TagMerge)
+    return await run_in_threadpool(respond, request, lambda: taxonomy.merge(record_id, command))
 
 
 @router.put("/api/v1/resources/{resource_id}/tags/{tag_id}")

@@ -3,6 +3,7 @@
 import re
 from typing import Annotated, Literal, Self
 from unicodedata import normalize
+from uuid import UUID
 
 from pydantic import (
     BaseModel,
@@ -65,6 +66,26 @@ class TopicPatch(Patch):
 
 class TagPatch(Patch):
     name: TagName
+
+
+class BulkCommand(Command):
+    """Batch association writes carry the count the caller was looking at.
+
+    These operations can touch any number of resource_tags rows at once, and the
+    count is now visible in the UI (TASK-034), so the number the user decided on
+    has to take part in the guard: a mismatch aborts before anything is written.
+    """
+
+    expected_resource_count: int = Field(ge=0)
+
+
+class TagDetachAll(BulkCommand):
+    pass
+
+
+class TagMerge(BulkCommand):
+    target_tag_id: UUID
+    expected_version: int = Field(ge=1)
 
 
 class TaxonomyQuery(BaseModel):
