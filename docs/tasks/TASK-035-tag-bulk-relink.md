@@ -141,11 +141,77 @@ checks = []
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：待填。
-- Review：L3 独立只读 Reviewer，待填。
+- 候选 SHA（最终）：待第二轮复核后填。第一轮候选：`63b64c6`（代码 `e4b4401`）。
+- Review 第一轮（L3 独立只读，`113f765..63b64c6`）：**CHANGES_REQUIRED**（F1、F2 必修，F3 建议同轮修，另 5 条非阻断记录项）。
+
+  派发与身份：本实现会话未注册项目级 reviewer（注册表在会话启动时构建，已实测用户级放文件无效），故由同机在项目目录下启动的会话 `studypilot-05` 代为派发。执行审查的是 `.claude/agents/reviewer.md` 定义的**第四个**全新只读实例（`tools: Read, Grep, Glob`，无 Bash、无写工具），与审 TASK-033/034 的均不是同一个，无上下文继承，独立于实现者。
+
+  外部核实（派发会话以 git/diff 提供，Reviewer 无 Bash 不能自证）：patch 与 `git diff 113f765..63b64c6` 逐字节一致（1177 行、17 文件）；`git diff --numstat` 对 `openapi-v1.json` 为 **11 增 0 删**（即整体重写已干净回退，最终无重排痕迹）；那份未跟踪调研文件的 sha256 与 TASK-034 收尾时一致，本轮无第三方并发写入；HEAD = `63b64c6`，工作树只有 `?? docs/research/`。派发会话另主动加了一条主 Agent 未列的核查点：三份旧任务记录的改动是否越出状态收尾。
+
+  报告原文（逐字，仅还原传输转义的 `<`/`>`）：
+
+  > ## 只读证明
+  > 本实例仅有 `Read`/`Grep`/`Glob`，无 `Write`/`Edit`/`Bash`；本次未写任何文件、未提交、未推送。审查对象：base `113f765` → 候选 `63b64c6`（代码 `e4b4401`）。依据你已用 `diff` 逐字节核实的完整 patch，并对全部结论在工作树（HEAD=候选）上逐点交叉验证源码。机械证据（pytest 505 / vitest 360 / e2e 40 / check_task PASS）我**未复跑，按 NOT_RUN 对待**；仅核到数字与 diff 自洽（后端新增用例恰为 5 个含 1 个 parametrize×2、vitest 恰 4 个 `it`、e2e 恰 1 个 test）。
+  >
+  > ## Findings
+  >
+  > **F1（必须处置）`bulk_body` 缺少 428 前置检查，与未修订的契约通则冲突**
+  > `backend/src/studypilot/api/taxonomy.py:97-104`：`bulk_body` 直接 `model_validate_json`，`TagMerge` 缺 `expected_version` → **422**。
+  > - 冲突面：① `docs/contracts/API与数据契约基线.md:166`（本任务未改的既有通则）「JSON 修改请求携带 `expected_version`……缺失返回 `428`」，其例外只列了「只读、追加历史和幂等标签关联」，未含批量操作；② 本任务新写的 `:292`「与 `deleteTag` 的强版本前置同理」，而 `deleteTag` 缺版本正是 428（同文件 `taxonomy.py:124-131`）；③ 仓库已有同形态先例 `backend/src/studypilot/api/notes.py:113-120` `relink_body`（POST + 带版本请求体），docstring 明写「missing expected_version is 428 … mirroring PATCH」——本次新写的 `bulk_body` 与它并列却省了这一步，任务记录未记录任何理由。
+  > - 触发/影响：仅在客户端漏传 `expected_version` 时出现；前端始终传，无数据风险。属**契约与实现不一致**，非理论完备问题。
+  > - 最小修复（二选一，任一即可）：在 `bulk_body` 对 `TagMerge` 加与 `command_body:111` 同款 428 前置（约 3 行 + 1 条断言），并在 openapi/两处表格补 428；**或**在 `:166` 或 4.7 明确写一句「批量关联操作的 `expected_version` 缺失按 422（请求体校验）处理，不适用 428 约定」。当前是两边都没做。
+  >
+  > **F2（低成本必修，与 F1 同一轮处理）新增两个操作的 `responses` 漏了 400，与自身 `x-error-codes` 自相矛盾**
+  > `docs/contracts/openapi-v1.json:148-155`：两个新 path 的 `x-error-codes` 都含 `MALFORMED_REQUEST`，但 `responses` 只有 200/403/404/409/415/422/500，**无 400**；`docs/contracts/API与数据契约基线.md:516-517` 两行同样缺 400。而 400 确实可达（`taxonomy.py:90-94`，body 非法 JSON 或 `NaN/Infinity`）。全部同类兄弟操作都列了 400（契约 `:521/:531/:536/:541/:543`，openapi `updateTag` 亦然）。修复＝两处加 `"400": {"$ref": "#/components/responses/BadRequest"}` + 两行状态码补 400。
+  >
+  > **F3（非阻断，但需知其为空断言）e2e「源标签已消失」的断言是空的**
+  > `frontend/e2e/taxonomy-pages.spec.ts`（新增用例末段）：先 `fill('合并 · ' + suffix)` 再断言 `heading(source)` 计数为 0。后端搜索是 `needle in normalized_name(name)` 子串匹配，`'合并 · <suffix>'` **既不匹配 `合并源 · <suffix>` 也不匹配任何名**，列表为空，该断言无论源标签是否还在都成立。合并/去重本身仍由随后的目标计数与资料列表真实覆盖，源标签删除由后端用例 `check_error(get tag, 404)` 可靠覆盖。修复：把该行改成 `fill(source)`。
+  >
+  > ## 非阻断记录项
+  > 1. `backend/src/studypilot/api/taxonomy.py:1` docstring 仍写「twelve approved taxonomy operations」，现为 14。
+  > 2. `frontend/src/api/client.ts:298-303`：`details.resource_count` 只对 `TAXONOMY_IN_USE` 解析，`TAXONOMY_USAGE_CHANGED` 的份数被丢弃，界面只能给通用提示（满足完成条件 12，但不能显示新份数）。对应 vitest 用例直接构造 `ApiError(..., {resource_count:5})`，该 details 在真实链路上不流通——用例只断言文案，未形成假证据，但读者易误解。
+  > 3. `frontend/src/features/taxonomy/api.ts:117-128`：`detachAllTagResources` 未像 `mergeTag:147` 那样校验返回投影 id 与请求标签一致。
+  > 4. 契约 `:292`「清空后可重新逐个加回」在机制上属实，但原关联集合并未留痕，实际是「可手工重建」而非「可撤销」；建议补半句。
+  > 5. 守卫窗口的登记（份数非集合）诚实，但只提了「一增一减」；`check_usage` 与随后 SELECT 之间新增的关联同样不被拦截而会被一并迁移/清除——同类同量级，建议并入同一句登记。
+  >
+  > ## 逐点独立结论（你列的七条）
+  > 1. **`merge()` 顺序与去重：成立**。自合并在任何写入前被 422 拒（`taxonomy_store.py:123`），故 source≠target；被插入的主键恒为 `(r, target)` 且仅当 `r ∉ held`，被删除的主键恒为 `(r, source)`——两个集合在主键空间上**不相交**，因此 SQLAlchemy flush 内固定的 INSERT→DELETE 次序不可能撞复合主键。`models.py` 全文**无任何 `relationship()`**（grep 零命中），故 `session.delete(source)` 不做级联/置空加载；第一次 `flush()` 已清空全部源关联，`ON DELETE RESTRICT` 满足。循环内 `session.add`/`session.delete` 不触发查询、不引起中途 autoflush。边界：源零关联（循环空转，删标签成功）、目标已持全部（全部跳过插入）、源==目标（422，无写入）、目标不存在（404，无写入）——均成立。
+  > 2. **守卫有效性：成立**。`check_usage` 在两个操作中都严格早于任何 `add`/`delete`（`taxonomy_store.py:112-119`、`121-143`），409 经异常退出 `with begin()` 回滚，完成条件 5「无任何写入」成立。取舍登记诚实，未把窗口说小（补充见记录项 5）。
+  > 3. **不套用「预览 + 一次性令牌」：我独立判断成立，不阻断**。写入面只有 `resource_tags` 行与源 `tags` 行，资料/原件/心得/学习记录一律不写（已逐行核实）；UI 在标题、两条提示、确认按钮文案四处显示份数并需二次点击，服务端再校验。相对第 9 节所防的「级联销毁资料及原件/心得/历史」，令牌机制不成比例。破坏性未被低估。
+  > 4. **版本不递增的类比：成立，未掩盖新差异**。`updateResource` 的整组替换一次只覆盖**一份**资料的标签集，批量操作的规模不放大竞争写方的影响半径；且持旧集合、含已删源标签的替换会得到 `TAG_NOT_FOUND` 而非静默污染。
+  > 5. **`json_body()` 抽取：既有四模型解析逐字未变**。`taxonomy.py:84-121` 与改前逐路径比对：415（content-type）→ 400（body/JSON，`return` 在 try 内、不改变异常面）→ 428（仅 patch 且 dict 且缺字段）→ 422（ValidationError）顺序与条件完全一致，`raw` 仍供 `model_validate_json`。无行为改变。
+  > 6. **契约三方一致：除 F1/F2 外一致**。openapi 为纯新增（0 删，采信你的 numstat）⇒ `Tag`/`Topic`/`TagUsage`/`TopicUsage`/`ResourceProjection` 按构造未动；`TagEnvelope`（`openapi-v1.json:390`）指向 `TagUsage`，与实际响应 `project()` 含 `resource_count` 相符；中文契约 6 处齐备。两个新端点的鉴权由 `local_access.py:12-13,198-205` 按方法+前缀统一覆盖（POST ∈ WRITES，需 token + Origin + 三个 Sec-Fetch），无路径白名单遗漏；新路由不与 `GET/PATCH/DELETE /tags/{id}` 冲突。
+  > 7. **范围与旧记录：合规**。17 文件全在 `allowed_paths`；三个测试文件均为纯追加（仅一处 import 增加 `ResourceTag`），**无删除或弱化既有断言**。旧任务记录：TASK-034 改 `status` 字段 + EVIDENCE 一行；TASK-033 仅在 EVIDENCE「非阻断遗留项」加注 4 行；TASK-032 加注 1 行；索引新增/改状态各一行——**均未触及目标/风险/路径/检查/实现记录**，符合 §6 的写回边界，且这些收尾在任务登记里已被明确授权。任务叙述与代码一致（含 openapi 曾整体重写后回退一事，最终 diff 无重排痕迹）。
+  >
+  > ## 覆盖与缺口
+  > 覆盖：完整最终 diff（已由派发方核实与 `git diff 113f765..63b64c6` 逐字节一致）+ `taxonomy_store.py`/`application/taxonomy.py`/`api/taxonomy.py`/`contracts.py`/`models.py`/`local_access.py`/前端 `api.ts`/`client.ts`/`ClassificationBrowser.tsx` 调用链交叉验证。
+  > 缺口：① 机械检查 NOT_RUN（我无 Bash）；② `merge` 应用层 `IntegrityError`/`StaleDataError` 分类分支无用例（现有回滚用例走的是通用 500 路径）；③ merge 缺 `expected_version` 的行为无用例（即 F1）；④ 我未逐行通读 `openapi-v1.json` 未改动部分（依据 0 删除的 numstat 推断）。
+  >
+  > ## 剩余风险
+  > 低。无数据损坏、越权或泄密路径；批量写的事务边界、去重、删除顺序与回滚均正确。剩余为契约文本与实现的两处不一致（F1/F2）及一条空断言（F3）。
+  >
+  > ## 结论
+  > **CHANGES_REQUIRED** —— 仅因 F1（428/§166 未对齐且未登记例外）与 F2（新操作 400 缺失、与自身 `x-error-codes` 矛盾）；建议同轮顺手修 F3。三项修复均为分钟级、互不耦合，修订后我按 `63b64c6..new_candidate` 增量复核即可，无需完整复审。
+
+- 第一轮 findings 的处置（修订 SHA `5de653b`）：
+  - **F1 已修，选「改实现加 428」而非「改契约写例外」**。`bulk_body` 增加与 `notes.py:move_body` 同款的前置：命令模型自身含 `expected_version` 字段时，请求体缺该字段即 `428 VERSION_REQUIRED`（`TagDetachAll` 无此字段，不受影响）；openapi 为 `mergeTag` 补 `428` 响应与 `VERSION_REQUIRED` 错误码，中文契约操作表补 `428`、逐操作错误码补 `VERSION_REQUIRED`，并在 4.7 明写「缺失该字段返回 428，与第 6 节通则一致，不构成例外」。选这条路的理由与 Reviewer 附注一致：仓库已有同形态先例（`relink_body` 同为 POST + 带版本请求体、明确 428），且我自己在契约里写了「与 `deleteTag` 的强版本前置同理」——为省三行代码在公共契约开一个与先例和自己叙述都不一致的口子，不划算。**已变异验证**：临时移除该前置后新增断言由 428 变 422、用例转红，恢复后转绿。
+  - **F2 已修**：两个新操作的 `responses` 各补 `400 BadRequest`，中文契约操作表两行状态码补 400。
+  - **F3 已修**：把 `fill('合并 · ' + suffix)` 改为 `fill(source)`，并留注释说明「匹配不到任何标签的搜索词会让这条断言恒真」。这条的价值不在严重度而在类型 —— 一条**恒真**断言比没有断言更糟，因为它看起来有覆盖却永远不会告诉你任何事。
+  - **非阻断第 1 条已修**：`api/taxonomy.py` 的 docstring 由「twelve」改为「fourteen」。
+  - **非阻断第 2 条已修，并顺带加强了测试**：`client.ts` 现在也为 `TAXONOMY_USAGE_CHANGED` 解析 `details.resource_count`，`classificationError` 据此给出带真实份数的提示；对应 vitest 断言由泛化的「份数已经变化」改为核对「现在有 5 份资料使用这个分类，与你看到的份数不一致」—— 这同时消除了 Reviewer 指出的「构造的 details 在真实链路上不流通、读者易误解」。
+  - **非阻断第 3 条已修**：`detachAllTagResources` 补上与 `mergeTag` 同款的响应 id 校验。
+  - **非阻断第 4、5 条已修**：契约中「清空后可重新逐个加回」改为明确区分「可手工重建」与「可撤销」（原关联集合不留痕，但重建所需信息在清空前于界面可见，且不涉及内容丢失）；守卫窗口的登记补上「校验与随后查询之间新增的关联同样不被拦截、会被一并迁移或清除」。
+- 修订后的检查（真实运行）：`check_task.py --candidate 5de653b` → **CHECKS PASS**，base=`113f765`、files=17、profiles=backend,contracts,frontend、product_fingerprint=`723d881d3cdf95c2854e8438d542777ed97ae48428ab13587b00e5ef68ea61ac`。backend `pytest` **505 passed**（新增的 428 断言并入既有用例，用例数不变）、ruff/mypy 全绿；frontend format/lint/typecheck/build 全绿、vitest **360 passed**；`npm run test:e2e` **40 passed**。跑检查前后未跟踪文件哈希一致（`f56cad6b…`），本轮仍无并发写入。
+- Review 第二轮（增量 `63b64c6..新候选`）：**待执行**。
+- Acceptance：**待执行**，在第二轮之后，由独立于实现者与 Reviewer 的第三个只读实例执行。
 - Acceptance：L3 独立只读 Integration/Acceptance，待填。
-- 最终状态/风险/用户操作：待填。
-- 非阻断遗留项：待填。
+- 最终状态/风险/用户操作：status=**IN_REVIEW**（第一轮 CHANGES_REQUIRED，F1/F2/F3 与 5 条非阻断项已全部处置，等待同一 Reviewer 增量复核，之后再做独立 Acceptance）。分支仅在本地，未推送、未开 PR。
+- 非阻断遗留项（第一轮 Reviewer 列出的 5 条**已全部实修**，故不作为遗留；下列为实现本身的取舍）：
+  - `expected_resource_count` 守的是份数而非集合：一增一减总数不变、或校验与随后查询之间新增的关联，都不会被拦下。已在契约 4.7 完整登记（含后一种情形）。责任角色 coordinator；若批量操作扩展到会删除资料或需要集合级保证，须重评。
+  - 两个操作不推进资料版本，与 TASK-032 登记的跨路径并发覆盖属同类；B4 是本任务明示非目标。
+  - 合并只支持一对一；多选批量合并、改名撞名时的自动合并引导均未做。
+  - 主题无对应操作（一对多且契约要求逐份改 `resources`）—— 明示非目标。
+  - Reviewer 指出的两处覆盖缺口保留：`merge` 应用层 `IntegrityError`/`StaleDataError` 分类分支无专用用例（现有回滚用例走通用 500 路径）；合并面板的目标选择走分页浏览器、标签多时需搜索翻页。
 - 日期与决定日志：2026-09-06 用户在 PR #39 合并后要求先做完 B 再讨论阅读器方向；主 Agent 拉全遗留清单后指出 B 实际只剩四项、其中 B1/B2 同源、B4 需推翻既有契约规则，用户选定先做 B1+B2。同日主 Agent 在基线 `113f765` 亲自复核 6 项现状事实（含 `ResourceTag` 复合主键与 `ON DELETE RESTRICT` 决定的操作顺序）后登记为 L3；并入 TASK-034 的 MERGED 状态收尾，以及三处已过期遗留登记的订正。
 
 此区禁止放入或变更任务授权、风险等级、允许路径、检查要求、实现或测试记录。
