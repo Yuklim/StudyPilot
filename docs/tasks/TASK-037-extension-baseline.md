@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-037"
-status = "IN_ACCEPTANCE"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "本任务改的是治理门禁本身：`scripts/governance/check_task.py` 的检查组选择逻辑决定了「哪些代码会被自动检查覆盖」，改错的后果不是某个功能坏掉，而是此后所有扩展代码在无人察觉的情况下逃过检查，且这种缺陷不会以失败的形式暴露出来。命中 `scripts/governance/**`、`docs/governance/**`、`**/AGENTS.md` 三条高风险路径下限。另一半实质风险是先例效应：`extension/` 是仓库的第三个顶层代码目录，其工程约定（构建、lint、测试、依赖边界、与前后端的关系）一旦落地就会被后续所有扩展工作沿用，事后改造成本远高于第一次定对。本任务不实现任何抓取行为，不改安全边界，不改后端。"
 risk_flags = ["governance", "architecture", "tooling", "tests"]
@@ -145,7 +145,7 @@ checks = []
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：第一轮候选 **`f91dbbe`**（代码 `5e7ef25`，base `32c3750`）。经第一轮 Review 处置后的代码修订 SHA 为 **`984b2f4`**；**最终冻结候选 `ec68f5c4ebe0b8661b817ed48b1a8f024c773810`**（`product_fingerprint=bd485b941e85561d06207f3f27d8c52b9eb61a660daf557fc4aed99c6ddcdae4`，与 `984b2f4` 相同）。`git diff --name-only 984b2f4..ec68f5c` 输出**只有 `docs/tasks/TASK-037-extension-baseline.md` 一个文件**（主 Agent 与派发会话各自用 git 独立核实；索引的状态变更发生在 `984b2f4` 提交内部，不在该区间）。机制依据：`scripts/governance/check_task.py:359` 的 `if path not in {args.task, "docs/tasks/任务索引.md"}` —— 任务记录与索引**均不计入 `product_fingerprint`**，故无论两者落在哪个提交，指纹都相同，「检查在 `984b2f4` 通过 ⇒ 结论可代表候选」这条推理成立。其后另有一次纯 EVIDENCE 写回（本条所在提交），只增证据、不动产品内容。
+- 候选 SHA：第一轮候选 **`f91dbbe`**（代码 `5e7ef25`，base `32c3750`）。经第一轮 Review 处置后的代码修订 SHA 为 **`984b2f4`**；第二轮 Review 候选 **`ec68f5c`**；**最终验收候选 `1e335acaefb4f46e86bae72a5e4f0468c49620b0`**（`product_fingerprint=bd485b941e85561d06207f3f27d8c52b9eb61a660daf557fc4aed99c6ddcdae4`，自 `984b2f4` 起三个候选**指纹一致**）。`git diff --name-only 984b2f4..ec68f5c` 输出**只有 `docs/tasks/TASK-037-extension-baseline.md` 一个文件**（主 Agent 与派发会话各自用 git 独立核实；索引的状态变更发生在 `984b2f4` 提交内部，不在该区间）。机制依据：`scripts/governance/check_task.py:359` 的 `if path not in {args.task, "docs/tasks/任务索引.md"}` —— 任务记录与索引**均不计入 `product_fingerprint`**，故无论两者落在哪个提交，指纹都相同，「检查在 `984b2f4` 通过 ⇒ 结论可代表候选」这条推理成立。`ec68f5c..1e335ac` 为**纯文档增量**（本任务记录 + 索引），但其中处置 A Finding 1 的那一处落在「实现与测试」段、即 EVIDENCE 标记区**之外**，故按 §6 形成了新候选 `1e335ac` —— **此句初版写作「其后另有一次纯 EVIDENCE 写回」，是错的**，经独立 Acceptance（F-a）指出后更正；同一句的候选 SHA 也一并从 `ec68f5c` 更新为 `1e335ac`。本条所在提交是 `1e335ac` 之后的 Acceptance 写回，**这一次确为纯 EVIDENCE**（标记区外仅 `status`），不形成新候选。
 - Review（第一轮，L3 独立只读，`32c3750..f91dbbe`）：**整体 CHANGES_REQUIRED**（A 部分 PASS + B 部分 CHANGES_REQUIRED，按「任一为 CHANGES_REQUIRED 则整体 CHANGES_REQUIRED」计）。因单实例连续三次被 watchdog 中断（详见下方「审查过程本身的证据」），改由**两个全新只读实例并行分范围审查**，两份并集为完整 diff（除 `package-lock.json`）、无重叠。两份报告原文如下，未作任何压缩或改写。
 
   **关于报告中的行号（主 Agent 附注，报告原文未改）**：**B 部分**报告引用的行号系其所收 patch（派发会话生成的 `T037-B-code.patch`，493 行）的**文件内行号**；**A 部分报告的行号为源文件行号**（该实例直接读取工作树文件）。此处初版曾把适用范围误写为「两份报告」，经 A 部分增量复核指出后更正。B 的四条对应关系：`manifest.test.ts:183-191` → `extension/src/manifest.test.ts:28-36`（三条 `expect` 在 :33/:34/:35）；`README.md:47-53` → `extension/README.md:19-25`；`vite.config.ts:317-326` → `extension/vite.config.ts:10-19`（初版误写 `:10-13`，结束行截短，经 B 指出后更正）；`ResourcePages.test.tsx:466-489` → `frontend/src/features/resources/ResourcePages.test.tsx:595-616`（±1 行内）。**按两位 Reviewer 的一致建议，本映射定位为「导航辅助」而非精确引用**——它自身已出过两处不准确，读者应以报告正文引用的代码内容为准、以行号为线索。
@@ -616,8 +616,111 @@ PASS 附带两项已明确处置的非阻断项（WEB 不安全 URL 分支、S1 
   - **B 新识别的第三种失效（WEB 不安全 URL 分支）→ 不在本任务修，记为遗留。** 采纳 B 的定性：这是产品缺口而非测试缺陷——链接不可用时那句提示该说什么，本来就没定义过。见下「非阻断遗留项」。
   - **B 对措辞的硬性要求 → 照办，且不放宽。** 关于 TASK-036 方位盲区的最终表述为：**经独立复核，方位与存在性已在区块粒度受断言覆盖；控件粒度的不安全 URL 分支未覆盖，已记录。****不写「已完全闭合」。** B 给出的结论本身带粒度限定，限定词必须一起写进来才不算超宣。
   - **A 对三个治理判断的背书 → 接受，不据此调整。** A 明确表示实现者不需要按它的意见改动，并逐项验证了「实现与测试」段的更新是增补与更正、无任何历史证据被删除改写或降级（旧 SHA、旧指纹 `8a50315d…`、原三项变异验证全部原文保留）。
-- Acceptance：待填
-- 最终状态/风险/用户操作：待填
+- Acceptance（L3 独立只读，第三批全新实例，独立于唯一写入者与 Reviewer A/B，无上下文继承）：**PASS**（针对候选 `1e335ac`），附 1 项须在本次写回中更正的记录准确性项（F-a，已按其要求更正，见上「候选 SHA」条）与 2 项可记录后继续（F-b 遗留项四要素已补齐、F-c 完成条件如实记为部分满足），**无阻断项**。报告原文如下。
+
+# TASK-037 独立只读 Acceptance 报告
+
+## 1. 只读证明与范围
+
+本实例工具白名单仅 `Read` / `Glob` / `Grep`，**无 `Write`/`Edit`/`NotebookEdit`，无 `Bash`**。全程未写入、未提交、未推送、**未执行任何命令**。我独立于唯一写入者 `coordinator` 与 Reviewer A/B，无上下文继承。
+
+- 基线 `32c3750` → **验收候选 `1e335ac`**（工作树 HEAD）。
+- 已读：完整 diff patch（1406 行）、未覆盖增量 patch（307 行）、任务记录全文（647 行）、`check_task.py`/`test_check_task.py`/`validate_governance.py` 相关段、`extension/` 的 `AGENTS.md`/`package.json`/`manifest.test.ts`/`popup.test.ts`/`dist/manifest.json`、两处 README、`ContentSnapshot.tsx`、`ResourcePages.test.tsx:563-629`、`风险分级与检查规则.md:20-46`、任务索引。
+- **一项超出预期的证据**：实现者会话的原始检查日志仍在本地 `/private/tmp/claude-501/-Users-yuklimching/54422e89-4ae6-4e67-99f8-a56f4378ba42/scratchpad/check-037-r2.log`（155 行），我**只读实读**了它。这不是独立执行（日志由实现者产生，理论上可伪造），但已把 A/B 当初只能按 NOT_RUN 处理的部分升级为「有原始输出可比对」。
+
+## 2. 13 条完成条件逐条核对
+
+| # | 条件 | 证据 | 判定 |
+|---|---|---|---|
+| 1 | 五条命令通过；build 产出**可被浏览器加载的** MV3 目录 | 日志第 5/15/23/31/48 行五条命令逐条 `exit=0`；`extension/dist/manifest.json` 我已实读：五键、`manifest_version:3`、`default_popup:"popup.html"` 且该文件存在 | **部分满足**（详见 §4） |
+| 2 | ≥1 条有意义单测且证明跑该目录源码 | `manifest.test.ts` 4 条（`import { manifest, POPUP_PAGE } from './manifest'`：MV3、版本与 package.json 同步、popup 文件存在、五键白名单）+ `popup/popup.test.ts` 1 条（`import { popupText } from './popup'`）＝5，与日志 `2 files / 5 tests passed` 吻合 | 满足 |
+| 3 | `selected_profiles(["extension/src/a.ts"],[])=={"extension"}` 并有断言 | `check_task.py:66-67` 并列 `if`；`test_check_task.py:24` 逐字为该断言 | 满足 |
+| 4 | `test_profiles_never_install_or_format_source` 含 extension 后仍过 | 日志治理单测 `Ran 23 tests ... OK` | 满足（A 指出的覆盖归因偏差已在 EVIDENCE 更正、条文不动，我认同该处理） |
+| 5 | 本任务检查真跑出 extension 组 | 日志第 4 行 `profiles=extension,frontend,governance`，五条命令带 `cwd=extension` 逐条可见 | 满足 |
+| 6 | 反向变异验证 | 记录六项，含具体失败计数；我未复现 | 满足（自述，**NOT_RUN**；逻辑自洽见 §5） |
+| 7 | 治理文档检查组清单新增一行 | `风险分级与检查规则.md:41` 与 `commands("extension")` 的五条命令逐条相符，不多不少 | 满足 |
+| 8 | `extension/AGENTS.md` 职责/边界/命令且不放宽根底线 | 七节齐全；§3 三条不变量（不碰第三方凭证、不改 `local_access.py`、不直连 `/api/v1`）+ §7 三组 Review 规则，方向为**加严** | 满足 |
+| 9 | A3 两处文案修复 + 三类资料各有断言 + 变异 | `ContentSnapshot.tsx:98` `snapshotHints[sourceType]` 按来源分支；`ResourcePages.test.tsx:566-629` 两组 `it.each(sources)`×3 源，`assertBelow` 用 `getByRole` 同时钉存在性与 DOM 顺序 | 满足 |
+| 10 | backend 525 / frontend 全绿 / e2e 41 | frontend 五条 + `369 passed` **有日志**；**backend 525 与 e2e 41 仅自述，无日志、且不在任何自动检查组内** | **部分满足**（backend/e2e 部分 NOT_RUN） |
+| 11 | 治理组全绿 | 日志 127-154 行：`Governance V2 PASS`、`ruff check` `All checks passed!`、`ruff format` `4 files already formatted`、`unittest 23 OK` | 满足 |
+| 12 | CHECKS PASS + 记录指纹 | 日志末行 `CHECKS PASS`；`files=25`、`product_fingerprint=bd485b94…`，绑定 `input=984b2f4` | 满足 |
+| 13 | L3 执行链完整（Reviewer 审完整 diff + 独立 Acceptance） | A/B 各两轮，均在报告内给出只读权限证明；本报告为独立 Acceptance | **部分满足**（`package-lock.json` 未被任何 Reviewer 覆盖，见 §5） |
+
+**范围核对**：patch 中 24 个 `diff --git` 条目 + 已排除的 `extension/package-lock.json` ＝ 25 文件，**逐条命中 `allowed_paths`，无一越界**；`backend/**`、`docs/contracts/**`、`security/local_access.py`、`frontend/package.json` 均未出现在 diff 中，非目标确实未动。索引 `IN_ACCEPTANCE` 与 TOML 一致，TASK-036 已标 `MERGED`。
+
+## 3. 未被 Review 覆盖的增量：独立核对结论
+
+① **确为纯文档**。`ec68f5c..1e335ac` 的 patch 我已全文读过：只有 `TASK-037-extension-baseline.md` 与 `任务索引.md`，无任何代码/脚本/契约/测试 hunk；标记区外仅两处变化（`status IN_REVIEW→IN_ACCEPTANCE`、环境说明一处修正），与派发方的 git 核实一致。
+
+② **A Finding 1 的处置合格，且我能给出 A 当时给不出的佐证**。记录 `:123` 现写「第一轮检出 `5e7ef25`、处置后检出 `984b2f4`，两次都走同一条路径、都在独立干净 worktree 中运行」——保留了路径的证据价值，**不是只删数字**，并补记了第二个临时分支与 `.git/info/exclude` 的清理。更关键的是：日志第 37/98 行是 **vitest 自己打印**的运行目录 `.../scratchpad/wt-037b/extension`、`.../wt-037b/frontend`，`wt-037b` 正是第二个 worktree。**这句被修正的话，我在实现者叙述之外拿到了独立佐证。**
+
+③ **不起第三轮 Review 站得住，Acceptance 覆盖成立。** 依据：该增量产品内容为零（指纹不变，`check_task.py:359` 排除任务记录与索引）；其内容恰是 Reviewer A 点名指定的文字修正，A 已明说 F1/F2/F3「均不影响被测内容与门禁效力」；而这段增量的全部主题——「检查到底跑在哪棵树上」——正是 Acceptance 的本职（核对证据是否绑定被测内容），由第三方只读实例核对比再起一轮 Reviewer 更对口，且避免 §7 的无界循环。**我不判 CHANGES_REQUIRED。** 边界须说清：**我的结论覆盖 `1e335ac`，其代码级部分继承 A/B 对 `ec68f5c` 的 PASS**，依据是我独立核实两者代码零差异；若日后发现该增量含非文档内容，此继承立即失效。
+
+## 4. 完成条件 1 的独立判定：**部分满足**（我不跟随 Review 的结论）
+
+拆成两个谓词看：
+- 「五条命令真实通过」「产出含 `manifest.json` 的目录」——**满足**，有日志与产物双证。
+- 「**可被浏览器加载**」——**不满足**。这是一个关于 Chrome 加载器行为的谓词，本任务全程零证据。已验证的全部是静态形状，形状正确**不蕴含**可加载。
+
+**但不阻断**，理由按「实际风险」判据（非因 Review 已接受）：(a) 该谓词在本环境内任何 Agent 都无法证实或证伪，以其阻断等于设一道 Agent 无法解除的闸；(b) 失败后果是用户一次加载重试，零数据、零安全影响；(c) 已在「已知限制 4」、遗留 L3、`README.md:248`、`extension/README.md:21` 四处如实标注「尚未在真实 Chrome 中实机验证」并划清了已验证边界，**无超宣**。
+
+→ 处置要求：主 Agent 向用户提合并请求时**必须把这一条当面说出来**（「扩展从未实机加载过，请首次按 README 加载时确认」），不能只埋在任务记录里。
+
+## 5. 遗留项登记合规性（对照 `风险分级与检查规则.md:29` 的四要素）
+
+| 项 | 影响 | 暂不修理由 | 责任角色 | 重评触发 |
+|---|---|---|---|---|
+| L1 validate_governance 清单漂移 | ✅ | ✅ 不在 allowed_paths | ✅ | ✅ |
+| L2 tsconfig 类型作用域 | ✅ | ✅ | ✅ | ✅ |
+| L3 未实机加载 | ✅ | ✅ | **✗ 未写** | ⚠️ 有「须用户首次加载确认」，未按格式写 |
+| L4 追不回的 drift | **✗** | **✗** | **✗** | **✗**（仅一句「见上」） |
+| L5 A4 契约漂移 | ✅ | ✅ | ✅ | ✅ |
+| L6 调研文档未入 Git | ✅ | ✅ 属用户文件 | **✗** | **✗** |
+| L7 WEB 不安全 URL 分支 | ✅ | ✅ | ✅ | ✅ |
+
+**L4 的记录方式本身是对的**：`:631` 明写「此为本轮 Review 的一处遗留不确定性，**不作已澄清处理**」，`:643` 明写「吻合不等于同一，L4 继续挂账，**不得据此销账**」——完全遵守了 A 的要求，未据其观察销账。缺的只是四要素的格式化补齐。
+
+**B 的措辞硬性要求：已遵守。** `:617` 逐字采用带粒度限定的表述「经独立复核，方位与存在性已在区块粒度受断言覆盖；控件粒度的不安全 URL 分支未覆盖，已记录」，并明写「不写『已完全闭合』」。全文 grep 确认：「已完全闭合」四次出现全部是 B 报告原文与处置说明中的**否定式引述**，无一处作为主张。
+
+**报告原文写回**：第一轮 A/B 两份的忠实性由 A（逐段自比对）与 B 各自自证；**第二轮两份的忠实性无任何第三方可核，我也无原件可比对——如实标注为未覆盖缺口。**
+
+## 6. Findings
+
+**必须在 Acceptance 写回时一并更正（不阻断合并，但不得遗漏）：**
+
+**F-a — `docs/tasks/TASK-037-extension-baseline.md:148`：EVIDENCE 仍称「最终冻结候选 `ec68f5c4ebe0b8661b817ed48b1a8f024c773810`」，而实际验收候选是 `1e335ac`。**
+触发：任何人日后按记录追溯本任务的最终候选。影响：记录会永久留下一个**错误的**最终候选 SHA——而「候选与被测内容的绑定」正是本任务全程的核心判据。**这是同一类缺陷第三次出现**（TASK-036 的 A1、本轮 A Finding 1，现在是它自己）。最小修复：写回 Acceptance 时把该句改为 `1e335ac`，并注明 `ec68f5c..1e335ac` 为纯文档增量、指纹不变。**该句在 EVIDENCE 标记区内，更正合法且零成本。**
+
+**可记录后继续：**
+
+**F-b — 遗留项 L3 / L4 / L6 的四要素不齐**（见 §5 表）。影响：`风险分级与检查规则.md:29` 要求的「责任角色 + 重评触发条件」缺失，这三条无人认领、无重新处理的触发点，实际后果是它们更容易被下一个任务漏掉。最小修复：写回时各补一行（L3 责任角色 coordinator、触发＝用户首次加载反馈；L4 责任角色 coordinator、触发＝下一个触及 `scripts/governance/**` 的任务顺带留意；L6 责任角色＝用户、触发＝下次引用该文档时）。
+
+**F-c — 完成条件 1 后半句无证据**（见 §4），须在 EVIDENCE 中如实记为「部分满足」，不要写成 13 条全部满足。
+
+**定向补漏（我做的、无人覆盖的一块）**：两位 Reviewer 均明确未读 `extension/package-lock.json`（2452 行）。我用 grep 抽查：**157 处 `resolved` 全部指向 `https://registry.npmjs.org/`**，无第三方 registry、无 `file:`/`git+` 来源；唯一 `hasInstallScript: true` 为 `fsevents@2.3.3`（dev + optional + `os: darwin`，vite/vitest 的标准可选原生依赖）。**无异常**。这不构成对锁文件的完整审查（传递依赖树与 integrity 哈希未验证），但把「完成条件 13 完整 diff」的主要风险面收敛到可接受。
+
+## 7. 剩余风险与是否阻断
+
+1. 扩展从未实机加载（L3，须用户确认）——不阻断，但必须当面告知用户。
+2. backend 525 / e2e 41 / 六项变异验证：**NOT_RUN**，纯实现者自述、无日志、我无 Bash 未复现。逻辑一致性核对通过：frontend 基线 363→369 的 +6 与两组 `it.each`×3 源新增 6 用例精确吻合，且日志实测 369；白名单断言语义决定「加任一键必红」与「1 failed」自洽；`assertBelow` 无条件用于 6 个用例与「6 failed / 33 passed」自洽。**无矛盾，但这不是执行验证。**
+3. 第二轮两份 Reviewer 报告的原文写回忠实性无第三方复核。
+4. 继承的非阻断项：L1 误红（不漏绿）、L2、L7、`test_profiles_never_install_or_format_source` 的锁定力止于 argv token（实质由 `check_task.py:403-407` 独力承担）。
+
+以上均不触碰安全底线、不违反已确认需求/契约、不涉及必要检查失败或结果不真实。**不阻断交付。**
+
+## 8. 结论
+
+**`PASS`**（针对候选 `1e335ac`）。
+
+附 1 项**必须在写回时更正**的记录准确性项（F-a，最终候选 SHA 过时）、2 项可记录后继续（F-b 遗留项四要素、F-c 完成条件 1 部分满足），无阻断项。13 条完成条件中 **10 条满足、3 条部分满足**（第 1、10、13 条），部分满足的三条各自的缺口均已在上文定位并给出如实记录要求——**请勿在 EVIDENCE 中写成「13 条全部满足」**。未被 Review 覆盖的增量经我独立核对确为纯文档、且处置符合 Reviewer A 的具体要求，不需第三轮 Review。
+
+- **完成条件核对结果（按 Acceptance 的硬性要求如实记录，不得写成「13 条全部满足」）：10 条满足、3 条部分满足。**
+  - **条件 1 部分满足**：「五条命令通过」与「产出含 `manifest.json` 的 MV3 目录」有日志与产物双证；**「可被浏览器加载」无任何证据**。Acceptance 拆开判定并指出「形状正确**不蕴含**可加载」，我接受该判定，不辩解、也不修改完成条件的措辞使其变成满足——那正违反本任务决定日志沉淀的第二条判据。
+  - **条件 10 部分满足**：frontend 全绿与 `369 passed` 有原始日志；**backend 525 与 e2e 41 仅为实现者自述，无日志，且这两组不在本任务自动选中的检查组内**（本任务不改 `backend/**`，e2e 非自动组）。
+  - **条件 13 部分满足**：L3 执行链的角色与独立性完整（A/B 各两轮 + 独立 Acceptance，均给出只读权限证明），但「Reviewer 审完整 diff」一项有缺口——`extension/package-lock.json`（2452 行）**未被任何 Reviewer 覆盖**，系派发时主动排除。Acceptance 事后补查了主要风险面（157 处 `resolved` 全部指向官方 registry，无第三方源、无 `file:`/`git+`，唯一 `hasInstallScript` 为 `fsevents@2.3.3` 的 darwin 可选原生依赖），但其自述这**不构成完整审查**（传递依赖树与 integrity 哈希未验证）。
+- 最终状态/风险/用户操作：status=**ACCEPTED**。L3 执行链完整：Worker → 自动检查（`CHECKS PASS`，`profiles=extension,frontend,governance`）→ 独立只读 Reviewer 两部分各两轮（第一轮 A PASS / B CHANGES_REQUIRED → 处置 → 第二轮 A PASS / B PASS）→ 独立只读 Acceptance PASS。四个审查实例互不相同、均只有 Read/Grep/Glob、无 Bash 与写工具、无上下文继承。最终候选 `1e335ac` 待**用户本人执行合并**；分支仅在本地，未推送。
+  **须向用户当面说明的三点（Acceptance 明确要求，不得只埋在记录里）**：① **扩展从未在真实 Chrome 中加载过**，完成条件 1 因此只算部分满足，请首次按 README 加载时确认；② 全部机械证据由**实现者单方运行**，两位 Reviewer 全程 NOT_RUN，Acceptance 只做了原始日志的只读比对（日志由实现者产生，非独立执行），其中 backend 525 与 e2e 41 **连日志都没有**；③ 遗留 7 项，其中 L5（A4 契约清单漂移 12 项）与 L1（`validate_governance.py` 第二份检查组清单未同步）需在后续任务中处理。
+  **一条超出实现者叙述的独立佐证**（Acceptance 发现）：检查日志第 37/98 行是 **vitest 自己打印**的运行目录 `.../scratchpad/wt-037b/extension` 与 `.../wt-037b/frontend`，`wt-037b` 正是处置后那次检查所用的独立 worktree。「最终检查跑在 `984b2f4` 的干净检出上」这句话因此不再只依赖实现者自述。
 - 第一轮 findings 的处置（代码修订 SHA **`984b2f4`**）：
   - **F1（阻断）→ 已修，两处一起改**。① 断言由黑名单改白名单：`expect(Object.keys(manifest).sort()).toEqual(['action','description','manifest_version','name','version'].sort())`，任何新增顶层键都会失败。② 同步改准三处超宣措辞：`extension/README.md`（原写「新增权限……对此设有门闩」，"权限"是全称而门闩只覆盖三键）、`extension/src/manifest.ts` 注释（原写 "fails if this file grows either field"，指代不清且范围过窄）、`extension/AGENTS.md` §3（原文逐字点名三个键、**措辞本身准确**，但门闩变宽后同步扩写为「任何新增键」，并说明为何用白名单而非逐个点名）。**采纳 Reviewer 给的"补断言更便宜"但不采纳其"二选一"**：断言防的是新增键，措辞防的是「下一个人误以为受更宽的保护」，两者挡的不是同一个洞。变异验证：`optional_permissions` 与 `externally_connectable` 在旧断言下全绿，在白名单下各自 1 failed / 4 passed。
   - **A 可选建议 3（与 F1 同源，主 Agent 提为必改）→ 已修**。任务记录非目标段原写「不申请 host permissions 之外的权限」，字面等于预先允许 host_permissions，与实现和 README 均不符，收紧为「不申请任何权限」并在原处注明收紧缘由。**这三者叠加（记录比实物宽松 + 门闩比宣称宽松 + README 宣称有保护）是合读 A 与 B 才成立的结论，单看任一份报告都得不出。**
@@ -632,11 +735,11 @@ PASS 附带两项已明确处置的非阻断项（WEB 不安全 URL 分支、S1 
 - 非阻断遗留项：
   - **（L1）`scripts/governance/validate_governance.py` 存在第二份硬编码检查组名单，未含 `extension`**。影响：任何任务若在 TOML 显式写 `checks = ["extension"]`，`validate_task` 会报 `unknown or missing check groups`，且因 `validate()` 遍历全部 `TASK-*.md`，一份这样的记录会让治理组对所有任务失败。**方向是「误红」不是「漏绿」，不削弱门禁**；extension 组由路径自动选中、不依赖显式声明，故当前无实际损害。暂不修的理由：该文件不在本任务 `allowed_paths` 内。责任角色 coordinator；**重评触发条件：下一个触及 `scripts/governance/**` 的任务必须一并修**（把 `"extension"` 加入该元组），或有人真的写了 `checks = ["extension"]` 时立即修。
   - **（L2）`extension/tsconfig.json` 的 `types: ["node"]` 全局生效**，popup 运行时代码里误用 `process.env` 也能通过 `tsc --noEmit`。当前无实际影响（popup 只设一个 textContent）。暂不修的理由：改类型作用域会改变整个工程的 typecheck 范围，可能翻出与本任务无关的问题，收益不抵风险。责任角色 coordinator；重评触发条件：TASK-038 引入真实 chrome API 类型时一并收敛。
-  - **（L3）扩展从未在真实浏览器中加载过**。已验证的只是构建产物形状（`dist/` 下有 `manifest.json`、`popup.html` 与 JS 资源，manifest 为合法 JSON、`manifest_version: 3`、`default_popup` 指向确实存在的文件）。Reviewer 判定不应阻断（零权限、零网络、零 content script，实机验证任何 Agent 都无法执行，以此阻断等于设一道 Agent 无法解除的闸）。**须用户首次按 README 加载时确认**；README 已标注该步骤未经实机验证。
-  - **（L4）第一轮 Reviewer 提及但无从追回的那处 drift**，见上「审查过程本身的证据」。
+  - **（L3）扩展从未在真实浏览器中加载过**。已验证的只是构建产物形状（`dist/` 下有 `manifest.json`、`popup.html` 与 JS 资源，manifest 为合法 JSON、`manifest_version: 3`、`default_popup` 指向确实存在的文件）。Reviewer 判定不应阻断（零权限、零网络、零 content script，实机验证任何 Agent 都无法执行，以此阻断等于设一道 Agent 无法解除的闸）。**须用户首次按 README 加载时确认**；README 已标注该步骤未经实机验证。责任角色 coordinator；**重评触发条件：用户首次加载后的反馈**——加载成功则据实补记为完成条件 1 满足，失败则按其错误另起修复任务。
+  - **（L4）第一轮 Reviewer 提及但无从追回的那处 drift**，见上「审查过程本身的证据」。影响：无法排除候选中存在一处至今无人复现的漂移；A/B 两路重审均未提及，但两路均非全覆盖（锁文件由 Acceptance 补查、机械证据全程 NOT_RUN），故不能据此断定其不存在。暂不修的理由：**没有可修的对象**——该实例未留下任何可比对输出，修复无从下手；继续挂账的成本仅为记录一行，而据 A 的吻合观察销账的代价是把一处未知当成已知。责任角色 coordinator；**重评触发条件：下一个触及 `scripts/governance/**` 的任务顺带留意**；若届时 `validate_governance.py:215-218` 的清单漂移被修复而未发现其他漂移，可在该任务记录中说明后销账。
   - **（L5）A4 未做且仍在恶化**：`openapi-v1.json` 的 `x-delivery-profile` 停在 `stage: "TASK-022"`，`available_operations` 35 项 vs 实际 47 个 operationId，缺 12 项，且 `backend/tests/test_taxonomy.py:485` 硬编码 `len(available) == 35`。本任务明示非目标。责任角色 coordinator；重评触发条件：应作为独立任务处理，且其修法不应只是补回 12 条，而要加一个漂移守卫测试。
   - **（L7）WEB 资料的 `source_url` 被 `safeWebUrl` 拒绝时，快照区的提示指向一个并不存在的控件**。`ResourceDetail.tsx:106-118` 在链接不安全时不渲染 `<a>`、改渲染 `<p role="alert">该网址无法安全打开，仅显示文本。</p>`，但「原始网页」section 仍在，故新增的 `assertBelow` 照样通过，而文案「需要最新内容请用下方的「打开原网页」」此时是假话——与被修的原 bug 同类，只是落在测试 fixture（`https://example.com/article`）从未走到的边界分支上。由第二轮 B 部分独立发现，主 Agent 与第一轮 Reviewer 均未想到。影响：文案误导，认知成本；无数据、无安全后果。发生可能低（创建路径应已校验）。暂不修的理由：采纳 B 的定性——这是**产品缺口而非测试缺陷**，「链接不可用时这句提示该说什么」尚无产品定义，在本任务里随手编一句反而是未经确认的产品决定。责任角色 coordinator；**重评触发条件：下一个触及 `ContentSnapshot.tsx` 或阅读器文案的任务须一并定义并覆盖该分支。**
-  - **（L6）`docs/research/阅读器与标注能力调研.md` 仍未纳入 Git**，而 TASK-036 的上下文包引用了它，从 Git 检出工作的 Reviewer 看不到被引用的内容。属用户文件，本任务不处理。
+  - **（L6）`docs/research/阅读器与标注能力调研.md` 仍未纳入 Git**，而 TASK-036 的上下文包引用了它，从 Git 检出工作的 Reviewer 看不到被引用的内容。属用户文件，本任务不处理。影响：任何从 Git 检出工作的 Reviewer 都看不到 TASK-036 上下文包所引用的内容；本任务的两位 Reviewer 均明确未审该文档。暂不修的理由：它是用户在另一会话创建的个人文件，是否纳入版本库属用户决定，Agent 不应擅自提交他人未跟踪的内容。**责任角色：用户**（主 Agent 已在交付时告知）；**重评触发条件：下次有任务记录引用该文档时**——引用未入库的文档等于引用不存在的依据，届时须先解决归属。
 - 日期与决定日志：2026-09-06 用户批准拆分方案（「同意，登记 TASK-037」），并在此前明确选定顶层目录位置（「使用独立顶层目录 extension/ 吧，万一以后还需要拓展其他的功能，可以同样放进 extension，不然全放 frontend 是否会越来越乱？」）。拆分理由：扩展代码要被自动检查覆盖，`extension` 检查组必须先存在；若与扩展实现打包，Worker 会在同一个 diff 里既写扩展代码、又发明验证它的检查组，冻结时「检查通过」就失去独立含义。主 Agent 另将 A4 排除在外，理由是其正确修法是补漂移守卫而非补回清单，属独立测试故事。第一轮 Review 因单实例三次中断改为 A/B 分范围并行；派发会话的拆分一度在「门禁调用的 script 名」与「script 的定义」之间留下跨边界盲区，经主 Agent 指出后补投 `extension/package.json` 给 A 部分闭合。
   **本轮沉淀的两条可复用判据（来自 A 部分增量复核，其价值高于本次结论本身）**：① **授权面的修订只有在「收窄」且「不为已交付物追认合法性」时才安全。** 本任务把非目标从「不申请 host permissions 之外的权限」收紧为「不申请任何权限」属前者：方向是收窄，且实现从第一轮起就是零权限——是**记录向实物对齐**，不是实物向记录对齐。若方向反过来（为让已写进去的 `host_permissions` 合法而扩写非目标），即属事后追认，必须回到用户授权，Reviewer 会判阻断。② **完成条件是标尺，事后改写标尺以匹配已交付物，与「降低断言来通过检查」在机制上无法区分**；因此完成条件 4 的覆盖归因错误只在 EVIDENCE 记录更正，不回头改条文，根治应由下一个任务在**新的**完成条件里正确表述。
   **审查组织方式本身也会引入缺陷**：A/B 拆分一度在「门禁调用的 script 名」与「script 的定义」之间制造盲区（已补投闭合）；根因则在本任务把 2452 行锁文件与 14 行门禁逻辑塞进同一个 diff。下个任务登记时须把生成物排除写进上下文包。
