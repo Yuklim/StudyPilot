@@ -25,8 +25,13 @@ export interface CapturePayload {
  * `parsed_url`），而不只是「以 http(s) 开头」。宽松版本会让带 `#` 锚点的地址一路
  * 预填成功、直到用户点保存才被 422 拒绝，而确认页不提供网址编辑框 —— 无路可走。
  *
- * 规则：http(s) 开头；不含空白、控制字符、反斜杠、`#`；可解析且有主机名；不含凭据。
- * 与 `frontend/src/features/resources/api.ts` 的 `safeWebUrl` 同规则。
+ * 规则：http(s) 开头（**大小写敏感**）；不含空白、控制字符、反斜杠、`#`；长度 ≤ MAX_URL；
+ * authority 段不含 `@`；可解析且有主机名。
+ *
+ * **比 `frontend/src/features/resources/api.ts` 的 `safeWebUrl` 更严**，多三处：长度上限、
+ * authority 段 `@` 拒绝（`safeWebUrl` 用 `!url.username`，判不出 `https://@example.com/`
+ * 这种空用户名）、以及 scheme 大小写敏感。`safeWebUrl` 服务的是手工录入网址的展示防护，
+ * 与采集路径无关，**未随本次收紧同步**，这是有意的：改它属于扩大范围。
  */
 export function isSafeSourceUrl(value: string): boolean {
   // scheme 不带 /i：后端用的是大小写敏感的 startswith。真实采集路径经
@@ -46,9 +51,13 @@ export function isSafeSourceUrl(value: string): boolean {
   }
 }
 
+// 页面用它，防的是「谁都能往这个窗口发消息」。
 /**
- * 校验后才使用。**任何网页都能向同源窗口 postMessage**，所以这道校验不是防御性
- * 编程的客套，而是这个页面的信任边界本身：结构对不上就当没收到。
+ * 接收端一律先过这道校验再使用：结构对不上就丢弃，不猜测、不补救。
+ *
+ * **任何网页都能向同源窗口 postMessage**，所以这不是防御性编程的客套，而是这条
+ * 链路的信任边界本身。两端各有一份实现，规则必须完全一致 —— 这一点由两侧的
+ * 守卫测试机器强制，不靠人记。
  */
 export function isCapturePayload(value: unknown): value is CapturePayload {
   if (typeof value !== 'object' || value === null) return false

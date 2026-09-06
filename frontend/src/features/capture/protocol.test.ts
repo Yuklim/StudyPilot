@@ -52,6 +52,7 @@ describe('isSafeSourceUrl', () => {
     ['带空白', 'https://example.com/a b'],
     ['带反斜杠', 'https://example.com\\a'],
     ['带凭据', 'https://user:pw@example.com/a'],
+    ['带控制字符', 'https://example.com/a\u0001b'],
     ['authority 里只有一个空 @（后端同样拒）', 'https://@example.com/a'],
     ['scheme 大写（后端 startswith 大小写敏感）', 'HTTPS://example.com/a'],
     ['不是 http(s)', 'javascript:alert(1)'],

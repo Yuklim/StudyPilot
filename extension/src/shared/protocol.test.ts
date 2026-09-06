@@ -59,10 +59,16 @@ describe('protocol mirror', () => {
     // 注释，这是有意的：两边任何一处不同步（无论是规则还是对规则的说明）都该红。
     // 已知脆弱点：两个工程的 prettier 配置若将来分叉，会误红；那是 2 秒可修的红，
     // 不会掩盖缺陷。
+    // 切片**从函数上方的 JSDoc 开始**，不只是函数体。
+    // 理由：上一轮我收紧了规则却没回头改「与 safeWebUrl 同规则」那句注释，守卫因为
+    // 不看 JSDoc 而全绿放过——修复 N-R1 时若只改一边，同样不会红。把 JSDoc 纳入比对，
+    // 「两边同改」就从人工纪律变成机械保证。
     const body = (source: string, name: string) => {
-      const start = source.indexOf(`export function ${name}(`)
-      expect(start, `找不到 ${name}`).toBeGreaterThan(-1)
-      const end = source.indexOf('\n}', start)
+      const declaration = source.indexOf(`export function ${name}(`)
+      expect(declaration, `找不到 ${name}`).toBeGreaterThan(-1)
+      const doc = source.lastIndexOf('/**', declaration)
+      const start = doc === -1 ? declaration : doc
+      const end = source.indexOf('\n}', declaration)
       return source.slice(start, end).replace(/\s+/g, ' ')
     }
     const mine = readFileSync(projectFile('./protocol.ts'), 'utf8')
@@ -86,6 +92,7 @@ describe('isSafeSourceUrl', () => {
     ['带空白', 'https://example.com/a b'],
     ['带反斜杠', 'https://example.com\\a'],
     ['带凭据', 'https://user:pw@example.com/a'],
+    ['带控制字符', 'https://example.com/a\u0001b'],
     ['不是 http(s)', 'javascript:alert(1)'],
     ['主机名为空', 'https://'],
     ['超长', `https://example.com/${'a'.repeat(3000)}`],
