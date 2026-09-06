@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-036"
-status = "IN_ACCEPTANCE"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "新增数据库表与迁移（0004）、新增公共 API 操作与契约对象，三项各自都是 L3 判入条件。更实质的是：本任务确立「资料的正文可以与 source_url 并存」这一新的数据语义 —— 在此之前 `learning_resources` 的来源互斥 CHECK 意味着 WEB 资料只有链接、没有正文。快照一旦开始写入即成为**不可回溯**的资产（原文改版或消失后无法重建），因此表结构、正文格式与降级语义在第一版就必须定对，事后迁移无法补齐历史内容。此外新表与 `learning_resources` 之间是 CASCADE 外键，删除资料会连带删除快照，属关键数据模型。不改核心表、不改既有互斥 CHECK。"
 risk_flags = ["public-api", "migration", "critical-data", "business", "tests"]
@@ -147,7 +147,7 @@ checks = []
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA（最终）：**`150921b`**（代码修订 SHA **`97ec829`**，base `3fbca1f`）。第一轮候选：`fba1e8e`（代码 `ce22d2a`）。`97ec829..150921b` 仅为第一轮报告与处置的证据写回。**注意**：「实现与测试」段（EVIDENCE 标记区外）记录的 fingerprint 为最终值 `c0b72e28…`（该段在本轮随代码修订一并更新，属 §6 允许的形成新候选路径）。
+- 候选 SHA（最终）：**`150921b`**（代码修订 SHA **`97ec829`**，base `3fbca1f`）。第一轮候选：`fba1e8e`（代码 `ce22d2a`）。`97ec829..150921b` 仅为第一轮报告与处置的证据写回。**注意（A1 更正）**：「实现与测试」段（EVIDENCE 标记区外）**仍记第一轮的** fingerprint `f30a93e1…`（绑定已被取代的代码 SHA `ce22d2a`）；**最终指纹 `c0b72e28…`（绑定 `97ec829`）只出现在本区下方的第二轮处置里**。我原先在此写成「该段记录的是最终值」，是错的 —— 经 Acceptance 指出、主 Agent 复核确认（`:131` 为 `f30a93e1…`）。检查本身的有效性不受影响：真正的绑定关系 `97ec829 → c0b72e28` 记录准确。
 - Review 第一轮（L3 独立只读，`3fbca1f..fba1e8e`）：**CHANGES_REQUIRED**（F1 阻断，F2/F3 非阻断）。
 
   身份与派发：`.claude/agents/reviewer.md` 定义的**第六个**全新只读实例（`tools: Read, Grep, Glob`，无 Bash、无写工具），无上下文继承，由同机在项目目录下启动的会话 `studypilot-05` 代为派发（本会话未注册项目级 Agent）。本轮改进：主 Agent 在**证据写回完成后**才请求派发，HEAD 不再移动，因而不存在前两次「带过期简报开工 + 中途更正」的环节。
@@ -290,11 +290,79 @@ checks = []
     | 同名 CHECK 只改**正文**（`length(sha256) = 64` → `= 32`） | **不发现**，全绿 |
     | 迁移列去掉 `server_default="1"` | **不发现**，全绿（未传 `compare_server_default`） |
 
+    **证据等级（写回 Acceptance 时升级）**：上表最初为主 Agent 单方实测；其后**派发会话以自包含探针（内存 SQLite + `alembic.autogenerate.compare_metadata`，未接触本仓库任何文件）在隔离环境独立复现，四组逐条一致**。因此这是本任务中唯一一组经第三方独立复现的机械事实，等级高于其余变异验证（后者仍为实现者自述）。
+
     准确结论是：**CHECK 的存在与名称受机械绑定保护，正文不受；`server_default` 完全不受。** 这比双方原先的说法都窄——盲区是真的，但没有大到「整条漏掉都不知道」。这一条重要，因为把盲区说得过大，会让后来者不再信任一个实际有效的检查。Reviewer 关于 `server_default` 未开启比较、以及运行时约束来自迁移而非模型这两点，实测均属实。
   - **O1 的第二处更正照收**：「净增 12 = 12 组 −1 恒真用例 +1 的 428 用例」这个分解确实不成立 —— 被删的恒真断言与新增的 428 断言都在**既有测试函数体内**，不改变用例计数。净增就是参数化的 12 组，总数 525 正确。
   - **Reviewer 的自我更正已知悉并认可其处理方式**：它承认第一轮把 `compare_metadata` 的效力说大了，且没有停在口头 —— 本轮重新人工比对了全部 8 条 CHECK 与 `server_default`。审查者的旧结论不因写进记录就免于复审，这一点做到了。
-- Acceptance：**待执行**，由独立于实现者与两轮 Reviewer 的第三个只读实例执行，核对 15 条完成条件与跨模块证据。本次按本任务 Review 环节已验证有效的做法，**在证据写回完成、HEAD 不再移动之后**才请求派发，以免实例带过期简报开工（TASK-034 曾因此产生 A1/A2/A3 三条本可避免的 findings）。
-- 最终状态/风险/用户操作：status=**IN_ACCEPTANCE**（两轮独立只读 Review：第一轮 CHANGES_REQUIRED → 处置 → 第二轮 PASS；等待独立 Acceptance）。分支 `agent/coordinator/TASK-036-content-snapshot` 仅在本地，未推送、未开 PR。
+- Acceptance（L3 独立只读，第七个实例，独立于实现者与两轮 Reviewer）：**PASS**，15 条完成条件逐条核对全部满足，5 条非阻断 findings。
+
+  身份与派发：`.claude/agents/reviewer.md` 定义的第七个全新只读实例（`tools: Read, Grep, Glob`，无 Bash、无写工具），无上下文继承。**本次在证据写回完成、HEAD 不再移动之后才请求派发**（TASK-034 曾因中途派发产生三条本可避免的 findings），派发会话另已逐项核实写回状态后才派出。
+
+  报告原文（逐字，仅还原传输转义的 `<`/`>`）：
+
+  > 核对完成。以下为独立只读 Acceptance 报告。
+  >
+  > ## 只读证明与核对对象
+  >
+  > 本实例仅有 `Read`/`Grep`/`Glob`，无 `Write`/`Edit`/`Bash`，本轮未做任何写入、提交、推送、重跑。
+  > 核对对象：base `3fbca1f` → 最终候选 `150921b`（代码 `97ec829`）的完整 diff（导出 patch 1740 行 / **21 文件**），并与工作树 HEAD `f5217e0` 的跟踪文件交叉对照。全部机械证据（check_task `c0b72e28…`、pytest 525、vitest 363、e2e 41、实现者的多处变异验证）按 **NOT_RUN** 处理，下列判断均建立在独立读码与文件核对之上。我不复审 Reviewer 已完成的代码级结论，只核对完成条件、证据绑定与跨模块自洽。
+  >
+  > ## 15 条完成条件逐条核对
+  >
+  > | # | 条件 | 证据位置 | 结论 |
+  > | --- | --- | --- | --- |
+  > | 1 | 0004 可升可降，既有升降级用例覆盖到 0004 且全绿 | `0004_content_snapshots.py:29-90`（只 create/drop 新表）；`backend/tests/test_migrations.py:32,47,67` head 改 `0004`、表数 `12→13`、非空守卫用例 head 仍停 0004 | 满足（"全绿"为实现者所跑，NOT_RUN） |
+  > | 2 | 至多一份快照；PUT 整份替换，`char_count`/`sha256`/`captured_at` 随之更新 | `models.py` `resource_id ... unique=True` + 迁移 `uq_content_snapshots_resource_id`；`snapshot_store.py:put` 逐字段重写含 `captured_at=utc_now()`；`test_snapshots.py:81-93` 断言 version 2 / 新 sha256 / 新 char_count | 满足（`captured_at` 更新只由读码确认，无断言，见 A5） |
+  > | 3 | 删资料连带删快照；不影响其他资料的快照 | `test_snapshots.py:702-709`：`kept` 快照放回 → 删 `doomed` → 全表**剩 1 行**且 `kept` 正文可回读；FK `ondelete=CASCADE` 两侧一致，两表间无 ORM relationship | 满足（第一轮缺口已真闭合） |
+  > | 4 | 删快照后资料/标签/心得/学习数据/原件不变 | `snapshot_store.delete` 只 `session.delete(record)`；`test_snapshots.py:145-147` 对资料详情做整份投影相等断言（该投影含 `tags`/`progress`/`original_file`） | 满足（心得未创建，属平凡真，与 TASK-035 O1 同类，已由"只写快照表"结构性保证） |
+  > | 5 | WEB 快照与 `source_url` 并存，互斥 CHECK 未触碰 | `models.py` 变更为纯插入（`@@ -239,6 +239,59 @@`），`LearningResource` 一字未改；0004 中 `learning_resources` 仅作 FK 目标；`test_snapshots.py:104-124` WEB/PASTE/FILE 各写一次并断言投影不变 | 满足 |
+  > | 6 | `format` 仅 MARKDOWN；content 1～1,000,000；越界/空在触库前 422 | `modules/resources/snapshots.py`（`Literal["MARKDOWN"]`、`StringConstraints(1,1e6)`、`not_blank`、`extra=forbid,strict`）；校验在 `command_body` 内、早于 store；`test_snapshots.py:728-738` 8 组 422 | 满足 |
+  > | 7 | `FAILED` 必带 `failure_code`，非 FAILED 不带（与 `original_files` 同形） | 迁移 `0004:46-52` 与 `models.py` CHECK **逐字符一致**，两处均含 `failure_code IS NOT NULL`；我独立按 SQLite 三值逻辑逐支求值：FAILED+NULL → 分支 A FALSE、分支 B 在 `IS NOT NULL` 处 FALSE ⇒ 整体 **FALSE ⇒ 拒绝**（第一轮的 NULL 求值路径已消除）。12 组参数化用例我逐组独立推演基准行+覆盖后命中的约束：**12 组全部真能失效，无一平凡**（首组=原缺陷组合命中 `capture_state`；另有 `content_length`/`char_count_bounds`/`sha256_length`/`extractor_length`/`format`/`status` 各自命中）。用例跑在 **迁移建出来的库** 上（`conftest.py:33-44` `database` → `migrate(engine)` → `session_factory`），即运行时真正生效的 DDL | **满足（第一轮不成立，第二轮已实修并首次获得可失效覆盖）** |
+  > | 8 | 版本前置与通则一致（428 / 409 只含 `current_version`），且冲突不写入 | `api/snapshots.py:195-204`、`snapshot_store.put/delete`、`api/snapshots.py:128-142`（`details` 仅 `current_version`）；`test_snapshots.py:132-144, 741-748` 覆盖 428/409 并在冲突后回读断言正文未变 | 满足 |
+  > | 9 | 资料不存在时读/写/删均 404 RESOURCE_NOT_FOUND，无写入 | `snapshot_store.require_resource` 在三条路径首位；`test_snapshots.py:167-169` 覆盖 GET/PUT/非 UUID。**DELETE 对不存在资料的 404 无任何用例**（该文件所有 delete 均打在存在的 `kept` 上）；参数求值序 `identity()` → `version_header()` → `require_resource()` 我已读码确认与 notes/taxonomy 先例同序 | 满足（行为成立；DELETE 分支仅读码，见 A2） |
+  > | 10 | 无快照返回明确"不存在"，前端空态可理解 | 后端 404 `SNAPSHOT_NOT_FOUND`（非空对象）；`api.ts:getResourceSnapshot` 只按**错误码**吞该码返回 `null`；`ContentSnapshot.tsx` 空态文案；vitest 用例一 + e2e `还没有保存正文` | 满足 |
+  > | 11 | 有检查证明 `backend/src` 无 HTTP 客户端调用，生产依赖未新增 | `test_snapshots.py:822-834` 真实读文件计算 offenders（可失效、非恒真）；`pyproject.toml`/`uv.lock` **完全不在 diff 中**，且不在 `allowed_paths` | 满足（按原文"有检查证明"判定；"不可绕过"非本条要求，边界已在记录登记） |
+  > | 12 | 前端可粘贴/替换/删除并看到正文；错误可理解且不自动重试 | `ContentSnapshot.tsx`（区块常驻、写入失败 `role="alert"`+"没有自动重试"、`busy` 去重）；`ResourcePages.test.tsx` 三条用例（断言 `共 12 字` 元数据而非 textarea 文本、PUT body 含 `expected_version:1`、DELETE `ifMatchVersion:1`、冲突时恰好 1 次 PUT） | 满足 |
+  > | 13 | 后端/前端/e2e 全绿，计数只增不减，新增一条走真实后端的 e2e | 记录 line 226：pytest **525**（基线 505）、vitest **363**（基线 360）、e2e **41**（基线 40）；`frontend/e2e/resource-pages.spec.ts:1250-1285` 新用例真跑后端（粘贴→刷新仍在→删除回空态→断言快照与原文链接并存，`Array.from(body).length` 与后端 `len()` 同为码点计数） | 满足（计数与用例存在性可核；绿灯为实现者所跑，NOT_RUN） |
+  > | 14 | check_task CHECKS PASS 并记 fingerprint | 记录 line 226：`--candidate 97ec829` → CHECKS PASS、files=21、fingerprint `c0b72e28…` | 满足（NOT_RUN；但记录内有一处自述不实，见 A1） |
+  > | 15 | L3 链完整，两份报告原文写回 | 第一轮报告 line 159-217（含 **CHANGES_REQUIRED** 结论与 F1 全文，逐字引用块）、第二轮 line 231-280（PASS，O1/O2）；Acceptance = 本实例，独立于实现者与两轮 Reviewer | 满足 |
+  >
+  > ## 跨模块 / 治理核对
+  >
+  > - **范围**：21 个改动文件逐一比对 `allowed_paths`，**全部命中**；`fixtures.ts` 在名单内未改（允许未用）。禁止范围确实未动：`resource_store.py`、`security/local_access.py`、`pyproject.toml`、`0001-0003` 迁移、`ClassificationPages.test.tsx` 均不在 diff 中；`learning_resources` 的列与互斥 CHECK 一字未改。
+  > - **安全边界**：新路由落在 `/api/v1/` 前缀内，`LocalAccessMiddleware` 按方法+前缀统一守门（写要求 token+Origin+Sec-Fetch，`if-match` 已在既有 `CORS_HEADERS` 内），无需也未修改安全文件 —— 与任务"只读参照"预期一致。
+  > - **契约三方自洽**：openapi `ContentSnapshot.required` 14 项 ⇄ `snapshot_store.FIELDS` 14 项 ⇄ 前端 `ContentSnapshot` 接口逐字段对应；`SnapshotPut` 四字段与 Pydantic 一致（`additionalProperties:false` ⇄ `extra="forbid"`）；错误码表、逐操作 x-error-codes、操作清单与后端实际返回一致；命名约定 `ck_%(table_name)s_%(constraint_name)s` 使模型 `capture_state` 等 8 条 CHECK 名与迁移 `op.f(...)` 精确对齐。
+  > - **`compare_metadata` 敏感度**：记录最终写入的版本（EVIDENCE line 284-293 实测表 + 遗留项 line 300"存在与名称有绑定，正文与 server_default 没有"）**与你给的权威表完全相符**。被证伪的"整条漏掉也不会被发现"仅存在于第二轮 Reviewer 的**逐字引用**中，且紧接其后即被实测表更正 —— 逐字写回义务与更正义务两者兼顾，处理得当。
+  > - **写回纪律**：`150921b..f5217e0` 我以文件内容侧核对，`status=IN_ACCEPTANCE`、15 条完成条件、目标、`risk`/`risk_flags`/`allowed_paths`/`checks` 与"实现与测试"段均与候选一致；索引该任务行同步为 IN_ACCEPTANCE（§6 明确允许）。第二轮代码修订带动"实现与测试"段更新属 §6 形成新候选的正当路径，非借证据写回。
+  > - **重复条目**：`^- Acceptance` 现仅 line 296 **一条**，实现者自陈的漏删已补齐，复核属实。
+  >
+  > ## Findings（均非阻断，无阻断项）
+  >
+  > - **A1（记录不实，EVIDENCE 内可零成本更正）** `docs/tasks/TASK-036-content-snapshot.md:150` 称"「实现与测试」段记录的 fingerprint 为最终值 `c0b72e28…`"。实际该段 `:131` 记的是 **`f30a93e1…`，绑定已被取代的代码 SHA `ce22d2a`**；最终值只出现在 EVIDENCE `:226`。触发：读者只读标记区外的实现记录，或以 line 150 为索引去核对指纹。影响：证据与被测内容的绑定叙述不准（真正的绑定 `97ec829 → c0b72e28` 在 line 226 本身是正确的，检查有效性不受影响）。修复：改 line 150 那半句为"该段仍记第一轮指纹，最终指纹见下"—— 属 EVIDENCE 区编辑，**不形成新候选**。
+  > - **A2（覆盖缺口 + 一处结论略微说满）** 完成条件 9 的 **DELETE-资料不存在-404 分支无任何用例**（`backend/tests/test_snapshots.py` 内 delete 全部打在存在的资料上）。第二轮 Reviewer 称缺口③"已关闭"，实际新增的 5000 位版本号用例关闭的是 428 分支，404 分支它自己也注明是"读码正确"。我独立读码确认行为正确（`api/snapshots.py:229-234` 参数求值序 → `require_resource` → 404）。风险极低，不要求返工，建议登记为遗留项。
+  > - **A3（前端文案，用户可见）** `frontend/src/features/resources/ContentSnapshot.tsx:76` 提示"需要最新内容请用**上方**的「打开原网页」"，但该链接在 `ResourceDetail.tsx:97` 之后、`:102-121` 的"原始网页"区块内 —— 实际在快照区块**下方**，指向错误。同文件 `:69-71` 的空态文案"只存链接的话…"以 WEB 语境写成，却对 PASTE/FILE 资料同样渲染（组件不感知 `source_type`，而条件 5 要求三种来源都能存快照）。触发：任意资料详情页；影响：仅措辞误导，无功能/数据影响。两轮 Reviewer 均未提及。
+  > - **A4（既有契约漂移，非本任务引入）** `docs/contracts/openapi-v1.json:9-45` 的 `x-delivery-profile.available_operations` 未加入三个快照操作；该清单自 `stage: "TASK-022"` 起即未更新，**TASK-035 的 `detachAllTagResources`/`mergeTag` 同样缺席**（已合并且经三方审查）。中文契约的"当前可用操作"表已正确新增一行。既有先例 `backend/tests/test_resource_updates.py:485` 会断言该清单包含对应 operationId，故这是一条**机器可读却已停更**的字段。不属本任务完成条件，也不是本任务造成，建议作为独立治理项登记。
+  > - **A5（微小覆盖观察）** 条件 2 的 `captured_at` "随之更新"由 `snapshot_store.put` 保证但无断言（时间分辨率下断言也易脆），`content` 值本身的替换已被断言。不要求返工。
+  >
+  > ## 剩余风险与是否阻断
+  >
+  > 剩余风险与记录中已登记的一致，且我逐条确认其登记属实、不触及安全或数据底线：不出网靠文本扫描（防意外不防对抗，边界已完整登记）、模型↔迁移的 CHECK **正文**与 `server_default` 无机械绑定（存在与名称有绑定；运行时行为已由 12 组跑在迁移库上的用例覆盖）、openapi↔FIELDS 无自动绑定用例（人工核对一致）、图片未冻结、不渲染 Markdown、无自动抓取、单快照唯一约束、`require_resource` 不复用 FILE-READY 可见性（同码同状态，不泄露信息）。加上本报告 A1-A5，均**不阻断交付**。
+  >
+  > 须向用户明确：① 全部机械证据由实现者单方运行，两轮 Reviewer 与本 Acceptance 三个只读实例一律 NOT_RUN，无人复跑；② 除 `compare_metadata` 一组由派发会话在隔离环境独立复现外，其余变异验证为实现者自述、无第三方复核，我的结论不依赖该自述；③ 分支仅在本地，合并须用户本人执行。
+  >
+  > ## 结论
+  >
+  > **PASS**（针对最终候选 `150921b`，代码 `97ec829`）。15 条完成条件逐条核对**全部满足**：条件 7 的第一轮实质缺陷已实修且首次获得 12 组真能失效、跑在迁移 DDL 上的覆盖；条件 3 后半已真断言；条件 9 行为成立但 DELETE 分支仅读码（A2）；条件 11 按原文"有检查证明"判定成立。范围、写回纪律与契约三方自洽均核对通过。findings 五条全为非阻断（记录精度、覆盖缺口登记、前端文案、既有清单漂移），其中仅 A1 建议在 EVIDENCE 区顺手更正、不形成新候选。
+
+- Acceptance findings 的处置：
+  - **A1 已修**（EVIDENCE 区内，不形成新候选）：见本区顶部候选 SHA 条目的更正。我原先声称「实现与测试」段记的是最终指纹，实际那里是第一轮的 `f30a93e1…`；已改为如实说明并指向最终值所在。
+  - **A2 记录接受**：完成条件 9 的 DELETE-资料不存在-404 分支确无用例，行为由读码确认正确。同时确认 Acceptance 对第二轮 Reviewer 的纠正成立 —— 5000 位版本号用例关闭的是 428 分支，不是 404 分支，第二轮称缺口③「已关闭」说满了。登记为遗留项。
+  - **A3 记录接受，但这是本轮最该反省的一条**：文案「需要最新内容请用**上方**的『打开原网页』」指向错误 —— 我复核确认 `ContentSnapshot` 挂在 `ResourceDetail.tsx:97`，而「原始网页」区块在 `:103` 之后，链接实际在**下方**；空态文案「只存链接的话…」是 WEB 语境却对 PASTE/FILE 同样渲染（组件确不感知 `source_type`）。两轮 Reviewer 都没发现，因为它们的精力集中在 SQL 三值逻辑、flush 顺序、断言可失效性上，**没有人以用户视角把页面读一遍**。这不是谁失职，是审查视角的结构性盲区。是否立即修由用户决定（修则形成新候选、需增量复核）。
+  - **A4 不在本任务处理，登记为独立治理项**：`openapi-v1.json` 的 `x-delivery-profile.available_operations` 自 `stage: "TASK-022"` 起停更。我复核确认：清单 35 条，**TASK-035 的 `detachAllTagResources`/`mergeTag` 与本任务三个快照操作全部缺席**，而 `test_resource_updates.py:485`、`test_learning.py:684`、`test_taxonomy.py:483` 三处测试都在读这个字段。属既有契约漂移，非本任务引入，也不在本任务 `allowed_paths` 与完成条件内。
+  - **A5 记录接受**：`captured_at` 的更新由实现保证、无断言，时间分辨率下断言本身也脆。不返工。
+- **须向用户明确的三点（Acceptance 要求原样保留）**：① 全部机械证据由**实现者单方运行**，两轮 Reviewer 与 Acceptance 三个只读实例一律 **NOT_RUN**，无人复跑；② 除 `compare_metadata` 一组由派发会话在隔离环境独立复现外，其余变异验证均为**实现者自述、无第三方复核**，三个实例的结论均不依赖该自述；③ 分支仅在本地，合并须用户本人执行。
+- 最终状态/风险/用户操作：status=**ACCEPTED**。L3 执行链完整：Worker → 自动检查（CHECKS PASS）→ 独立只读 Reviewer 两轮（CHANGES_REQUIRED → 处置 → PASS）→ 独立只读 Acceptance（PASS）。三个审查实例互不相同（本任务用到第六、第六、第七个 reviewer 实例；第二轮为同一实例做增量复核），均只有 Read/Grep/Glob、无 Bash 与写工具、无上下文继承。最终候选 `150921b`（代码 `97ec829`）待**用户本人执行合并**。合并后按既有做法把记录/索引标 MERGED。
 - 非阻断遗留项：
   - **「后端不出网」的文本扫描防意外不防对抗**（边界已在「实现与测试」段完整登记）。Reviewer 的可选建议是改成按 import 行的正则、或加断言「生产依赖集合 == 冻结名单」。暂不做的理由：完成条件 11 要的是「有检查证明」，且当前形态已能挡住真实场景里的意外引入。责任角色 coordinator；若将来后端确需出网（例如 TASK-037 改变边界），须连同这条防线一起重评。
   - **模型与迁移之间，CHECK 的正文与 `server_default` 无机械绑定**（存在与名称有绑定，正文与 server_default 没有 —— 见上方 O1 的实测表）。这不是本任务引入的，是仓库既有形态（13 张表同处一条缝），但 F1 正是藏在这里。判为可接受：本任务已把最要紧的绑定补上 —— 12 组约束用例跑在**迁移建出来的库**上，测的正是运行时真正生效的那份 DDL；模型侧文本若漂移只会误导读者，不会让数据库行为出错。可行的通用手段（Reviewer 提供，留给下个任务接手）：SQLite 的 `Inspector.get_check_constraints()` 能从 `sqlite_master` 解出 name + sqltext，可据此做跨表的文本归一化比较；但它需要覆盖全部 13 张表、极可能翻出 0001/0002/0003 的既有差异，且相关文件不在本任务 `allowed_paths` 内，属独立的治理/基础设施任务。责任角色 coordinator；重评触发条件：下次新增带复杂 CHECK 的表，或专门做该基础设施任务时。
@@ -302,6 +370,9 @@ checks = []
   - 不渲染 Markdown、无自动抓取、单快照唯一约束、`require_resource` 不复用 FILE-READY 可见性规则 —— 均见「实现与测试」的已知限制段，Reviewer 已逐条确认无信息泄露或行为差异。
   - Reviewer 列出的两条观察（FAILED 态在前端会渲染成空 `<pre>`，当前不可达；`content` 含 NUL 字符时走 500 而非 422，与基线 `pasted_content` 同性质）—— 均不要求返工。
   - 无 openapi ↔ Pydantic/FIELDS 的自动绑定用例（仓库有此类先例），当前为人工核对一致，属后续漂移风险。
+  - **（A2）完成条件 9 的 DELETE-资料不存在-404 分支无用例**：行为由读码确认正确（求值序 `identity` → `version_header` → `require_resource`，与 notes/taxonomy 先例同序）。责任角色 coordinator；重评触发条件：下次触碰快照 API 的任务顺手补一条。
+  - **（A3）前端两处文案不准**：① 「需要最新内容请用**上方**的『打开原网页』」—— 该链接实际在快照区块**下方**；② 空态文案以 WEB 语境写成，却对 PASTE/FILE 资料同样渲染（组件不感知 `source_type`）。仅措辞误导，无功能或数据影响。**是否立即修由用户决定**：修则形成新候选、需增量复核与 Acceptance 再确认；不修则由下一个触碰该组件的任务（如阅读器）一并处理。责任角色 coordinator。
+  - **（A5）`captured_at` 随写入更新无断言**：由实现保证，时间分辨率下断言易脆。不返工。
 - 日期与决定日志：2026-09-06 用户在 PR #40 合并后转入阅读器方向讨论。主 Agent 通读调研文档并核实其援引的既有事实（来源互斥 CHECK、`original_files` 模式、Note 表形状）全部属实后，提出三点异议：① 调研 §7 把「快照」与「笔记 selector 字段」并列为「事后无法补做」，但后者可空列事后添加成本相同，不成立；② 调研 §10.6（格式）与 §10.5（图片）被标为可推迟，但按其自身的不可回溯逻辑必须在第一份快照落地前决定；③ 后端抓取会引入首次出网、SSRF 面、两个生产依赖与第二个提取器。用户据此逐条决定：Markdown、图片要冻结、扩展走 UI 页面、顺序取甲、PDF 先做原生版。主 Agent 据用户第 3 条决定进一步推导出图片冻结须与扩展同期（只有扩展能绕开 CORS 取到图片字节），遂将原「爬取前半」收窄为本任务的范围。用户另问及知乎/CSDN 的认证问题，结论为扩展方案下完全不需要凭证，并将「不引入第三方站点凭证」写入明示非目标。
 
 此区禁止放入或变更任务授权、风险等级、允许路径、检查要求、实现或测试记录。
