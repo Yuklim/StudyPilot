@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-033"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L2"
 risk_reason = "三个目标全部落在前端，已批准的公共契约、后端、数据模型与迁移一律不动：新建标签复用既有 `POST /api/v1/tags`（TASK-011 交付），筛选进 URL 只改变客户端如何组装同一个既有查询串，chip 可点只是把纯文本换成链接。不新增接口、不改请求/响应形状、不改 AND 筛选语义。判 L2 而非 L1 的原因：目标 3 是对 `ResourceLibrary` 筛选机制的一次真实重构（七个维度与 URL 双向同步、要处理浏览器前进后退与非法参数），资料库是核心页面，回归面覆盖搜索/筛选/排序/分页；目标 1 又在原本只读的选择器里首次引入写操作。判 L3 的条件均未命中：无契约、无迁移、无安全/认证、无关键数据模型、无跨模块写。"
 risk_flags = ["business", "internal-refactor", "small-ui", "tests"]
@@ -104,9 +104,32 @@ checks = []
 
 ## 实现与测试
 
-- 实现 SHA/变更摘要：待填。
-- 命令、真实退出结果、product_fingerprint、环境、未运行原因：待填。
-- 已知限制/未完成项：待填。
+- 实现 SHA/变更摘要：`f801ad1`，相对基线 `b6ab87e` 共 14 个文件 +664 −40（含本任务记录与索引）。**后端与契约零改动。**
+  - 新增 `frontend/src/features/taxonomy/TagCreateField.tsx`（66 行）：共享的「输入 → 新建并选用」。刻意**不是 `<form>`** —— 三个调用点全都已经在某个 form 内部，嵌套 form 是非法 HTML；因此用输入框 + `type="button"`，并在 `Enter` 上 `preventDefault()`，避免敲回车顺手提交了外层的资料表单。校验（去空白后 1～50 字）在发请求前拦下，服务端错误经既有 `useOperation` → `classificationError` 如实呈现。
+  - `ClassificationPicker.tsx`（+16）：非 `filter` 模式下渲染 `TagCreateField`；新建成功后把标签并入已选并 `revision + 1` 触发 `ClassificationBrowser` 重载；已选满 20 时禁用并给出原因。
+  - `ResourceEditor.tsx`（+11）：同样接入，新建后并入 TASK-032 的整组替换集合。
+  - `ResourceTagEditor.tsx`（+13）：详情页语境下「选用」即「附加到本资料」，新建成功后紧接着走既有 `changeResourceTag(..., true)`。
+  - `ResourceLibrary.tsx`（+209 −40，本任务主体）：筛选状态从组件内 `useState` 改为以 `useSearchParams()` 为唯一真相。新增 `readApplied`/`writeApplied` 两个纯函数做 URL ↔ 筛选的双向映射，默认值（`sort=-created_at`、`page=1`、空筛选）不写进 URL，因此 `/resources` 的地址与行为与改动前完全一致。`view`（卡片/列表）**故意不进 URL**：它是显示偏好，进 URL 会让分享出去的链接把自己的视图强加给对方。
+  - 标签 chip 改为 `<Link>`（`ResourceLibrary` 列表与卡片两处、`ResourceDetail` 一处），用真实链接而非 `onClick`，中键/右键新标签页打开与复制链接都成立。
+  - `styles.css`（+31）：链接化 chip 保持原有外观（`color: inherit`、悬停/键盘聚焦才出下划线），以及 `.tag-create` 的排版。
+- 实现中的两个非显然决定：
+  1. **URL 里只有 id，没有名称**。为让筛选区的已选 chip 显示「合成标签」而不是一串 uuid，进入时按 id 读 `GET /tags/{id}` / `GET /topics/{id}` 解析名称，结果缓存在 `names` 里；空字符串表示「问过且读不到」，因此不会对同一个坏 id 反复发请求。读不到时给出 `role="alert"` 提示，并且**该 id 仍然继续参与筛选**——名称显示不出来不等于筛选条件该被丢掉，也不影响 URL 里其他合法条件。
+  2. **draft 与 URL 的同步方式**。首版把「地址变了就重置未应用的表单」写成 `useEffect` + `setDraft`，被 `react-hooks/set-state-in-effect` 判为错误（lint 红）。改用 React 官方的「渲染期根据变化调整 state」模式：保存上一次渲染过的 `address`，不同就在渲染中直接 `setShown`/`setDraft`。这样后退、点 chip、粘贴链接都会正确刷新表单，且不触发额外一轮 effect。
+- 命令、真实退出结果、product_fingerprint、环境、未运行原因：
+  - `PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-033-tag-usability.md --candidate f801ad1` → **CHECKS PASS**。base=`b6ab87e`、input=`f801ad1`、risk=L2、stages=(worker, review)、files=14、profiles=**frontend**、product_fingerprint=`cd5e125a92a8fd44ee0f1a6b3115b852176b48bd6cceca400f96d28304d2c3c7`，组内 format:check/lint/typecheck/vitest/build 五项 exit=0。
+  - `cd frontend && npm run format:check && npm run lint && npm run typecheck && npm run test && npm run build` 全绿；vitest **347 passed / 16 文件**，基线 **339**，净增 8（`ResourcePages.test.tsx` 21→25、`ClassificationPages.test.tsx` 12→15、`ResourceEditor.test.tsx` 29→30）。
+  - `cd frontend && npm run test:e2e` → **38 passed**，基线 **37**，净增 1。
+  - `cd backend && .venv/bin/python -m pytest` → **497 passed**，与基线持平（本任务未改后端，跑一次确认无连带影响）。
+  - 环境：本地 macOS（Darwin 25.5.0）、Node 24、Vitest 4.1.11、Playwright chromium、Vite 8.2.2、react-router-dom 7.18.3。
+  - 未运行：后端 ruff/mypy 与契约检查 —— 本任务无后端与契约改动，`check_task` 自动选组也只选了 frontend；不以旧 PASS 冒充。
+- 实现中修正的自身错误（都由检查先红暴露，不是事后补叙）：
+  - 上述 lint 红（`set-state-in-effect`），已按 React 官方模式重写。
+  - 两条新写的 vitest 断言写错了事实：重名提示的真实文案是「已有同名标签，请换一个名称。」而非我先写的「这个名称已经存在」；详情页测试漏 mock `/notes?` 端点导致页面停在加载态。都改的是**测试自身**，产品代码未因此调整。
+- 已知限制/未完成项：
+  - URL 里的主题/标签名称需要额外一次读取，因此点开 chip 后已选 chip 会先短暂显示「正在读取名称…」。可接受：筛选结果本身不等这次读取。
+  - 筛选条件进了 URL，但**分类管理页与「我的心得」页的浏览状态仍未进 URL**，本任务未扩展到那里。
+  - 仍不支持 OR 筛选（多 `tag_id` 依旧是 AND），属本任务明示的非目标；契约 `:146` 未动。
+  - 分类管理页仍不显示标签使用数量、无批量解绑（调研 D 项，未做）。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
