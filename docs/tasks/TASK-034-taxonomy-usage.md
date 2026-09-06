@@ -125,8 +125,10 @@ checks = []
   - 环境：本地 macOS（Darwin 25.5.0）、Python 3.13.9 / pytest 8.4.2、Node 24、Vitest 4.1.11、Playwright chromium、Vite 8.2.2。
   - 未运行：无迁移相关检查 —— 本任务不含数据库 schema 变更，`check_task` 自动选组也未选该组；不以旧 PASS 冒充。
 - 检查期间的一次外部干扰（如实记录）：首次运行 `check_task` 返回 `FAIL: inputs changed during checks`。排查发现**不是本任务的改动** —— 运行期间另一个会话在共享工作树里写入了未跟踪的 `docs/research/阅读器与标注能力调研.md`（该文件自述「在 TASK-034 分支外单独写入，未提交，不构成任何任务的实现证据」）。这违反 AGENTS.md §3「共享目录同一时刻一个写入者」。处理：**不删除、不修改**该文件；确认本机各会话均已 idle 后，按对待本会话未跟踪 HANDOFF 的同样做法临时移出、跑完检查、原样放回，并以 sha256 前后比对证明其逐字节未变（`7f579c8fccbb5f37ee60175c27a2ff8391a4ffa352d992e3567a4e798646f7e5`）。该文件仍未跟踪地留在工作树中，去留由用户决定；本任务未引用它、未把它算作任何证据。
-- 两条测试的变异验证（由主 Agent 本人执行，**未经独立第三方复核**，等级如实标注）：
-  - 「一次聚合查询」那条：把 `page()` 临时改回逐个 `references()` 后，计数查询数由 1 变 20、用例转红；恢复后转绿。它不是形式断言。
+- 两条测试的变异验证（均由主 Agent 本人执行，**未经独立第三方复核**，等级如实标注）：
+  1. 「一次聚合查询」那条（`test_listing_counts_use_one_grouped_query_regardless_of_page_size`）：把 `page()` 临时改回逐个 `references()` 后，计数查询数由 1 变 20、用例转红；恢复后转绿。
+  2. 「读不懂的筛选值一律忽略」那条（`ignores filter values in the address it cannot understand, and says so`）：把 `readApplied` 里 `allowed()` 的白名单判断临时删掉、改为原样返回后，用例转红；恢复后转绿，且 `git diff` 确认工作树与候选零差异。变异点选在 `ResourceLibrary.tsx`（本任务允许路径内），未触碰任何 allowed_paths 之外的文件。
+  两条都证明断言可真实失效，不是形式通过。
 - 已知限制/未完成项：
   - `create()` 直接返回 0 而非查询。在「刚插入的分类不可能已被引用」这一前提下成立；若将来出现「创建即绑定」的复合操作，此处需改为实查。
   - 计数是**响应时快照**，不做实时推送；界面上的数字可能落后于另一处刚发生的增删，重新读取即更新。
@@ -138,10 +140,57 @@ checks = []
 ## 状态与最终证据
 
 - 候选 SHA：待填。
-- Review：L3 独立只读 Reviewer，待填。
+- Review 第一轮（L3 独立只读，`1a72eb9..bc090fb`）：**PASS**，含 3 条非阻断项。
+
+  派发与身份：本实现会话以 home 目录启动、项目级 `.claude/agents/reviewer.md` 未注册（已实测复制到用户级 `~/.claude/agents/` 后当场重试仍 `Agent type 'reviewer' not found`，注册表在会话启动时一次性构建），故由同机在项目目录下启动的会话 `studypilot-05` 代为派发。**执行审查的是该文件定义的只读实例（`tools: Read, Grep, Glob`，运行器层无 Bash、无写工具），全新实例、无上下文继承、与审 TASK-033 的实例不是同一个、独立于实现者。**
+
+  外部核实（派发会话以 Bash 提供，Reviewer 无 Bash 不能自证）：
+  > `TASK-034-full-diff.patch` 与 `git diff 1a72eb9..bc090fb` 逐字节一致（971 行、15 文件）；工作树 HEAD 正是候选 `bc090fb`；`docs/research/阅读器与标注能力调研.md` 未被 git 跟踪、不在候选 diff 里、sha256 = `7f579c8fccbb5f37ee60175c27a2ff8391a4ffa352d992e3567a4e798646f7e5`（与实现者报告一致）。
+
+  报告原文：
+  > ## 只读证明
+  > 本实例工具白名单仅 `Read`/`Grep`/`Glob`，无 `Write`/`Edit`/`NotebookEdit`、无 `Bash`。本次未写入、未提交、未推送任何文件。
+  >
+  > ## 覆盖
+  > 审查对象：`1a72eb9..bc090fb` 完整最终 diff（导出件与 git diff 逐字节一致，为派发会话已核实的外部事实），15 文件 971 行；并对关键点回读工作树（HEAD=候选）交叉验证。机械检查：**NOT_RUN**（无 Bash），仅做自洽核对：pytest 497→500 = 新增 3 个后端用例；vitest 350→356 = ResourcePages +3、ClassificationPages +3；e2e 38→39 = 新增 1 条。数字与 diff 自洽，但我未复跑，不声称验证。范围：15 个文件全部在 `allowed_paths` 内；`application/taxonomy.py` 与 `taxonomy/api.test.ts` 获授权但未改动（授权非义务）。未越界。
+  >
+  > ## 七个重点的独立结论
+  > **1. 契约形状**：独立 grep 证实 `#/components/schemas/Tag"` 仅剩 2 处（`ResourceProjection`、`ResourceSummaryProjection`），`#/components/schemas/Topic"` 仅剩 1 处（`TopicAnalytics`）；`TopicUsage`/`TagUsage` 只被四个 page/envelope 引用，而这四个只被 `/topics`、`/tags` 的 8 个操作引用，`ResourceTagEnvelope` 未被波及（已核对它不是 `TagEnvelope` 的子串误配）。无遗漏引用。两个 Usage 的必填字段与 `project()` 实际输出逐字段一致；中文契约 4.5/4.6/9 节与操作清单表述与 openapi 一致。
+  > **2. 计数语义**：`usage()`、既有 `references()`、409 的 `details.resource_count` 三者同源同义，契约里「同义」的说法成立。`ResourceTag` 主键为 (resource_id, tag_id)，幂等 attach 不重复计数，测试直接覆盖。`create()` 返 0 的前提成立：客户端不能自带 id（已有 422 断言），`store.create` 全仓仅被一处调用，无「创建即绑定」复合路径；并发下他人无法引用尚未返回的新 id。且 `test_lifecycle` 的 `GET == POST body` 把「硬编码 0」与「实查 references()」钉在一起，防止二者漂移。
+  > **3. N+1**：`page()` 一次 `GROUP BY`，缺席 id 由字典补零（语义等价于 LEFT JOIN，且对 NULL topic_id 天然排除）；空集提前返回，`project(row, counts[row.id])` 不会 KeyError；搜索与非搜索两个分支都在切片后才计数，分页边界正确。守门测试的匹配条件真实可失效：列表总数查询不含 `resource_tags`，逐条 `references()` 则会含。
+  > **4. 两处既有断言**：均**不是**放宽。(a) 字段集合精确等式仍在，仅按授权补字段并**加**断言 `resource_count == 0`。(b) 快照改为「失败操作前重取」且在 `event.listen` 之前取，逐路径比对，另加值断言；旧写法在正确实现下必然失败。唯一被牺牲的是「POST 响应体 == 后续 GET」这条附带性质，而它在同文件另一处仍被独立断言。无阻断。
+  > **5. F3**：`unreadable` 由 `applied` 过滤 `names[id] === ''` 派生；成功解析写 `name || ' '`、失败写 `''`，两者可区分，判据准确；`useState` 与三处 setter 已全部删除（grep 全仓无残留），无重复计算或双源。
+  > **6. F4**：白名单与后端 `ResourceQuery` 逐项对齐 —— `SORTS` 的 8 个值 == `Literal[...]` 的 8 个值；`Object.keys(sourceLabels)` == WEB/PASTE/FILE；`statusLabels` == 五个状态；`q` 200 字 == 后端 `max_length=200`。非法值不进入 `query`（`query` 只由已清洗的 `applied` 组装），确实不转发。下拉与校验共用同一 `SORTS`。两条提示是各自独立的 `role="alert"` 段落，条件互不覆盖，不会互相抹除。
+  > **7. 范围与叙述**：记录的「12 代码/契约 + 3 文档 = 15」与实际一致；「删掉 useState 与三处 setter」属实；未发现夸大的能力声明或被删除的既有断言。
+  >
+  > ## Findings（均为非阻断，`可记录后继续`）
+  > 1. `docs/tasks/TASK-034-taxonomy-usage.md:128` —— 小标题写「**两条**测试的变异验证」，其下只列出一条。影响：证据描述与实际不符（并未虚报第二条的结果，只是计数悬空），等级低。最小修正：改为「一条」或补上第二条。
+  > 2. `docs/tasks/任务索引.md:24` 记 `IN_PROGRESS`，而记录 TOML 已是 `IN_REVIEW`。仅索引可读性，随证据写回同步即可。
+  > 3. `frontend/src/features/taxonomy/ClassificationManager.tsx:79` —— 删除面板的「查看这 N 份资料」链接依据列表快照的 `resource_count`。触发：列表加载后、点删除前该分类被别处引用（本机单用户，概率低）。此时 409 文案仍如实给出份数，但缺链接；用户点「放弃草稿，载入最新版本」刷新后链接出现，可恢复。完成条件 9 的常规路径已满足。建议仅记录，不修。
+  >
+  > 无安全、隐私、越权、数据损坏问题；`resource_count` 为聚合数字，不含用户正文；无新路由绕过安全中间件，前端仍只调同源 `/api`。
+  >
+  > ## 缺口与剩余风险
+  > 我未执行任何命令，实跑证据对我是 NOT_RUN，其复核属 Acceptance 环节。「一次聚合查询」的变异验证由实现者自述、未经第三方复核；我的同向判断来自独立读测试代码，不依赖其自述。完成条件 10 的后半段「移除该条件后提示消失」无直接用例，但由派生式实现结构性保证；条件原文只要求覆盖「翻页后仍在」，已覆盖。`topic_id`/`tag_id` 的格式在 URL 侧仍不做白名单（本任务 F4 明示只含四项），属既有行为与已登记非目标。
+  >
+  > ## 结论
+  > **PASS**（含上述 3 条已明确处置建议的非阻断项，非 No findings）。
+
+- 第一轮 findings 的处置：
+  - **F1 已修，且选了更实的一条路**。Reviewer 给了两个选项（改成「一条」，或在 EVIDENCE 区记一行更正）。我两个都没选，而是**把缺的第二条变异验证真正补做了**：临时删掉 `readApplied` 中 `allowed()` 的白名单判断 → 「读不懂的筛选值一律忽略」那条用例转红；恢复后转绿，并以 `git diff` 确认工作树与候选零差异。变异点选在 `ResourceLibrary.tsx`（本任务允许路径内），未触碰 allowed_paths 之外的文件。「实现与测试」段现在的「两条」是实数。理由：Reviewer 指出的是「证据描述与事实不符」，把描述改小虽然也诚实，但补齐事实才真正提高了证据强度。
+  - **F2 已修**：`任务索引.md` 的 TASK-034 行由 `IN_PROGRESS` 改为 `IN_REVIEW`，与记录 TOML 一致。
+  - **F3 记录接受，不修**（见下方非阻断遗留项）。
+  - 一处需要 Reviewer 知情的说明：修 F1 改动的是「实现与测试」段（EVIDENCE 标记区**外**），因此形成新候选而非证据写回；这正是 §6 所要求的路径，不是借证据写回变更标记区外内容。
+- Review 第二轮（增量）：**待执行**。
+- Acceptance：**待执行**，在 Review 第二轮之后，由独立于实现者与两轮 Reviewer 的第三个只读实例执行。
 - Acceptance：L3 独立只读 Integration/Acceptance，待填。
-- 最终状态/风险/用户操作：待填。
-- 非阻断遗留项：待填。
+- 最终状态/风险/用户操作：status=**IN_REVIEW**（第一轮 PASS，F1/F2 已处置，等待同一 Reviewer 对增量做复审，之后再做独立 Acceptance）。分支 `agent/coordinator/TASK-034-taxonomy-usage` 目前仅在本地，未推送、未开 PR。
+- 非阻断遗留项：
+  - **删除面板链接依据列表快照**（Reviewer Finding 3，`ClassificationManager.tsx`）：列表加载后、点删除前若该分类被别处引用，此时 409 文案仍如实给出份数，但「查看这 N 份资料」链接不出现；点「放弃草稿，载入最新版本」刷新后即出现，可恢复。暂不修的理由：要消除它就得在打开删除面板时再查一次分类详情，为本机单用户下概率很低的时序问题增加一次请求与一处加载态，收益不抵成本。责任角色 coordinator；若将来分类页面向多人协作或引入实时刷新，需重评。
+  - `create()` 直接返回 0 而非实查：前提是「刚插入的分类不可能已被引用」，Reviewer 已独立确认该前提成立（客户端不能自带 id、`store.create` 全仓单一调用点、无「创建即绑定」复合路径）。若将来出现创建即绑定的复合操作，此处需改为实查。
+  - 计数是响应时快照，不做实时推送；数字可能落后于另一处刚发生的增删，重新读取即更新。
+  - F4 只校验 `sort`/`source_type`/`learning_status`/`q` 四项；`page` 非法值仍静默回落到 1，`topic_id`/`tag_id` 的格式仍不在 URL 侧校验 —— 均为本任务明示范围。
+  - 未做 D3 批量解绑、未做标签合并、分类选择器与详情页标签管理不显示计数 —— 本任务明示的非目标。
 - 日期与决定日志：2026-09-06 用户在 PR #38 合并后要求「D 和 F 一起做」；主 Agent 复核后说明 D 裂为三块（D1 免费、D2 需改公共契约故 L3、D3 需另行设计），用户选定包含 D2 的单一 L3 任务、D3 排除。同日主 Agent 在基线 `1a72eb9` 亲自复核 7 项现状事实（含 `Tag` schema 被资料响应共用这一关键约束）后登记为 L3，并入 TASK-033 的 MERGED 状态收尾。
 
 此区禁止放入或变更任务授权、风险等级、允许路径、检查要求、实现或测试记录。
