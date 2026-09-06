@@ -134,6 +134,8 @@ checks = []
   - `npm run test:e2e` → **41 passed**，基线 **40**，净增 1（真实后端上粘贴正文、刷新后仍在、删除后回到空态，并断言快照与原文链接并存）。
   - 环境：本地 macOS（Darwin 25.5.0）、Python 3.13.9 / pytest 8.4.2、Node 24、Vitest 4.1.11、Playwright chromium、Vite 8.2.2。
   - 未运行：无 —— 本任务含迁移、契约与前后端，`check_task` 自动选组已覆盖三组。
+  - **「后端不出网」这条防线的边界（按 Reviewer F3 补登）**：`test_backend_makes_no_outbound_network_calls` 按**文本**扫 `backend/src` 下的四个 token（`import httpx`/`import requests`/`urllib.request`/`aiohttp`）。它挡得住「顺手加了个 HTTP 客户端」这类**意外**引入，**挡不住刻意绕过**：`from httpx import get`、`from requests import Session`、`from urllib import request`、`import http.client`、`import socket`、`import urllib3`、`subprocess` 调 curl 全不匹配；扫描范围也只有 `backend/src`，不含 `backend/migrations` 与 `scripts/`。设计意图是防意外而非防对抗，完成条件 11 要的也是「有检查证明」而非「不可绕过的保证」。另一条相关事实：`httpx2` 是 dev 依赖（TestClient 需要），所以测试环境里 import 得到 —— 单看「生产依赖没变」并不能挡住 `src` 里的误引用，这条文本扫描确实在做额外的事。
+  - **一处机械检查的盲区（实现中实测发现，值得后来者知道）**：测试数据库由**迁移**建表，模型上的 CHECK 运行时并不生效；而 `compare_metadata` 只比对名称与列，**不比对 CHECK 正文**。实测：把模型里 `capture_state` 的 `IS NOT NULL` 撤掉、迁移保持正确，`test_migrations.py` 仍然全绿。因此模型与迁移的 CHECK 正文必须人工保持一致 —— F1 能藏住，正是因为这条缝隙。
   - 共享工作树监测：跑长检查前后各记一次未跟踪文件 `docs/research/阅读器与标注能力调研.md` 的 sha256，两次均为 `f56cad6b…`，**本次无第三方并发写入**。运行 `check_task` 时按既有做法把该未跟踪目录临时移出、跑完原样放回，未删除或修改。
 - 已知限制/未完成项：
   - **图片未冻结**：快照中的图片引用仍指向原站，原站失效时图片一并失效，因此当前冻结**并不完整**。这不是疏漏而是排期：可靠取回图片字节需要绕开 CORS，只有浏览器扩展做得到（后端取得到但本任务明示不出网）。已写入契约 4.13。
@@ -146,10 +148,93 @@ checks = []
 ## 状态与最终证据
 
 - 候选 SHA：待填。
-- Review：L3 独立只读 Reviewer，待填。
+- Review 第一轮（L3 独立只读，`3fbca1f..fba1e8e`）：**CHANGES_REQUIRED**（F1 阻断，F2/F3 非阻断）。
+
+  身份与派发：`.claude/agents/reviewer.md` 定义的**第六个**全新只读实例（`tools: Read, Grep, Glob`，无 Bash、无写工具），无上下文继承，由同机在项目目录下启动的会话 `studypilot-05` 代为派发（本会话未注册项目级 Agent）。本轮改进：主 Agent 在**证据写回完成后**才请求派发，HEAD 不再移动，因而不存在前两次「带过期简报开工 + 中途更正」的环节。
+
+  外部核实（派发会话以 git 提供）：候选后端 diff 中 `learning_resources` 仅作为 FK 目标出现，无任何 ALTER/CHECK 改动（**仅为机械印证；表级语义由 Reviewer 独立论证**）；`pyproject.toml`/`uv.lock`/`package.json`/`package-lock.json` 全部零改动；未跟踪调研文件 sha256 仍为 `f56cad6b…`，本轮无并发写入。
+
+  报告原文（逐字，仅还原传输转义的 `<`/`>`）：
+
+  > ## 只读证明
+  >
+  > 本实例仅有 `Read`/`Grep`/`Glob`，无 `Write`/`Edit`/`Bash`，未做任何写入、提交或推送。
+  > 审的是 base `3fbca1f` → 候选 `fba1e8e` 的完整最终 diff（导出 patch 1587 行/21 文件，与工作树 HEAD 交叉验证一致），以及基线侧只读对照文件。机械证据（check_task、pytest 513、vitest 363、e2e 41、变异验证）按 **NOT_RUN** 处理，我未复跑、未复核其执行过程。
+  >
+  > ## Findings
+  >
+  > ### F1（必须修复，阻断）`capture_state` CHECK 在 SQLite 下漏掉了它最该挡的那一种组合
+  >
+  > - 位置：`backend/src/studypilot/infrastructure/database/models.py:258-264`、`backend/migrations/versions/0004_content_snapshots.py:46-52`
+  > - 触发：写入 `status='FAILED'` 且 `failure_code IS NULL`（content/char_count/sha256 均 NULL）。
+  > - 证据（三值逻辑，逐支求值）：分支 A `status='READY' AND …` → FALSE；分支 B `status='FAILED' AND length(failure_code) > 0 AND …` 中 `length(NULL) > 0` → **NULL**，故 B → NULL；`FALSE OR NULL` → **NULL**。SQLite 的 CHECK **只在表达式为 FALSE 时才违反，NULL 视为满足**。⇒ 该行被接受。
+  > - 对照：它声称"照搬 `OriginalFile.failure_state`"（注释 `models.py:257`、迁移 docstring、任务记录），但 `models.py:148-151` 的原文是 `(status = 'FAILED' AND failure_code IS NOT NULL AND length(failure_code) > 0) OR …` —— **多的正是 `failure_code IS NOT NULL`**，靠它把 NULL 支拉成 FALSE。新 CHECK 删掉了这一句。仓库里还有一条既有用例专打这个组合：`backend/tests/test_database.py:185` 的 `{"status": "FAILED", "failure_code": None}` 断言 IntegrityError —— 新表没有对应用例，所以这个洞没被抓到（`test_snapshots.py` 全程只走 READY，`FAILED` 无任何测试）。
+  > - 影响与可能性：**当前运行期为零**——本任务无任何代码路径写 FAILED。但完成条件 7 原文要求"`FAILED` 必须带 `failure_code` …（与 `original_files` 同形）"，该条件**事实上不成立**，且实现记录与迁移注释对此的陈述不准确。真正的代价在时间上：本任务把"FAILED 形态先建好"的唯一理由就是"避免后续再来一次迁移"，而按现状 TASK-037 接入自动抓取时仍须发 0005 用 `batch_alter_table` 重建表才能补上——引入的复杂度没有换来它承诺的收益。
+  > - 最小安全修正（现在 ≈ 两处各加 4 个词，且 `var/studypilot.db` 不存在、0004 未合并，可原地改）：两处均改为 `(status = 'FAILED' AND failure_code IS NOT NULL AND length(failure_code) > 0 AND …)`；并补一条比照 `test_database.py:180-209` 的表级参数化用例（至少含 `{"status":"FAILED","failure_code":None}`、`{"status":"READY","failure_code":"x"}`、`{"status":"FAILED","content":…}`），使完成条件 7 首次获得覆盖。
+  > - 依 `docs/governance/风险分级与检查规则.md:23`"违反已确认需求/契约或**必要完成条件**"→ 阻断。
+  >
+  > ### F2（非阻断，建议顺手修）超长 `If-Match` 走成 500 而非 428
+  >
+  > `backend/src/studypilot/api/snapshots.py:99-103`：正则 `"[1-9][0-9]*"` 允许任意长度数字，随后 `int(...)` 无保护。Python 3.13 对 `int(str)` 有 4300 位上限，超出抛 `ValueError`，被 `guarded` 的兜底 `except Exception` 收成 **500 UNKNOWN_ERROR**。中间件仅限制头部总量 16384 字节（`local_access.py:71`），故 5000 位数字可达。既有两处先例 `api/notes.py:131-134`、`api/taxonomy.py:137-140` 都专门包了 `try/except ValueError → 428`——本文件把这层看似冗余的保护去掉了。影响：本机、需有效令牌与同源，无写入、无信息泄露，仅错误码与契约（缺失/无效版本 → 428）不符。修正：照抄两处先例的 `try/except`。
+  >
+  > ### F3（非阻断，属记录完整性）不出网这条防线的边界未登记
+  >
+  > - 断言**确实可失效**（我独立读码判定，不依赖变异自述）：`test_snapshots.py:753-766` 的 `offenders` 由真实文件内容计算，`backend/src` 下任一处出现 `import httpx` / `import requests` / `urllib.request` / `aiohttp` 即转红。非恒真。
+  > - 边界比实现者自述的**还大一点**：`from httpx import get`、`from requests import Session`、`from urllib import request`、`import http.client`、`import socket`、`import urllib3`、`subprocess` 调 curl 全部不匹配；扫描范围只有 `backend/src`，不含 `backend/migrations` 与 `scripts/`。反方向它没被说小：整文件文本匹配（含注释/字符串）只会更严，不会更松。
+  > - 对本任务是否够用：**够**。完成条件 11 原文是"**有检查证明** `backend/src` 中无 HTTP 客户端调用，`pyproject.toml` 生产依赖未新增"，要的是检查而非不可绕过的保证；且我核对候选 diff 中 `pyproject.toml` 依赖段零改动。补充一条值得知道的事实：`httpx2` 是 dev 依赖（`backend/pyproject.toml:24`，TestClient 需要），所以测试环境里 import 得到——单靠"生产依赖没变"并不能挡住 src 里的误引用，这条文本扫描确实在做额外的事。
+  > - 但"防意外不防对抗"这个取舍**未写进记录**属实。§6 要求检查记录含必要摘要，一条已知有边界的防线不登记边界，会让后来者高估它。既然 F1 已要求重新冻结，请在同一轮把这一句补进"实现与测试"（标记区外，正是该轮可改之处）。可选建议：token 换成按 import 行的正则，或加断言"生产依赖集合 == 冻结名单"。
+  >
+  > ## 对你列的八条重点的独立结论
+  >
+  > 1. **未碰来源互斥 CHECK：成立。** 0004 全文只有 `create_table`/`drop_table`，`learning_resources` 仅作为 FK 目标出现；`models.py:113-118` 的 `exclusive_source` 与基线逐字一致。表级效果正确：该 CHECK 只求值 `learning_resources` 自身的列，新表行不进入其求值范围。`test_snapshots.py:636-662` 对 WEB/PASTE/FILE 各写一次快照并断言资料投影整份相等，是真实证据。
+  > 2. **迁移与模型一致、升降级正确：成立（F1 是内容缺陷，不是一致性缺陷）。** 8 条 CHECK、UQ、FK、PK 的名字与 `op.f()` 全部匹配命名约定（`models.py:50-58`）；`choices()` 得出 `String(8)`/`String(6)` 与迁移 length 一致；`UTCDateTime.impl = DateTime`，故迁移用 `sa.DateTime()` 才是对的（`DateTime(timezone=True)` 反而会被 `compare_metadata` 判不等）；`version` 双方都有 `server_default="1"`。`test_migrations.py` 的 `compare_metadata(...) == []` 是有效机械绑定。降级：0004 只 drop 新表；关键是 0001 的非空守卫（`0001_initial.py:444-450`）不含新表——但快照的 FK 非空，有快照必有 `learning_resources` 行，守卫必被触发，且整段降级共用一个事务（`connection.py:82-115` 与更新后的 `test_migrations.py:64-71` 断言 head 仍停在 0004），因此**不存在"静默丢弃快照"的路径**。
+  > 3. **READY/FAILED 写法：见 F1，现状挡不住。** 至于"现在就建好形态"值不值：形态修正后我认为可以接受（成本一条 CHECK，且确实省掉一次 SQLite 表重建），但**必须连同 F1 的表级测试一起交付**——没有测试的预留形态正是本次出问题的原因。
+  > 4. **对不存在的快照带 `expected_version` 返回 404：站得住，且契约写清楚了。** 语义正确（调用方认知过期，不该静默变成创建），三处一致：`snapshot_store.py:412-415`、中文契约 4.13「写入语义」、openapi `SnapshotPut.expected_version` 的 description 与 PUT 的 404 响应组件。测试 `test_snapshots.py:704-709` 直接绑定。
+  > 5. **见 F3。** 结论：可失效、非恒真；边界比自述更大；对本任务够用；未登记边界需在下一轮补记。另：该测试末行 `assert create_app() is not None` 实质恒真、不提供额外保证，属填充，建议删或换成有意义的断言。
+  > 6. **CASCADE 是真的 FK 级联。** `create_database_engine` 默认 `foreign_keys=True` 并在 connect 时 `PRAGMA foreign_keys=ON`（`connection.py:16-30, 52-79`），测试用的 `session_factory` 来自该引擎；`LearningResource`/`ContentSnapshot` 之间**没有任何 ORM `relationship`**，`session.execute(delete(LearningResource)…)` 也不做 Python 级级联——所以 `test_snapshots.py:688-691` 的 `count == 0` 只能由数据库级 CASCADE 产生。反向隔离（删快照不动资料）由 `:681-685` 的整份投影相等断言。**一处缺口**：该用例在删资料前已先删掉 `kept` 的快照，最后断言的是全表 0 行，因此完成条件 3 后半"不影响**其他资料**的快照"实际未被断言（把 `kept` 的快照留着、末尾断言剩 1 行即可覆盖）。风险很低，列为覆盖缺口。
+  > 7. **前端两点都成立。** `getResourceSnapshot`（`api.ts:1521-1524`）只吞 `cause.code === 'SNAPSHOT_NOT_FOUND'`，按**错误码**而非状态码判断——资料不存在会以 `RESOURCE_NOT_FOUND` 抛出、路径拼错得到的其它 404 也照样抛出，不存在掩盖。白名单新增支（`client.ts:54-58`）要求恰好 6 段 + `parts[3]==='resources'` + UUID + `parts[5]==='snapshot'`，紧到不能再紧；它只决定 `ifMatchVersion` 能否附加（`client.ts:513-521`），`resourceDeleteTarget` 与 deletionToken 那条路径一字未动，没有放宽。
+  > 8. **范围/断言/契约/叙述。** 21 个改动文件全部在 `allowed_paths` 内（`fixtures.ts` 在名单内但未改，属允许未用）。既有断言**无删除无弱化**：唯一被改的既有断言是 `test_migrations.py` 三处（head `0003→0004` ×2、表数 `12→13`），仍是精确相等，且 13 张表正确。契约三方一致我逐项核对：`SnapshotPut` 的 4 个字段与 openapi properties 集合相同；`ContentSnapshot` 的 14 个 required 与 `snapshot_store.FIELDS` 的 14 项完全对应；错误码表、逐操作 x-error-codes、操作清单与后端实际返回一致。TASK-035 的改动限于 toml `status` 与 EVIDENCE 区末行、索引一行，符合 §6 写回边界。
+  >
+  > ## 实现者自陈的三个问题 + 一处测试坑（核其属实）
+  >
+  > - **整块闪没**：属实且修法有效。`useResourceQuery.ts:26` 在 key 变化时把 `result` 判为 `undefined`，若按早返回写就是整块消失；现在 `<section>` 常驻，只有内部三分支切换（`ContentSnapshot.tsx:1227-1259`）。
+  > - **读取失败抢占 alert**：属实。失败态用 `role="status"`（`:1236`），`role="alert"` 只留给用户主动写入的失败（`:1322`）。`ClassificationPages.test.tsx` **不在候选 diff 的 21 个文件中，一字未改**——它说的"改的是自己的设计而非那个测试"成立。
+  > - **删除被白名单拦下**：属实，见第 7 条。
+  > - **三条前端用例是否真能失效**：能。用例一在 PUT 之前 GET 恒抛 404，`共 12 字` 只可能在写入落库后出现；用例二真正的断言是 PUT body 含 `expected_version: 1` 与 DELETE 的 `ifMatchVersion: 1`（`waitFor` + `mock.calls`）；用例三断言恰好 1 次 PUT 且出现"没有自动重试"。改用元数据 `共 N 字` 而非正文，确实规避了 textarea 文本子节点误命中。e2e 用 `Array.from(body).length`（码点计数）与后端 `len()` 一致，`section` 作用域也正确。
+  >
+  > ## 覆盖与缺口
+  >
+  > 已覆盖：并存语义（三种来源）、整份替换、版本前置（428/409/details 只含 current_version）、资料缺失 404、非法输入 8 组 422、提交失败回滚且不泄露内部标识、迁移升降级与 metadata 对齐、CASCADE 与反向隔离、前端空态/写入/替换/删除/冲突、e2e 走真实后端。
+  > 缺口：① **完成条件 7 无任何测试**（F1）；② 完成条件 3 后半"其他资料快照不受影响"未断言；③ 完成条件 9 的 DELETE 分支未测（读码正确；注意 DELETE 缺 `If-Match` 时先返 428 再谈 404，与既有先例同序）；④ 无 openapi ↔ Pydantic/FIELDS 的自动绑定用例（仓库有 `test_resource_updates.py:477-481` 这类先例），当前人工核对一致，仅是后续漂移风险。
+  > 观察（不要求返工）：FAILED 状态在前端会渲染成"共 　字"+空 `<pre>`，当前不可达；`content` 含 NUL 字符时 SQLite `length()` 截断会走成 500 而非 422，与基线 `pasted_content` 的 `bounded_length` 同性质，属既有形态。
+  >
+  > ## 剩余风险
+  >
+  > F1 修好后，本次剩余风险集中在"已登记的边界"：不出网靠文本扫描 + 依赖集合（F3）、图片未冻结、单快照唯一约束、`require_resource` 不复用 FILE-READY 可见性规则（同码同状态，我确认不泄露信息）。均已在记录中如实登记或由本报告补充。
+  >
+  > ## 结论
+  >
+  > **CHANGES_REQUIRED** —— 唯一阻断项是 F1（`capture_state` 对 `status='FAILED' AND failure_code IS NULL` 失效，完成条件 7 不成立，且与所声称的 `OriginalFile` 同形不符）。建议同轮一并处理 F2（低成本、对齐既有先例）与 F3 的记录补登，改完请重新冻结候选，我可只审 `previous_candidate..new_candidate` 的增量并继承本轮其余覆盖。
+
+- 第一轮 findings 的处置（修订 SHA `97ec829`）：
+  - **F1 已修，并先自己复现了缺陷再动手**。用 `sqlite3` 建一张同形临时表实测：原写法下 `INSERT ('FAILED', NULL, NULL, NULL, NULL)` **被接受**；`SELECT (('FAILED'='READY') OR ('FAILED'='FAILED' AND length(NULL)>0)) IS NULL` 返回 1，证实整条 CHECK 求值为 NULL；补上 `failure_code IS NOT NULL` 后同一插入**被拒绝**。模型与迁移两处均已修正，并在模型注释里写明「这句 `IS NOT NULL` 是承重的，不是冗余」及其原因。
+  - **补齐完成条件 7 的覆盖**：新增 `test_invalid_content_snapshots_rejected`，比照 `test_database.py:180-209` 的表级参数化写法，12 组非法组合，首组正是 `{"status": "FAILED", "failure_code": None, ...}`。**已变异验证**：把**迁移**里的 `IS NOT NULL` 撤掉 → 该用例报 `DID NOT RAISE IntegrityError` 转红；还原后转绿。（第一次变异我只改了模型、用例仍绿 —— 这本身就暴露了上面记录的那处盲区：运行时约束来自迁移，不是模型。）
+  - **F2 已修**：`version_header` 的 `int()` 包上 `try/except ValueError → 428`，与 `notes.py`/`taxonomy.py` 两处既有先例同形，并加注释说明正则允许任意长度而 `int()` 有 4300 位上限。新增用例传 5000 位版本号断言 428。**已变异验证**：去掉该保护 → 用例报 `assert 500 == 428` 转红。
+  - **F3 已补登**：边界写进「实现与测试」段（见上），并采纳 Reviewer 补充的更完整清单（`from urllib import request`、`import http.client`、`import socket`、`import urllib3`、`subprocess`，以及扫描范围不含 `migrations`/`scripts`）。**未**改动扫描实现本身 —— 完成条件 11 要的是「有检查证明」，收严 token 属可选建议，留作遗留项。
+  - **删除恒真填充断言**：`assert create_app() is not None` 已移除（连带清理了随之未用的 import）。
+  - **补上两处覆盖缺口**：① 完成条件 3 后半 —— 删资料前把 `kept` 的快照放回去，末尾断言全表**剩 1 行**且该快照内容仍可读，从而真正验到「不影响其他资料的快照」；② F2 的 428 用例同时覆盖了完成条件 9 的 DELETE 分支。
+- 修订后的检查（真实运行）：`check_task.py --candidate 97ec829` → **CHECKS PASS**，base=`3fbca1f`、files=21、profiles=backend,contracts,frontend、product_fingerprint=`c0b72e2813d00df70294032a5c1e2f9a29fe27e1edec9541f05b8a38e744ce1c`。backend `pytest` **525 passed**（第一轮候选 513，净增 12 = 参数化 12 组约束用例 −1 删除的恒真用例 +1 的 428 用例）、ruff/mypy 全绿；frontend 全绿、vitest **363**、e2e **41**（前端本轮未改）。跑检查前后未跟踪文件哈希一致（`f56cad6b…`），本轮无并发写入。
+- Review 第二轮（增量 `fba1e8e..新候选`）：**待执行**。
+- Acceptance：**待执行**，在第二轮之后，由独立于实现者与 Reviewer 的第三个只读实例执行。
 - Acceptance：L3 独立只读 Integration/Acceptance，待填。
-- 最终状态/风险/用户操作：待填。
-- 非阻断遗留项：待填。
+- 最终状态/风险/用户操作：status=**IN_REVIEW**（第一轮 CHANGES_REQUIRED，F1/F2/F3 与两处覆盖缺口已全部处置，等待同一 Reviewer 增量复核）。分支仅在本地，未推送、未开 PR。
+- 非阻断遗留项：
+  - **「后端不出网」的文本扫描防意外不防对抗**（边界已在「实现与测试」段完整登记）。Reviewer 的可选建议是改成按 import 行的正则、或加断言「生产依赖集合 == 冻结名单」。暂不做的理由：完成条件 11 要的是「有检查证明」，且当前形态已能挡住真实场景里的意外引入。责任角色 coordinator；若将来后端确需出网（例如 TASK-037 改变边界），须连同这条防线一起重评。
+  - **模型与迁移的 CHECK 正文无机械绑定**（`compare_metadata` 只比名称与列，实测确认）。这不是本任务引入的，是仓库既有形态；但 F1 正是藏在这条缝隙里。可选改进是为关键 CHECK 补表级用例（本任务已为 `content_snapshots` 补上）。责任角色 coordinator；重评触发条件：下次新增带复杂 CHECK 的表。
+  - **图片未冻结**：快照中的图片仍指向原站，冻结并不完整。落点在扩展任务（只有它能绕开 CORS 取到图片字节）。已写入契约 4.13。
+  - 不渲染 Markdown、无自动抓取、单快照唯一约束、`require_resource` 不复用 FILE-READY 可见性规则 —— 均见「实现与测试」的已知限制段，Reviewer 已逐条确认无信息泄露或行为差异。
+  - Reviewer 列出的两条观察（FAILED 态在前端会渲染成空 `<pre>`，当前不可达；`content` 含 NUL 字符时走 500 而非 422，与基线 `pasted_content` 同性质）—— 均不要求返工。
+  - 无 openapi ↔ Pydantic/FIELDS 的自动绑定用例（仓库有此类先例），当前为人工核对一致，属后续漂移风险。
 - 日期与决定日志：2026-09-06 用户在 PR #40 合并后转入阅读器方向讨论。主 Agent 通读调研文档并核实其援引的既有事实（来源互斥 CHECK、`original_files` 模式、Note 表形状）全部属实后，提出三点异议：① 调研 §7 把「快照」与「笔记 selector 字段」并列为「事后无法补做」，但后者可空列事后添加成本相同，不成立；② 调研 §10.6（格式）与 §10.5（图片）被标为可推迟，但按其自身的不可回溯逻辑必须在第一份快照落地前决定；③ 后端抓取会引入首次出网、SSRF 面、两个生产依赖与第二个提取器。用户据此逐条决定：Markdown、图片要冻结、扩展走 UI 页面、顺序取甲、PDF 先做原生版。主 Agent 据用户第 3 条决定进一步推导出图片冻结须与扩展同期（只有扩展能绕开 CORS 取到图片字节），遂将原「爬取前半」收窄为本任务的范围。用户另问及知乎/CSDN 的认证问题，结论为扩展方案下完全不需要凭证，并将「不引入第三方站点凭证」写入明示非目标。
 
 此区禁止放入或变更任务授权、风险等级、允许路径、检查要求、实现或测试记录。
