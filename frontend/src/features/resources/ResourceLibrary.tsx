@@ -11,6 +11,10 @@ import { getClassification, type Kind } from '../taxonomy/api'
 
 const DEFAULT_SORT = '-created_at'
 const UNASSIGNED = 'unassigned'
+// Chip text shown while an id from the address bar has no name yet, or cannot get one.
+// They are placeholders, never real names, so they must not be cached as if they were.
+const PENDING_NAME = '正在读取名称…'
+const MISSING_NAME = '（已不存在）'
 
 interface Applied {
   q: string
@@ -120,8 +124,8 @@ export function ResourceLibrary() {
     if (choice.id === UNASSIGNED) return '未分配主题'
     if (choice.name) return choice.name
     const known = names[choice.id]
-    if (known === undefined) return '正在读取名称…'
-    return known.trim() || '（已不存在）'
+    if (known === undefined) return PENDING_NAME
+    return known.trim() || MISSING_NAME
   }
   const named = (selection: Selection): Selection => ({
     topic: selection.topic ? { ...selection.topic, name: label(selection.topic) } : null,
@@ -199,6 +203,9 @@ export function ResourceLibrary() {
               onClick={() => {
                 setValidation('')
                 setLookupFailed(false)
+                // An already empty address means the render-time sync will not fire,
+                // so the unapplied draft has to be cleared here as it was before.
+                setDraft(draftOf(readApplied(new URLSearchParams())))
                 setParams(new URLSearchParams())
               }}
             >
@@ -276,7 +283,13 @@ export function ResourceLibrary() {
                 ...current,
                 ...Object.fromEntries(
                   [...(classification.topic ? [classification.topic] : []), ...classification.tags]
-                    .filter((choice) => choice.name && choice.id !== UNASSIGNED)
+                    .filter(
+                      (choice) =>
+                        choice.name &&
+                        choice.id !== UNASSIGNED &&
+                        choice.name !== PENDING_NAME &&
+                        choice.name !== MISSING_NAME,
+                    )
                     .map((choice) => [choice.id, choice.name]),
                 ),
               }))

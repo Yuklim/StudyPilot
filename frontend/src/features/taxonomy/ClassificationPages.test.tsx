@@ -353,6 +353,16 @@ describe('creating a tag where it is used', () => {
     expect(screen.getByLabelText('新建标签')).toHaveValue('合成标签')
     expect(screen.getByText(/已选 0 个标签/)).toBeInTheDocument()
   })
+  it('disables creating another tag once twenty are selected', async () => {
+    vi.spyOn(api, 'request').mockImplementation(async (path) => reads(path))
+    const selected = Array.from({ length: 20 }, (_, i) => ({ id: String(i), name: `已选 ${i}` }))
+    renderWithRouter(<Picker initial={{ topic: null, tags: selected }} />)
+    click('选择主题与标签（选填）')
+    expect(await screen.findByLabelText('新建标签')).toBeDisabled()
+    expect(screen.getByText('已选满 20 个标签，先移除一个再新建。')).toBeInTheDocument()
+    click('移除已选标签 已选 0 ×')
+    expect(screen.getByLabelText('新建标签')).toBeEnabled()
+  })
   it('creates and attaches in one step from the resource detail tag manager', async () => {
     const request = vi.spyOn(api, 'request').mockImplementation(async (path, options) => {
       if (options?.method === 'POST' && path === '/api/v1/tags') return { data: fresh }

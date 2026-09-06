@@ -368,6 +368,49 @@ describe('resource library filters in the address bar', () => {
     )
     expect(sent.searchParams.getAll('tag_id')).toEqual([tagId, missing])
   })
+  it('clears an unapplied draft on reset even when the address is already empty', async () => {
+    const request = vi.spyOn(api, 'request').mockImplementation(async (path) => {
+      if (path.startsWith('/api/v1/tags?'))
+        return categoryPage([category({ id: tagId, name: '合成标签' })])
+      if (path.startsWith('/api/v1/topics?')) return categoryPage([])
+      return samplePage([])
+    })
+    renderWithRouter(
+      <>
+        <App />
+        <Address />
+      </>,
+      '/resources',
+    )
+    await waitFor(() => expect(request).toHaveBeenCalled())
+    change('搜索资料', '还没应用的词')
+    fireEvent.click(screen.getByRole('button', { name: '按主题与标签筛选' }))
+    fireEvent.click(await screen.findByRole('checkbox', { name: '合成标签' }))
+    expect(screen.getByText(/已选 1 个标签/)).toBeInTheDocument()
+    // The address never changed, so the render-time sync cannot do this for us.
+    expect(address()).toBe('')
+    fireEvent.click(screen.getByRole('button', { name: '重置' }))
+    expect(screen.getByLabelText('搜索资料')).toHaveValue('')
+    expect(screen.getByText(/已选 0 个标签/)).toBeInTheDocument()
+    expect(address()).toBe('')
+  })
+  it('makes the tag on a resource detail page a filter link too', async () => {
+    vi.spyOn(api, 'request').mockImplementation(async (path) => {
+      if (path.startsWith(`/api/v1/resources/${resourceId}/notes?`))
+        return {
+          data: [],
+          page: { number: 1, size: 20, total_items: 0, total_pages: 0, has_more: false },
+        }
+      if (path === `/api/v1/resources/${resourceId}`)
+        return { data: sample({ tags: [{ id: tagId, name: '详情页标签' }] }) }
+      return samplePage([])
+    })
+    renderWithRouter(<App />, `/resources/${resourceId}`)
+    expect(await screen.findByRole('link', { name: '详情页标签' })).toHaveAttribute(
+      'href',
+      `/resources?tag_id=${tagId}`,
+    )
+  })
   it('offers no tag creation while filtering, only while choosing tags for a resource', async () => {
     vi.spyOn(api, 'request').mockImplementation(async (path) =>
       path.startsWith('/api/v1/tags?') || path.startsWith('/api/v1/topics?')
