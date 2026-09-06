@@ -41,6 +41,16 @@ export const pages: ShellPage[] = [
     description: '',
   },
   {
+    // 浏览器扩展采集后跳转到这里确认。不放进导航：它没有内容可看，
+    // 只有从扩展过来才有意义。
+    path: '/capture',
+    title: '确认采集内容',
+    caption: '刚读到的这一页，确认后才会存进资料库。',
+    icon: 'plus',
+    emptyTitle: '',
+    description: '',
+  },
+  {
     path: '/resources/:resourceId',
     title: '资料详情',
     caption: '原始资料与自己的理解，各有一个位置。',

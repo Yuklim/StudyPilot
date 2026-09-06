@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-038"
-status = "READY"
+status = "IN_PROGRESS"
 risk = "L3"
 risk_reason = "本任务把扩展从「零权限」变成「能读用户当前打开的任意网页、并向本机 UI 页面注入脚本」。浏览器扩展权限是一次性授予、长期生效的，用户不会重新审视，因此这次授予的边界就是它此后的边界。同时新增一条**新的数据写入路径**：正文不再只由用户手工粘贴，而是由页面内容自动提取后进入永久快照（快照一旦写入即不可回溯重建）。第三处实质风险在信任边界：`/capture` 页面要接收来自扩展内容脚本的 postMessage，而任何网页都能向同源页面发 postMessage，所以「谁可以让 StudyPilot 写一条资料」这个问题必须在本任务里答对。命中 `**/AGENTS.md` 高风险路径下限。不改后端、不改契约、不改 `infrastructure/security/local_access.py`。"
 risk_flags = ["security", "architecture", "business", "tests"]
@@ -15,6 +15,7 @@ allowed_paths = [
   "frontend/src/shell/pages.ts",
   "frontend/src/shell/Screen.tsx",
   "frontend/src/styles.css",
+  "docs/contracts/API与数据契约基线.md",
   "README.md",
   "docs/tasks/TASK-038-extension-capture.md",
   "docs/tasks/TASK-037-extension-baseline.md",
@@ -52,7 +53,8 @@ checks = []
 - **不改 `infrastructure/security/local_access.py`，不放宽 `Origin`/`Sec-Fetch` 校验**。若实现中发现非改不可，须停止并上报，不得自行放宽。
 - **不引入任何第三方站点凭证**（继承 TASK-036/037 的硬性非目标）。扩展只读用户已登录、已渲染的页面；不得绕过任何站点的访问控制或付费墙。
 - **不支持 Firefox / Safari**（用户明确决定）。不引入 `webextension-polyfill` 一类兼容层，不产出第二套构建产物。
-- **不改后端、不改 API 契约、不改数据库**。`backend/**` 与 `docs/contracts/**` 不在允许路径内。
+- **不改后端、不改 `/api/v1` 的 HTTP 契约、不改数据库**。`backend/**` 与 `docs/contracts/openapi-v1.json` 不在允许路径内；本任务复用既有的 `createResource` 与 `putResourceSnapshot`，不新增、不修改任何 HTTP 操作。
+- **但中文契约文档要改一处**：`extension/AGENTS.md` §4（TASK-037 写入）规定「与 UI 页面之间的消息格式属跨模块契约，须在相应任务中与 frontend 一并定义并写入契约文档；不得由本模块单方面约定」。本任务新增的扩展↔`/capture` 页面 postMessage 格式正是这样一份跨模块契约，故须写入 `docs/contracts/API与数据契约基线.md`。**登记时把契约整体列为非目标是错的**——那会让本任务违反自己模块的嵌套规则。实现开始前据此修订 `allowed_paths`，新增 `docs/contracts/API与数据契约基线.md` 一条（不含 openapi 快照，因为这不是 HTTP 操作）。此项修订属**扩大**授权面，与 TASK-037 决定日志中「授权面修订只有在收窄时才安全」的判据方向相反，故须特别说明：① 它发生在**任何实现写入之前**、登记刚完成时，不是为已交付物追认合法性；② 它的动因是遵守既有的嵌套规则，不是为了让某段已写好的代码合法；③ 若 Reviewer 认为该扩大不成立，正确的处置是把消息契约的定义方式退回讨论，而不是保留代码删掉文档。
 - **不做阅读器、不做 Markdown 渲染、不做标注、不做 PDF**。
 - **不申请 `<all_urls>` host permission**，除非实现中证明 `activeTab` 无法满足且在记录中写明理由——即便如此也须独立 Review 认可。
 - 不动未列路径。

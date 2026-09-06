@@ -697,3 +697,45 @@ OpenAPI 3.1 使用 JSON Schema 联合类型（如 `type:["string","null"]`）表
 以下不是新产品功能，而是为后续实现消除猜测的技术参数：UUID v4；字段长度与版本规则；页码分页 20/100；稳定排序 ID 决胜；上传 25 MiB；删除令牌 5 分钟；上传 PENDING 超时 10 分钟；启动及每 60 秒对账；孤儿/trash 至少 24 小时宽限；IANA 时区和周一周界；UTF-8 文本、PDF/DOC/DOCX 保守格式识别；Topic/Tag NFKC+大小写折叠唯一；PUT/DELETE 标签关联幂等。
 
 这些决定的变更也必须走契约变更流程。后续数据库迁移必须保持本文件的所有权、唯一性、关系、版本、UTC/日期和历史不可覆盖不变量；不得从当前 SQLite 实现反向改变公共契约。
+
+## 14. 浏览器扩展与 UI 页面的消息契约 `[架构][细化]`
+
+TASK-038 新增。这是本文件里**第一份非 HTTP 契约**：它约束的不是 `/api/v1`，而是浏览器扩展与本机 UI 页面 `/capture` 之间的 `window.postMessage` 消息。之所以要写进契约文档而不是各自实现，是因为 `extension/` 与 `frontend/` 是两个独立 npm 工程、没有构建耦合，两边各写一份代码，只能靠这份约定对齐（见 `extension/AGENTS.md` §4）。**改动须三处同步**：`extension/src/shared/protocol.ts`、`frontend/src/features/capture/protocol.ts`、本节。
+
+### 14.1 为什么经页面转交，而不是扩展直连 API
+
+第 7 节的本机访问协议要求 `Origin` 等于 UI 源、`Sec-Fetch-Site` 为 `same-origin`。扩展发起的请求源是 `chrome-extension://`、`Sec-Fetch-Site: cross-site`，**必然被拒**。让扩展直连的唯一办法是放宽那道门禁，而门禁一旦为扩展放开，任何本机页面或扩展都可能获得同等能力。因此扩展把内容交给 UI 页面，由页面以既有身份调用 `createResource` 与 `putResourceSnapshot`；**第 7 节一字未改**。
+
+### 14.2 消息
+
+| 消息 | 方向 | 载荷 | 说明 |
+| --- | --- | --- | --- |
+| `studypilot-capture-ready` | 页面 → 内容脚本 | 无 | 页面挂载后发出。握手方向是「页面先说就绪」：内容脚本在 `document_idle` 运行，而页面何时挂载不确定，反向推送会丢消息。 |
+| `studypilot-capture-payload` | 内容脚本 → 页面 | `CapturePayload` | 内容脚本收到就绪信号后，从扩展存储取出待交付内容发给页面，**并立即删除该暂存**（一次采集只交付一次，刷新不重复预填）。 |
+
+`CapturePayload`：
+
+| 字段 | 类型 | 约束 |
+| --- | --- | --- |
+| `title` | string | 长度 ≤ 200，与 4.1 的资料标题一致；**可为空字符串**（标题可空，见 TASK-029），页面显示为「未命名资料」占位 |
+| `url` | string | 长度 ≤ 2048，必须以 `http://` 或 `https://` 开头 |
+| `markdown` | string | 去空白后非空，长度 ≤ 1,000,000，与 4.13 的 `ContentSnapshot.content` 一致 |
+
+### 14.3 信任边界（本节的要害）
+
+**任何网页都可以向同源窗口 `postMessage`。** 因此到达 `/capture` 的消息一律是不可信输入，接收端必须逐条校验后才使用：
+
+1. `event.source` 必须是本窗口本身——跨源 opener 或 iframe 发来的消息，`source` 是对方窗口；
+2. `event.origin` 必须等于本页面的源；
+3. 消息类型必须匹配，载荷必须通过上表的结构与长度校验；
+4. 任何一条不满足即**静默丢弃**，页面保持空态，不报错、不崩溃。
+
+即便以上全部被绕过，**攻击者也只能让确认页预填一段文字**：写入只发生在用户点击「保存为资料」之后。「必须由用户确认才写入」是这条链路的最终保障，不得为「自动保存更顺手」而取消。
+
+### 14.4 扩展侧的权限边界
+
+扩展只申请 `activeTab`、`scripting`、`storage` 三项权限与**一条只匹配本机 UI 源**的内容脚本；**不申请 `host_permissions`，不申请 `<all_urls>`**。`activeTab` 只在用户点击扩展图标后授予当前那一个标签页，用完即失效——扩展因此只能读到用户主动指定的那一页，且只能读到该页**已经渲染出来的内容**。它不发任何网络请求、不读 cookie、不接触任何第三方站点的登录态：用户看得见什么它就能拿到什么，看不见的（未登录、付费墙后）它同样拿不到。`extension/src/manifest.test.ts` 以白名单断言锁住 manifest 的顶层键集合，任何新增键都会让测试失败。
+
+### 14.5 本阶段的边界
+
+扩展只采集**正文**，正文中的图片引用仍指向原站，**本阶段不冻结图片**——冻结图片需要新的资产存储（`content_snapshots` 只存 Markdown，`original_files` 为 `UNIQUE(resource_id)` 且 media_type 白名单不含图片），属独立任务。扩展只支持 **Chrome 与 Edge**（Chromium），不支持 Firefox 与 Safari。

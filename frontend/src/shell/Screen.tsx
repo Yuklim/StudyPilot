@@ -1,5 +1,6 @@
 import { Link, useMatch } from 'react-router-dom'
 
+import { CapturePage } from '../features/capture/CapturePage'
 import { ResourceDetail } from '../features/resources/ResourceDetail'
 import { ResourceForm } from '../features/resources/ResourceForm'
 import { ResourceLibrary } from '../features/resources/ResourceLibrary'
@@ -102,6 +103,7 @@ export function Screen({ page }: { page: ShellPage }) {
   if (page.path === '/classifications') return <ClassificationManager />
   if (page.path === '/notes') return <NotesPage />
   if (page.path === '/study-records') return <RecordHistory />
+  if (page.path === '/capture') return <CapturePage />
   if (page.path === '/resources/new') return <ResourceForm />
   if (page.path === '/resources') return <ResourceLibrary />
   if (page.path === '/resources/:resourceId' && match?.params.resourceId) {
