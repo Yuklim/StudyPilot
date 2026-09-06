@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-037"
-status = "IN_REVIEW"
+status = "IN_ACCEPTANCE"
 risk = "L3"
 risk_reason = "本任务改的是治理门禁本身：`scripts/governance/check_task.py` 的检查组选择逻辑决定了「哪些代码会被自动检查覆盖」，改错的后果不是某个功能坏掉，而是此后所有扩展代码在无人察觉的情况下逃过检查，且这种缺陷不会以失败的形式暴露出来。命中 `scripts/governance/**`、`docs/governance/**`、`**/AGENTS.md` 三条高风险路径下限。另一半实质风险是先例效应：`extension/` 是仓库的第三个顶层代码目录，其工程约定（构建、lint、测试、依赖边界、与前后端的关系）一旦落地就会被后续所有扩展工作沿用，事后改造成本远高于第一次定对。本任务不实现任何抓取行为，不改安全边界，不改后端。"
 risk_flags = ["governance", "architecture", "tooling", "tests"]
@@ -120,7 +120,7 @@ checks = []
 
   第一轮（已被取代，仅备查）：`--candidate 5e7ef25` → CHECKS PASS，同样 25 文件、同样三个 profile，`product_fingerprint=8a50315df815e211feb109c9e9bcb81cc916310c1f33d22b835d8c09858e6733`，输出留存于 `scratchpad/check-037-full.log`。
 
-  **该检查的运行环境须如实说明**：主工作区因存在**未跟踪**的 `docs/research/`（用户在另一会话创建、至今未纳入 Git）而不满足脚本的 `git status --porcelain` 干净要求，全套检查会以 `FAIL: full checks require the candidate checked out with a clean worktree` 拒绝执行。未改动、未移动、未提交该用户文件；改为 `git worktree add` 一个**独立干净的 worktree** 检出候选 `5e7ef25` 后在其中运行。该 worktree 需要一个符合 `agent/<role>/TASK-\d{3,}-.+` 的分支名（脚本拒绝 detached HEAD），故建了临时本地分支 `agent/coordinator/TASK-037-extension-baseline-check`；它只用于跑检查，不含任何提交差异，不推送，检查后删除。`backend/.venv` 以符号链接引入该 worktree（Python 工具链），`frontend/`、`extension/` 各自 `npm ci`。**这一路径比在脏工作区里跑更严格**：它同时证明了提交出去的树在全新检出下自足（`npm ci` 依锁文件安装即可通过全部检查）。
+  **该检查的运行环境须如实说明**：主工作区因存在**未跟踪**的 `docs/research/`（用户在另一会话创建、至今未纳入 Git）而不满足脚本的 `git status --porcelain` 干净要求，全套检查会以 `FAIL: full checks require the candidate checked out with a clean worktree` 拒绝执行。未改动、未移动、未提交该用户文件；改为 `git worktree add` 一个**独立干净的 worktree** 检出被测提交后在其中运行 —— **第一轮检出 `5e7ef25`、处置后检出 `984b2f4`，两次都走同一条路径、都在独立干净 worktree 中运行**（上文「任务检查（全套，最终）」那次 CHECKS PASS 即第二次，跑在 `984b2f4` 的干净检出上）。该 worktree 需要一个符合 `agent/<role>/TASK-\d{3,}-.+` 的分支名（脚本拒绝 detached HEAD），故各建了一个临时本地分支（`...-baseline-check` 与 `...-baseline-check2`）；它们只用于跑检查，不含任何提交差异，不推送，检查后连同 worktree 一并删除，`.git/info/exclude` 中为符号链接临时添加的一行也已移除。`backend/.venv` 以符号链接引入该 worktree（Python 工具链），`frontend/`、`extension/` 各自 `npm ci`。**这一路径比在脏工作区里跑更严格**：它同时证明了提交出去的树在全新检出下自足（`npm ci` 依锁文件安装即可通过全部检查）。
 
   **backend 组未被自动选中**（本任务不改 `backend/**`），另行在主工作区单独运行：`ruff format --check . && ruff check . && mypy src tests && pytest -q` → 全绿，**525 passed**，与基线一致（本任务不应改变后端数量）。
 
@@ -145,10 +145,10 @@ checks = []
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：第一轮候选 **`f91dbbe`**（代码 `5e7ef25`，base `32c3750`）。经第一轮 Review 处置后的**代码修订 SHA 为 `984b2f4`**（`product_fingerprint=bd485b94…`，全套 CHECKS PASS）；**本轮的冻结候选即本条写回所在的提交，其精确 SHA 在下一次写回（增量复核结论）时补记** —— 提交无法引用自身，这与根 `AGENTS.md` §6「候选精确 SHA 在之后的 Review/证据段记录」一致。`984b2f4` 与该候选之间只差本任务记录一个文件，指纹不含任务记录与索引，故被测产品内容相同。
+- 候选 SHA：第一轮候选 **`f91dbbe`**（代码 `5e7ef25`，base `32c3750`）。经第一轮 Review 处置后的代码修订 SHA 为 **`984b2f4`**；**最终冻结候选 `ec68f5c4ebe0b8661b817ed48b1a8f024c773810`**（`product_fingerprint=bd485b941e85561d06207f3f27d8c52b9eb61a660daf557fc4aed99c6ddcdae4`，与 `984b2f4` 相同）。`git diff --name-only 984b2f4..ec68f5c` 输出**只有 `docs/tasks/TASK-037-extension-baseline.md` 一个文件**（主 Agent 与派发会话各自用 git 独立核实；索引的状态变更发生在 `984b2f4` 提交内部，不在该区间）。机制依据：`scripts/governance/check_task.py:359` 的 `if path not in {args.task, "docs/tasks/任务索引.md"}` —— 任务记录与索引**均不计入 `product_fingerprint`**，故无论两者落在哪个提交，指纹都相同，「检查在 `984b2f4` 通过 ⇒ 结论可代表候选」这条推理成立。其后另有一次纯 EVIDENCE 写回（本条所在提交），只增证据、不动产品内容。
 - Review（第一轮，L3 独立只读，`32c3750..f91dbbe`）：**整体 CHANGES_REQUIRED**（A 部分 PASS + B 部分 CHANGES_REQUIRED，按「任一为 CHANGES_REQUIRED 则整体 CHANGES_REQUIRED」计）。因单实例连续三次被 watchdog 中断（详见下方「审查过程本身的证据」），改由**两个全新只读实例并行分范围审查**，两份并集为完整 diff（除 `package-lock.json`）、无重叠。两份报告原文如下，未作任何压缩或改写。
 
-  **关于报告中的行号**：两份报告引用的行号系各自所收 patch 的**文件内行号，不是源文件行号**。B 部分基准为派发会话生成的 `T037-B-code.patch`（493 行），对应关系经派发会话逐条核实：`manifest.test.ts:183-191` → 源文件 `extension/src/manifest.test.ts:28-36`（三条 `expect` 在 :33/:34/:35）；`README.md:47-53` → `extension/README.md:19-25`；`vite.config.ts:317-326` → `extension/vite.config.ts:10-13`；`ResourcePages.test.tsx:466-489` → `frontend/src/features/resources/ResourcePages.test.tsx:595-616`。此为主 Agent 附加的定位说明，报告原文未改。
+  **关于报告中的行号（主 Agent 附注，报告原文未改）**：**B 部分**报告引用的行号系其所收 patch（派发会话生成的 `T037-B-code.patch`，493 行）的**文件内行号**；**A 部分报告的行号为源文件行号**（该实例直接读取工作树文件）。此处初版曾把适用范围误写为「两份报告」，经 A 部分增量复核指出后更正。B 的四条对应关系：`manifest.test.ts:183-191` → `extension/src/manifest.test.ts:28-36`（三条 `expect` 在 :33/:34/:35）；`README.md:47-53` → `extension/README.md:19-25`；`vite.config.ts:317-326` → `extension/vite.config.ts:10-19`（初版误写 `:10-13`，结束行截短，经 B 指出后更正）；`ResourcePages.test.tsx:466-489` → `frontend/src/features/resources/ResourcePages.test.tsx:595-616`（±1 行内）。**按两位 Reviewer 的一致建议，本映射定位为「导航辅助」而非精确引用**——它自身已出过两处不准确，读者应以报告正文引用的代码内容为准、以行号为线索。
 
 ## TASK-037 Review · A 部分：治理门禁
 
@@ -377,6 +377,245 @@ expect(Object.keys(manifest).sort()).toEqual(
 
 唯一阻断项是 **F1**（`manifest.test.ts` 权限门闩为黑名单，与 README / 源码注释所宣称的保护范围不符），最小修复为一行白名单断言。F2 / F3 记录后可继续，**但 F2 附带一个硬条件：任务记录不得声称 TASK-036 的方位盲区已闭合**——按本次候选，它没有闭合。其余部分（依赖无分叉、扩展零越权面、popup 不直连后端不碰凭证、文案与实际版面一致、单一 manifest 事实源）**核查通过**。
 
+- Review（第二轮增量，L3 独立只读，`f91dbbe..ec68f5c`，A / B 各由**第一轮同一实例**复核并显式声明继承范围）：**整体 PASS**（A PASS + B PASS），第一轮的 CHANGES_REQUIRED 已解除。两份报告原文如下。
+
+# TASK-037 Review · A 部分增量复核
+
+## 独立只读身份与权限证据
+工具白名单仍仅 `Read` / `Grep` / `Glob`；无 `Write`/`Edit`/`NotebookEdit`，无 `Bash`。本轮未写入、未提交、未推送、未执行任何命令。所有机械证据（`CHECKS PASS`、`product_fingerprint=bd485b94…`、六项变异验证、三组测试数）**按 NOT_RUN 处理**：我未复现、无第三方复核，下文凡引用均标注为实现者自述。
+
+## 范围与继承声明
+previous_candidate `f91dbbe` → **new_candidate `ec68f5c`**（代码修订 `984b2f4`）。本轮实读：增量 patch 全文（360 行）、`extension/src/manifest.test.ts`、`extension/src/manifest.ts`（为核验 A 范围内 `AGENTS.md`/`README.md` 措辞所援引的实物）。
+
+**显式继承第一轮 A 部分的全部其余覆盖**：`check_task.py` 全文（组选择、`commands()` 分派、退出码聚合、`:403-407` 输入完整性守卫、边界判定）、`test_check_task.py` 断言锁定力与其反证表、`docs/governance/风险分级与检查规则.md:41` 与实际命令的逐条相符、`extension/package.json` 五个 script 名的存在性与非零退出语义、`docs/tasks/TASK-036-content-snapshot.md` 状态收尾的合法范围、独立 worktree 路径的判定（不构成规避）。上述结论在本轮**继续有效**，依据是你已用 git 核实 `check_task.py` 与 `test_check_task.py` 在 `f91dbbe..ec68f5c` 中零改动，且我在增量 patch 中确认无这两个文件的 hunk。
+
+我另独立核对了增量 patch 的 hunk 边界：TASK 记录仅有 6 处 hunk（`status`、非目标一条、实现 SHA 行、检查行、变异验证段、EVIDENCE 区），**`目标`、`完成条件`、`allowed_paths`、`risk`、`risk_flags`、`checks`、`上下文包`、`准确命令`、`已知限制` 全部未被触碰**——与你的抽取结果一致。
+
+---
+
+## 第一轮 findings 的处置核对
+
+| 第一轮项 | 处置 | 我的核对 |
+|---|---|---|
+| 可选建议 3（非目标措辞） | 已修 | ✅ 见下专项 |
+| 可记录 1（`validate_governance.py` 第二份清单） | 不修，记为遗留 | ✅ 认可，且遗留条目写明了重评触发条件与责任角色，符合风险分级文档第 29 行的要求 |
+| 可记录 2（索引 `READY` vs 记录 `IN_PROGRESS`） | 已对齐为 `IN_REVIEW` | ✅ 两处一致；`IN_REVIEW` 亦满足 `validate_governance.py:230`（L3 含 review 阶段） |
+| 完成条件 4 覆盖归因 | 记录归因，不改条文 | ✅ 见下专项 |
+| 可选建议 4（`lint` 无 `--max-warnings=0`） | 未单独处置 | 可接受——可选建议按规则"不要求修复、不发起返工循环" |
+| 可选建议 5（README 加载步骤未验证） | 已加"这套加载步骤尚未在真实 Chrome 中实机验证，首次加载请确认" | ✅ 与「已知限制 4」一致 |
+
+**非目标措辞收紧是否真的与实现和 README 一致 —— 是，三方逐字对齐。** 记录现写「**不申请任何权限**」；`manifest.ts:23-32` 实际声明的顶层键为 `manifest_version`/`name`/`version`/`description`/`action` 五个，**无任何 `permissions` 系列键**；根 `README.md` 写「当前 manifest **不申请任何权限**」。三者一致，且新措辞在原处保留了旧文并注明收紧缘由，可审计性完好。
+
+**顺带核实 `extension/AGENTS.md` §3 的新措辞（A 范围内的规则文本）**：它现称「`src/manifest.test.ts` 断言 manifest 的顶层键**恰好是既定的五个**，任何新增键都会让它失败」。实物 `manifest.test.ts:28-40`：`expect(Object.keys(manifest).sort()).toEqual(['action','description','manifest_version','name','version'].sort())`。**不多不少，宣称与实物精确相符**——这正是第一轮我留给 B 的那条耦合（"若 AGENTS.md 声称权限受自动门禁保护，应据 F1 复核该措辞"）的闭合。新措辞把受管键从 3 个扩到"任何 reach ……等"并加"不得删除**或放宽**断言"，方向是**加严**，未放宽根 `AGENTS.md` 任何底线。
+
+---
+
+## 三个必答的治理判断（据 §6 原文，逐条直说）
+
+### 判断一：候选提交同时更新「实现与测试」段 —— **不构成越界写回，我同意实现者的判断，但理由要说准**
+
+§6 的禁令原文是「**审查后仅可**更新同任务的 status 和 EVIDENCE 标记区……实现与测试记录在标记区外，**禁止借证据写回变更它们**」。该句的约束对象是**证据写回这一动作**：它防的是「一次名为记录 Review 结果的提交，顺手改掉被冻结的授权/实现/测试叙述」。
+
+而 §6 同段另有两条原文，方向相反且在此处优先：
+- 「**冻结候选必须是包含需求、实现与测试证据的已提交 SHA**」；
+- 「**任何实现/契约/配置/测试/任务授权修订形成新候选**，使旧结论不能直接代表新 SHA」。
+
+代码在 `984b2f4` 被真实修订 → 依第二条形成新候选 → 依第一条，新候选**必须**携带与之匹配的实现与测试证据。若此时冻着不许改「实现与测试」段，冻结候选里就会写着一个已被取代的实现 SHA 和一个已失效的指纹——那才是真正的伪证。所以此处更新该段不是"借证据写回改冻结区"，而是"新候选重新冻结"。
+
+**但这条推理只在一个前提下成立，我逐项验了这个前提：更新必须是增补与更正，不得是删除或软化。** 核对结果：① 实现 SHA 行——新值 `984b2f4` 在前，旧值 `5e7ef25` 原文保留并注明"经第一轮 Review 的 F1/F2/F3 处置后被取代"；② 检查行——最终值另起一行，第一轮的命令、指纹 `8a50315d…` 与日志文件名**整条保留**，标注"已被取代，仅备查"；③ 变异验证——原三项**一字未改**，新增第 4/5/6 项并把标题从"三项"改为"第一轮三项 + 处置后三项，共六项"。**无任何历史证据被删除、改写或降级**。这一形态可被后续 Acceptance 或用户逐条回溯，符合"不得隐藏测试失败/不得伪造结果"的底线。
+
+### 判断二：非目标段措辞收紧 —— **属允许的修订，方向正确，且处理方式（原处注明旧文与缘由）值得沿用**
+
+非目标确属授权面，也确在冻结区。但同样落在"任务授权修订形成新候选"的明文许可内：它形成了新候选、进入了独立复核、并且**我正在审它**——§6 要求的全部程序都走到了。
+
+真正该问的是方向。判据我这样定：**授权面的修订只有在"收窄"且"不为已交付物追认合法性"时才安全。** 本例两项都过：① 从"预先允许 host_permissions"收到"不申请任何权限"，是收窄，收窄绝不可能放行未经审查的产品变化；② **实现并未随之改动去迎合新措辞**——`manifest.ts` 从第一轮起就是零权限，是**记录向实物对齐**，不是实物向记录对齐。若方向反过来（为了让已经写进去的 `host_permissions` 合法而扩写非目标），那就是事后追认，必须回到用户授权，我会判阻断。这条区分请写进本任务的决定日志，它比本次结论本身更有复用价值。
+
+### 判断三：完成条件 4 不改条文、只记录归因 —— **处理恰当，我作为该修正的提出者明确背书**
+
+三条理由：
+1. 完成条件是冻结的授权面。**事后改写完成条件以匹配已交付物，与"降低断言来通过检查"在机制上无法区分**——两者都是"让标尺去适应结果"。实现者的这句自我约束是对的，我不打算因为改动方向"诚实"就为它开例外。
+2. 实质门禁未被削弱：约束本身（检查期间不写回源码）**确实被守住了**，只是守它的是 `check_task.py:403-407` 的输入完整性守卫，而非被引用的那条断言。这是覆盖**归因**问题，不是覆盖**缺口**。
+3. 保留原文 + EVIDENCE 记录更正，信息量严格大于改写原文：后来者能同时看到"当初的声称"和"复核后的实情"，而改写会把前者永久抹掉。
+
+残余（归 L1 遗留类，不阻断）：完成条件 4 的条文若被**单独摘读**，仍会让人高估那条断言。缓解是同文件 EVIDENCE 区已有更正、且 A 报告的反证表已原文嵌入。真要根治，应由下一个触及治理脚本的任务在**新的**完成条件里正确表述，而不是回头改旧的。
+
+---
+
+## 程序问题：报告原文照贴 + 行号映射另附
+
+**可接受，且放在报告块之前优于放到独立条目——但当前那条附注的事实范围写错了，须改。**
+
+先说可接受的理由：§6 的「L3 独立报告仅允许原文写回」约束的是**报告内容**，不是其周边的编排文字；否则连"以下为 Reviewer 原文"这样的引导句都无法添加。判准应是：附注须(a)明确署名为主 Agent、(b)只增信息不改述、(c)不概括、不评级、不与报告结论相左。当前附注三条都满足，并注明"报告原文未改"、映射"经派发会话逐条核实"。放在报告**之前**也比放在远处的独立条目好——读者会先撞上行号，警示必须早于它出现。
+
+**我另做了一件只有我能做的核验：逐段比对了嵌入的 A 部分报告与我第一轮的实际输出。正文文字、findings、结论逐句一致，无删改、无压缩。** 唯一差异是 markdown 表格分隔行的空格被规范化（`|---|` → `| --- |`），渲染与语义均无变化。就 A 部分而言，**"原文写回"属实**。
+
+**但附注本身有一处事实错误（见 Finding 2）**：它说"两份报告引用的行号系各自所收 patch 的文件内行号"。这对 B 成立，对 A **不成立**——我第一轮是直接读取工作树源文件的，所引 `check_task.py:58-69/236/387/403-407`、`test_check_task.py:106-111`、`extension/package.json:10-17`、`vite.config.ts:28-31`、`risk-policy.json:43`、`validate_governance.py:215-218`、`风险分级与检查规则.md:41` **全部是源文件行号**。这条附注会让读者对一批本来正确的定位产生无谓怀疑，方向恰与它想解决的问题相反。
+
+---
+
+## Findings（本轮增量）
+
+**必须修复（阻断）：无。**
+
+**可记录后继续：**
+
+1. **`docs/tasks/TASK-037-extension-baseline.md`「实现与测试」段的环境说明仍写第一轮 SHA，且未标注「第一轮」，与同段新增的自我约束句直接矛盾。**
+   触发：读该段判断最终检查在什么树上跑的。证据：新增句承诺「**本段下方记录的命令与指纹一律是最终值**（`984b2f4` → `bd485b94…`）；第一轮的值只在明确标注「第一轮」处出现」，而紧随其后的环境说明段仍写「改为 `git worktree add` ……**检出候选 `5e7ef25`** 后在其中运行」，无第一轮标注。
+   影响：读者无法确定 `--candidate 984b2f4` 的那次 `CHECKS PASS` 到底跑在哪棵树上——而"检查绑定的是不是正确的被测内容"正是本任务全程的核心判据。**这与 TASK-036 的 A1（旧指纹被当作最终值）是同一类缺陷**，而该句恰恰是为纠正 A1 而新加的。
+   最小修复：把该处 `5e7ef25` 改为最终值并说明最终检查同样走独立 worktree；若两次都跑过，写成「第一轮检出 `5e7ef25`、处置后检出 `984b2f4`，均在独立干净 worktree 中运行」。**不要只删数字**——路径本身的证据价值应保留。
+
+2. **EVIDENCE 区行号映射附注的适用范围写错。**（详见上一节）
+   最小修复：「两份报告引用的行号」→「**B 部分**报告引用的行号系其所收 patch 的文件内行号；**A 部分报告的行号为源文件行号**（该实例直接读取工作树文件）」。四条 B 映射本身不动。
+
+3. **EVIDENCE 区称「`984b2f4` 与该候选之间只差本任务记录一个文件」，但 `docs/tasks/任务索引.md` 的状态行同样在 `f91dbbe..ec68f5c` 中变更，其提交归属我无法用 git 核实。**
+   影响：该句是"检查在 `984b2f4` 通过 ⇒ 结论可代表候选 `ec68f5c`"这条推理的承重句，措辞精度直接关系其可核性。**结论本身不受影响**——`check_task.py:359` 的指纹计算同时排除 `args.task` 与 `docs/tasks/任务索引.md`，无论索引落在哪个提交，`product_fingerprint` 都相同。
+   最小修复：请用 `git diff --name-only 984b2f4..ec68f5c` 核实后据实改写（若为两个文件，写「只差任务记录与索引两个文件，**两者均不计入 product_fingerprint**」）。同时建议在该处点明"指纹排除这两个文件"这一机制依据，让读者不必自己去翻脚本。
+
+**可选建议：**
+
+4. 根 `README.md` 仍写「`extension/src/manifest.test.ts` 会在**有人新增权限**时失败」。白名单化之后门闩实际更宽（任何新增顶层键都失败），故该表述现在是**真子集，不构成超宣**，安全。若顺手可与 `extension/AGENTS.md`、`manifest.ts` 注释统一为「任何新增顶层键」，让三处宣称口径一致。
+
+---
+
+## 关于第一轮首个实例那句无从追回的 "Confirmed a concrete drift already"
+
+实现者把它保留为遗留 L4、拒绝按"已澄清"处理——这个处理是对的，我不推翻。补一条**仅供参考、不构成结论**的观察：我第一轮在 A 范围内确实独立发现了一处**具体的漂移**——`validate_governance.py:215-218` 的第二份硬编码检查组名单未随 `PROFILE_NAMES` 同步。它与那句英文的字面描述（a concrete drift）吻合度较高，且属于任何认真通读门禁脚本的实例都会撞上的位置。但**我无法证明这就是同一处**，该实例未留下任何可比对的输出。**仍应按未澄清保留**，不得据此销账。
+
+---
+
+## 覆盖与缺口
+
+已覆盖（本轮）：增量 patch 全部 4 文件、6 处 hunk 的边界与方向；非目标措辞与 `manifest.ts`/`manifest.test.ts`/根 README 的三方一致性；`extension/AGENTS.md` §3 新措辞与实物断言的精确比对；三个治理判断的 §6 依据；A 报告原文写回的忠实性（我自证）。
+
+未覆盖：**机械证据整体 NOT_RUN**——`CHECKS PASS`、`product_fingerprint=bd485b94…`、六项变异验证（尤其新增的第 4、5 项）、extension 5 / frontend 369 / e2e 41 / 治理 23 的数字，我均未复现，无第三方复核，全部依赖实现者自述。**B 范围（`manifest.test.ts` 修复后的实际强度、`ResourcePages.test.tsx` 的 `compareDocumentPosition` 断言是否真咬住、popup/tsconfig/lock 文件）不在我的范围**，我对 `manifest.test.ts`/`manifest.ts` 的读取**仅用于核验 A 范围内两份文档的措辞是否超宣**，未评价其工程质量，也不代表对 B 处置的复核结论。`984b2f4..ec68f5c` 的提交级拆分我无 git 无法核实（Finding 3）。
+
+## 剩余风险
+
+1. 全部检查结论建立在实现者自述之上（无 CI、我无 Bash）。若需第三方绑定，只能由独立 Acceptance 复跑或由用户抽验。
+2. Finding 1 未修则残留：最终检查所绑定的树在记录中口径不一，恰是本任务最需要说清的那一点。
+3. 继承的 L1（`validate_governance.py` 清单漂移）仍开着；方向是误红不是漏绿，不削弱门禁。
+4. 继承残留：`test_profiles_never_install_or_format_source` 的锁定力止于 argv 字面 token，实质约束由 `check_task.py:403-407` 独力承担；两道防线不独立。
+5. L4 那处无从追回的 drift 未排除。
+
+## 结论
+
+**`PASS`**（针对新候选 `ec68f5c`，A 部分范围）。
+
+第一轮 A 的两项可记录、三项可选建议均已按我的判断妥善处置或如实记为遗留；三个治理判断（实现与测试段更新、非目标收窄、完成条件不改条文）**我均认为处理恰当**，理由如上，实现者不需要按我的意见调整。本轮新增 3 项可记录后继续 + 1 项可选建议，**无阻断项**，其中 Finding 1、2 是记录准确性问题、Finding 3 需一条 git 核实，均不影响被测内容与门禁效力。
+
+本结论仅覆盖 A 部分，**须与 B 部分对 `ec68f5c` 的增量复核结论合并**方构成 TASK-037 的完整 Review；B 若判 CHANGES_REQUIRED，则整体为 CHANGES_REQUIRED。
+
+# TASK-037 Review · B 部分增量复核
+
+## 1. 只读身份与复核方式
+
+工具白名单仍为 **`Read` / `Grep` / `Glob`**，无 `Write`/`Edit`/`Bash`——本轮同样是**纯静态复核，未执行任何命令**。我独立于唯一写入者 `coordinator`。
+
+## 2. 范围与继承声明
+
+- previous_candidate `f91dbbe` → **new_candidate `ec68f5c`**（代码修订 `984b2f4`）。
+- 本轮实际复核 4 文件：`extension/README.md`、`extension/src/manifest.test.ts`、`extension/src/manifest.ts`、`frontend/src/features/resources/ResourcePages.test.tsx`；受影响上下文另读 `frontend/src/features/resources/FileOriginal.tsx`、`extension/vite.config.ts`、`extension/dist/` 产物清单。
+- **显式继承**：我第一轮 B 部分对 `f91dbbe` 的全部其余覆盖，在本轮未被修改、因而继续对 `ec68f5c` 有效——包括依赖 9/9 与 frontend 同版本无分叉、扩展代码零 `fetch`/`chrome.*`/凭证（根 AGENTS 底线在代码层做到）、dist manifest 仅 5 键且无 CSP 覆写/content_scripts/web_accessible_resources、单一 manifest 事实源、`ResourceDetail.tsx` 三个来源区块确在快照下方、`api.ts:171` 保证 FILE 必有 `original_file`、popup 诚实空态。`ResourceDetail.tsx` 与 `ContentSnapshot.tsx` 本轮未改，第一轮版面结论直接沿用。
+- **A 部分（`check_task.py`、`extension/AGENTS.md`、任务记录叙述）仍不在我的范围**，含实现者对 `AGENTS.md:21` 措辞精确性的补正——我知情但不据此下结论。
+
+## 3. 处置复核
+
+### F1 → 已闭合
+
+`manifest.test.ts` 新断言 `expect(Object.keys(manifest).sort()).toEqual(['action','description','manifest_version','name','version'].sort())`。独立核：`manifest` 是模块级对象字面量，`Object.keys` 取其全部自有可枚举键，恰为这五个；任何新增顶层键使长度与内容双双不符，`toEqual` 逐元素比较必红。我第一轮点名的全部绕过面——`optional_permissions`、`optional_host_permissions`、`externally_connectable`、`web_accessible_resources`、`content_security_policy`、`background`、`declarative_net_request`，以及 Chrome 日后新增的任何键——**现在全部被覆盖**。黑名单转白名单，方向正确。
+
+措辞同步修正亦核对无误：`README.md` 与 `manifest.ts` 注释现在陈述的是"顶层键恰好五个"，与断言实际行为一致，**新措辞本身不构成新的超宣**。实现者"两处都做"的理由成立——断言防新增键、措辞防误解，确实是两个不同的洞；我原先给的二选一是偏保守的最低要求，做满更好。
+
+残留（不构成 finding，仅备案）：白名单只锁**顶层**键，不锁既有键内部；MV3 中五个允许键里只有 `action` 有子结构，且无授予 reach 的子键，故实际风险为零。
+
+### F2 → 盲区已在区块粒度闭合；逐条回答实现者点名的三问
+
+先给结论：**这次是真的闭合了，不是又一轮字符串断言。** 依据来自独立读码，不采信自陈。
+
+`assertBelow` 做了两件事，而不是一件：
+
+```ts
+const anchor = screen.getByRole('region', { name: anchorName })
+expect(region.compareDocumentPosition(anchor) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+```
+
+`getByRole`（非 `queryByRole`）在**零匹配时抛错**，因此第一行已经把「被指向的区块必须存在」钉住了；第二行才钉顺序。「下方的 X」这句话的两个构成命题——X 存在、X 在快照之后——**现在都在断言之下**。
+
+**Q1：我给的决定性反例是否足够？** 不够——它只规定了顺序，没规定存在性。实现者用 `getByRole` 锚定的写法**覆盖了比我要求的更多**。所以：
+
+**Q2 的三类失效，逐一核**：
+
+- **目标区块被条件性渲染或整块移除** → `getByRole` 抛错 → 红。**已覆盖**，且这一层是我第一轮没写进最小修复的，属实现者补强。
+- **位掩码用法是否正确** → 正确。`region.compareDocumentPosition(anchor)` 中 `anchor` 是 spec 里的 *other*；`DOCUMENT_POSITION_FOLLOWING`(4) 置位当且仅当 other 在 node 之后。反例（区块挪到快照之前）返回 `PRECEDING`(2)，与 4 相与得 0 → falsy → 红。**等价关系成立**。唯一理论性偏差：若 anchor 是 region 的**后代**，spec 规定同时置 `CONTAINED_BY`(16) 与 `FOLLOWING`(4)，会假通过——但三个锚点在 `ResourceDetail` 中是 `<ContentSnapshot>` 的**同级**而非后代，且真嵌进去了「下方」在视觉上也仍近似成立，故非实际风险，不列为 finding。
+- **是否三种 source 都真正执行到** → 是。`assertBelow(region, anchorName)` 在两个 `it.each` 回调中**无条件调用**，不在任何 `if` 之内；`sources` 三条元组经 `as const` 均为 5 元，两处解构 `(source, item, hint, _empty, anchorName)` 与 `(source, item, _hint, empty, anchorName)` 的位序均与元组一致。**6/6 全部执行。**
+- **新断言会不会又成恒真** → 不会。零匹配抛错、多匹配也抛错（全页 region 可访问名 `资料内容`/`记录与理解`/`资料信息`/`保存原因`/`正文快照`/`原始网页`/`粘贴原文`/`原始文件` 互不重复），顺序颠倒返回 falsy。三条通路都能变红，不存在"断言一个本来就不可能出现的东西"的恒真形态。
+
+**锚点选择的改进是否成立：成立，且优于我的建议。** 我原建议 FILE 用 `getByText(/原件已保存/)`，那是拿一句提示文案当结构锚，文案一改测试就误红。实现者改用 `getByRole('region', { name: '原始文件' })`：我独立核实 `FileOriginal.tsx:61` 为 `<section className="resource-original file-original" aria-label="原始文件">`，且**同步无条件渲染**（组件内无 async 门控，`useEffect` 只做 blob URL 清理），不会引入时序不稳；WEB/PASTE 两处 `ResourceDetail.tsx:103/123` 以 `aria-labelledby="original-title"` 指向 h3，可访问名分别为「原始网页」「粘贴原文」。`<section>` 有可访问名才映射 `region` 角色，三处都有。**锚在无障碍语义上比锚在文案上稳，采纳。**
+
+**Q3：单向锁本轮未处理——我判定不必处理，此项就此关闭。** 本轮否定式断言原样未动，仍只有"WEB 专属文案不得出现在 PASTE/FILE"这一向。但如我第一轮已论证：三条 hint 互不包含、组件恰好渲染一条字符串，因此**三条肯定式已构成 source↔文案的双射锁**——FILE 若显示 PASTE 文案，FILE 的肯定式 `'下方的原件'` 就会失败。仅存的缝隙是"某条 hint 同时含有自己的片段和别家的片段"，需要刻意编造。为此再加反向否定属理论完备性追求，**不修复是对的，我不再挂账**。
+
+**新识别的第三种失效（我和实现者都没提过）——列为可选建议，不阻断**：
+
+`ResourceDetail.tsx:106-118` 的 WEB 分支里，`safeWebUrl` 返回 null 时**不渲染链接**，改渲染 `<p role="alert">该网址无法安全打开，仅显示文本。</p>`，但「原始网页」section 本身仍在。此时 `assertBelow` 锚在 section 上照样通过，而 hint「需要最新内容请用下方的「打开原网页」」**指向了一个并不存在的控件**——正是原 bug 的同一类（说的话不属实），只是落在一条边界分支上。测试 fixture 用 `https://example.com/article`（安全），该分支从未被走到。
+
+- 触发：资料存有 `safeWebUrl` 拒绝的 URL（非 http(s) scheme 等历史数据）。
+- 影响：文案误导，认知成本；无数据、无安全后果。
+- 发生可能：低（创建路径应已校验）。
+- 定性：这更像**产品缺口**（链接不可用时这句提示该说什么，尚无定义）而非测试缺陷，故给可选建议，**不要求本任务处理**，记录即可。
+
+因此，对"是否闭合"的独立结论：**在区块粒度上已闭合**——TASK-036 那句「验证不了它指的方向对不对」，本轮起不再成立。**在控件粒度上尚有一条已识别的边界分支未覆盖**（上述 WEB 不安全 URL）。任务记录若如实写"补了 DOM 顺序断言、由 Reviewer 判定"，可以升级为"经独立复核，方位与存在性已在区块粒度受断言覆盖；控件粒度的不安全 URL 分支未覆盖，已记录"。**不要写成"已完全闭合"。**
+
+### F3 → 已闭合，且新增陈述本身经我独立验证属实
+
+`README.md` 新增的未验证标注到位。更值得肯定的是它没有停在"未验证"，而是划清了**已验证的边界**："dist/ 下有 manifest.json、popup.html 与 JS 资源，manifest 为合法 JSON、manifest_version: 3、default_popup 指向确实存在的文件"。我独立核对 `extension/dist/`：确有 `manifest.json`、`popup.html`、`assets/popup-BdaQ7f-k.js`；`manifest.json` 为合法 JSON、`manifest_version: 3`、`default_popup: "popup.html"` 且 `dist/popup.html` 确实存在。**这句话没有超出证据。** 一个纠正超宣的修复本身不再超宣，这一点合格。
+
+### S1 / S2
+
+S1 记为遗留的理由（改 tsconfig 类型作用域会改变整个工程 typecheck 范围）成立，当前无实际影响，同意不做。S2 本就不是缺陷。
+
+## 4. 机械证据的处置（如实标注）
+
+`check_task --candidate 984b2f4` CHECKS PASS、`product_fingerprint=bd485b94…`，以及两项变异验证（白名单下 `optional_permissions`/`externally_connectable` 各 1 failed；DOM 顺序反例修复前全绿、修复后 6 failed / 33 passed）——**均为实现者自述，无第三方复核，我无 Bash 无法执行，本报告不为其真实性背书。**
+
+我能独立提供的是**逻辑一致性核对**：依 `Object.keys` 白名单的语义，加任一键必红，与"1 failed"自述方向一致；依 `assertBelow` 无条件调用于 6 个用例，区块前移必致 6 条全红，与"6 failed"自述数量吻合。两项自述**与代码可推出的行为不矛盾**，但这不是执行验证。检查证据的真实性核对归 A 部分与主 Agent。
+
+## 5. 程序性问题：「原文照贴 + 映射另附」是否可接受
+
+**可接受，且是正确处理。** 理由：我的报告原文一字未改，符合 AGENTS §6"独立报告仅允许原文写回"；映射作为**主 Agent 具名附注**另列，不篡改结论也不改变覆盖范围，只补一层导航。事实上这是在修正**我自己的引用瑕疵**——我第一轮引的是所收 patch 的文件内行号而非源文件行号，附注把它讲清楚，比默默留着强。今后我会直接引源文件行号。
+
+一处小订正：`vite.config.ts:317-326` 我指的是整个 `emitManifest` 插件常量，源文件对应 **`:10-19`**，附注写的 `:10-13` 只覆盖到 `this.emitFile({` 一行，结束行偏短。`manifest.test.ts:183-191`→`:28-36`、`README.md:47-53`→`:19-25` 我按 hunk 偏移复算，**精确成立**；`ResourcePages.test.tsx`→`:595-616` 在 ±1 行内。建议把该附注定位为**导航辅助**而非精确引用。
+
+## 6. 覆盖与缺口
+
+- 本轮为增量复核；`f91dbbe` 阶段的其余覆盖按 §2 显式继承，未重审。
+- 仍**未读 `extension/package-lock.json`**（本轮亦未变更）；依赖结论来自 `package.json` 逐项比对与派发会话核实，锁文件一致性、传递依赖树、完整性哈希我未验证。
+- **未执行任何命令**：vitest / eslint / tsc / npm 的真实退出码，以及两项变异验证，我均未独立复现。
+- 未审 A 部分文件、`docs/research/`、openapi `x-delivery-profile`。
+
+## 7. 剩余风险
+
+1. WEB 不安全 URL 分支下，「下方的「打开原网页」」指向不存在的控件（可选建议，产品缺口，已记录）。
+2. 白名单只锁 manifest 顶层键（当前无实际风险）。
+3. 扩展仍从未在真实 Chrome 中加载；已按上一轮 §6 判据接受，且 README 现已如实标注。
+4. 机械检查与变异验证均为自述，无第三方复现。
+5. 锁文件内容未经我独立验证。
+
+## 8. 结论（针对新候选 `ec68f5c`）
+
+**PASS**
+
+第一轮唯一阻断项 F1 已实质闭合（黑名单转白名单，覆盖我点名的全部绕过面，措辞同步改准）；F2 的处置**超出**我给的最低要求，`getByRole` 锚定同时钉住了存在性与顺序，我给出的决定性反例与"区块整块移除"两条通路现在都会变红——**TASK-036 那个"验证不了方向对不对"的盲区，在区块粒度上确已闭合**，这是独立读码的结论，非采信自陈；F3 已修且新增陈述本身经验证属实。新识别的 WEB 不安全 URL 分支属可选建议，不阻断。
+
+PASS 附带两项已明确处置的非阻断项（WEB 不安全 URL 分支、S1 tsconfig 类型作用域遗留），以及一条对任务记录措辞的要求：**可写"经独立复核，方位与存在性已在区块粒度受断言覆盖"，不可写"已完全闭合"**。
+
+- 第二轮 findings 的处置（均在 EVIDENCE 标记区内完成，唯一例外见下第 1 条）：
+  - **A Finding 1（记录准确性）→ 已修，且该修改落在 EVIDENCE 区外。** 「实现与测试」段的环境说明原只写「检出候选 `5e7ef25` 后在其中运行」，与同段新加的「本段下方一律是最终值」自相矛盾——正如 A 指出的，这与 TASK-036 的 A1 是同一类缺陷，而那句话恰恰是为纠正 A1 才加的。已按 A 给的措辞改为「第一轮检出 `5e7ef25`、处置后检出 `984b2f4`，两次都走同一条路径、都在独立干净 worktree 中运行」，并补记第二个临时分支与 `.git/info/exclude` 的清理。**因该段在标记区外，本条使记录形成新的冻结候选**（指纹不变，增量为纯文档）；派发会话的待办清单曾把它归为「EVIDENCE 区内、不形成新候选」，此处按实际位置更正。
+  - **A Finding 2（行号附注适用范围写错）→ 已修。** 「两份报告」→「B 部分为 patch 内行号，A 部分为源文件行号」。同时按 B 的订正把 `vite.config.ts` 映射改为 `:10-19`（初版 `:10-13` 结束行截短），并按两位 Reviewer 的一致建议把整段**降级定位为「导航辅助」而非精确引用**。该附注自身两次出错，降级是应该的。
+  - **A Finding 3（`984b2f4..ec68f5c` 的文件数）→ 经 git 核实，原句准确，不改事实，只补机制依据。** `git diff --name-only 984b2f4..ec68f5c` 输出只有任务记录一个文件（主 Agent 与派发会话各自独立核实）；索引的状态变更发生在 `984b2f4` 提交内部，不在该区间。已按 A 的建议在该处点明 `check_task.py:359` 同时排除任务记录与索引，读者不必翻脚本。
+  - **A 可选建议 4（根 README 三处口径统一）→ 不做。** A 自己判定当前表述是真子集、不构成超宣；改它会变更产品内容、使指纹改变并触发又一轮复核，收益（三处措辞更整齐）不抵成本。记为可选项，留给下一个触及 README 的任务。
+  - **B 新识别的第三种失效（WEB 不安全 URL 分支）→ 不在本任务修，记为遗留。** 采纳 B 的定性：这是产品缺口而非测试缺陷——链接不可用时那句提示该说什么，本来就没定义过。见下「非阻断遗留项」。
+  - **B 对措辞的硬性要求 → 照办，且不放宽。** 关于 TASK-036 方位盲区的最终表述为：**经独立复核，方位与存在性已在区块粒度受断言覆盖；控件粒度的不安全 URL 分支未覆盖，已记录。****不写「已完全闭合」。** B 给出的结论本身带粒度限定，限定词必须一起写进来才不算超宣。
+  - **A 对三个治理判断的背书 → 接受，不据此调整。** A 明确表示实现者不需要按它的意见改动，并逐项验证了「实现与测试」段的更新是增补与更正、无任何历史证据被删除改写或降级（旧 SHA、旧指纹 `8a50315d…`、原三项变异验证全部原文保留）。
 - Acceptance：待填
 - 最终状态/风险/用户操作：待填
 - 第一轮 findings 的处置（代码修订 SHA **`984b2f4`**）：
@@ -396,8 +635,12 @@ expect(Object.keys(manifest).sort()).toEqual(
   - **（L3）扩展从未在真实浏览器中加载过**。已验证的只是构建产物形状（`dist/` 下有 `manifest.json`、`popup.html` 与 JS 资源，manifest 为合法 JSON、`manifest_version: 3`、`default_popup` 指向确实存在的文件）。Reviewer 判定不应阻断（零权限、零网络、零 content script，实机验证任何 Agent 都无法执行，以此阻断等于设一道 Agent 无法解除的闸）。**须用户首次按 README 加载时确认**；README 已标注该步骤未经实机验证。
   - **（L4）第一轮 Reviewer 提及但无从追回的那处 drift**，见上「审查过程本身的证据」。
   - **（L5）A4 未做且仍在恶化**：`openapi-v1.json` 的 `x-delivery-profile` 停在 `stage: "TASK-022"`，`available_operations` 35 项 vs 实际 47 个 operationId，缺 12 项，且 `backend/tests/test_taxonomy.py:485` 硬编码 `len(available) == 35`。本任务明示非目标。责任角色 coordinator；重评触发条件：应作为独立任务处理，且其修法不应只是补回 12 条，而要加一个漂移守卫测试。
+  - **（L7）WEB 资料的 `source_url` 被 `safeWebUrl` 拒绝时，快照区的提示指向一个并不存在的控件**。`ResourceDetail.tsx:106-118` 在链接不安全时不渲染 `<a>`、改渲染 `<p role="alert">该网址无法安全打开，仅显示文本。</p>`，但「原始网页」section 仍在，故新增的 `assertBelow` 照样通过，而文案「需要最新内容请用下方的「打开原网页」」此时是假话——与被修的原 bug 同类，只是落在测试 fixture（`https://example.com/article`）从未走到的边界分支上。由第二轮 B 部分独立发现，主 Agent 与第一轮 Reviewer 均未想到。影响：文案误导，认知成本；无数据、无安全后果。发生可能低（创建路径应已校验）。暂不修的理由：采纳 B 的定性——这是**产品缺口而非测试缺陷**，「链接不可用时这句提示该说什么」尚无产品定义，在本任务里随手编一句反而是未经确认的产品决定。责任角色 coordinator；**重评触发条件：下一个触及 `ContentSnapshot.tsx` 或阅读器文案的任务须一并定义并覆盖该分支。**
   - **（L6）`docs/research/阅读器与标注能力调研.md` 仍未纳入 Git**，而 TASK-036 的上下文包引用了它，从 Git 检出工作的 Reviewer 看不到被引用的内容。属用户文件，本任务不处理。
 - 日期与决定日志：2026-09-06 用户批准拆分方案（「同意，登记 TASK-037」），并在此前明确选定顶层目录位置（「使用独立顶层目录 extension/ 吧，万一以后还需要拓展其他的功能，可以同样放进 extension，不然全放 frontend 是否会越来越乱？」）。拆分理由：扩展代码要被自动检查覆盖，`extension` 检查组必须先存在；若与扩展实现打包，Worker 会在同一个 diff 里既写扩展代码、又发明验证它的检查组，冻结时「检查通过」就失去独立含义。主 Agent 另将 A4 排除在外，理由是其正确修法是补漂移守卫而非补回清单，属独立测试故事。第一轮 Review 因单实例三次中断改为 A/B 分范围并行；派发会话的拆分一度在「门禁调用的 script 名」与「script 的定义」之间留下跨边界盲区，经主 Agent 指出后补投 `extension/package.json` 给 A 部分闭合。
+  **本轮沉淀的两条可复用判据（来自 A 部分增量复核，其价值高于本次结论本身）**：① **授权面的修订只有在「收窄」且「不为已交付物追认合法性」时才安全。** 本任务把非目标从「不申请 host permissions 之外的权限」收紧为「不申请任何权限」属前者：方向是收窄，且实现从第一轮起就是零权限——是**记录向实物对齐**，不是实物向记录对齐。若方向反过来（为让已写进去的 `host_permissions` 合法而扩写非目标），即属事后追认，必须回到用户授权，Reviewer 会判阻断。② **完成条件是标尺，事后改写标尺以匹配已交付物，与「降低断言来通过检查」在机制上无法区分**；因此完成条件 4 的覆盖归因错误只在 EVIDENCE 记录更正，不回头改条文，根治应由下一个任务在**新的**完成条件里正确表述。
+  **审查组织方式本身也会引入缺陷**：A/B 拆分一度在「门禁调用的 script 名」与「script 的定义」之间制造盲区（已补投闭合）；根因则在本任务把 2452 行锁文件与 14 行门禁逻辑塞进同一个 diff。下个任务登记时须把生成物排除写进上下文包。
+  **关于 L4 那处无从追回的 drift**：A 部分在第二轮补了一条**仅供参考、不构成结论**的观察——它第一轮独立发现的 `validate_governance.py:215-218` 清单漂移与那句 "a concrete drift" 吻合度较高，且是任何认真通读门禁脚本的实例都会撞上的位置；但它明确表示**无法证明是同一处，仍应按未澄清保留，不得据此销账**。主 Agent 采纳此处置：吻合不等于同一，L4 继续挂账。
 
 此区禁止放入或变更任务授权、风险等级、允许路径、检查要求、实现或测试记录。
 <!-- EVIDENCE:END -->
