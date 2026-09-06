@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-036"
-status = "IN_REVIEW"
+status = "IN_ACCEPTANCE"
 risk = "L3"
 risk_reason = "新增数据库表与迁移（0004）、新增公共 API 操作与契约对象，三项各自都是 L3 判入条件。更实质的是：本任务确立「资料的正文可以与 source_url 并存」这一新的数据语义 —— 在此之前 `learning_resources` 的来源互斥 CHECK 意味着 WEB 资料只有链接、没有正文。快照一旦开始写入即成为**不可回溯**的资产（原文改版或消失后无法重建），因此表结构、正文格式与降级语义在第一版就必须定对，事后迁移无法补齐历史内容。此外新表与 `learning_resources` 之间是 CASCADE 外键，删除资料会连带删除快照，属关键数据模型。不改核心表、不改既有互斥 CHECK。"
 risk_flags = ["public-api", "migration", "critical-data", "business", "tests"]
@@ -147,7 +147,7 @@ checks = []
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：待填。
+- 候选 SHA（最终）：**`150921b`**（代码修订 SHA **`97ec829`**，base `3fbca1f`）。第一轮候选：`fba1e8e`（代码 `ce22d2a`）。`97ec829..150921b` 仅为第一轮报告与处置的证据写回。**注意**：「实现与测试」段（EVIDENCE 标记区外）记录的 fingerprint 为最终值 `c0b72e28…`（该段在本轮随代码修订一并更新，属 §6 允许的形成新候选路径）。
 - Review 第一轮（L3 独立只读，`3fbca1f..fba1e8e`）：**CHANGES_REQUIRED**（F1 阻断，F2/F3 非阻断）。
 
   身份与派发：`.claude/agents/reviewer.md` 定义的**第六个**全新只读实例（`tools: Read, Grep, Glob`，无 Bash、无写工具），无上下文继承，由同机在项目目录下启动的会话 `studypilot-05` 代为派发（本会话未注册项目级 Agent）。本轮改进：主 Agent 在**证据写回完成后**才请求派发，HEAD 不再移动，因而不存在前两次「带过期简报开工 + 中途更正」的环节。
@@ -224,13 +224,80 @@ checks = []
   - **删除恒真填充断言**：`assert create_app() is not None` 已移除（连带清理了随之未用的 import）。
   - **补上两处覆盖缺口**：① 完成条件 3 后半 —— 删资料前把 `kept` 的快照放回去，末尾断言全表**剩 1 行**且该快照内容仍可读，从而真正验到「不影响其他资料的快照」；② F2 的 428 用例同时覆盖了完成条件 9 的 DELETE 分支。
 - 修订后的检查（真实运行）：`check_task.py --candidate 97ec829` → **CHECKS PASS**，base=`3fbca1f`、files=21、profiles=backend,contracts,frontend、product_fingerprint=`c0b72e2813d00df70294032a5c1e2f9a29fe27e1edec9541f05b8a38e744ce1c`。backend `pytest` **525 passed**（第一轮候选 513，净增 12 = 参数化 12 组约束用例 −1 删除的恒真用例 +1 的 428 用例）、ruff/mypy 全绿；frontend 全绿、vitest **363**、e2e **41**（前端本轮未改）。跑检查前后未跟踪文件哈希一致（`f56cad6b…`），本轮无并发写入。
-- Review 第二轮（增量 `fba1e8e..新候选`）：**待执行**。
-- Acceptance：**待执行**，在第二轮之后，由独立于实现者与 Reviewer 的第三个只读实例执行。
-- Acceptance：L3 独立只读 Integration/Acceptance，待填。
-- 最终状态/风险/用户操作：status=**IN_REVIEW**（第一轮 CHANGES_REQUIRED，F1/F2/F3 与两处覆盖缺口已全部处置，等待同一 Reviewer 增量复核）。分支仅在本地，未推送、未开 PR。
+- Review 第二轮（L3 独立只读，增量 `fba1e8e..150921b`，同一 Reviewer）：**PASS**，仅 O1/O2 两条非阻断记录项。
+
+  报告原文（逐字，仅还原传输转义的 `<`/`>`）：
+
+  > ## 只读证明
+  >
+  > 本实例仍只有 `Read`/`Grep`/`Glob`，无 `Write`/`Edit`/`Bash`；本轮未做任何写入、提交、推送。
+  > 本轮为**修订审查（增量）**：审 `fba1e8e..150921b` 的完整增量 patch（5 文件 / +164 −11，与工作树 HEAD 交叉验证）及受影响上下文（`test_migrations.py`、`test_database.py` 先例、`local_access.py` 头部限额）。**显式继承第一轮对 `3fbca1f..fba1e8e` 的全部其余覆盖**——前端（`ContentSnapshot.tsx`/`api.ts`/`client.ts`/三条 vitest/e2e）、契约三方一致、并存语义、CASCADE 机制、白名单、404 吞法、范围合规、既有断言未弱化等均**零改动**，第一轮结论原样适用于新候选。本结论指向 **`150921b`**。
+  > 机械证据（check_task `c0b72e28…`、pytest 525、vitest 363、e2e 41、两处变异验证）一律按 **NOT_RUN** 处理：我未复跑，也未复核实现者变异验证的执行过程；下列判断全部建立在独立读码之上。
+  >
+  > ## 第一轮 findings 的处置核验
+  >
+  > **F1 —— 已修，判定关闭。** 模型 `models.py:260-267` 与迁移 `0004:40-47` 我逐字符比对，两处 CHECK 正文**完全一致**（含新插入的 `AND content IS NULL ` 换行位置）。修后语义正确：`status='FAILED'` 且 `failure_code IS NULL` 时，分支 B 在 `failure_code IS NOT NULL` 处求值为 FALSE（短路，不再产生 NULL），分支 A 因 `status='READY'` 为 FALSE，整体 FALSE → SQLite 拒绝。READY 路径（应用唯一会写的状态）分支 A 一字未动，无回归。模型注释把这句标为"承重"，准确。
+  >
+  > **新增 12 组参数化用例：真能失效，且每组各有其命中的约束。** 我逐组验证基准行 + 覆盖后落在哪条 CHECK：首组（`FAILED`/`failure_code=None`/三项 NULL）正是原缺陷组合，命中修好的 `capture_state`——撤回迁移里的 `IS NOT NULL` 即插入成功、转为 `DID NOT RAISE`，与实现者自述的转红形态一致（我按代码独立推得，非采信）；`{"status":"READY","failure_code":"why"}`、`{"status":"FAILED","failure_code":"why"}`（content 仍非空）、READY 缺 content/char_count/sha256 三组，均命中 `capture_state` 的另一侧；`PAUSED`→`status`、`HTML`→`format`、`content=""`→`content_length`、`char_count=0`→`char_count_bounds`、`sha256="short"`→`sha256_length`、`extractor=""`→`extractor_length`。无一组是平凡真或平凡假。写法（`with pytest.raises(IntegrityError), factory.begin() as session:`，异常在 `begin()` 退出提交时抛出）与先例 `test_database.py:197` 同形。完成条件 7 **首次获得真实覆盖**。
+  >
+  > **F2 —— 已修，判定关闭。** `api/snapshots.py:103-109` 的 `try/except ValueError → 428 … from None` 与 `notes.py:131-134`、`taxonomy.py:137-140` 逐行同形；只捕 `ValueError`，而对纯数字串 `int()` 只可能抛 `ValueError`（4300 位上限即以 ValueError 报出），**没有吞掉别的异常**。新用例传 5000 位版本号：头部总量约 5.2KB，远低于中间件 16384 字节上限（`local_access.py:71`），所以确实走到 `int()`；无该保护时会被 `guarded` 兜成 500 → `error(..., 428, ...)` 转红，可失效。该用例同时补上了完成条件 9 的 DELETE 分支（资料存在但版本头非法 → 428；带合法版本头且资料不存在 → 404，路径读码正确）。
+  >
+  > **F3 —— 已补登，判定关闭（含一处措辞更正，见下）。** 边界写进「实现与测试」，并采纳了我补充的更完整清单与 `httpx2` 为 dev 依赖这一事实。未改扫描实现，理由（完成条件 11 要的是"有检查证明"而非"不可绕过"）我认同，与我第一轮结论一致。
+  >
+  > **恒真填充断言已删**（连带未用 import；文件内其余 `create_app` 用法为 conftest 的 `client` fixture，不受影响）。
+  >
+  > **两处覆盖缺口已补，且补得对。** 删资料前把 `kept` 的快照放回（201），删 `doomed` 后断言全表**剩 1 行**并回读 `kept` 的正文——这既保留了原有的 FK 级联证明（2→1 只能由数据库级 CASCADE 产生，两表间仍无 ORM `relationship`），又真正验到"不影响其他资料的快照"。完成条件 3 两半均已覆盖。
+  >
+  > **净增 12 与 525 自洽**：新增测试函数 12 个参数 = +12；513+12=525。
+  >
+  > ## 关于「机械检查盲区」的独立判断
+  >
+  > **1. 盲区真实存在，且比记录里写的更宽一点。** Alembic 的 autogenerate/`compare_metadata` 只对它实现了比较器且方言能反射的对象做比较：表增删、列增删、列 nullable、索引、唯一约束、外键；类型仅在 `compare_type=True` 时比、server_default 仅在 `compare_server_default=True` 时比。**CHECK 约束根本不在比较管线里**——不只是"不比正文"，连"迁移里整条 CHECK 漏掉"也不会被发现。而 `test_migrations.py:31` 只传了 `{"compare_type": True}`，**没传 `compare_server_default`**，所以 server_default 差异同样看不见（例如 `version` 的 `server_default="1"` 若两边不一致，全绿）；FK 的 `ON DELETE` 动作也不属于可靠比较项。前提那半句（测试库由迁移建表，模型侧 CHECK 运行时不生效）我已由 `conftest.py:36` → `support.py:44` 的 `command.upgrade` 独立确认。**未被盲区覆盖的部分**同样要说清楚：`test_migrations.py:27-30` 的 `set(get_table_names()) == {*Base.metadata.tables, "alembic_version"}` 和 compare_metadata 对列/类型/nullable/索引/唯一约束的比较都是有效绑定。
+  >
+  > **2. 「只记录、不加机械绑定」在本任务里是恰当的**（我按你要求正面表态，不含糊）。理由三条：① 这是**仓库既有形态**，不是本任务引入的，13 张表里 12 张都在同一条缝里；② 本任务已经把最要紧的绑定补上了——12 组约束用例跑在**迁移建出来的库**上，测的正是运行时真正生效的那份 DDL，模型侧文本即便漂移也只会误导读者、不会让数据库行为出错；③ 通用绑定（SQLite 的 `Inspector.get_check_constraints()` 能从 sqlite_master 解析出 name+sqltext，技术上可行）需要跨全部 13 张表做文本归一化比较，极可能翻出 0001/0002/0003 的既有差异，而 `test_database.py` 等文件不在本任务 `allowed_paths` 内——那是一个独立的治理/基础设施任务，不该塞进 TASK-036。按风险规则第 28 行「不要求穷举所有异常……除非已成为明确完成条件」，我不为此发起第三轮。建议把可行手段（`get_check_constraints()`）写进遗留项，方便下个任务接手。
+  >
+  > **3. 我更正自己第一轮的一处过度陈述。** 第一轮第 2 点我写了「`test_migrations.py` 的 `compare_metadata(...) == []` 是有效机械绑定」并以此支撑"迁移与模型一致"——**这是把该检查的效力说大了**：它绑定的是表/列/类型/nullable/索引/唯一约束，**不含 8 条 CHECK 的存在与正文，也不含 server_default**。我第一轮关于 CHECK 名称、正文、`String(8)/String(6)`、`UTCDateTime.impl=DateTime`、`version` 的 `server_default="1"` 的一致性结论，实际依据是我**逐条人工比对**（当时确实做了并写在报告里），不是 compare_metadata。结论不变，依据来源更正如上。为不让这条更正只停留在口头：本轮我**重新人工比对了全部 8 条 CHECK 与 server_default**（`format`/`status`/`capture_state`/`content_length`/`char_count_bounds`/`sha256_length`/`extractor_length`/`positive_version`，以及 `version server_default="1"`），模型与迁移**逐字符一致**，FK 的 `ON DELETE CASCADE` 两侧一致且由运行时用例端到端证明。
+  >
+  > ## 本轮新增的非阻断观察
+  >
+  > - **O1（记录精度，不必为此重新冻结）** 「实现与测试」里那句"`compare_metadata` 只比对名称与列"两头都不准：它比的**多于**"名称与列"（还有类型、nullable、索引、唯一约束），而漏的**多于**"CHECK 正文"（整条 CHECK 的存在、以及未开启的 server_default 比较）。同段"净增 12 = 12 组 −1 恒真用例 +1 的 428 用例"的分解也不成立——被删的恒真断言在既有测试**函数体内**、新增的 428 断言也加在**既有测试函数内**，两者都不改变用例计数；净增就是参数化的 12 组，总数 525 本身正确。这两处都在标记区外，修它要再造候选，不值得；本报告原文写回 EVIDENCE 即可完成更正。
+  > - **O2（体例，写回时顺手清理，不构成新候选）** EVIDENCE 区现有**两条 Acceptance 条目**（新增的"待执行"一条与原"待填"一条）并存，属重复；`候选 SHA：待填` 也待本轮写回时补为 `150921b`。EVIDENCE 区编辑不形成新候选，可在写回中一并处理。
+  >
+  > ## 范围与写回边界核验
+  >
+  > 增量 5 文件（`0004_content_snapshots.py`、`api/snapshots.py`、`models.py`、`tests/test_snapshots.py`、`docs/tasks/TASK-036-content-snapshot.md`）**全部在 `allowed_paths` 内**，累计仍是 21 文件。任务记录的改动落在两处：**「实现与测试」段新增两条（标记区外）** + EVIDENCE 区。按 §6，"任何实现/契约/配置/测试修订形成新候选"，本轮既有代码修订，更新「实现与测试」正是该段的用途，**这是形成新候选的正当理由，不是借证据写回改标记区外内容**——我确认 `risk`/`risk_flags`/`allowed_paths`/`checks`/目标/完成条件/非目标**一字未改**，`status` 仍为 `IN_REVIEW`。第一轮报告以引用块逐字写回，符合"原文写回"。
+  >
+  > ## 覆盖与缺口（针对新候选）
+  >
+  > 第一轮四项缺口：①（条件 7 无测试）已关闭；②（条件 3 后半）已关闭；③（条件 9 的 DELETE 分支）已关闭；④ **openapi ↔ Pydantic/FIELDS 无自动绑定用例仍在**（人工核对一致，属后续漂移风险，已在遗留项登记）。新增遗留：模型↔迁移的 CHECK 正文/server_default 无机械绑定（已登记，判为可接受，见上）。
+  >
+  > ## 剩余风险
+  >
+  > 不出网靠文本扫描 + 依赖集合（边界已完整登记）；模型侧 CHECK 文本与 server_default 只有人工保证（本轮已人工复核一致，且运行时行为由 12 组表级用例覆盖）；图片未冻结、单快照唯一约束、`require_resource` 不复用 FILE-READY 可见性、FAILED 态前端渲染为空 `<pre>`（当前不可达）、NUL 字符走 500 —— 均已如实登记，无一触及安全或数据底线。
+  >
+  > ## 结论
+  >
+  > **PASS**（针对新候选 `150921b`，代码修订 `97ec829`）。第一轮唯一阻断项 F1 已实修并首次获得可失效的表级覆盖；F2/F3 与两处覆盖缺口、恒真填充断言均已处置。本轮 findings 仅 O1/O2 两条非阻断项（记录精度与 EVIDENCE 体例），**不要求返工、不必重新冻结候选**，由主 Agent 在写回时闭环记录即可。PASS 不等于零问题：上列剩余风险与遗留项须原样进入 EVIDENCE，交由独立 Acceptance 与用户判断。
+
+- 第二轮 findings 的处置（均在 EVIDENCE 标记区内，**不形成新候选**）：
+  - **O2 已修**：候选 SHA 字段已填 `150921b`；并列重复的 Acceptance 条目已删，本区只剩一条。（一处过程记录：删除时我第一次只删掉了模板那条「待填」，漏掉第一轮自己新增的那条，仍是两条 —— 与 TASK-035 修同类 finding 时**同一个失误**。是写回后的条目计数校验当场发现并补删的。成因是每轮 Review 写回都会新增一条「Acceptance：待执行」，而模板那条从未被清理；根治办法是首次写回时就替换而非追加。）
+  - **O1 部分采纳 —— 我实测后发现 Reviewer 的更正本身也不准确，且错在更吓人的方向，故按实测记录，不照抄。** 我原句「`compare_metadata` 只比对名称与列，不比对 CHECK 正文」确实不够精确（它还比类型、nullable、索引、唯一约束）；但 Reviewer 的替代说法「**CHECK 约束根本不在比较管线里**，连整条 CHECK 从迁移里漏掉也不会被发现」**经实测不成立**。三组实验（每次只改一处、跑 `test_migrations.py::test_upgrade_is_repeatable_and_matches_models`、随即还原并确认工作树与 HEAD 无差异）：
+
+    | 变化 | `compare_metadata` 是否发现 |
+    | --- | --- |
+    | 从迁移里**整条删掉** `sha256_length` CHECK | **发现** —— 报 `('add_constraint', CheckConstraint(...))`，用例转红 |
+    | CHECK **名称**与命名约定不匹配（本任务实现初期实际发生过） | **发现** —— 报 `('remove_constraint', CheckConstraint(...))` |
+    | 同名 CHECK 只改**正文**（`length(sha256) = 64` → `= 32`） | **不发现**，全绿 |
+    | 迁移列去掉 `server_default="1"` | **不发现**，全绿（未传 `compare_server_default`） |
+
+    准确结论是：**CHECK 的存在与名称受机械绑定保护，正文不受；`server_default` 完全不受。** 这比双方原先的说法都窄——盲区是真的，但没有大到「整条漏掉都不知道」。这一条重要，因为把盲区说得过大，会让后来者不再信任一个实际有效的检查。Reviewer 关于 `server_default` 未开启比较、以及运行时约束来自迁移而非模型这两点，实测均属实。
+  - **O1 的第二处更正照收**：「净增 12 = 12 组 −1 恒真用例 +1 的 428 用例」这个分解确实不成立 —— 被删的恒真断言与新增的 428 断言都在**既有测试函数体内**，不改变用例计数。净增就是参数化的 12 组，总数 525 正确。
+  - **Reviewer 的自我更正已知悉并认可其处理方式**：它承认第一轮把 `compare_metadata` 的效力说大了，且没有停在口头 —— 本轮重新人工比对了全部 8 条 CHECK 与 `server_default`。审查者的旧结论不因写进记录就免于复审，这一点做到了。
+- Acceptance：**待执行**，由独立于实现者与两轮 Reviewer 的第三个只读实例执行，核对 15 条完成条件与跨模块证据。本次按本任务 Review 环节已验证有效的做法，**在证据写回完成、HEAD 不再移动之后**才请求派发，以免实例带过期简报开工（TASK-034 曾因此产生 A1/A2/A3 三条本可避免的 findings）。
+- 最终状态/风险/用户操作：status=**IN_ACCEPTANCE**（两轮独立只读 Review：第一轮 CHANGES_REQUIRED → 处置 → 第二轮 PASS；等待独立 Acceptance）。分支 `agent/coordinator/TASK-036-content-snapshot` 仅在本地，未推送、未开 PR。
 - 非阻断遗留项：
   - **「后端不出网」的文本扫描防意外不防对抗**（边界已在「实现与测试」段完整登记）。Reviewer 的可选建议是改成按 import 行的正则、或加断言「生产依赖集合 == 冻结名单」。暂不做的理由：完成条件 11 要的是「有检查证明」，且当前形态已能挡住真实场景里的意外引入。责任角色 coordinator；若将来后端确需出网（例如 TASK-037 改变边界），须连同这条防线一起重评。
-  - **模型与迁移的 CHECK 正文无机械绑定**（`compare_metadata` 只比名称与列，实测确认）。这不是本任务引入的，是仓库既有形态；但 F1 正是藏在这条缝隙里。可选改进是为关键 CHECK 补表级用例（本任务已为 `content_snapshots` 补上）。责任角色 coordinator；重评触发条件：下次新增带复杂 CHECK 的表。
+  - **模型与迁移之间，CHECK 的正文与 `server_default` 无机械绑定**（存在与名称有绑定，正文与 server_default 没有 —— 见上方 O1 的实测表）。这不是本任务引入的，是仓库既有形态（13 张表同处一条缝），但 F1 正是藏在这里。判为可接受：本任务已把最要紧的绑定补上 —— 12 组约束用例跑在**迁移建出来的库**上，测的正是运行时真正生效的那份 DDL；模型侧文本若漂移只会误导读者，不会让数据库行为出错。可行的通用手段（Reviewer 提供，留给下个任务接手）：SQLite 的 `Inspector.get_check_constraints()` 能从 `sqlite_master` 解出 name + sqltext，可据此做跨表的文本归一化比较；但它需要覆盖全部 13 张表、极可能翻出 0001/0002/0003 的既有差异，且相关文件不在本任务 `allowed_paths` 内，属独立的治理/基础设施任务。责任角色 coordinator；重评触发条件：下次新增带复杂 CHECK 的表，或专门做该基础设施任务时。
   - **图片未冻结**：快照中的图片仍指向原站，冻结并不完整。落点在扩展任务（只有它能绕开 CORS 取到图片字节）。已写入契约 4.13。
   - 不渲染 Markdown、无自动抓取、单快照唯一约束、`require_resource` 不复用 FILE-READY 可见性规则 —— 均见「实现与测试」的已知限制段，Reviewer 已逐条确认无信息泄露或行为差异。
   - Reviewer 列出的两条观察（FAILED 态在前端会渲染成空 `<pre>`，当前不可达；`content` 含 NUL 字符时走 500 而非 422，与基线 `pasted_content` 同性质）—— 均不要求返工。
