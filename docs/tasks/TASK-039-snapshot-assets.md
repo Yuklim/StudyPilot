@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-039"
-status = "READY"
+status = "IN_PROGRESS"
 risk = "L3"
 risk_reason = "四项各自都是 L3 判入条件：① 新表 `snapshot_assets` 与 0005 迁移（关键数据模型）；② 新增公共 API 操作与错误码，并首次让后端返回**外部站点的原始字节**给浏览器消费（安全面）；③ 改动资料安全删除的影响清单与受控文件隔离路径 —— 漏掉即产生已删除资料的图片字节永久滞留在受控目录（数据残留）；④ 冻结资产与快照正文同为不可回溯资产，归属语义（挂快照还是挂资料）、替换时的作废语义与去重键在第一版必须定对，事后迁移无法为存量数据补齐。不改核心表 `learning_resources`、不改其来源互斥 CHECK、不改本机访问门禁、后端仍不出网。"
 risk_flags = ["migration", "public-api", "security", "critical-data", "sensitive-storage", "deletion"]
