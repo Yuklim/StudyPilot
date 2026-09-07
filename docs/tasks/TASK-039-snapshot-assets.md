@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-039"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "四项各自都是 L3 判入条件：① 新表 `snapshot_assets` 与 0005 迁移（关键数据模型）；② 新增公共 API 操作与错误码，并首次让后端返回**外部站点的原始字节**给浏览器消费（安全面）；③ 改动资料安全删除的影响清单与受控文件隔离路径 —— 漏掉即产生已删除资料的图片字节永久滞留在受控目录（数据残留）；④ 冻结资产与快照正文同为不可回溯资产，归属语义（挂快照还是挂资料）、替换时的作废语义与去重键在第一版必须定对，事后迁移无法为存量数据补齐。不改核心表 `learning_resources`、不改其来源互斥 CHECK、不改本机访问门禁、后端仍不出网。"
 risk_flags = ["migration", "public-api", "security", "critical-data", "sensitive-storage", "deletion"]
@@ -268,7 +268,7 @@ checks = []
   - **Reviewer 报告原文写回完整性**：判定为**完整、未美化、未截断**。其三条内证：① 过时数字被原样保留（R1 第一轮仍写「548/525」、R2 第一轮仍写「新增 23 条与 548−525 吻合」，若为配合最终 550/+25 润色过则必被改）；② 不利于实现者的措辞完整在册（R2 的 `CHANGES_REQUIRED`、F1 全链条、四份报告的「未覆盖」段，含「全部机械证据未复核」）；③ 摘要转述未夸大（如实并列 R1 记 P2、R2 记阻断并采纳较严者）。
   - 报告原文见下。
 
-- **最终状态/风险/用户操作**：status=**ACCEPTED**。L3 执行链完整：Worker → 自动检查（`CHECKS PASS`，`profiles=backend,contracts`）→ 两位独立只读 Reviewer **各两轮**（第一轮 R1 PASS / R2 CHANGES_REQUIRED，两位独立发现同一缺陷；实修后第二轮 R1 PASS / R2 PASS）→ 独立只读 Acceptance（BLOCKED → 按其指定方式闭合 B1/B2 后适用其判定）。三个审查实例互不相同，均只有 `Read`/`Grep`/`Glob`，无 `Bash` 与写工具，无上下文继承。
+- **最终状态/风险/用户操作**：status=**MERGED**（2026-09-07 用户合并 PR #44，merge commit `5abf0eb`；本行状态登记按根 `AGENTS.md` §5 并入下一个已授权任务 TASK-041 的控制面提交，未为收尾另造 PR）。交付时为 **ACCEPTED**。L3 执行链完整：Worker → 自动检查（`CHECKS PASS`，`profiles=backend,contracts`）→ 两位独立只读 Reviewer **各两轮**（第一轮 R1 PASS / R2 CHANGES_REQUIRED，两位独立发现同一缺陷；实修后第二轮 R1 PASS / R2 PASS）→ 独立只读 Acceptance（BLOCKED → 按其指定方式闭合 B1/B2 后适用其判定）。三个审查实例互不相同，均只有 `Read`/`Grep`/`Glob`，无 `Bash` 与写工具，无上下文继承。
   - **须向用户当面说明的五点**：
     1. **完成条件 20 条中有 5 条只是部分满足**（2、6、8、18、20），其中 **18 与 8 是 Acceptance 更正出来的，我自己的自评漏了**。没有一条不满足。
     2. **全部机械证据由实现者单方运行**：`550 passed`、`CHECKS PASS`、变异验证、指纹与 `files=21` 一律 NOT_RUN 于三个只读实例。本仓库当前没有具备执行能力的独立审查实例（遗留 N）。
