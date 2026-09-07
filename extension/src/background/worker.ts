@@ -62,7 +62,12 @@ export async function fetchImage(
   // 源码里出现「斜杠加星号」这两个字符（哪怕在字符串或注释里）都会被它当成块注释起始，
   // 从而把本文件其余部分整段吃掉，让那几条边界扫描静默地变成空扫。
   // `boundaries.test.ts` 里那条「剥离后至少保留三成非空行」的断言就是为这件事加的。
-  const permitted = await (deps.hasPermission ?? granted)(new URL(url).origin + '/' + '*')
+  const target = new URL(url)
+  const permitted = await (deps.hasPermission ?? granted)(
+    // 与 popup 请求时用的模式必须一致：同样去掉端口，否则「请求的」与「查询的」
+    // 会是两个不同的模式，permission 明明授了却查不到。
+    `${target.protocol}//${target.hostname}/` + '*',
+  )
   if (!permitted) return { ok: false, reason: 'no-permission' }
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), deps.timeoutMs ?? IMAGE_TIMEOUT_MS)

@@ -27,10 +27,16 @@ export function chromeBridge(): CaptureBridge {
     async openConfirmPage() {
       // 复用上次开过的那个确认页，而不是每次新开一个（TASK-038 遗留 A2）。
       //
+      // **必须用 `storage.session` 而不是 `storage.local`**：tab id 只在**单次浏览器会话内**
+      // 唯一，重启后会从低位重新分配。存进 local（跨重启持久）的话，重启后第一次采集
+      // 可能把一个恰好占用同一 id 的**无关标签页**导航到确认页，用户在那里没保存的
+      // 输入就没了 —— 而 `catch` 只挡得住「id 无效」，挡不住「id 有效但不是我的」。
+      // session 区随浏览器关闭清空，从根上消除这个窗口；它属既有 `storage` 权限。
+      //
       // **零新增权限**：`chrome.tabs.update` 对一个已知 id 不需要 `tabs` 权限 ——
       // 需要它的是读取标签页的 url/title，而这里两样都不读。用 `tabs.query({url})`
       // 去找已开的页面才需要那个权限，所以不用那条路。
-      const stored = await chrome.storage.local.get(CONFIRM_TAB_KEY)
+      const stored = await chrome.storage.session.get(CONFIRM_TAB_KEY)
       const previous = stored[CONFIRM_TAB_KEY]
       if (typeof previous === 'number') {
         try {
@@ -42,7 +48,7 @@ export function chromeBridge(): CaptureBridge {
       }
       const tab = await chrome.tabs.create({ url: CAPTURE_URL })
       if (typeof tab.id === 'number') {
-        await chrome.storage.local.set({ [CONFIRM_TAB_KEY]: tab.id })
+        await chrome.storage.session.set({ [CONFIRM_TAB_KEY]: tab.id })
       }
     },
     async requestImageAccess(origins: string[]) {

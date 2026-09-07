@@ -189,13 +189,16 @@ export function CapturePage() {
           还没有收到扩展发来的内容。请在想保存的网页上点一次 StudyPilot 扩展图标；
           这一页会等着接收。直接关掉也不会保存任何东西。
         </p>
-      ) : (
+      ) : images ? null : (
+        // 图片部分失败时**不再渲染表单**：留着它，用户看完「2 张里 1 张没保存」
+        // 再点一次「保存为资料」，会静默新建第二份资料 + 第二份快照并重下全部图片。
+        // 同页的 partial 分支早就是这么处理的（替换掉表单），这里补齐同样的处置。
         <form onSubmit={save} aria-label="确认采集内容" noValidate>
           <fieldset disabled={pending}>
             <legend className="sr-only">采集到的内容</legend>
             <p className="resource-hint">来自：{captured.url}</p>
             <p className="resource-hint">
-              这是保存当时的副本，不随原文更新。图片仍指向原站，本版本不冻结图片。
+              这是保存当时的副本，不随原文更新。如果你在扩展里选了「连图片一并保存」，正文里的图片会在保存后逐张下载到本机；没选或没有授权时，图片仍指向原网站。
             </p>
             <label className="resource-field">
               标题

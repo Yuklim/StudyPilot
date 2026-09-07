@@ -4,9 +4,12 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import {
+  CAPTURE_IMAGE_REQUEST,
+  CAPTURE_IMAGE_RESULT,
   CAPTURE_PAYLOAD,
   CAPTURE_READY,
   MAX_IMAGES,
+  MAX_IMAGE_BYTES,
   MAX_MARKDOWN,
   MAX_TITLE,
   MAX_URL,
@@ -40,6 +43,10 @@ describe('protocol mirror', () => {
   it.each([
     ['CAPTURE_READY', CAPTURE_READY],
     ['CAPTURE_PAYLOAD', CAPTURE_PAYLOAD],
+    // TASK-040 新增的两条图片消息。上一版守卫没跟上新增，而记录却称「两端消息格式
+    // 由平行 protocol 的守卫覆盖」—— 那句话当时比事实宽，这两行把它变成事实。
+    ['CAPTURE_IMAGE_REQUEST', CAPTURE_IMAGE_REQUEST],
+    ['CAPTURE_IMAGE_RESULT', CAPTURE_IMAGE_RESULT],
   ])('shares the same %s message name', (name, value) => {
     expect(mirrorSource()).toContain(`export const ${name} = '${value}'`)
   })
@@ -48,11 +55,16 @@ describe('protocol mirror', () => {
     ['MAX_MARKDOWN', MAX_MARKDOWN],
     ['MAX_URL', MAX_URL],
     ['MAX_TITLE', MAX_TITLE],
+    ['MAX_IMAGES', MAX_IMAGES],
+    ['MAX_IMAGE_BYTES', MAX_IMAGE_BYTES],
   ])('shares the same %s limit', (name, value) => {
     // 比数值而不是比字面量文本：两边写 1_000_000 还是 1000000 无所谓，数值必须相等。
-    const found = new RegExp(`export const ${name} = ([0-9_]+)`).exec(mirrorSource())
+    // 允许右侧是算式（`10 * 1024 * 1024`）：比的是**数值**，不是写法。
+    const found = new RegExp(`export const ${name} = ([0-9_ *]+)`).exec(mirrorSource())
     expect(found, `镜像里没有 ${name}`).not.toBeNull()
-    expect(Number(found?.[1].replace(/_/g, ''))).toBe(value)
+    const literal = found?.[1].replace(/_/g, '').trim() ?? ''
+    const computed = literal.split('*').reduce((total, part) => total * Number(part), 1)
+    expect(computed).toBe(value)
   })
 
   it('shares the same validation rules verbatim', () => {
@@ -74,7 +86,9 @@ describe('protocol mirror', () => {
     }
     const mine = readFileSync(projectFile('./protocol.ts'), 'utf8')
     const theirs = mirrorSource()
-    for (const name of ['isSafeSourceUrl', 'isCapturePayload']) {
+    // `isSafeImageUrl` 决定扩展会**真的向哪些地址发请求**，两边不同步的后果比
+    // 另外两个更直接，必须一并逐字比对。
+    for (const name of ['isSafeSourceUrl', 'isSafeImageUrl', 'isImageList', 'isCapturePayload']) {
       expect(body(theirs, name)).toBe(body(mine, name))
     }
   })

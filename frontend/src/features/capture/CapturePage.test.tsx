@@ -301,7 +301,14 @@ describe('imageFailureText', () => {
     expect(imageFailureText('no-permission', 3)).toContain('权限')
     expect(imageFailureText('http-error', 1)).toContain('拒绝')
     expect(imageFailureText('too-large', 2)).toContain('10 MiB')
-    // 未知原因不能装作知道，落到一个诚实的兜底。
-    expect(imageFailureText('something-new', 1)).toContain('没能取到')
+    expect(imageFailureText('failed', 1)).toContain('没能取到')
+    // **兜底不许臆断原因。** 上传被后端拒时这里拿到的是后端错误码，把它说成
+    // 「扩展未响应、网络不通」会把人指向 chrome://extensions，而问题不在那里。
+    const conflict = imageFailureText('VERSION_CONFLICT', 1)
+    expect(conflict).not.toContain('扩展未响应')
+    expect(conflict).toContain('VERSION_CONFLICT')
+    const unknown = imageFailureText('something-new', 1)
+    expect(unknown).not.toContain('扩展未响应')
+    expect(unknown).toContain('something-new')
   })
 })

@@ -165,6 +165,14 @@ describe('the default fetch dependency', () => {
     }
     globalThis.fetch = strict as unknown as typeof fetch
     try {
+      // **不传第二个实参**：这一行才真的走 `fetchImage` 自己的默认依赖。
+      // 上一版这里传的是手写的正确写法副本，于是把默认值改回出 bug 的写法，
+      // 全部单测照样绿 —— 回归用例钉住的是「应有的写法」，不是被测代码本身。
+      // （node 下 `chrome` 未定义，`granted()` 直接返回 true，不影响这条断言。）
+      await expect(fetchImage('https://cdn.example.com/a.png')).resolves.toMatchObject({
+        ok: true,
+      })
+
       const result = await fetchImage('https://cdn.example.com/a.png', {
         fetch: (input, init) => globalThis.fetch(input, init),
         hasPermission: async () => true,

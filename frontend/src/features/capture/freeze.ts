@@ -1,3 +1,6 @@
+import { ApiError } from '../../api/client'
+import { failureText } from '../resources/api'
+
 import { CAPTURE_IMAGE_REQUEST, imageResultFrom, type ImageResult } from './protocol'
 
 /**
@@ -113,7 +116,13 @@ export function imageFailureText(reason: string, count: number): string {
       return `${count} 张：不在这次采集交来的清单里，没有下载。`
     case 'bad-bytes':
       return `${count} 张：收到的内容不是可用的图片数据。`
+    case 'failed':
+      return `${count} 张：没能取到（网络不通、站点无响应或已超时）。`
     default:
-      return `${count} 张：没能取到（扩展未响应、网络不通或已超时）。`
+      // **不臆断原因。** 上传失败时这里拿到的是后端的错误码（版本冲突、快照不存在、
+      // 本机存储不可用…），把它们一律说成「扩展未响应、网络不通」会把人指向
+      // chrome://extensions，而问题根本不在那里 —— 上一版的兜底就是这么写的。
+      // 已知的后端码交给 `failureText` 说人话，认不出的只说「没保存」外加原始码。
+      return `${count} 张：${failureText(new ApiError(reason as never))}（${reason}）`
   }
 }

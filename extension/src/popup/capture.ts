@@ -124,7 +124,11 @@ export function originsOf(images: readonly string[]): string[] {
   const origins = new Set<string>()
   for (const image of images) {
     try {
-      origins.add(new URL(image).origin + '/*')
+      const url = new URL(image)
+      // 用 protocol + hostname 而不是 `origin`：`origin` 在非默认端口时带端口，
+      // 而扩展 match pattern 的 host 段不接受端口号，整批请求会被直接拒掉。
+      // match pattern 本就是端口无关的，去掉端口不损失任何覆盖面。
+      origins.add(`${url.protocol}//${url.hostname}/` + '*')
     } catch {
       // 不可解析的地址在提取端已被滤掉；这里只是不让它带崩整批请求。
     }
