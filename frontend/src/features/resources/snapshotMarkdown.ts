@@ -99,12 +99,19 @@ export function renderSnapshot(
   return md.render(markdown)
 }
 
-/** 把正文里的图片地址解析成绝对地址；解析不了就原样返回，由调用方按协议判定。 */
+/**
+ * 把正文里的图片地址解析成绝对地址；解析不了就原样返回，由调用方按协议判定。
+ *
+ * **绝对地址也要过一遍 `new URL`，不能因为「已经是 http(s) 开头」就早退。**
+ * 冻结表的键是采集时 `new URL(...).href` 算出来的**规范形式**（小写协议与主机、
+ * 去掉默认端口、点段已折叠），而正文里完全可能写成 `HTTPS://CDN.Example.com/a.png`、
+ * `https://cdn.example.com:443/a.png` 或 `https://cdn.example.com/img/../a.png`。
+ * 早退意味着这些写法查表落空，那张图**静默走原站**——`failed` 计数不增、界面不提示，
+ * 而用户为那份本机副本付过一次授权代价。规范化对已经规范的地址是幂等的。
+ */
 function toAbsolute(src: string, base?: string | null): string | null {
-  if (/^https?:\/\//i.test(src)) return src
-  if (!base) return src
   try {
-    return new URL(src, base).href
+    return new URL(src, base ?? undefined).href
   } catch {
     return src
   }

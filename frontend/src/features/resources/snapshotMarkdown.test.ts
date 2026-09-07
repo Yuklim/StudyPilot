@@ -135,6 +135,50 @@ describe('relative image addresses', () => {
   })
 })
 
+describe('non-canonical absolute addresses', () => {
+  // 冻结表的键是采集时 `new URL(...).href` 算出来的规范形式。正文里的写法不规范时
+  // 若不先规范化，查表就落空，那张图**静默走原站**——`failed` 计数不增、界面不提示，
+  // 而用户为那份本机副本付过一次授权代价。这一组由 TASK-042 的独立验收指出。
+  const CANONICAL = 'https://cdn.example.com/img/a.png'
+  const frozen = new Map([[CANONICAL, 'blob:http://127.0.0.1:5173/abc']])
+
+  it.each([
+    ['大写协议与主机', 'HTTPS://CDN.Example.com/img/a.png'],
+    ['带默认端口', 'https://cdn.example.com:443/img/a.png'],
+    ['含点段', 'https://cdn.example.com/img/sub/../a.png'],
+    ['已经是规范形式', CANONICAL],
+  ])('matches the frozen copy for an address written %s', (_label, src) => {
+    const host = document.createElement('div')
+    host.innerHTML = renderSnapshot(`![图](${src})`, frozen)
+    expect(host.querySelector('img')?.getAttribute('src')).toBe('blob:http://127.0.0.1:5173/abc')
+  })
+
+  it('still refuses a non-http(s) absolute address after normalization', () => {
+    // 规范化不能变成绕过：`data:`/`javascript:` 仍旧不产生 img。
+    const host = document.createElement('div')
+    host.innerHTML = renderSnapshot('![图](data:image/png;base64,AAAA)', frozen)
+    expect(host.querySelector('img')).toBeNull()
+  })
+})
+
+describe('a very long body', () => {
+  // 完成条件 11 的一支：正文上限是 100 万字。此前既无用例也无实测——
+  // 由 TASK-042 的独立验收指出，属实现者自评的空档。
+  it('renders a body at the 1,000,000 character limit without throwing', () => {
+    const paragraph =
+      '这是一段用来撑满上限的正文，包含 **粗体**、`代码` 与一个链接 [原文](https://example.com/a)。\n\n'
+    const markdown = paragraph.repeat(Math.ceil(1_000_000 / paragraph.length)).slice(0, 1_000_000)
+    expect(markdown).toHaveLength(1_000_000)
+    const html = renderSnapshot(markdown, new Map())
+    const host = document.createElement('div')
+    host.innerHTML = html
+    // 不只是「没抛异常」：内容确实渲染出来了，且原始 HTML 那条守卫在这个规模下同样成立。
+    expect(host.querySelectorAll('p').length).toBeGreaterThan(1000)
+    expect(host.querySelector('strong')?.textContent).toBe('粗体')
+    expect(host.querySelector('script')).toBeNull()
+  })
+})
+
 describe('alt text', () => {
   it('keeps the alt so the image is still described when it cannot load', () => {
     // 自定义 image 规则一旦忘了填 alt，读屏与加载失败时的占位文字会一起消失。

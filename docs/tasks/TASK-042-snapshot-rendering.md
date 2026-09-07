@@ -66,7 +66,7 @@ checks = []
 
 ### 顺带完成的状态登记
 
-`docs/tasks/TASK-040-extension-image-freeze.md` 在 `allowed_paths` 内，**仅用于把它的 `status` 由 `ACCEPTED` 登记为 `MERGED`**（用户 2026-09-07 合并 PR #46，merge commit `0106953`），依据根 `AGENTS.md` §5。**除此之外不改该记录一个字。**
+`docs/tasks/TASK-040-extension-image-freeze.md` 在 `allowed_paths` 内，用于把用户 2026-09-07 合并 PR #46（merge commit `0106953`）这一事实登记进去，依据根 `AGENTS.md` §5。**实际改动为两行**：TOML 的 `status` 由 `ACCEPTED` 改为 `MERGED`；以及该记录 EVIDENCE 标记区内「最终状态/风险/用户操作」那一行，补上 merge commit 与「按 §5 并入下一个已授权任务的控制面提交」，并保留「交付时为 ACCEPTED」。除这两行外不改该记录一个字。**此处原写「仅用于改 status…除此之外不改一个字」，被独立验收用 `base..candidate` 的实际 diff 证伪**——第二行落在 TASK-040 的 EVIDENCE 标记区内，符合 §5/§6，不合的只是这句自述的宽度，已更正。
 
 ## 关键设计决定
 
@@ -150,6 +150,7 @@ checks = []
   - **`api/client.ts`** 新增 `downloadSnapshotAsset`。**首版说它「与 `downloadOriginal` 同形」是过宽的自述**：当时它只查了状态、类型白名单与 `nosniff`，既不要求 `attachment`、也**没有任何长度上限**（直接 `arrayBuffer()`）。已把两者共用的界限抽成 `boundedBlob(response, mediaType, expected, limit)`（声明长度 + 硬上限的边读边计数、读完核对 `received === expected`），`downloadOriginal` 与 `downloadSnapshotAsset` 都走它；资产的上限是 `MAX_ASSET_BYTES = 10 MiB`，与后端 `modules/resources/assets.py` 一致。现在「同形」这句话有对应实现和用例撑着：类型白名单是后端按魔数认出的四种图片（SVG 不在内），返回值是 Blob 而非 `FileDownload`，其余校验逐条相同。**`request()` 的白名单一字未动。**
   - **`features/resources/api.ts`** 新增 `frozenImageUrl`（`createObjectURL`，并在 JSDoc 里写明调用方必须负责回收）。
   - **`ContentSnapshot.tsx`**：`useEffect` 里逐张取回资产 → 映射 → 渲染；清理函数里 `revokeObjectURL`；新增「看 Markdown 源码 / 看渲染后的正文」切换。**唯一的 `dangerouslySetInnerHTML` 在这里**，其安全性完全依赖 `html:false`，注释已点明。渲染结果用 `useMemo` 缓存（正文上限 100 万字，不缓存则相邻编辑框每敲一个字都重解析整篇）。
+  - **绝对地址也要规范化（验收后补）**：`toAbsolute` 原本对已 `^https?://` 的 src **早退**，原样返回。而冻结表的键是采集时 `new URL(...).href` 算出来的规范形式，于是正文里写成 `HTTPS://CDN.Example.com/a.png`、带默认端口 `:443`、或含 `..` 点段时，查表落空、那张图**静默走原站**——`failed` 计数不增、界面不提示，而用户为那份本机副本付过一次授权代价。这一条由独立验收指出，属实现者与两位 Reviewer 都没抓到的真实缺陷。现在一律走 `new URL(src, base ?? undefined).href`（对已规范的地址幂等），并补四条参数化用例加一条「规范化不得变成绕过」（`data:` 仍不产 `img`）。
   - **相对图片地址的解析（Review 后补）**：冻结表的键是采集时算好的**绝对**地址，而 Defuddle 产出的正文里常留着 `/img/a.png`、`../img/a.png`。首版按精确字符串查表，于是相对写法**既匹配不上冻结表、也渲染不出可用的 `src`**——用户为那一份本机副本付过一次授权代价却看不到它。现在 `renderSnapshot(markdown, frozen, base)` 先 `new URL(src, base).href` 解析再查表；`base` 取 `snapshot.captured_from_url`。**没有做「退回资料 `source_url`」那一层**：那要给 `ContentSnapshot` 加一个属性并改 `ResourceDetail.tsx`，而该文件不在本任务的 `allowed_paths` 里，为一个次要兜底扩大授权范围不值得。`captured_from_url` 为空（手工粘贴的正文）时相对地址**不渲染 `img`**——渲染一个指向本机 UI 自己的 `src` 只会向本机服务发一串必然 404 的请求。代价已记入已知限制 7。
   - **本机副本读不出来时的可见提示（Review 后补，两支）**：用户对「向图床发请求」的知情同意是针对「这张没冻上」给的；本机那一份坏掉时无声改走原站，等于在他以为看的是本机那一份时发了外部请求。两条静默路径都补上了 `role="alert"`：①**单张字节取不到**——`loadFrozenImages` 返回 `failed` 计数，提示有几张改用了原网站地址；②**整份资产清单取不到**（令牌中途失效、瞬时 500）——此前这一支记 `failed: 0`，于是**所有**已冻结图片静默走原站而界面一个字不说，缺口从一张扩大到全部；现在用 `listFailed` 与「一张都没冻」区分开，提示正文里若有图片则这一次一律走原网站。两支各有一条断言。**两条文案都不说界面给不出的操作、也不断言正文里一定有图**：初稿写「重新读取这份资料可以再试一次」，而这一支里并没有重读按钮（`retry()` 也只重读正文、不重取资产），实际有效路径是刷新页面；另一条初稿直接说「这几张改用了原网站的地址显示」，而该资产的 `source_url` 未必出现在正文里。两位 Reviewer 各自独立指出其中一处，属本任务反复出现的「陈述比证据宽」，已改。
   - **投影加固（R1 F10）**：`features/resources/api.ts` 的 `captured_from_url` 由裸 cast 改为 `nullableString`——它现在被当作解析相对图片地址的 base 用，非字符串应当归为 `INVALID_RESPONSE`，与同文件其余字段一致。
@@ -158,12 +159,13 @@ checks = []
   - **版本写成精确版本，不用 `^`（Review 后改）**：首版写的是 `"markdown-it": "^14.3.1"` 与 `"@types/markdown-it": "^14.2.0"`，而 `package.json` 里**其余每一条依赖都是精确版本**——本项目的既有做法就是钉死。对一个「安全性依赖其具体行为」的包放开次版本范围，与上面那句「版本更新须同步复核」直接相抵。现已改为 `14.3.1` 与 `14.2.0`，并重跑 `npm install` 同步锁文件（锁文件里 `packages[""]` 的两条声明随之变为精确值，已解析的 `resolved`/`integrity` 未变）。
   - **新增的 3 个 dev 依赖如实登记（Review 后补）**：直接声明的是 `@types/markdown-it@14.2.0`；它又带进 `@types/linkify-it@5.0.0` 与 `@types/mdurl@2.0.0` 两个传递 dev 依赖（不在 `package.json` 里，在锁文件里）。三者都是**仅类型**的包，不进产物、不在运行时执行。
 - **命令与真实退出结果**（全部由实现者本人在本机运行，无第三方复核）：
-  - `check_task.py --worktree` → **CHECKS PASS**，`profiles=contracts,frontend`，`files=16`，`product_fingerprint=b2110dcbb5ff8faa601ccc8fea311bc600b08cffe063f5b8bd700134f44ce2ef`（首轮 `files=15`/`c9478a33…`；第二轮 `files=16`/`ed023c8b…`；第三轮 `32d93bd2…`）。
-  - **frontend 488 passed**（21 文件）。基线**实测**：在 `0106953` 的临时 worktree 上跑出 **440**（19 文件），净增 **48**（首轮 465，Review 后又补 23 条：`downloadSnapshotAsset` 的响应校验一组、相对地址解析一组、`alt`/`loading` 各一条、本机副本失败时的可见提示一条）。
+  - `check_task.py --worktree` → **CHECKS PASS**，`profiles=contracts,frontend`，`files=16`，`product_fingerprint=de842d884b8a613c874b491c0e2690940f08d300a79f8f82ed90d2e95a99d02d`（此前依次为 `files=15`/`c9478a33…`、`files=16`/`ed023c8b…`、`32d93bd2…`、`b2110dcb…`）。
+  - **frontend 494 passed**（21 文件）。基线**实测**：在 `0106953` 的临时 worktree 上跑出 **440**（19 文件），净增 **54**：首轮 465；Review 后补 23 条（`downloadSnapshotAsset` 的响应校验一组、相对地址解析一组、`alt`/`loading` 各一条、本机副本失败时的可见提示一条）；验收后再补 6 条（绝对地址规范化 4 条、「规范化不得变成绕过」1 条、超长正文 1 条）。
   - **e2e 43 passed**，基线 **42**，净增 1（`e2e/snapshot-rendering.spec.ts`，走真实后端：建资料 → 写正文 → 上传一张资产 → 打开详情页断言冻结那张是 `blob:`、未冻那张是原址且带 `referrerpolicy`）。Review 后又加严了两处，**文件数与用例数不变**：两张图改为分属不同主机（`frozen.example.test` 与 `origin.example.test`）——同主机时「冻结那张也跑去原站取」这种退化会和未冻那张混在一起而看不出来；以及断言冻结那张的 `naturalWidth > 0`——`src` 是 `blob:` 只证明地址对，不证明字节能显示。
   - `npm run typecheck`（`tsc -b`）/ `lint` / `prettier --check` 全绿。
   - **backend 与 extension 未运行**：本任务在这两棵树下零改动、不在 `allowed_paths` 内，检查脚本据变更自动选组因而未选中它们。**这是结构性论据，不是观察到它们仍为绿。**
   - 环境：macOS Darwin 25.5.0；Node 24；Chromium（Playwright）。
+- **超长正文的覆盖（验收后补）**：完成条件 11 要求「无快照、空快照、超长正文三种形态各自表现正常且不崩」。前两种有依据（`ResourcePages.test.tsx` 的无快照用例；空快照由 `api.ts` 的投影直接拒收），**超长正文此前既无用例也无实测，且没有登记为已知限制**——由独立验收指出，属自评空档。现补一条：以正文上限 1,000,000 字渲染，断言渲染确实发生（`p` 元素超过 1000 个、`strong` 内容正确）且原始 HTML 守卫在该规模下同样成立，用时约 0.7 秒。
 - **既有断言的改动（无删除、无弱化，仅因行为变化而更新）**：`e2e/resource-pages.spec.ts` 两处原本断言 `section.locator('pre')` 含正文——默认视图改为渲染后，那个 `pre` 会命中代码块。改为断言**渲染视图**含该文字，**并新增**「切到源码视图后 `pre.snapshot-body` 仍含原始 Markdown、再切回渲染视图」三条，比原断言更强。
 - **一处我自己写错的断言，记下来**：`snapshotMarkdown.test.ts` 里原本写 `expect(host.innerHTML).not.toContain('onmouseover=')`。这断错了东西——`<b onmouseover=…>` 被转义之后，那串字符**本来就会**作为普通文本出现在 HTML 里。要守的是「没有元素带上这个属性」，已改为 `querySelector('[onmouseover]')` 为 null，并补一条「它仍然看得见」。
 - **已知限制/未完成项**：
