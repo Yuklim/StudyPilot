@@ -45,7 +45,14 @@ export async function fetchImage(
     fetch: typeof fetch
     timeoutMs?: number
     hasPermission?: (origin: string) => Promise<boolean>
-  } = { fetch: globalThis.fetch },
+  } = {
+    // **必须是包装调用，不能写 `globalThis.fetch`。** 把它当值取出来会丢掉 receiver，
+    // 而浏览器的 fetch 要求 `this` 是全局对象，脱离后每一次调用都抛
+    // `TypeError: Failed to execute 'fetch' on 'WorkerGlobalScope': Illegal invocation`。
+    // Node 的 fetch 没有这个约束，所以注入假 fetch 的单测与在 Node 里跑真实网络
+    // 都发现不了它 —— 它只在扩展真正运行的地方炸，且是每一张图必炸。
+    fetch: (input, init) => fetch(input, init),
+  },
 ): Promise<FetchImageResult> {
   if (!isSafeImageUrl(url)) return { ok: false, reason: 'unsafe-url' }
   // 先问权限，再发请求。**这一步是为了让失败可归因**：没有权限时 fetch 会以一个

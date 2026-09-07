@@ -150,3 +150,34 @@ describe('toBase64', () => {
     expect(decoded).toEqual(bytes)
   })
 })
+
+describe('the default fetch dependency', () => {
+  it('calls fetch with the global as its receiver', async () => {
+    // 浏览器的 fetch 是 receiver 绑定的：`{ fetch: globalThis.fetch }` 这样取出来再调，
+    // 会抛 `Illegal invocation`，而且是**每一次调用都抛**。Node 的 fetch 没这个约束，
+    // 所以这条用例故意把全局 fetch 换成一个同样挑剔 receiver 的实现 —— 让浏览器里
+    // 才会发生的失败在这里也能发生。上一版的默认值就是那样写的，全部单测照样绿，
+    // 而扩展里一张图都取不回来。
+    const real = globalThis.fetch
+    const strict = function (this: unknown) {
+      if (this !== globalThis && this !== undefined) throw new TypeError('Illegal invocation')
+      return Promise.resolve(respondWith(PNG))
+    }
+    globalThis.fetch = strict as unknown as typeof fetch
+    try {
+      const result = await fetchImage('https://cdn.example.com/a.png', {
+        fetch: (input, init) => globalThis.fetch(input, init),
+        hasPermission: async () => true,
+      })
+      expect(result.ok).toBe(true)
+      // 直接把全局 fetch 当值取出来传进去，就是上一版的写法：必须失败。
+      const detached = await fetchImage('https://cdn.example.com/a.png', {
+        fetch: { fetch: globalThis.fetch }.fetch,
+        hasPermission: async () => true,
+      })
+      expect(detached).toEqual({ ok: false, reason: 'failed' })
+    } finally {
+      globalThis.fetch = real
+    }
+  })
+})
