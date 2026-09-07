@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-044"
-status = "IN_REVIEW"
+status = "IN_ACCEPTANCE"
 risk = "L3"
 risk_reason = "本任务改的是**应用外壳**，影响每一条路由，不是某一页的局部调整。三处实质风险：① `h1` 是路由切换后的**焦点落点**（`App.tsx` 用 ref + tabIndex={-1} 聚焦它，`App.test.tsx` 的返回路径用例逐条断言「点返回链接后目标页 h1 获得焦点」）。本任务让阅读器页的 h1 变成资料标题，等于按路由改变这条全局无障碍契约，改错会让键盘与读屏用户在导航后失去落点，而这类失效在视觉上完全看不出来。② **按钮去掉可见文字**是一次可访问性与可学习性的实质变化；更关键的是**本仓所有测试都按可访问名称查控件，因此图标化之后测试照样全绿——它们结构性地抓不到「按钮上没有可见文字了」**，这一点已当面告知用户。③ 左栏折叠引入一份新的浏览器本地状态，且折叠态下五个导航入口全靠图标辨认。另有跨模块面：同时改 `App.tsx`、`shell/`、`features/resources/`。不改后端一行、不改 `/api/v1` 与 openapi、不改本机访问门禁、不改 `extension/`、不改任何写入语义。"
 risk_flags = ["architecture", "business"]
@@ -166,13 +166,15 @@ checks = []
 
 - **命令与真实退出结果**（全部由实现者本人在本机运行，无第三方复核）：
   - `check_task.py --worktree` → **CHECKS PASS**，`risk=L3`，`profiles=frontend`，`files=20`，`product_fingerprint=c884b2a6b59d10737ea89c364357ece086b3a91acc6ec626bd946f90e83b8324`（首个候选 `c203bd5` 为 `a69224db…`）。
-  - **frontend 534 passed**（23 文件），基线 **512**（22 文件），净增 **22**（首轮 15，处置 Review 后再补 7：非 WEB 分支的两个图标按钮、直接打开 URL 不抢焦点、其余页面的说明句 3 条、左栏按钮唯一性 1 条）：新建 `shell/ShellPages.test.tsx` 10 条（横幅分页断言 5 条 + 折叠 5 条），`ResourceToolbar.test.tsx` +5（唯一 h1、读取中/读取失败各一条、图标按钮的双向断言、状态徽章仍是文字）。
+  - **frontend 534 passed**（23 文件），基线 **512**（22 文件），净增 **22**（首轮 15，处置 Review 后再补 7：`ShellPages.test.tsx` +4（说明句 3 条 + 「只有阅读器页丢掉页头块」1 条）、`ResourceToolbar.test.tsx` +3（非 WEB 分支两个图标按钮的参数化 2 条 + 直接打开 URL 不抢焦点 1 条））。**「左栏按钮恰好一个」是加在既有 `it.each` 里的断言，不计入用例数**——初稿的拆分把它当成新用例、又漏掉了那条反向用例，两处恰好抵消所以总数没错，但清单会误导后来核对的人，R2 指出后更正：新建 `shell/ShellPages.test.tsx` 10 条（横幅分页断言 5 条 + 折叠 5 条），`ResourceToolbar.test.tsx` +5（唯一 h1、读取中/读取失败各一条、图标按钮的双向断言、状态徽章仍是文字）。
   - **e2e 47 passed**，基线 **44**，净增 3（窄屏第一屏、标题即页面标题且到达时获焦、左栏折叠确有宽度收益）。**这一次明确把「跑了多少」与 `npx playwright test --list` 的「收集多少」对上了：47 = 47**——上一轮我正是没做这一步才把 7 条失败当成通过。
   - `npm run typecheck` / `lint` / `prettier --check` 全绿。
   - **backend 与 extension 未运行**：本任务在这两棵树下零改动、不在 `allowed_paths` 内，检查脚本据变更自动选组因而只选中 `frontend`。**这是结构性论据，不是观察到它们仍为绿。**
+  - **实现者本人用 git 逐条复核（两位 Reviewer 都没有 Bash，四轮报告里都明说这类论据核不了）**：`git diff --name-only 652f938..2528466` 得 **20 个文件**，与 `files=20` 一致，全部在 `allowed_paths` 内。完成条件 14 的三个文件逐个查证均为 0 个改动：`ContentSnapshot.tsx`、`snapshotMarkdown.ts`、`ResourceDeletion.tsx`；`package.json` 与 `package-lock.json` 也是 0（完成条件 13）；`backend/**`、`extension/**`、`docs/contracts/**` 合计 0。**这是实现者单方的机械证据，但它是 git 级的，不是替代论据。**
+  - **20 个文件清单**：`docs/tasks/{TASK-043,TASK-044,任务索引}`；`frontend/e2e/{reader-layout,resource-pages,scaffold,taxonomy}.spec.ts`；`frontend/src/{App.tsx,App.test.tsx}`；`frontend/src/features/resources/{ResourceDeletion.test.tsx,ResourceDetail.tsx,ResourcePages.test.tsx,ResourceToolbar.test.tsx,ResourceToolbar.tsx}`；`frontend/src/features/taxonomy/ClassificationPages.test.tsx`；`frontend/src/shell/{Icon.tsx,ShellPages.test.tsx,heading.tsx,pages.ts}`；`frontend/src/styles.css`。
   - 环境：macOS Darwin 25.5.0；Node 24；Chromium（Playwright）。
 - **一次我自己读错测试结果的记录**：处置到一半时我用 `npm run test:e2e 2>&1 | tail -8` 看结果，只看到「40 passed」就当过了。**实际是 7 条失败**——失败清单 7 行加上「7 failed」正好 9 行，`tail -8` 把「7 failed」那一行切掉了。更关键的是我**没有把 40 和应有的 47 对上**：`npx playwright test --list` 显示收集 47 条，40 ≠ 47 本身就是信号。已改为把完整输出落盘再读。
-- **既有断言的改动（逐条说明；**其中一处是范围收缩，不是收紧**）**：
+- **既有断言的改动（逐条说明）**：
   0. **先更正一句我自己写错的总括**：初稿写「无删除、无弱化」，**R2 用两处收窄证伪**。把「没有假控件」的范围从整个文档收到 `#main-content` 之后，旧写法隐含保证的「左栏一个按钮都没有」凭空消失了，而我没有补替代断言。已在 `App.test.tsx` 与 `scaffold.spec.ts` 各补一条：左栏的按钮**恰好是折叠导航栏这一个**，并断言它的可访问名称。补上之后这两处才真的是收紧。
   1. `App.test.tsx`：横幅断言由「每页都有」改为「只有概览页有、其余页没有」（**更强**，它现在同时钉住了正反两面）；「没有假控件」那条的范围由整个文档收到 `#main-content`（左栏的折叠按钮是真控件，不该被它误伤）。
   2. `scaffold.spec.ts`：同上两处；`/resources/synthetic-id` 的 h1 由「资料详情」改为错误态的「这份资料打不开」，**并保留** `toHaveTitle('资料详情 · StudyPilot')`（标签页名字没变）。
@@ -193,8 +195,9 @@ checks = []
   3. **左栏折叠态下五个入口全靠图标辨认**，因此默认展开、由用户自选。
   4. **开发阶段横幅从其余页面消失**，「复习、统计尚未开放」这个预期只在概览页交代一次。
   5. **窄屏（≤640px）下左栏是另一套布局**，折叠按钮在那里的表现未专门设计，只保证不横向溢出。
-  6. **`EmptyPage` 兜底分支只有 `h2`**：`pages.ts` 给 `/resources/:resourceId` 置了 `ownHeading`，若哪天路由匹配与 `pageAt` 不一致而走到兜底，那一屏会是零 `h1`（当前不可达，两者用同一 pattern）。R1 指出的潜在耦合。
-  7. 心得侧栏、窄屏浮层、心得数量角标顺延至 TASK-045。
+  6. **后端返回的 id 与请求不一致时，成功后工具条会再次卸载而焦点留在 `body`**（`shown.id !== resourceId` 那一支）。属病态返回、已有守卫路径，R1 在收敛焦点窗口后核出的残留，不再加代码。
+  7. **`EmptyPage` 兜底分支只有 `h2`**：`pages.ts` 给 `/resources/:resourceId` 置了 `ownHeading`，若哪天路由匹配与 `pageAt` 不一致而走到兜底，那一屏会是零 `h1`（当前不可达，两者用同一 pattern）。R1 指出的潜在耦合。
+  8. 心得侧栏、窄屏浮层、心得数量角标顺延至 TASK-045。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
