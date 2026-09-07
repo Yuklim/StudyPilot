@@ -84,6 +84,7 @@ export function ContentSnapshot({
     key: string
     images: ReadonlyMap<string, string>
     failed: number
+    listFailed: boolean
   } | null>(null)
   const [showSource, setShowSource] = useState(false)
 
@@ -100,6 +101,7 @@ export function ContentSnapshot({
             key: `${resourceId}:${revision}`,
             images: loaded.frozen,
             failed: loaded.failed,
+            listFailed: false,
           })
         else loaded.release()
       })
@@ -107,7 +109,17 @@ export function ContentSnapshot({
         // 资产列表取不到（没有快照、后端错误、连接失效）。**必须给出空映射而不是
         // 停在等待态**：否则正文永远显示「正在取回已冻结的图片…」，而正文本身
         // 明明已经在手上了。降级的结果是所有图片走原址那条路。
-        if (alive) setFrozen({ key: `${resourceId}:${revision}`, images: new Map(), failed: 0 })
+        //
+        // **`listFailed` 必须与「一张都没冻」区分开。** 这一支下所有已冻结的图片
+        // 都会静默改走原站，而用户对「向图床发请求」的知情同意只针对「这张没冻上」。
+        // 此前这里记 `failed: 0`，于是缺口从一张扩大到全部，界面却一个字都不说。
+        if (alive)
+          setFrozen({
+            key: `${resourceId}:${revision}`,
+            images: new Map(),
+            failed: 0,
+            listFailed: true,
+          })
       })
     return () => {
       alive = false
@@ -201,11 +213,18 @@ export function ContentSnapshot({
             </pre>
           ) : frozen?.key === `${resourceId}:${revision}` ? (
             <>
-              {frozen.failed > 0 && (
+              {frozen.listFailed ? (
                 <p className="resource-hint" role="alert">
-                  有 {frozen.failed} 张图片的本机副本读不出来，这几张改用了原网站的地址显示——
-                  也就是说这几张会向原网站发请求。原网站删图或改版后它们会失效。
+                  已冻结图片的清单没有读出来，因此这一次正文里的图片<strong>全部</strong>
+                  改用原网站的地址显示 —— 也就是说会向原网站发请求。重新读取这份资料可以再试一次。
                 </p>
+              ) : (
+                frozen.failed > 0 && (
+                  <p className="resource-hint" role="alert">
+                    有 {frozen.failed} 张图片的本机副本读不出来，这几张改用了原网站的地址显示——
+                    也就是说这几张会向原网站发请求。原网站删图或改版后它们会失效。
+                  </p>
+                )
               )}
               <div
                 className="snapshot-body snapshot-rendered"

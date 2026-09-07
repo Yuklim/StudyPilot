@@ -140,7 +140,7 @@ describe('rendered snapshot', () => {
     await waitFor(() => expect(revoked).toEqual(created))
   })
 
-  it('still renders the text when the asset list cannot be read', async () => {
+  it('still renders the text when the asset list cannot be read, and says every image went to the origin', async () => {
     // 取不到资产列表时**必须给出空映射而不是停在等待态**：正文明明已经在手上了。
     mount({ failAssets: true })
     expect(await screen.findByRole('heading', { name: '冻结的标题', level: 1 })).toBeInTheDocument()
@@ -148,6 +148,10 @@ describe('rendered snapshot', () => {
     for (const img of document.querySelectorAll('img')) {
       expect(img.getAttribute('src')).toMatch(/^https:\/\/cdn\.example\.com\//)
     }
+    // **这一支必须和「一张都没冻」区分开**：这里所有已冻结的图片都静默改走了原站，
+    // 而用户对「向图床发请求」的知情同意只针对「这张没冻上」。此前它记 failed: 0，
+    // 界面一个字都不说，等于把知情同意的缺口从一张扩大到全部。
+    expect(await screen.findByRole('alert')).toHaveTextContent('已冻结图片的清单没有读出来')
   })
 
   it('falls back to the origin address for a frozen image whose bytes fail, and says so', async () => {
@@ -183,12 +187,14 @@ describe('rendered snapshot', () => {
 
   it('renders no img for a relative address when the snapshot has no captured address', async () => {
     // 手工粘贴进来的快照没有 `captured_from_url`，此时相对地址无从解析。
-    // **不渲染**好过渲染一个指向本机 UI 自己的 src（那会向本机服务发必然 404 的请求）。
-    // 代价是这些图片在页面上凭空消失，只在源码视图里看得到——已记入已知限制。
+    // **不产生 img** 好过渲染一个指向本机 UI 自己的 src（那会向本机服务发必然 404
+    // 的请求）。留下的是替代文字（span.snapshot-image-refused），不是图片——已记入已知限制 7。
     const relative = '![图](/img/a.png)\n\n正文一段。\n'
     mount({ snapshot: { ...snapshot, content: relative, char_count: relative.length }, assets: [] })
     expect(await screen.findByText('正文一段。')).toBeInTheDocument()
     expect(document.querySelectorAll('img')).toHaveLength(0)
+    // 它没有被悄悄吞掉：替代文字仍然在页面上。
+    expect(document.querySelector('.snapshot-image-refused')?.textContent).toBe('图')
   })
 
   it('never writes anything just to display the text', async () => {

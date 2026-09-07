@@ -124,12 +124,14 @@ describe('relative image addresses', () => {
     expect(img?.getAttribute('referrerpolicy')).toBe('no-referrer')
   })
 
-  it('emits no img at all for a relative address with no base to resolve against', () => {
-    // 手工粘贴的正文没有采集地址。此时相对地址无从解析，**不渲染**好过渲染一个
+  it('emits no img for a relative address with no base, but keeps the text visible', () => {
+    // 手工粘贴的正文没有采集地址。此时相对地址无从解析，**不产生 img** 好过渲染一个
     // 指向本机 UI 自己的 `src`（那会向本机服务发一串必然 404 的请求）。
+    // 但它不能被悄悄吞掉——走的是伪协议图片那条同样的降级路径：留下替代文字。
     const host = document.createElement('div')
-    host.innerHTML = renderSnapshot('![图](/img/b.png)', new Map(), null)
+    host.innerHTML = renderSnapshot('![一张图](/img/b.png)', new Map(), null)
     expect(host.querySelector('img')).toBeNull()
+    expect(host.querySelector('.snapshot-image-refused')?.textContent).toBe('一张图')
   })
 })
 

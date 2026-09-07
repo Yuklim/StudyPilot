@@ -327,7 +327,9 @@ function snapshot(value: unknown, resourceId: string): ContentSnapshot {
     char_count: ready ? integer(item.char_count, 1) : null,
     sha256: ready ? (item.sha256 as string) : null,
     captured_at: instant(item.captured_at),
-    captured_from_url: (item.captured_from_url ?? null) as string | null,
+    // **不用裸 cast**：TASK-042 起这个值被当作解析相对图片地址的 base 用，
+    // 与同文件其余字段一样交给 `nullableString` 校验（非字符串即 INVALID_RESPONSE）。
+    captured_from_url: nullableString(item.captured_from_url ?? null),
     extractor: item.extractor,
     status: item.status,
     failure_code: (item.failure_code ?? null) as string | null,

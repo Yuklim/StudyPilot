@@ -80,6 +80,9 @@ test('a rendered snapshot shows the local copy of a frozen image', async ({ page
   await expect(images.nth(0)).toHaveAttribute('src', /^blob:/)
   // 而且**真的解码出来了**：`blob:` 这个 src 只证明地址对，不证明字节能显示。
   // 上传的字节坏掉、媒体类型丢失、blob URL 提前回收，src 都还是 blob: 而画面是空的。
+  // 先滚进视口：图片带 `loading="lazy"`，详情页上方内容一变长它就会被推出首屏，
+  // 那时这条断言会退化成超时失败，而失败原因与它要守的东西无关。
+  await images.nth(0).scrollIntoViewIfNeeded()
   await expect
     .poll(async () => images.nth(0).evaluate((img: HTMLImageElement) => img.naturalWidth))
     .toBeGreaterThan(0)
