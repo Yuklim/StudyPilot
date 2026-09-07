@@ -281,8 +281,18 @@ function RecordForm({
 export function LearningPanel({
   resource,
   initialView = 'collapsed',
+  changed,
 }: {
   resource: Resource
+  /**
+   * 进度写成功后通知调用方重新读取这份资料。
+   *
+   * **TASK-043 起这不是可选的锦上添花。** 工具条上的状态徽章是改版之后**唯一常驻**的
+   * 状态显示（进度条随本面板收了起来），而它读的是父级手里的 `resource`。本组件此前
+   * 只更新自己的 `snapshot`，于是「点徽章 → 改状态 → 保存成功」之后，同一屏上方的
+   * 徽章仍写着旧状态，用户可能以为没存上而再提交一次 —— 那会写出第二条学习记录。
+   */
+  changed?: () => void
   /**
    * `manage` 让状态与归档表单直接展开。TASK-043 起工具条上的状态徽章用它——用户选的是
    * 「常驻工具条，点开即改」，而默认形态要再点两层（查看旧学习历史 → 更多：状态与归档
@@ -314,7 +324,7 @@ export function LearningPanel({
       {open && (
         <>
           <p className="resource-hint">
-            这里保留以前的学习记录。新的理解或疑问直接写在上方心得中，不用登记时长、进度和状态。
+            这里保留以前的学习记录。新的理解或疑问直接写在心得里，不用登记时长、进度和状态。
           </p>
           <button
             className="journal-button"
@@ -333,6 +343,8 @@ export function LearningPanel({
                 setSnapshot({ ...snapshot, progress: value })
                 setSavedCount(savedCount + 1)
                 setHistoryRevision(historyRevision + 1)
+                // 让父级也知道进度变了：工具条的常驻徽章读的是父级手里的那份资料。
+                changed?.()
               }}
               reloaded={(value) => {
                 setSnapshot(value)

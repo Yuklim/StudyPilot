@@ -24,7 +24,7 @@ import { ResourceTagEditor } from '../taxonomy/ResourceTagEditor'
  * 带危险样式**的删除资料。
  */
 
-type PanelKey = 'learning' | 'original' | 'edit' | 'tags' | 'info'
+type PanelKey = 'learning' | 'original' | 'edit' | 'tags' | 'info' | 'delete'
 
 export function ResourceToolbar({
   resource,
@@ -61,6 +61,9 @@ export function ResourceToolbar({
   // 否则用键盘的人在菜单消失后会掉到文档开头，得从头 Tab 一遍。
   useEffect(() => {
     if (!menuOpen) return
+    // 打开后把焦点送进菜单：否则键盘用户按下 ⋯ 之后第一次 Tab 会落到下面那层的标签
+    // 链接上（视觉上完全在别处），标签越多绕得越远。
+    menuRegion.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus()
     function onKeyDown(event: KeyboardEvent) {
       if (event.key !== 'Escape') return
       setMenuOpen(false)
@@ -169,11 +172,21 @@ export function ResourceToolbar({
           </button>
           {/* **销毁性动作单独一区、置于底部**（用户 2026-09-07 选定）。分隔线不是装饰：
               它是「删除不与普通动作相邻」这条要求的落点，有用例断言它在。
-              `ResourceDeletion` 一个字未改 —— 预览影响 → 一次性令牌 → 确认，三步照旧。 */}
+
+              它**也是一个真正的 `menuitem`**，并且只负责打开下面那个面板 —— 删除流程
+              本身渲染在菜单之外。两位 Reviewer 都指出了原来的写法有问题：`role="menu"`
+              里塞一个非 menuitem 的区块，辅助技术按菜单模型根本取不到这个销毁性动作；
+              而且确认对话框嵌在浮层里，点一下菜单外面就会把已经取到的一次性令牌连同
+              进行中的删除请求一起卸载掉（删除若已在途，后端删了、界面却停在原地不跳转）。 */}
           <hr className="reader-menu-separator" role="separator" />
-          <div className="reader-menu-danger">
-            <ResourceDeletion resource={resource} deleted={deleted} />
-          </div>
+          <button
+            type="button"
+            role="menuitem"
+            className="reader-menu-item danger"
+            onClick={() => openPanel('delete')}
+          >
+            删除资料…
+          </button>
         </div>
       )}
 
@@ -189,6 +202,7 @@ export function ResourceToolbar({
               key={'learning-' + resource.id}
               resource={resource}
               initialView="manage"
+              changed={refreshed}
             />
           )}
           {panel === 'edit' && (
@@ -201,6 +215,9 @@ export function ResourceToolbar({
           {panel === 'tags' && <ResourceTagEditor resource={resource} refreshed={refreshed} />}
           {panel === 'info' && <ResourceInfo resource={resource} />}
           {panel === 'original' && <OriginalPanel resource={resource} />}
+          {/* `ResourceDeletion` 一个字未改 —— 预览影响 → 一次性令牌 → 确认，三步照旧；
+              这里只决定它挂在哪。挂在面板里而不是菜单里，点别处不会把令牌丢掉。 */}
+          {panel === 'delete' && <ResourceDeletion resource={resource} deleted={deleted} />}
         </ToolbarPanel>
       )}
     </div>
@@ -213,6 +230,7 @@ const panelLabels: Record<PanelKey, string> = {
   edit: '编辑资料',
   tags: '编辑标签',
   info: '资料信息',
+  delete: '放下这一页',
 }
 
 /** PASTE 的面板不能叫「原件」——那份资料没有原件，只有粘贴进来的原文。 */
@@ -273,7 +291,8 @@ function OriginalEntry({
         rel="noopener noreferrer"
         referrerPolicy="no-referrer"
       >
-        原网页 ↗
+        {/* 箭头走 ::after，与返回链接一致：它是装饰，不该混进可访问名称。 */}
+        <span className="reader-external">原网页</span>
       </a>
     )
   }

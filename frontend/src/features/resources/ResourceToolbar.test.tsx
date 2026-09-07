@@ -114,16 +114,47 @@ describe('reader toolbar', () => {
     fireEvent.click(more())
     const menu = screen.getByRole('menu', { name: '更多操作' })
     const items = within(menu).getAllByRole('menuitem')
-    expect(items.map((item) => item.textContent)).toEqual(['编辑资料', '编辑标签', '资料信息'])
-    const remove = within(menu).getByRole('button', { name: '删除这份资料' })
+    // **删除也必须是一个真正的 menuitem。** 此前它是塞在 `role="menu"` 里的一个普通
+    // 按钮，辅助技术按菜单模型只看得到三项 —— 唯独看不到那个销毁性动作。
+    expect(items.map((item) => item.textContent)).toEqual([
+      '编辑资料',
+      '编辑标签',
+      '资料信息',
+      '删除资料…',
+    ])
+    const remove = items[3]!
     const separator = within(menu).getByRole('separator')
-    const last = items[items.length - 1]!
     // 最后一个普通动作 → 分隔线 → 删除，顺序必须是这个。
-    expect(last.compareDocumentPosition(separator) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(
+      items[2]!.compareDocumentPosition(separator) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
     expect(
       separator.compareDocumentPosition(remove) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
     expect(remove).toHaveClass('danger')
+  })
+
+  it('runs the deletion flow outside the popup so a stray click cannot drop the token', async () => {
+    // 删除流程渲染在面板里而不是菜单里：菜单是浮层，点一下别处就整块卸载，
+    // 会把已经取到的一次性令牌、乃至在途的删除请求一起丢掉。
+    mount()
+    await screen.findByRole('button', { name: '更多操作' })
+    fireEvent.click(more())
+    fireEvent.click(screen.getByRole('menuitem', { name: '删除资料…' }))
+    const panel = await screen.findByRole('region', { name: '放下这一页' })
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(within(panel).getByRole('button', { name: '删除这份资料' })).toBeInTheDocument()
+    // 点面板外面不会把它收掉——那是菜单才有的行为。
+    fireEvent.pointerDown(document.body)
+    expect(screen.getByRole('region', { name: '放下这一页' })).toBeInTheDocument()
+  })
+
+  it('moves focus into the menu when it opens', async () => {
+    // 不移焦点的话，按下 ⋯ 之后第一次 Tab 会落到下面那层的标签链接上。
+    mount()
+    await screen.findByRole('button', { name: '更多操作' })
+    fireEvent.click(more())
+    expect(screen.getByRole('menuitem', { name: '编辑资料' })).toHaveFocus()
   })
 
   it('opens the learning form straight onto the status controls', async () => {

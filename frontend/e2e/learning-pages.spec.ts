@@ -83,14 +83,21 @@ test('real learning journal saves, refreshes, archives and restores with keyboar
   await page.getByRole('checkbox', { name: /归档后资料从默认资料库隐藏/ }).check()
   await page.getByRole('button', { name: '保存学习记录', exact: true }).click()
   await expect(history.locator('li')).toHaveCount(2)
+  // 归档同样要当场反映到徽章上，不靠刷新。
+  await expect(page.getByRole('button', { name: '已归档 · 35%' })).toBeVisible()
   await page.reload()
-  await expect(page.getByText('已归档 · 35%', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '已归档 · 35%' })).toBeVisible()
   await openLearning(page)
   await page.getByLabel('学习后状态').selectOption('IN_PROGRESS')
   await page.getByRole('checkbox', { name: /恢复到原来的/ }).check()
   await page.getByRole('button', { name: '保存学习记录', exact: true }).click()
   await expect(history.locator('li')).toHaveCount(3)
-  await expect(page.getByText('学习中 · 35%', { exact: true })).toBeVisible()
+  // **保存成功后，常驻徽章与面板里的进度必须当场一致，不能等刷新。**
+  // 改版把进度条收进了面板、让徽章成为唯一常驻的状态显示；徽章若不跟着更新，
+  // 用户会在「面板 35%、徽章 0%」之间二选一，可能以为没存上而再提交一条记录。
+  // 这一条是 R1 F1 的回归守卫：修复前这里只会匹配到面板那一个，修复后是两个。
+  await expect(page.getByRole('button', { name: '学习中 · 35%' })).toBeVisible()
+  await expect(page.getByRole('region', { name: '学习状态与进度' })).toContainText('学习中 · 35%')
   expect(posts).toBe(3)
   await page.goto('/study-records')
   await expect(page.getByRole('list', { name: '学习历史结果' })).toContainText(summary)

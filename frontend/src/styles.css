@@ -2265,11 +2265,11 @@ a.source-chip:focus-visible {
   border: 0;
   border-top: 1px solid #e0d6cd;
 }
-.reader-menu-danger {
-  padding: 4px;
+.reader-menu-item.danger {
+  color: #8b493a;
 }
-.reader-menu-danger .resource-deletion {
-  margin: 0;
+.reader-external::after {
+  content: ' ↗';
 }
 
 .reader-panel {

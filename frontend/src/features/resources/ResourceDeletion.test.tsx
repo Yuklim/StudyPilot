@@ -56,6 +56,8 @@ function mockDeletion(item = sample(), response: unknown = { data: preview }) {
  */
 function openDeletion() {
   fireEvent.click(screen.getByRole('button', { name: '更多操作' }))
+  // 菜单项只负责**打开面板**；删除流程渲染在菜单之外，点别处不会把令牌丢掉。
+  fireEvent.click(screen.getByRole('menuitem', { name: '删除资料…' }))
   fireEvent.click(screen.getByRole('button', { name: '删除这份资料' }))
 }
 

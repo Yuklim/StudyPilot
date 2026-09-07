@@ -31,7 +31,9 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
   // 因此留住上一次读到的这份资料，只在换资料时丢弃。
   const [shown, setShown] = useState<typeof item>(undefined)
   if (item && item !== shown) setShown(item)
-  if (shown && shown.id !== resourceId) setShown(undefined)
+  // **只留 id 守卫，不再额外 setShown(undefined)。** 那一行与上一行在同一次渲染里可以
+  // 互相抵消：只要出现 `item.id !== resourceId`（后端返回的 id 与请求的不一致），两条会
+  // 无限交替触发 "Too many re-renders"。守卫放在读取处就够，也不会显示上一份资料。
   const toolbarItem = shown?.id === resourceId ? shown : undefined
   return (
     <section className="resource-sheet reader" aria-label="资料内容">
@@ -65,7 +67,14 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
         <ContentSnapshot resourceId={toolbarItem.id} sourceType={toolbarItem.source_type} />
       )}
       {openedId === resourceId && (
-        <section className="detail-block" id={NOTES_ANCHOR} aria-label="记录与理解">
+        <section
+          className="detail-block"
+          id={NOTES_ANCHOR}
+          // 跳转目标要接得住焦点，否则点「心得」只滚动、焦点还留在工具条上。
+          // 与本仓 `#main-content` 的做法一致。
+          tabIndex={-1}
+          aria-label="记录与理解"
+        >
           <div className="detail-block-heading">
             <span className="note-tab">记录与理解</span>
             <span className="resource-hint">写下此刻的想法，时间自动记录。</span>

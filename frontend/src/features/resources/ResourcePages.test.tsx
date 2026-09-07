@@ -576,7 +576,7 @@ describe('content snapshot', () => {
   // TASK-043 把原文/原件的入口搬到了上方工具条，因此这里的方位词由「下方」改为
   // 「上方工具条」，锚点也由「下方的区块」改为「工具条上的那个控件」。
   const sources = [
-    ['WEB', sample(), '上方工具条的「原网页」', '只存链接的话', 'link', '原网页 ↗'],
+    ['WEB', sample(), '上方工具条的「原网页」', '只存链接的话', 'link', '原网页'],
     [
       'PASTE',
       sample({ source_type: 'PASTE', pasted_content: '合成原文' }),
