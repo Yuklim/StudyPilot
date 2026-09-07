@@ -151,10 +151,14 @@ test('collapsing the sidebar actually gives the space to the reading area', asyn
   // 省下来的宽度要真的落到正文区：起点左移、宽度增加，且增量与左栏的减量相当。
   expect(collapsedWorkspace.x).toBeLessThan(expandedWorkspace.x)
   expect(collapsedWorkspace.width).toBeGreaterThan(expandedWorkspace.width)
-  expect(collapsedWorkspace.width - expandedWorkspace.width).toBeCloseTo(
-    expandedSidebar - collapsedSidebar,
-    0,
-  )
+  // 容差 ±2px 而不是默认的 ±0.5px：这条要守的是「省下的宽度基本都落到正文区」，
+  // 修复前是 0 对 160，±2px 照样必红；多出来的精度不多抓任何东西，只承担未来
+  // 布局变动（列数改成自适应、页面高度贴近一屏引入滚动条）带来的维护成本。
+  expect(
+    Math.abs(
+      collapsedWorkspace.width - expandedWorkspace.width - (expandedSidebar - collapsedSidebar),
+    ),
+  ).toBeLessThanOrEqual(2)
   // 折叠态下入口仍按名字取得到，且没有可见文字。
   const library = page.getByRole('complementary', { name: '学习空间导航' }).getByRole('link', {
     name: '资料库',
@@ -174,6 +178,10 @@ test('collapsing the sidebar actually gives the space to the reading area', asyn
   // 「不横向溢出」，两种情况都绿，没有任何断言能发现这次撤销失败。这条补上。
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/resources')
+  // **先确认此刻确实是折叠态。** 否则折叠状态一旦丢失（比如读 localStorage 的那条路
+  // 退化），侧栏本来就是满宽，这条断言会空过——「断言在非目标状态上通过」正是本任务
+  // 反复出现的形态，验收在复验时点了出来。
+  await expect(page.getByRole('button', { name: '展开导航栏' })).toBeVisible()
   const narrow = (await page.locator('.sidebar').boundingBox())!
   expect(narrow.width, '窄屏折叠态下侧栏不该是 68px 的窄带').toBeGreaterThan(200)
 })
