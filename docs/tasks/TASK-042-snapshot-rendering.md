@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-042"
-status = "READY"
+status = "IN_PROGRESS"
 risk = "L3"
 risk_reason = "本任务把「不可信内容退化为惰性文本」这条自 TASK-036 起就成立的结构性安全性质，换成「由渲染器的配置来保证」。TASK-036 明写选 Markdown 而非 HTML 的理由是「抓自开放网络的 HTML 属不可信输入，需永久维护消毒器；Markdown 让不可信内容退化为惰性文本」——一旦开始渲染，这道门就重新打开，此后安全性依赖渲染器选项、链接协议校验与依赖版本，而不再依赖「压根不进 DOM」。被攻破的后果也比一般 XSS 重：本机 UI 源是后端门禁**唯一信任**的源，页面内存里握着本次会话的访问令牌，且扩展的中转脚本也跑在这个源上；那里跑起一段外来脚本等于拿到整个资料库的读写删权限。第二处实质风险：首次引入 Markdown 渲染这一**生产依赖**（前端此前生产依赖只有 React 三件套），它从此是安全关键面。第三处：改变「打开一份资料会不会向外部站点发请求」这一可观察行为。不改后端一行、不改 `/api/v1` 契约、不改本机访问门禁、不改扩展。"
 risk_flags = ["security", "architecture", "business"]
@@ -145,9 +145,29 @@ checks = []
 
 ## 实现与测试
 
-- 实现 SHA/变更摘要：待填
-- 命令、真实退出结果、product_fingerprint、环境、未运行原因：待填
-- 已知限制/未完成项：待填
+- **实现 SHA**：`efdc5dc`（base `0106953`，15 个文件，全部在 `allowed_paths` 内）。
+  - **新模块 `snapshotMarkdown.ts`**：导出 `RENDERER_OPTIONS`（`html:false`/`linkify:false`/`breaks:false`）、`createRenderer(resolve)` 与 `renderSnapshot(markdown, frozen)`。图片与链接是本模块仅有的两处「把正文里的字符串放进属性」的地方，两处都只接受 markdown-it 的 `validateLink` 放行过的地址；伪协议图片**不产生 `img` 元素**，只留可读的替代文本。
+  - **`api/client.ts`** 新增 `downloadSnapshotAsset`（与 `downloadOriginal` 同形，返回 Blob；只接受后端按魔数判定的四种类型 + `nosniff`）。**`request()` 的白名单一字未动。**
+  - **`features/resources/api.ts`** 新增 `frozenImageUrl`（`createObjectURL`，并在 JSDoc 里写明调用方必须负责回收）。
+  - **`ContentSnapshot.tsx`**：`useEffect` 里逐张取回资产 → 映射 → 渲染；清理函数里 `revokeObjectURL`；新增「看 Markdown 源码 / 看渲染后的正文」切换。**唯一的 `dangerouslySetInnerHTML` 在这里**，其安全性完全依赖 `html:false`，注释已点明。
+  - **契约**：§4.13 新增「渲染语义」与「图片的两条去向」两段（含三条代价的原文登记），并把 TASK-036 那句「渲染属阅读器范畴，不在本任务」更新为指向 4.13。**openapi 与 `/api/v1` 一字未改**（15 个文件中无 `docs/contracts/openapi-v1.json`、无 `backend/**`、无 `extension/**`）。
+- **新增依赖（完成条件 12）**：`markdown-it@14.3.1`，**生产依赖**——渲染发生在浏览器里，不是构建期。**它带来的不是一个包而是 7 个**：`markdown-it` 加 `argparse@2.0.1`、`linkify-it@5.0.2`、`entities@4.5.0`、`mdurl@2.1.0`、`punycode.js@2.3.1`、`uc.micro@2.1.0`。锁文件核对：这 7 条的 `resolved` 全部指向 `https://registry.npmjs.org/`，无 `file:`/`git+`/非官方源。前端生产依赖树因此由 7 个变为 14 个。**它从此属安全关键面**：本任务的安全性依赖它的 `html:false` 与 `validateLink`，版本更新须同步复核这两处行为。另加 dev 依赖 `@types/markdown-it`。
+- **命令与真实退出结果**（全部由实现者本人在本机运行，无第三方复核）：
+  - `check_task.py --worktree` → **CHECKS PASS**，`profiles=contracts,frontend`，`files=15`，`product_fingerprint=c9478a330ef02a7180b1e3b7e00ff586ecebaa25c29e1a99bcfc709b6d021f9f`。
+  - **frontend 465 passed**（21 文件）。基线**实测**：在 `0106953` 的临时 worktree 上跑出 **440**（19 文件），净增 **25**。
+  - **e2e 43 passed**，基线 **42**，净增 1（`e2e/snapshot-rendering.spec.ts`，走真实后端：建资料 → 写正文 → 上传一张资产 → 打开详情页断言冻结那张是 `blob:`、未冻那张是原址且带 `referrerpolicy`）。
+  - `npm run typecheck`（`tsc -b`）/ `lint` / `prettier --check` 全绿。
+  - **backend 与 extension 未运行**：本任务在这两棵树下零改动、不在 `allowed_paths` 内，检查脚本据变更自动选组因而未选中它们。**这是结构性论据，不是观察到它们仍为绿。**
+  - 环境：macOS Darwin 25.5.0；Node 24；Chromium（Playwright）。
+- **既有断言的改动（无删除、无弱化，仅因行为变化而更新）**：`e2e/resource-pages.spec.ts` 两处原本断言 `section.locator('pre')` 含正文——默认视图改为渲染后，那个 `pre` 会命中代码块。改为断言**渲染视图**含该文字，**并新增**「切到源码视图后 `pre.snapshot-body` 仍含原始 Markdown、再切回渲染视图」三条，比原断言更强。
+- **一处我自己写错的断言，记下来**：`snapshotMarkdown.test.ts` 里原本写 `expect(host.innerHTML).not.toContain('onmouseover=')`。这断错了东西——`<b onmouseover=…>` 被转义之后，那串字符**本来就会**作为普通文本出现在 HTML 里。要守的是「没有元素带上这个属性」，已改为 `querySelector('[onmouseover]')` 为 null，并补一条「它仍然看得见」。
+- **已知限制/未完成项**：
+  1. **安全性质从结构性变为配置性**（设计决定 ①）。三条守卫（配置断言、协议断言、转义断言）都在，但它们守的是**当前版本**的行为；依赖升级时须重新确认，无自动机制提醒。
+  2. **未冻结的图片按原址加载**（设计决定 ③，用户决定）。三条代价（暴露阅读时间与 IP、带出 `SameSite=None` cookie、在显示路径撤销 `credentials:'omit'`）**已发生且不可由本任务缓解**，`referrerpolicy="no-referrer"` 只挡掉 Referer 一项。
+  3. **`markdown-it` 的 `validateLink` 行为未被独立复核**：我依赖它默认拒 `javascript:`/`vbscript:`/非图片 `data:`，并写了针对这三种的用例；但**没有穷举**它的实现（例如大小写、空白、HTML 实体编码的变体）。用例证明的是那三个具体输入被拒，不是「所有伪协议都被拒」。
+  4. **没有 CSP**：本任务未引入内容安全策略。有 CSP 的话，即使渲染器某天失守也还有一层；当前没有这一层。
+  5. **图片按原址加载的失败态不可见**：`<img>` 加载失败（原站删图、防盗链）时浏览器显示破图，页面不给任何解释。冻结那条路有降级说明，这条没有。
+  6. **渲染/源码的切换不持久**：刷新回到渲染视图。这是有意的（默认展示可读的那一面），但用户若长期偏好源码会每次都要点一次。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
