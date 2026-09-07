@@ -13,7 +13,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
 from studypilot.infrastructure.database import create_database_engine, create_session_factory
-from studypilot.infrastructure.database.models import OriginalFile
+from studypilot.infrastructure.database.models import OriginalFile, SnapshotAsset
 from studypilot.infrastructure.database.resource_store import ResourceStore
 from studypilot.modules.resources.contracts import FileCreate, ResourceError
 from studypilot.modules.resources.files import FileContent, trash_key
@@ -85,11 +85,21 @@ class FileRepository:
             return [snapshot(row) for row in session.scalars(select(OriginalFile))]
 
     def references(self) -> set[str]:
+        """Every key the sweep must leave alone, across both tables that own bytes.
+
+        Snapshot assets share the controlled directory with uploaded originals, so
+        omitting them here would not be a missing feature: their files would simply
+        disappear 24 hours after upload, rows intact and nothing logged.
+        """
+
         keys: set[str] = set()
         for row in self.records():
             keys.update((row.storage_key, trash_key(row.storage_key)))
             if row.staging_key:
                 keys.add(row.staging_key)
+        with self.transaction() as session:
+            for key in session.scalars(select(SnapshotAsset.storage_key)):
+                keys.update((key, trash_key(key)))
         return keys
 
     def transition(self, identity: UUID, status: str, code: str | None = None) -> None:

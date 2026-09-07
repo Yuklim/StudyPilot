@@ -28,6 +28,7 @@ from studypilot.modules.resources.files import FileStorage
 
 from .models import (
     ActiveReviewPlan,
+    ContentSnapshot,
     DeletionConfirmation,
     LearningProgress,
     LearningResource,
@@ -35,6 +36,7 @@ from .models import (
     OriginalFile,
     ResourceTag,
     ReviewRecord,
+    SnapshotAsset,
     StudyRecord,
     Tag,
     Topic,
@@ -75,6 +77,7 @@ FILE_FIELDS = (
 )
 DELETION_IMPACT_KEYS = (
     "original_file_count",
+    "snapshot_asset_count",
     "note_count",
     "study_record_count",
     "active_review_plan_count",
@@ -289,6 +292,17 @@ class ResourceStore:
                 .order_by(ResourceTag.tag_id)
             )
         )
+        # Frozen images reach the resource through its snapshot. They carry bytes on
+        # disk, so they belong in the manifest and in the isolation set: the CASCADE
+        # that removes their rows leaves every file behind.
+        assets = list(
+            self._session.scalars(
+                select(SnapshotAsset)
+                .join(ContentSnapshot, ContentSnapshot.id == SnapshotAsset.snapshot_id)
+                .where(ContentSnapshot.resource_id == resource_id)
+                .order_by(SnapshotAsset.created_at, SnapshotAsset.id)
+            )
+        )
         manifest = {
             "resource": {"id": str(resource.id), "version": resource.version},
             "original_files": [
@@ -319,10 +333,14 @@ class ResourceStore:
                 {"tag_id": str(row.tag_id), "association_version": row.association_version}
                 for row in tags
             ],
+            "snapshot_assets": [
+                {"id": str(row.id), "storage_key": row.storage_key} for row in assets
+            ],
         }
         impact = {key: 0 for key in DELETION_IMPACT_KEYS}
         impact.update(
             original_file_count=len(originals),
+            snapshot_asset_count=len(assets),
             note_count=len(notes),
             study_record_count=len(study_records),
             active_review_plan_count=0 if plan is None else 1,
@@ -342,7 +360,8 @@ class ResourceStore:
             "revision": revision,
             "impact": impact,
             "current_impact": current_impact,
-            "storage_keys": [row.storage_key for row in originals if row.status == "READY"],
+            "storage_keys": [row.storage_key for row in originals if row.status == "READY"]
+            + [row.storage_key for row in assets],
         }
 
     def preview_deletion(self, resource_id: UUID) -> dict[str, Any]:
