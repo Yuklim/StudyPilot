@@ -73,6 +73,9 @@ export function ResourceToolbar({
       const target = event.target as Node
       if (menuRegion.current?.contains(target) || menuTrigger.current?.contains(target)) return
       setMenuOpen(false)
+      // **外点关闭也要把焦点还回去。** 打开时焦点被送进了菜单，菜单一卸载它就掉到
+      // `body`，下次 Tab 从文档开头开始 —— 这是「打开即入焦」带出来的新分支。
+      menuTrigger.current?.focus()
     }
     document.addEventListener('keydown', onKeyDown)
     document.addEventListener('pointerdown', onPointerDown)
@@ -87,7 +90,10 @@ export function ResourceToolbar({
     <div className="reader-toolbar">
       <div className="reader-toolbar-actions">
         <Link className="text-link reader-back" to="/resources">
-          返回资料库
+          {/* 箭头用 `aria-hidden` 的真实元素，不用 `::before`。生成内容在 Chromium 与
+              Firefox 里**是计入**可访问名称的，只有 jsdom 不算——用伪元素等于只在测试
+              环境里成立。 */}
+          <span aria-hidden="true">← </span>返回资料库
         </Link>
         <span className={`source-chip ${resource.source_type.toLowerCase()}`}>
           {sourceLabels[resource.source_type]}
@@ -291,8 +297,8 @@ function OriginalEntry({
         rel="noopener noreferrer"
         referrerPolicy="no-referrer"
       >
-        {/* 箭头走 ::after，与返回链接一致：它是装饰，不该混进可访问名称。 */}
-        <span className="reader-external">原网页</span>
+        原网页
+        <span aria-hidden="true"> ↗</span>
       </a>
     )
   }

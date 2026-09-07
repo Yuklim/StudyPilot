@@ -168,6 +168,37 @@ describe('learning form', () => {
     expect(screen.queryByText('学习记录已保存，当前进度已更新。')).not.toBeInTheDocument()
     expect(screen.getByText('未开始 · 0%')).toBeInTheDocument()
   })
+  it('tells the caller a record was saved, so a caller-owned status display cannot go stale', async () => {
+    // **TASK-043 起这不是可选的锦上添花。** 阅读器工具条上的状态徽章是改版之后唯一
+    // 常驻的状态显示（进度条随本面板收了起来），而它读的是**调用方**手里的那份资料。
+    // 本组件此前只更新自己的 `snapshot`，于是保存成功后徽章仍写着旧状态，用户可能
+    // 以为没存上而再提交一条记录。这条守的就是那个通知。
+    const changed = vi.fn()
+    vi.spyOn(api, 'request').mockImplementation((_path, init) =>
+      init?.method === 'POST'
+        ? Promise.resolve(result(init.body as unknown as StudyCommand))
+        : Promise.resolve(records([])),
+    )
+    renderWithRouter(<LearningPanel resource={sample()} changed={changed} initialView="manage" />)
+    fill()
+    submit()
+    await waitFor(() => expect(changed).toHaveBeenCalledTimes(1))
+    // 保存成功才通知：写失败时不能让调用方以为进度变了。
+    expect(screen.getByText('学习记录已保存，当前进度已更新。')).toBeInTheDocument()
+  })
+  it('stays silent towards the caller when the write fails', async () => {
+    const changed = vi.fn()
+    vi.spyOn(api, 'request').mockImplementation((_path, init) =>
+      init?.method === 'POST'
+        ? Promise.reject(new ApiError('VALIDATION_ERROR', 422))
+        : Promise.resolve(records([])),
+    )
+    renderWithRouter(<LearningPanel resource={sample()} changed={changed} initialView="manage" />)
+    fill()
+    submit()
+    expect(await screen.findByRole('alert')).toHaveTextContent('记录未通过检查')
+    expect(changed).not.toHaveBeenCalled()
+  })
   it('keeps validation failures editable without automatic retries', async () => {
     let writes = 0
     vi.spyOn(api, 'request').mockImplementation((_path, init) => {

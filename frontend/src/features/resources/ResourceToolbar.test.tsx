@@ -149,6 +149,31 @@ describe('reader toolbar', () => {
     expect(screen.getByRole('region', { name: '放下这一页' })).toBeInTheDocument()
   })
 
+  it('returns focus to the trigger when a click elsewhere closes the menu', async () => {
+    // 打开时焦点被送进了菜单，菜单一卸载它就掉到 body，下次 Tab 从文档开头开始。
+    mount()
+    await screen.findByRole('button', { name: '更多操作' })
+    fireEvent.click(more())
+    fireEvent.pointerDown(document.body)
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
+    expect(more()).toHaveFocus()
+  })
+
+  it('keeps the arrows out of the accessible names', async () => {
+    // `::before`/`::after` 的生成内容在 Chromium 与 Firefox 里**是计入**可访问名称的，
+    // 只有 jsdom 不算——所以箭头必须是 `aria-hidden` 的真实元素，否则「箭头不进名称」
+    // 这句话只在测试环境里成立。这条断言在 jsdom 里同样能钉住结构：装饰元素必须带
+    // `aria-hidden`，且可见文本里确实有那个箭头。
+    mount()
+    await screen.findByRole('button', { name: '更多操作' })
+    const back = screen.getByRole('link', { name: '返回资料库' })
+    expect(back.textContent).toContain('←')
+    expect(back.querySelector('[aria-hidden="true"]')?.textContent).toBe('← ')
+    const external = screen.getByRole('link', { name: '原网页' })
+    expect(external.textContent).toContain('↗')
+    expect(external.querySelector('[aria-hidden="true"]')?.textContent).toBe(' ↗')
+  })
+
   it('moves focus into the menu when it opens', async () => {
     // 不移焦点的话，按下 ⋯ 之后第一次 Tab 会落到下面那层的标签链接上。
     mount()

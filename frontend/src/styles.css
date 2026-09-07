@@ -2174,11 +2174,6 @@ a.source-chip:focus-visible {
 .reader-back {
   white-space: nowrap;
 }
-/* 箭头走 ::before：它是装饰，不该混进可访问名称里。既有用例按「返回资料库」
-   这个名字取这个链接，把箭头写进文本会让那条断言失效——那是弱化，不是更新。 */
-.reader-back::before {
-  content: '← ';
-}
 .reader-title {
   flex: 1 1 12ch;
   min-width: 0;
@@ -2267,9 +2262,6 @@ a.source-chip:focus-visible {
 }
 .reader-menu-item.danger {
   color: #8b493a;
-}
-.reader-external::after {
-  content: ' ↗';
 }
 
 .reader-panel {

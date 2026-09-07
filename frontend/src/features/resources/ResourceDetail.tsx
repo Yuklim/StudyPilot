@@ -62,8 +62,10 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
       )}
       {toolbarItem && (
         // 正文**紧接着工具条**，先于心得与元数据出现——这是本任务的全部意义。
-        // `ContentSnapshot` 与 `snapshotMarkdown` 本任务一个字符都不进：快照的安全形态
-        // （`html: false`、无消毒器、图片三条去向）因此是文件清单能证明的，不靠自述。
+        // 快照的安全形态（`html: false`、无消毒器、图片三条去向）全部落在
+        // `snapshotMarkdown.ts` 里，**本任务不进那个文件一个字符**，因此那条性质是文件
+        // 清单能证明的，不靠自述。`ContentSnapshot.tsx` 只改了五条方位文案——入口搬到
+        // 上方之后旧文案变假，见 TASK-043 记录「授权范围的两次修订」。
         <ContentSnapshot resourceId={toolbarItem.id} sourceType={toolbarItem.source_type} />
       )}
       {openedId === resourceId && (
