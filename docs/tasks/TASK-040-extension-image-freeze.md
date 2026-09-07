@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-040"
-status = "READY"
+status = "IN_PROGRESS"
 risk = "L3"
 risk_reason = "本任务把扩展从「只读当前页已渲染的 DOM、不发任何网络请求」变成「可代表用户向任意站点取字节」。这是一次实质的授权面扩张，也是本扩展第一次真正联网。虽然采用可选权限（安装时不要、采集时才请求、可撤销），但一旦授予即长期有效，用户不会重新审视，所以这次授予的边界就是它此后的边界。第二处实质风险：新增 background service worker —— 扩展从此有了一个不依附于用户点击的常驻执行上下文，它能做什么必须一次定清。第三处：取回的字节来自不可信的第三方站点，经消息通道穿过本机 UI 页面写入受控目录，这条新的数据流全程要有边界。另有跨模块面：同时改 `extension/` 与 `frontend/`，并关闭 TASK-039 遗留 G（删除预览少报图片张数，属用户可见的数据陈述错误）。不改后端一行、不改 `/api/v1` 契约、不改本机访问门禁。"
 risk_flags = ["security", "architecture", "public-api", "business"]
@@ -151,9 +151,29 @@ TASK-039 的删除预览已返回 `snapshot_asset_count`，但前端**两份**�
 
 ## 实现与测试
 
-- 实现 SHA/变更摘要：待填
-- 命令、真实退出结果、product_fingerprint、环境、未运行原因：待填
-- 已知限制/未完成项：待填
+- **实现 SHA**：`4b53256`（base `4066c02`，43 个文件，全部在 `allowed_paths` 内）。
+  - **扩展**：新增 `src/background/worker.ts`（唯一发网络请求处：`credentials: 'omit'`、`redirect: 'follow'` 但复核落地地址、逐块读取超限即中止、超时）；`manifest.ts` 新增 `optional_host_permissions` 与 `background` 两个顶层键；`extract.ts` 新增 `collectImages`；`relay.ts` 新增按需取图并只服务本次载荷里的地址；`capture.ts` 拆成 `runCapture`（只提取）与 `deliverCapture`（请求权限 + 交付）；`bridge.ts` 复用确认页标签页；popup 改为两步。
+  - **前端**：`api/client.ts` 新增 `uploadSnapshotAsset`（带 `If-Match` 的专用 POST 路径，不去放宽 `request()` 那份只允许 DELETE 带版本头的白名单）与三个新错误码；`features/capture/freeze.ts` 新增逐张取回与上传；`CapturePage.tsx` 在写完正文后按快照版本逐张冻结，并如实显示冻结/失败张数。
+  - **遗留 G（四处）**：`client.ts` 的 `DeletionImpact` 接口与键表、`features/resources/api.ts` 的键表、`ResourceDeletion.tsx` 的标签表。
+  - **遗留 B**：`tsconfig.json` 的 `types` 由 `["node","chrome"]` 收窄为 `["chrome"]`，测试与构建配置移入新的 `tsconfig.tools.json`，`npm run typecheck` 两份都跑。
+  - **契约**：中文契约 §14.2 消息表三行与 `CapturePayload` 新增 `images` 一行、§14.4 权限边界重写、§14.5 边界更新为「已由 TASK-039/040 关闭」、新增 §14.6（消息流、信任边界、降级语义）。**`/api/v1` 的 HTTP 契约与 openapi 一字未改** —— 本任务只做 TASK-039 已冻结契约的调用方。
+- **命令与真实退出结果**（全部由实现者本人在本机运行，无第三方复核）：
+  - `check_task.py --worktree` → **CHECKS PASS**，`profiles=contracts,extension,frontend`，`files=43`，`product_fingerprint=6bed63307e788dddef2449a95f75c7a75f048facb60f3599f5a5db2817e1bd15`。
+  - **extension**：`132 passed`（8 文件）。**基线为实测而非引用**：在 `4066c02` 的临时 worktree 上跑出 `84 passed`（7 文件），净增 **48**。
+  - **frontend**：`427 passed`（19 文件）。同样实测基线：`4066c02` 上为 `408 passed`（18 文件），净增 **19**。（TASK-038 记录里写的 407 不准，此处以实测为准。）
+  - **e2e**：`42 passed`，基线 41，净增 1（`e2e/capture-images.spec.ts`，走真实后端）。
+  - `npm run typecheck` / `lint` / `prettier --check` 两个工程均通过。
+  - **backend 未运行**：本任务在 `backend/**` 下零改动（不在 `allowed_paths` 内），检查脚本据变更自动选组因而未选中它。**这是结构性论据，不是观察到的 550 仍然为绿。**
+  - 环境：macOS Darwin 25.5.0；Node 24；Chromium（Playwright）。
+- **遗留 B 的关闭经变异验证**：在 `src/popup/popup.ts` 临时加一行 `process.env.HOME`，收窄后的 `tsc -p tsconfig.json` 报 `TS2591: Cannot find name 'process'`；删掉即恢复通过。收窄前这行会静默通过。
+- **既有断言无删除、无弱化**：改动的既有断言只有 `manifest.test.ts` 的顶层键白名单（七键 → 九键，仍是精确集合相等，另新增两条专门断言钉住「站点权限必须留在 optional」与 background 条目的键集），以及各测试的载荷/影响字典 fixture 补字段（仍为精确相等）。
+- **已知限制/未完成项**：
+  1. **e2e 验不到扩展那一段**。Playwright 不加载扩展，所以提取、权限请求、service worker 取字节、中转脚本转交在 e2e 里全部由页面内的桩代替。它证明的是「页面拿到字节之后到后端存下并能列出」这一段。扩展侧由 `extension/` 单测覆盖，两端消息格式由两份平行 protocol 的守卫覆盖 —— **但三者之间没有任何一条端到端证据**，与 TASK-038 的同一处缺口性质相同，只能由用户实机确认。
+  2. **权限请求、`chrome.tabs.update` 复用、service worker 唤醒这三件事无法在单测里真跑**：它们都被抽象成 bridge 接口后以假实现测试。真实的 chrome API 行为（尤其「`tabs.update` 对已知 id 不需要 `tabs` 权限」这一条）**只有实机能证**。
+  3. **`collectImages` 不认引用式 Markdown 图片**（已在代码注释与契约 §14.6 说明）。用那种写法的页面，其图片保留原站地址。
+  4. **base64 传输有 33% 放大**：一张接近 10 MiB 的图会产生约 13 MB 的瞬时消息。逐张传输把峰值控制在单张量级，但单张仍可能触及扩展消息通道的体积上限 —— 触及时该张记为失败，退化为保留原链接。**该上限的具体数值未经实测。**
+  5. **一次采集最多 60 张**是扩展侧的自定上限（后端不设张数上限）。超出的图片保留原站地址，但**页面当前不会专门说明「有几张因为超过 60 张而未尝试」** —— 它们混在「没能保存」的计数里。
+  6. **文档守卫的覆盖面比它看起来窄**：`boundaries.test.ts` 只断言三处文档**包含** manifest 声明的每个字符串。本次改动前，`<all_urls>` 早已作为「不采用的替代方案」出现在文档里，因此那条断言在语义完全相反时也会通过。三处文案已按实际授权面重写，但**这条守卫本身仍只证明字符串在场，不证明描述正确**。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
