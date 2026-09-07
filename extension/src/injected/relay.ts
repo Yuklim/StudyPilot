@@ -65,8 +65,10 @@ export function relayHandler(
       try {
         result = await ask(url)
       } catch {
-        // service worker 未唤醒、权限未授予、消息过大，一律归为「这张没取到」。
-        result = { ok: false, reason: 'failed' }
+        // **与 worker 自己报的失败分开**：这里代表「问不到 service worker」——
+        // 它没被唤醒、扩展刚被重载、或消息过大而丢失。归进同一个桶的话，
+        // 「扩展没答话」和「图片取不到」在界面上会长得一模一样。
+        result = { ok: false, reason: 'no-worker' }
       }
       win.postMessage({ type: CAPTURE_IMAGE_RESULT, url, result }, win.location.origin)
     }

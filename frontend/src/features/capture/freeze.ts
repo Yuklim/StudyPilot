@@ -107,6 +107,8 @@ export function imageFailureText(reason: string, count: number): string {
       return `${count} 张：不是 PNG、JPEG、GIF 或 WebP，本机拒收。`
     case 'ASSET_TOO_LARGE':
       return `${count} 张：本机拒收，超过 10 MiB 上限。`
+    case 'no-worker':
+      return `${count} 张：浏览器扩展没有应答（可能刚被重新加载，或已停用）。在 chrome://extensions 里确认扩展已启用后重新采集。`
     case 'not-offered':
       return `${count} 张：不在这次采集交来的清单里，没有下载。`
     case 'bad-bytes':

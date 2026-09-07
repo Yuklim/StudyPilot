@@ -129,7 +129,7 @@ describe('deliverCapture', () => {
 
   it('asks for permission only when images are actually being taken', async () => {
     const { bridge, calls } = bridgeWith()
-    await expect(deliverCapture(bridge, payload, true)).resolves.toEqual({ images: 0 })
+    await expect(deliverCapture(bridge, payload, true)).resolves.toMatchObject({ images: 0 })
     // 没有图片就没有要问的：不该弹权限框。
     expect(calls).toEqual(['stash', 'open'])
   })
@@ -171,7 +171,7 @@ describe('deliverCapture', () => {
         stashed.push(value)
       },
     })
-    await expect(deliverCapture(bridge, withImages, false)).resolves.toEqual({ images: 0 })
+    await expect(deliverCapture(bridge, withImages, false)).resolves.toMatchObject({ images: 0 })
     expect(calls.some((call) => call.startsWith('permission'))).toBe(false)
     expect(stashed).toEqual([{ ...withImages, images: [] }])
   })
@@ -183,7 +183,7 @@ describe('deliverCapture', () => {
         stashed.push(value)
       },
     })
-    await expect(deliverCapture(bridge, withImages, true)).resolves.toEqual({ images: 2 })
+    await expect(deliverCapture(bridge, withImages, true)).resolves.toMatchObject({ images: 2 })
     expect(stashed).toEqual([withImages])
   })
 
@@ -196,7 +196,10 @@ describe('deliverCapture', () => {
         stashed.push(value)
       },
     })
-    await expect(deliverCapture(bridge, withImages, true)).resolves.toEqual({ images: 0 })
+    await expect(deliverCapture(bridge, withImages, true)).resolves.toEqual({
+      images: 0,
+      refused: true,
+    })
     expect(calls).toContain('open')
     // 先带图暂存、被拒后再清空重存：先落盘那一份不能留下图片清单。
     expect(stashed.at(-1)).toEqual({ ...withImages, images: [] })

@@ -102,7 +102,7 @@ export async function deliverCapture(
   bridge: CaptureBridge,
   payload: CapturePayload,
   withImages: boolean,
-): Promise<{ images: number }> {
+): Promise<{ images: number; refused: boolean }> {
   const images = withImages ? payload.images : []
   // **先暂存，再请求权限。** 浏览器在弹出权限框时可能把 popup 关掉，那一刻这段代码
   // 连同它后面的一切都消失。原来的顺序（先请求、后暂存）会让整篇正文一起丢掉，
@@ -116,7 +116,7 @@ export async function deliverCapture(
     if (!granted) await bridge.stash({ ...payload, images: [] })
   }
   await bridge.openConfirmPage()
-  return { images: granted ? images.length : 0 }
+  return { images: granted ? images.length : 0, refused: images.length > 0 && !granted }
 }
 
 /** 这批图片实际涉及的源，去重后作为权限请求的范围。 */

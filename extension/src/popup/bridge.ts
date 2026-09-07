@@ -49,7 +49,12 @@ export function chromeBridge(): CaptureBridge {
       // 必须在用户手势内调用，调用点是 popup 上「一并保存」那一下点击。
       // 只请求这批图片实际涉及的源，不请求 `<all_urls>`。
       if (origins.length === 0) return false
-      return chrome.permissions.request({ origins })
+      const requested = await chrome.permissions.request({ origins })
+      // **复核一次，不信 request 的返回值。** 浏览器可能在弹框时关掉 popup、
+      // 也可能因为别的原因让授权没有真正落地；只看返回值就会把「以为授权了」
+      // 一路带到页面，最后表现为「图片一张都没存下」而没人知道为什么。
+      if (!requested) return false
+      return chrome.permissions.contains({ origins })
     },
   }
 }

@@ -166,7 +166,7 @@ describe('relayHandler image requests', () => {
       {
         type: CAPTURE_IMAGE_RESULT,
         url: 'https://cdn.example.com/a.png',
-        result: { ok: false, reason: 'failed' },
+        result: { ok: false, reason: 'no-worker' },
       },
     ])
   })

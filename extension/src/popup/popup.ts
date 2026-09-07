@@ -15,8 +15,16 @@ export function imagePrompt(count: number): string {
   return `这一页的正文里有 ${count} 张图片。一并保存需要浏览器授予「读取网站数据」的权限，用来把图片下载到本机。不授权也能保存正文，图片会继续指向原网站。`
 }
 
-/** 交付后的回执：说清到底带走了几张，而不是笼统说「已保存」。 */
-export function deliveryText(images: number): string {
+/**
+ * 交付后的回执：说清到底带走了几张，而不是笼统说「已保存」。
+ *
+ * `refused` 区分「本来就没图 / 用户选了只存正文」与「要了图但授权没落地」——
+ * 后者用户需要知道**为什么**没带走，否则只会在确认页看到六张全失败。
+ */
+export function deliveryText(images: number, refused = false): string {
+  if (refused) {
+    return '已把正文交给 StudyPilot。但浏览器没有授予访问图片所在网站的权限，图片这次没有保存，仍指向原网站。想保存图片的话，重新点一次采集并在弹出的授权框里选允许。'
+  }
   if (images === 0) {
     return '已把正文交给 StudyPilot，请在打开的页面里确认后保存。图片保留原网站地址。'
   }

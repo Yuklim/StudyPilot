@@ -52,3 +52,12 @@ describe('deliveryText', () => {
     expect(deliveryText(3)).toContain('3 张图片')
   })
 })
+
+describe('deliveryText when the grant did not land', () => {
+  it('says the permission is why the images were left behind', () => {
+    // 不能只说「已保存」：用户要了图、结果一张没带走，得知道为什么、以及怎么补救。
+    const text = deliveryText(0, true)
+    expect(text).toContain('权限')
+    expect(text).toContain('重新点一次采集')
+  })
+})

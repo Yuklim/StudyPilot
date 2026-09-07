@@ -37,8 +37,8 @@ if (
     show(choices, false)
     note.textContent = '正在交给 StudyPilot…'
     try {
-      const { images: count } = await deliverCapture(bridge, outcome.payload, images)
-      note.textContent = deliveryText(count)
+      const { images: count, refused } = await deliverCapture(bridge, outcome.payload, images)
+      note.textContent = deliveryText(count, refused)
     } catch {
       note.textContent = '交给 StudyPilot 时出错了，请再试一次。'
       show(button, true)
