@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-043"
-status = "IN_REVIEW"
+status = "IN_ACCEPTANCE"
 risk = "L3"
 risk_reason = "本任务改的是「打开一份资料之后看到什么」这个应用主界面的信息架构，影响面不是一个组件而是四个 feature 目录（resources / notes / learning / taxonomy）在同一页上的摆位与入口方式。三处实质风险：① 这一页承载全仓**唯一**的 `dangerouslySetInnerHTML`（TASK-042 的正文渲染），重排布局必然改动它周围的容器、样式与滚动关系，任何一处把它挪进新的 innerHTML 上下文都可能悄悄改变安全形态；② 「删除资料」的入口从常驻区搬进 `⋯` 菜单——销毁性动作的可发现性与误触面发生变化，而它的三步确认流程（预览影响 → 一次性令牌 → 确认）必须一字不改；③ 学习状态徽章进工具条意味着一个**版本化写请求**从折叠区搬到常驻区，误触后果是写库。另有跨模块面：同时改 resources、notes、learning、taxonomy 四处的调用与断言。不改后端一行、不改 `/api/v1` 与 openapi、不改本机访问门禁、不改 `extension/`、不改任何数据含义。"
 risk_flags = ["architecture", "security", "business"]
@@ -181,7 +181,7 @@ checks = []
     4. **R2 A（安全形态的结构性论断变假）**：`ResourceDetail.tsx` 的注释仍写「`ContentSnapshot` 与 `snapshotMarkdown` 一个字符都不进，所以安全形态是文件清单能证明的」。已改为只对 `snapshotMarkdown.ts` 作此论断，并指明 `ContentSnapshot.tsx` 改了什么。**R2 B 列出的记录内三处同类残留**（上下文包、已知取舍 5、完成条件 3 里的 `原网页 ↗`）一并扫净。
   - **面板名去歧义**：删除面板原叫「删除资料」，与 `ResourceDeletion` 自己的 section 同名——两个同名嵌套 region 在辅助技术里是真实歧义，改为「放下这一页」。
 - **命令与真实退出结果**（全部由实现者本人在本机运行，无第三方复核）：
-  - `check_task.py --worktree` → **CHECKS PASS**，`risk=L3`，`profiles=frontend`，`files=22`，`product_fingerprint=8e0d0652575949259a947f76664058518552539a8d0ac20d56060a74e1265b00`（前三个候选依次为 `eb48e52c…`、`91b25238…`、`5ea1fd3e…`；第三轮多出的一个文件是 `LearningPages.test.tsx`，补 F1 的单测守卫）。22 个文件全部在 `allowed_paths` 内（含两次授权修订加入的六个文件）。**处置 Review 时它一度失败**：`git diff --check` 抓到我新加的注释里有一行行尾空白——那一步不是形式主义，它是这次唯一发现该问题的地方。
+  - `check_task.py --worktree` → **CHECKS PASS**，`risk=L3`，`profiles=frontend`，`files=22`，`product_fingerprint=430c4e9df606fab5bbefa53907be0fd6d0a48459a269f6f54255bfc0a6a29f17`（前四个候选依次为 `eb48e52c…`、`91b25238…`、`5ea1fd3e…`、`8e0d0652…`；第三轮多出的一个文件是 `LearningPages.test.tsx`，补 F1 的单测守卫）。22 个文件全部在 `allowed_paths` 内（含两次授权修订加入的六个文件）。**处置 Review 时它一度失败**：`git diff --check` 抓到我新加的注释里有一行行尾空白——那一步不是形式主义，它是这次唯一发现该问题的地方。
   - **frontend 512 passed**（22 文件），基线 **494**（21 文件），净增 **18**：`ResourceToolbar.test.tsx` 16 条（首轮 12；第二轮 +2：删除流程渲染在菜单之外、打开菜单后焦点进入菜单；第三轮 +2：外点关闭也归还焦点、两处箭头不进可访问名称），`LearningPages.test.tsx` +2（保存成功通知调用方、写失败不通知）。第四轮无净增：外点那条断言由「抢回焦点」改为「不抢焦点」（实测证明前者只在 jsdom 里成立）。既有用例无删除、无弱化，改动逐条见下。
   - **e2e 44 passed**，基线 **43**，净增 1（`e2e/reader-layout.spec.ts`；第四轮在这条里加了「`Esc` 归还焦点」的真实浏览器守卫，用例数不变。，走真实后端：建资料 + 标签 + 保存原因 + 正文 → 断言正文在心得之前、正文标题落在第一屏内、标签与保存原因不点即可见、`⋯` 能真的走到编辑资料表单、320/390/1440 三档不横向溢出）。
   - **基线的取法是结构性的，不是假设**：`git diff --name-only 50910fa 1e35843` 只有两个 docs 文件，`frontend/` 树与 TASK-042 最终候选**逐字节相同**，因此那次实测的 494 / 43 就是本任务基线，未在 main 上重跑。
