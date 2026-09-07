@@ -109,7 +109,7 @@ export function renderSnapshot(
  * 早退意味着这些写法查表落空，那张图**静默走原站**——`failed` 计数不增、界面不提示，
  * 而用户为那份本机副本付过一次授权代价。规范化对已经规范的地址是幂等的。
  */
-function toAbsolute(src: string, base?: string | null): string | null {
+function toAbsolute(src: string, base?: string | null): string {
   try {
     return new URL(src, base ?? undefined).href
   } catch {
