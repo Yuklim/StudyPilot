@@ -11,6 +11,8 @@ interface JsonRequest {
 
 export interface DeletionImpact {
   original_file_count: number
+  /** TASK-039 起随删除预览返回：这份资料的快照下已冻结的图片张数。 */
+  snapshot_asset_count: number
   note_count: number
   study_record_count: number
   active_review_plan_count: number
@@ -81,6 +83,9 @@ const messages = {
   TAXONOMY_USAGE_CHANGED: '使用这个分类的资料份数已经变化，本次操作未执行。请重新读取后再决定。',
   RESOURCE_NOT_FOUND: '这份资料已不存在，请重新打开资料库。',
   SNAPSHOT_NOT_FOUND: '这份资料还没有保存正文，或正文已被删除。请重新读取后再操作。',
+  SNAPSHOT_ASSET_NOT_FOUND: '这张已冻结的图片不存在，请重新读取后再操作。',
+  ASSET_TYPE_UNSUPPORTED: '这张图片不是 PNG、JPEG、GIF 或 WebP，没有保存。',
+  ASSET_TOO_LARGE: '这张图片超过 10 MiB 上限，没有保存。',
   NOTE_NOT_FOUND: '这条心得已不存在，请重新读取心得列表。',
   VERSION_CONFLICT: '内容已被修改，本次操作未执行。请载入最新版本后重新确认。',
   VERSION_REQUIRED: '缺少有效版本，请重新载入后再操作。',
@@ -140,6 +145,7 @@ function deletionImpact(value: unknown): DeletionImpact | undefined {
   if (!object(value)) return undefined
   const keys = [
     'original_file_count',
+    'snapshot_asset_count',
     'note_count',
     'study_record_count',
     'active_review_plan_count',
@@ -269,6 +275,9 @@ async function failure(response: Response): Promise<ApiError> {
     'TAG_NOT_FOUND',
     'RESOURCE_NOT_FOUND',
     'SNAPSHOT_NOT_FOUND',
+    'SNAPSHOT_ASSET_NOT_FOUND',
+    'ASSET_TYPE_UNSUPPORTED',
+    'ASSET_TOO_LARGE',
     'NOTE_NOT_FOUND',
     'VERSION_CONFLICT',
     'VERSION_REQUIRED',
@@ -321,6 +330,24 @@ async function failure(response: Response): Promise<ApiError> {
     if (impact) details.current_impact = impact
   }
   return new ApiError(code, response.status, requestId, details)
+}
+
+function assetUpload(form: FormData): FormData {
+  // 与 `uploadSnapshot` 同形的白名单：只允许资产端点真正接受的两个字段。
+  // 多一个字段就拒，而不是让后端去拒 —— 后端拒之前字节已经上路了。
+  if (!(form instanceof FormData)) throw new ApiError('INVALID_REQUEST')
+  const copy = new FormData()
+  for (const [name, value] of form) {
+    if (
+      !['file', 'source_url'].includes(name) ||
+      copy.has(name) ||
+      (name === 'file' ? !(value instanceof File) : typeof value !== 'string')
+    )
+      throw new ApiError('INVALID_REQUEST')
+    copy.append(name, value)
+  }
+  if (!copy.has('file') || !copy.has('source_url')) throw new ApiError('INVALID_REQUEST')
+  return copy
 }
 
 function uploadSnapshot(form: FormData): FormData {
@@ -472,6 +499,36 @@ export function createApiClient() {
         body,
       )
       // Do not set Content-Type: the browser must generate the multipart boundary.
+      await checked(response, usedToken)
+      if (response.status !== 201) throw new ApiError('INVALID_RESPONSE', response.status)
+      const payload = await json(response)
+      if (!object(payload) || !Object.hasOwn(payload, 'data'))
+        throw new ApiError('INVALID_RESPONSE', response.status)
+      return payload
+    },
+    async uploadSnapshotAsset(
+      resourceId: string,
+      form: FormData,
+      expectedVersion: number,
+    ): Promise<unknown> {
+      // `request()` 只允许 DELETE 携带 If-Match，而资产上传是带前置条件的 POST，
+      // 所以走这条专用路径，而不是去放宽那份白名单 —— 放宽它会让所有 POST 都能带
+      // 版本头，那是比本次需要宽得多的口子。
+      if (!fileIdPattern.test(resourceId)) throw new ApiError('INVALID_REQUEST')
+      if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 1)
+        throw new ApiError('INVALID_REQUEST')
+      const body = assetUpload(form)
+      const usedToken = await acquire()
+      const response = await transport(
+        '/api/v1/resources/' + resourceId + '/snapshot/assets',
+        'POST',
+        // Do not set Content-Type: the browser must generate the multipart boundary.
+        new Headers({
+          'X-StudyPilot-Token': usedToken,
+          'If-Match': '"' + expectedVersion + '"',
+        }),
+        body,
+      )
       await checked(response, usedToken)
       if (response.status !== 201) throw new ApiError('INVALID_RESPONSE', response.status)
       const payload = await json(response)

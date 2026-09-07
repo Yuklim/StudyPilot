@@ -6,6 +6,31 @@ export function popupText(version: string): string {
   return `StudyPilot 采集 v${version}`
 }
 
+/**
+ * 第二步的提示。**先说清楚要请求什么权限、以及拒绝会怎样**，再让用户选。
+ *
+ * 数字是真实张数，不四舍五入、不说「一些图片」—— 用户是据它决定要不要授权的。
+ */
+export function imagePrompt(count: number): string {
+  return `这一页的正文里有 ${count} 张图片。一并保存需要浏览器授予「读取网站数据」的权限，用来把图片下载到本机。不授权也能保存正文，图片会继续指向原网站。`
+}
+
+/**
+ * 交付后的回执：说清到底带走了几张，而不是笼统说「已保存」。
+ *
+ * `refused` 区分「本来就没图 / 用户选了只存正文」与「要了图但授权没落地」——
+ * 后者用户需要知道**为什么**没带走，否则只会在确认页看到六张全失败。
+ */
+export function deliveryText(images: number, refused = false): string {
+  if (refused) {
+    return '已把正文交给 StudyPilot。但浏览器没有授予访问图片所在网站的权限，图片这次没有保存，仍指向原网站。想保存图片的话，重新点一次采集并在弹出的授权框里选允许。'
+  }
+  if (images === 0) {
+    return '已把正文交给 StudyPilot，请在打开的页面里确认后保存。图片保留原网站地址。'
+  }
+  return `已把正文和 ${images} 张图片交给 StudyPilot，请在打开的页面里确认后保存。图片会在保存正文之后逐张下载。`
+}
+
 /** 采集失败时给出**具体**原因与下一步，不用一句「失败了」打发。 */
 export function outcomeText(outcome: CaptureOutcome): string {
   if (outcome.ok) return '已把正文交给 StudyPilot，请在打开的页面里确认后保存。'

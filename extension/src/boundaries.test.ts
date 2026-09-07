@@ -71,14 +71,49 @@ describe('extension boundaries', () => {
       name,
       text: readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf8'),
     }))
+    // 可选权限同样是 reach：它安装时不生效，但一旦用户授予就长期有效，
+    // 因此三处宣称必须一样点名它。漏掉 optional 那一半，等于门闩只守了一半。
     const declared = [
       ...manifest.permissions,
+      ...manifest.optional_host_permissions,
       ...manifest.content_scripts.flatMap((entry) => entry.matches),
     ]
     for (const { name, text } of docs) {
       for (const item of declared) {
         expect(text, `${name} 没有提到已申请的 ${item}`).toContain(item)
       }
+    }
+  })
+
+  it('keeps the network reach confined to the service worker', () => {
+    // 「扩展只有一个地方会主动发请求」这句承诺的机器守卫。popup、注入脚本与中转
+    // 脚本都不许出现 fetch/XMLHttpRequest —— 它们要字节时应当经消息问 worker。
+    const offenders = sources()
+      .filter((path) => !path.includes('/background/'))
+      .filter((path) => /\bfetch\s*\(|XMLHttpRequest|navigator\.sendBeacon/.test(code(path)))
+    expect(offenders).toEqual([])
+  })
+
+  it('never lets the service worker carry site credentials', () => {
+    // 取图必须 credentials: 'omit'。登录墙后的图片因此取不到，那是设计而非缺陷；
+    // 反过来，任何一处 'include' 都会把用户在该站的登录态带出去。
+    const worker = code(fileURLToPath(new URL('./background/worker.ts', import.meta.url)))
+    expect(worker).toContain("credentials: 'omit'")
+    expect(worker).not.toContain("credentials: 'include'")
+    expect(worker).not.toContain("credentials: 'same-origin'")
+  })
+
+  it('does not let a stray comment opener blind the scanners', () => {
+    // `code()` 是朴素正则剥离器：源码里出现 `/*`（哪怕是在字符串或正则里）会让它把
+    // 之后的一切当注释吃掉，于是上面几条扫描对该文件变成空扫、**静默通过**。
+    // 这条断言让那种情况响一声：剥离后至少要保留一半的非空行。
+    for (const path of sources()) {
+      const raw = readFileSync(path, 'utf8')
+      const rawLines = raw.split('\n').filter((line) => line.trim()).length
+      const keptLines = code(path)
+        .split('\n')
+        .filter((line) => line.trim()).length
+      expect(keptLines, `${path} 的注释剥离吃掉了过多内容`).toBeGreaterThan(rawLines * 0.3)
     }
   })
 

@@ -12,6 +12,7 @@ import { resourceTitle } from './resourceTitle'
 
 const impactLabels: Array<[keyof DeletionImpact, string]> = [
   ['original_file_count', '原件'],
+  ['snapshot_asset_count', '已冻结的图片'],
   ['note_count', '心得'],
   ['study_record_count', '学习历史'],
   ['active_review_plan_count', '复习计划'],

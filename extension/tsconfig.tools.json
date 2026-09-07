@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.tools.tsbuildinfo",
+    "types": ["node", "chrome"]
+  },
+  "include": ["src/**/*.test.ts", "vite.config.ts", "vite.injected.config.ts"],
+  "exclude": []
+}

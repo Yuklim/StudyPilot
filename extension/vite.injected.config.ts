@@ -6,6 +6,7 @@ import { defineConfig } from 'vite'
 export const ENTRIES = {
   extract: { file: 'src/injected/extract.ts', name: 'StudyPilotExtract' },
   relay: { file: 'src/injected/relay.ts', name: 'StudyPilotRelay' },
+  background: { file: 'src/background/worker.ts', name: 'StudyPilotBackground' },
 } as const
 
 /**

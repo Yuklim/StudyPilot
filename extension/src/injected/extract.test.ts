@@ -3,9 +3,9 @@ import { readFileSync } from 'node:fs'
 
 import { describe, expect, it } from 'vitest'
 
-import { MAX_TITLE } from '../shared/protocol'
+import { MAX_IMAGES, MAX_MARKDOWN, MAX_TITLE } from '../shared/protocol'
 
-import { EXTRACT_OPTIONS, extractFromDocument, normalizeSourceUrl } from './extract'
+import { EXTRACT_OPTIONS, collectImages, extractFromDocument, normalizeSourceUrl } from './extract'
 
 // 一篇典型技术文章的骨架：正文外面裹着导航、页脚、推荐位和广告位。
 // 提取的价值全在于「只留中间那块」——所以断言分两半：正文必须活下来，噪声必须消失。
@@ -103,5 +103,70 @@ describe('extractFromDocument', () => {
     // 空正文不是崩溃，是一个 runCapture 会拒绝开确认页的正常结果。
     const result = extractFromDocument(pageWith('<nav>只有导航</nav>'), 'https://example.com/nav')
     expect(result.markdown.length).toBeLessThan(20)
+  })
+})
+
+describe('collectImages', () => {
+  const base = 'https://example.com/posts/1'
+
+  it('recognizes the three forms it claims to, and resolves relative addresses', () => {
+    const markdown = [
+      '![图一](/img/a.png)',
+      '![图二](https://cdn.example.com/b.jpg "标题")',
+      '![图三](<https://cdn.example.com/c%20d.png>)',
+      '<img alt="四" src="https://cdn.example.com/d.webp">',
+    ].join('\n\n')
+    expect(collectImages(markdown, base)).toEqual([
+      'https://example.com/img/a.png',
+      'https://cdn.example.com/b.jpg',
+      'https://cdn.example.com/c%20d.png',
+      'https://cdn.example.com/d.webp',
+    ])
+  })
+
+  it('drops what it must not fetch, and keeps order while de-duplicating', () => {
+    const markdown = [
+      '![a](https://cdn.example.com/a.png)',
+      '![data](data:image/png;base64,AAAA)',
+      '![blob](blob:https://example.com/x)',
+      '![file](file:///etc/passwd)',
+      '![creds](https://u:p@cdn.example.com/x.png)',
+      '![again](https://cdn.example.com/a.png)',
+      '![b](https://cdn.example.com/b.png)',
+    ].join('\n\n')
+    expect(collectImages(markdown, base)).toEqual([
+      'https://cdn.example.com/a.png',
+      'https://cdn.example.com/b.png',
+    ])
+  })
+
+  it('is not fooled by an ordinary link that merely looks similar', () => {
+    // `[文字](url)` 是链接不是图片：少了 `!` 就不该被当成要下载的东西。
+    expect(collectImages('[普通链接](https://example.com/page)', base)).toEqual([])
+  })
+
+  it('stops at the per-capture ceiling', () => {
+    const many = Array.from(
+      { length: MAX_IMAGES + 10 },
+      (_value, index) => `![${index}](https://cdn.example.com/${index}.png)`,
+    ).join('\n')
+    expect(collectImages(many, base)).toHaveLength(MAX_IMAGES)
+  })
+
+  it('leaves reference-style images alone, as documented', () => {
+    // 认下去要连带解析链接定义，而定义里大多是普通链接。这类页面的图片保留
+    // 原站地址 —— 与「取不到」同一条降级路径，不产生新形态。
+    const markdown = '![图][ref]\n\n[ref]: https://cdn.example.com/ref.png'
+    expect(collectImages(markdown, base)).toEqual([])
+  })
+})
+
+describe('extractFromDocument with images', () => {
+  it('collects from the truncated body, not from what was thrown away', () => {
+    // 被 MAX_MARKDOWN 砍掉的部分不会进快照，为那部分的图片申请权限、发请求、
+    // 占本机空间都是白费。
+    const tail = '![尾图](https://cdn.example.com/tail.png)'
+    const markdown = `${'x'.repeat(MAX_MARKDOWN)}\n\n${tail}`
+    expect(collectImages(markdown.slice(0, MAX_MARKDOWN), 'https://example.com/a')).toEqual([])
   })
 })

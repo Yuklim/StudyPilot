@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
-import { createResource, failureText, putResourceSnapshot } from '../resources/api'
+import {
+  createResource,
+  failureText,
+  putResourceSnapshot,
+  uploadSnapshotAsset,
+} from '../resources/api'
 
+import { askExtensionForImage, freezeImages, imageFailureText } from './freeze'
 import {
   CAPTURE_READY,
   MAX_MARKDOWN,
@@ -30,6 +36,13 @@ export function CapturePage() {
   const [error, setError] = useState('')
   const [partial, setPartial] = useState<{ id: string; reason: string } | null>(null)
   const [pending, setPending] = useState(false)
+  const [images, setImages] = useState<{
+    id: string
+    frozen: number
+    failed: number
+    reasons: Record<string, number>
+  } | null>(null)
+  const [freezing, setFreezing] = useState<{ done: number; total: number } | null>(null)
   const busy = useRef(false)
   const alive = useRef(true)
 
@@ -74,6 +87,7 @@ export function CapturePage() {
     setPending(true)
     setError('')
     setPartial(null)
+    setImages(null)
     let created: { id: string } | null = null
     try {
       created = await createResource({
@@ -81,7 +95,26 @@ export function CapturePage() {
         source_type: 'WEB',
         source_url: captured.url,
       })
-      await putResourceSnapshot(created.id, markdown)
+      const snapshot = await putResourceSnapshot(created.id, markdown)
+      // 图片必须在正文写成之后：上传资产要带**快照**版本作前置条件。
+      if (captured.images.length > 0) {
+        if (alive.current) setFreezing({ done: 0, total: captured.images.length })
+        const result = await freezeImages(created.id, captured.images, snapshot.version, {
+          ask: askExtensionForImage(window),
+          upload: uploadSnapshotAsset,
+          onProgress: (done, total) => {
+            if (alive.current) setFreezing({ done, total })
+          },
+        })
+        if (!alive.current) return
+        setFreezing(null)
+        // 有图没冻上就**停在这一页如实说清**，不跳转 —— 跳走等于把「12 张里只存下 3 张」
+        // 这件事咽掉，而用户此刻还能重新采集。全部成功才走。
+        if (result.failed > 0) {
+          setImages({ id: created.id, ...result })
+          return
+        }
+      }
       if (alive.current) navigate(`/resources/${created.id}`)
     } catch (cause) {
       if (!alive.current) return
@@ -94,7 +127,10 @@ export function CapturePage() {
       }
     } finally {
       busy.current = false
-      if (alive.current) setPending(false)
+      if (alive.current) {
+        setPending(false)
+        setFreezing(null)
+      }
     }
   }
 
@@ -104,6 +140,30 @@ export function CapturePage() {
         <span className="small-label">FROM THE PAGE YOU WERE READING</span>
         <h2 id="capture-title">确认要保存的正文</h2>
       </div>
+
+      {freezing ? (
+        <p role="status">
+          正文已保存，正在下载图片（{freezing.done} / {freezing.total}
+          ）。这一步失败不会影响已经保存的正文。
+        </p>
+      ) : null}
+
+      {images ? (
+        <div className="resource-error">
+          <p role="alert">
+            正文已经保存好了。图片冻结了 {images.frozen} 张，有 {images.failed} 张没能保存 ——
+            那几张仍然指向原网站，原网站改版或删图后会失效。这里不会自动重试。
+          </p>
+          <ul>
+            {Object.entries(images.reasons).map(([reason, count]) => (
+              <li key={reason}>{imageFailureText(reason, count)}</li>
+            ))}
+          </ul>
+          <Link className="journal-button" to={`/resources/${images.id}`}>
+            打开这份资料
+          </Link>
+        </div>
+      ) : null}
 
       {partial ? (
         <div className="resource-error">
@@ -129,13 +189,16 @@ export function CapturePage() {
           还没有收到扩展发来的内容。请在想保存的网页上点一次 StudyPilot 扩展图标；
           这一页会等着接收。直接关掉也不会保存任何东西。
         </p>
-      ) : (
+      ) : images ? null : (
+        // 图片部分失败时**不再渲染表单**：留着它，用户看完「2 张里 1 张没保存」
+        // 再点一次「保存为资料」，会静默新建第二份资料 + 第二份快照并重下全部图片。
+        // 同页的 partial 分支早就是这么处理的（替换掉表单），这里补齐同样的处置。
         <form onSubmit={save} aria-label="确认采集内容" noValidate>
           <fieldset disabled={pending}>
             <legend className="sr-only">采集到的内容</legend>
             <p className="resource-hint">来自：{captured.url}</p>
             <p className="resource-hint">
-              这是保存当时的副本，不随原文更新。图片仍指向原站，本版本不冻结图片。
+              这是保存当时的副本，不随原文更新。如果你在扩展里选了「连图片一并保存」，正文里的图片会在保存后逐张下载到本机；没选或没有授权时，图片仍指向原网站。
             </p>
             <label className="resource-field">
               标题

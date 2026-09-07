@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
-import { EXTRACT_SCRIPT, POPUP_PAGE, RELAY_SCRIPT, manifest } from './manifest'
+import { BACKGROUND_SCRIPT, EXTRACT_SCRIPT, POPUP_PAGE, RELAY_SCRIPT, manifest } from './manifest'
 import { UI_ORIGIN } from './shared/protocol'
 import { ENTRIES, outputName } from '../vite.injected.config'
 
@@ -27,24 +27,54 @@ describe('MV3 manifest', () => {
     expect(existsSync(projectFile(POPUP_PAGE))).toBe(true)
   })
 
-  it('declares exactly these seven keys and nothing else', () => {
+  it('declares exactly these nine keys and nothing else', () => {
     // A whitelist on purpose: naming the dangerous keys instead would miss
     // `optional_permissions`, `optional_host_permissions`, `externally_connectable`,
     // `web_accessible_resources`, `content_security_policy`, `background`,
     // `declarative_net_request` and every key Chrome adds later — all of which grant
     // reach just as effectively. Any new top-level key fails here, which forces the
     // change to be deliberate and reviewed.
+    //
+    // TASK-040 加了两个键，都是**有意**的授权面变化，各自另有一条专门的断言在下面：
+    // `optional_host_permissions`（取图，安装时不授予）与 `background`（唯一会发出
+    // 网络请求的地方）。这条断言在那次改动中失败过，正是它该有的行为。
     expect(Object.keys(manifest).sort()).toEqual(
       [
         'action',
+        'background',
         'content_scripts',
         'description',
         'manifest_version',
         'name',
+        'optional_host_permissions',
         'permissions',
         'version',
       ].sort(),
     )
+  })
+
+  it('keeps every site permission optional, so installing grants none of them', () => {
+    // 这是本次授权面扩张的核心约束：安装时的 `permissions` 一字未加，取图所需的
+    // 站点权限全部落在 optional 里，由用户在采集时点「一并保存」才请求、并可撤销。
+    // 若哪天有人把 `<all_urls>` 挪进 `host_permissions`，这条与上面的键白名单一起变红。
+    expect(manifest.optional_host_permissions).toEqual(['<all_urls>'])
+    expect(manifest).not.toHaveProperty('host_permissions')
+    expect(manifest.permissions).not.toContain('<all_urls>')
+  })
+
+  it('points the service worker at the file the build actually emits', () => {
+    // 与注入脚本同一条轴：入口键、输出文件名模板、manifest 常量三者绑死，
+    // 否则 manifest 会指向一个不存在的文件，而所有测试照样绿。
+    expect(manifest.background).toEqual({ service_worker: BACKGROUND_SCRIPT })
+    expect(ENTRIES).toHaveProperty('background')
+    expect(outputName('background')).toBe(BACKGROUND_SCRIPT)
+    // 它不是内容脚本：service worker 不注入任何页面。
+    expect(manifest.content_scripts.flatMap((entry) => entry.js)).not.toContain(BACKGROUND_SCRIPT)
+  })
+
+  it('locks the background entry down to exactly one key', () => {
+    // `type: 'module'`、`scripts`、`persistent` 加进条目里都不会让顶层白名单变红。
+    expect(Object.keys(manifest.background).sort()).toEqual(['service_worker'])
   })
 
   it('asks for exactly three permissions, and none that reach every site', () => {

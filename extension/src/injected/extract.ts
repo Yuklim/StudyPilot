@@ -1,6 +1,13 @@
 import Defuddle from 'defuddle/full'
 
-import { CAPTURE_EXTRACTED, MAX_MARKDOWN, MAX_TITLE, type CapturePayload } from '../shared/protocol'
+import {
+  CAPTURE_EXTRACTED,
+  MAX_IMAGES,
+  MAX_MARKDOWN,
+  MAX_TITLE,
+  isSafeImageUrl,
+  type CapturePayload,
+} from '../shared/protocol'
 
 // 在用户当前打开的那个页面里运行，由 popup 在用户点击扩展图标后经
 // chrome.scripting 注入（activeTab 只在那一次点击后授予该标签页的访问权）。
@@ -43,6 +50,44 @@ export function normalizeSourceUrl(href: string): string {
   }
 }
 
+/**
+ * 从产出的 Markdown 里认出图片地址。**只认这三种写法**，如实说明覆盖面：
+ *
+ * - `![alt](url)` 与 `![alt](url "title")`（行内式，Defuddle 的常规产出）
+ * - `![alt](<url>)`（尖括号式，地址含空格或括号时使用）
+ * - 残留的 `<img src="url">`（Defuddle 未转换的 HTML 片段）
+ *
+ * **不认引用式** `![alt][ref]` + `[ref]: url`：那要连带解析链接定义，而链接定义里
+ * 大多是普通链接不是图片，认下去会把一堆非图片地址也当成图片去请求。用这种写法
+ * 的页面，其图片会保留原站地址 —— 与「取不到」同一条降级路径，不产生新形态。
+ *
+ * 相对地址按页面地址解析为绝对地址；解析不了、或不是 http(s) 的（`data:`、`blob:`）
+ * 一律丢弃。去重后按出现顺序截断到 MAX_IMAGES。
+ */
+export function collectImages(markdown: string, baseUrl: string): string[] {
+  const found: string[] = []
+  const push = (raw: string) => {
+    const trimmed = raw.trim().replace(/^<|>$/g, '')
+    if (!trimmed) return
+    let absolute: string
+    try {
+      absolute = new URL(trimmed, baseUrl).href
+    } catch {
+      return
+    }
+    if (!isSafeImageUrl(absolute)) return
+    if (!found.includes(absolute)) found.push(absolute)
+  }
+  // 行内式：`(` 之后到第一个空白或 `)` 之前的部分是地址，其后可跟 "title"。
+  for (const match of markdown.matchAll(/!\[[^\]]*\]\(\s*(<[^>]*>|[^)\s]+)/g)) {
+    push(match[1] ?? '')
+  }
+  for (const match of markdown.matchAll(/<img\b[^>]*?\ssrc\s*=\s*["']([^"']+)["']/gi)) {
+    push(match[1] ?? '')
+  }
+  return found.slice(0, MAX_IMAGES)
+}
+
 export function extractFromDocument(doc: Document, url: string): CapturePayload {
   // markdown: true 让 Defuddle 直接把正文转成 Markdown 放进 content。
   //
@@ -51,10 +96,14 @@ export function extractFromDocument(doc: Document, url: string): CapturePayload 
   // 在副本上、页面不会被掏空，但那两处改写确实落在用户的实页上，理论上可能让
   // React/Vue 页面出现一次图片跳变。文档里「只读取」的说法应按此理解。
   const parsed = new Defuddle(doc, { url, ...EXTRACT_OPTIONS }).parse()
+  // 图片地址从**截断后**的正文里认，不是从原始产出里：正文被 MAX_MARKDOWN 砍掉的
+  // 部分不会进快照，为那部分的图片申请权限、发请求、占本机空间都是白费。
+  const markdown = (parsed.content ?? '').trim().slice(0, MAX_MARKDOWN)
   return {
     title: (parsed.title || doc.title || '').trim().slice(0, MAX_TITLE),
     url: normalizeSourceUrl(url),
-    markdown: (parsed.content ?? '').trim().slice(0, MAX_MARKDOWN),
+    markdown,
+    images: collectImages(markdown, url),
   }
 }
 

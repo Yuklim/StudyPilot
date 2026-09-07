@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  CAPTURE_IMAGE_RESULT,
   CAPTURE_PAYLOAD,
   MAX_MARKDOWN,
   MAX_TITLE,
   MAX_URL,
   capturedFrom,
+  imageResultFrom,
   isCapturePayload,
   isSafeSourceUrl,
 } from './protocol'
@@ -64,7 +66,7 @@ describe('isSafeSourceUrl', () => {
 })
 
 describe('capturedFrom', () => {
-  const payload = { title: '标题', url: 'https://example.com/a', markdown: '正文' }
+  const payload = { title: '标题', url: 'https://example.com/a', markdown: '正文', images: [] }
   const event = (overrides: Partial<MessageEventInit> = {}) =>
     new MessageEvent('message', {
       data: { type: CAPTURE_PAYLOAD, payload },
@@ -90,7 +92,7 @@ describe('capturedFrom', () => {
 })
 
 describe('isCapturePayload', () => {
-  const good = { title: '标题', url: 'https://example.com/a', markdown: '正文' }
+  const good = { title: '标题', url: 'https://example.com/a', markdown: '正文', images: [] }
 
   it('accepts a well-formed payload and an empty title', () => {
     expect(isCapturePayload(good)).toBe(true)
@@ -107,5 +109,71 @@ describe('isCapturePayload', () => {
     ['是 null', null],
   ])('rejects %s', (_label, value) => {
     expect(isCapturePayload(value)).toBe(false)
+  })
+})
+
+describe('imageResultFrom', () => {
+  const ok = {
+    type: CAPTURE_IMAGE_RESULT,
+    url: 'https://cdn.example.com/a.png',
+    result: { ok: true, base64: 'iVBORw0KGgo=' },
+  }
+  const event = (data: unknown, overrides: Partial<MessageEventInit> = {}) =>
+    ({
+      source: window,
+      origin: window.location.origin,
+      data,
+      ...overrides,
+    }) as unknown as MessageEvent
+
+  it('accepts a well-formed answer', () => {
+    expect(imageResultFrom(event(ok), window)).toEqual({
+      url: 'https://cdn.example.com/a.png',
+      ok: true,
+      base64: 'iVBORw0KGgo=',
+    })
+  })
+
+  it.each([
+    ['来自别的窗口', event(ok, { source: {} as Window })],
+    ['来自别的源', event(ok, { origin: 'https://evil.test' })],
+    ['不是本协议的消息', event({ ...ok, type: 'something-else' })],
+    ['url 不是字符串', event({ ...ok, url: 42 })],
+  ])('refuses an answer that %s', (_label, bad) => {
+    expect(imageResultFrom(bad, window)).toBeNull()
+  })
+
+  it.each([
+    ['base64 含非法字符', 'not base64!!'],
+    ['base64 为空', ''],
+    ['base64 不是字符串', 42],
+  ])('marks bad bytes as a failure rather than passing them on when %s', (_label, base64) => {
+    // fail-closed：形状不对就记一次失败，绝不把内容交给下游去 atob。
+    expect(imageResultFrom(event({ ...ok, result: { ok: true, base64 } }), window)).toEqual({
+      url: 'https://cdn.example.com/a.png',
+      ok: false,
+      reason: 'bad-bytes',
+    })
+  })
+
+  it('carries the failure reason through without the site error text', () => {
+    const failed = event({
+      ...ok,
+      result: { ok: false, reason: 'http-error', detail: '403 from cdn' },
+    })
+    expect(imageResultFrom(failed, window)).toEqual({
+      url: 'https://cdn.example.com/a.png',
+      ok: false,
+      reason: 'http-error',
+    })
+  })
+
+  it('ignores a reason that is not a string', () => {
+    const odd = event({ ...ok, result: { ok: false, reason: { evil: true } } })
+    expect(imageResultFrom(odd, window)).toEqual({
+      url: 'https://cdn.example.com/a.png',
+      ok: false,
+      reason: undefined,
+    })
   })
 })

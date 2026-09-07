@@ -11,9 +11,9 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.tools.json",
     "test": "vitest",
-    "build": "tsc --noEmit && vite build && vite build -c vite.injected.config.ts --mode extract && vite build -c vite.injected.config.ts --mode relay"
+    "build": "npm run typecheck && vite build && vite build -c vite.injected.config.ts --mode extract && vite build -c vite.injected.config.ts --mode relay && vite build -c vite.injected.config.ts --mode background"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
