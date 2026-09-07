@@ -145,17 +145,21 @@ checks = []
 
 ## 实现与测试
 
-- **实现 SHA**：`efdc5dc`（base `0106953`，15 个文件，全部在 `allowed_paths` 内）。
+- **实现 SHA**：首轮 `efdc5dc`；Review 后的修订见本节各条（base `0106953`，16 个文件，全部在 `allowed_paths` 内）。
   - **新模块 `snapshotMarkdown.ts`**：导出 `RENDERER_OPTIONS`（`html:false`/`linkify:false`/`breaks:false`）、`createRenderer(resolve)` 与 `renderSnapshot(markdown, frozen)`。图片与链接是本模块仅有的两处「把正文里的字符串放进属性」的地方，两处都只接受 markdown-it 的 `validateLink` 放行过的地址；伪协议图片**不产生 `img` 元素**，只留可读的替代文本。
-  - **`api/client.ts`** 新增 `downloadSnapshotAsset`（与 `downloadOriginal` 同形，返回 Blob；只接受后端按魔数判定的四种类型 + `nosniff`）。**`request()` 的白名单一字未动。**
+  - **`api/client.ts`** 新增 `downloadSnapshotAsset`。**首版说它「与 `downloadOriginal` 同形」是过宽的自述**：当时它只查了状态、类型白名单与 `nosniff`，既不要求 `attachment`、也**没有任何长度上限**（直接 `arrayBuffer()`）。已把两者共用的界限抽成 `boundedBlob(response, mediaType, expected, limit)`（声明长度 + 硬上限的边读边计数、读完核对 `received === expected`），`downloadOriginal` 与 `downloadSnapshotAsset` 都走它；资产的上限是 `MAX_ASSET_BYTES = 10 MiB`，与后端 `modules/resources/assets.py` 一致。现在「同形」这句话有对应实现和用例撑着：类型白名单是后端按魔数认出的四种图片（SVG 不在内），返回值是 Blob 而非 `FileDownload`，其余校验逐条相同。**`request()` 的白名单一字未动。**
   - **`features/resources/api.ts`** 新增 `frozenImageUrl`（`createObjectURL`，并在 JSDoc 里写明调用方必须负责回收）。
-  - **`ContentSnapshot.tsx`**：`useEffect` 里逐张取回资产 → 映射 → 渲染；清理函数里 `revokeObjectURL`；新增「看 Markdown 源码 / 看渲染后的正文」切换。**唯一的 `dangerouslySetInnerHTML` 在这里**，其安全性完全依赖 `html:false`，注释已点明。
-  - **契约**：§4.13 新增「渲染语义」与「图片的两条去向」两段（含三条代价的原文登记），并把 TASK-036 那句「渲染属阅读器范畴，不在本任务」更新为指向 4.13。**openapi 与 `/api/v1` 一字未改**（15 个文件中无 `docs/contracts/openapi-v1.json`、无 `backend/**`、无 `extension/**`）。
-- **新增依赖（完成条件 12）**：`markdown-it@14.3.1`，**生产依赖**——渲染发生在浏览器里，不是构建期。**它带来的不是一个包而是 7 个**：`markdown-it` 加 `argparse@2.0.1`、`linkify-it@5.0.2`、`entities@4.5.0`、`mdurl@2.1.0`、`punycode.js@2.3.1`、`uc.micro@2.1.0`。锁文件核对：这 7 条的 `resolved` 全部指向 `https://registry.npmjs.org/`，无 `file:`/`git+`/非官方源。前端生产依赖树因此由 7 个变为 14 个。**它从此属安全关键面**：本任务的安全性依赖它的 `html:false` 与 `validateLink`，版本更新须同步复核这两处行为。另加 dev 依赖 `@types/markdown-it`。
+  - **`ContentSnapshot.tsx`**：`useEffect` 里逐张取回资产 → 映射 → 渲染；清理函数里 `revokeObjectURL`；新增「看 Markdown 源码 / 看渲染后的正文」切换。**唯一的 `dangerouslySetInnerHTML` 在这里**，其安全性完全依赖 `html:false`，注释已点明。渲染结果用 `useMemo` 缓存（正文上限 100 万字，不缓存则相邻编辑框每敲一个字都重解析整篇）。
+  - **相对图片地址的解析（Review 后补）**：冻结表的键是采集时算好的**绝对**地址，而 Defuddle 产出的正文里常留着 `/img/a.png`、`../img/a.png`。首版按精确字符串查表，于是相对写法**既匹配不上冻结表、也渲染不出可用的 `src`**——用户为那一份本机副本付过一次授权代价却看不到它。现在 `renderSnapshot(markdown, frozen, base)` 先 `new URL(src, base).href` 解析再查表；`base` 取 `snapshot.captured_from_url`。**没有做「退回资料 `source_url`」那一层**：那要给 `ContentSnapshot` 加一个属性并改 `ResourceDetail.tsx`，而该文件不在本任务的 `allowed_paths` 里，为一个次要兜底扩大授权范围不值得。`captured_from_url` 为空（手工粘贴的正文）时相对地址**不渲染 `img`**——渲染一个指向本机 UI 自己的 `src` 只会向本机服务发一串必然 404 的请求。代价已记入已知限制 7。
+  - **本机副本读不出来时的可见提示（Review 后补）**：某张已冻结图片的字节取不到时，首版**静默**退回原站地址。用户对「向图床发请求」的知情同意是针对「这张没冻上」给的；本机副本坏掉时无声改走原站，等于在他以为看的是本机那一份时发了外部请求。现在 `loadFrozenImages` 返回 `failed` 计数，快照区显示一条 `role="alert"` 说明有几张改用了原网站地址。
+  - **契约**：§4.13 新增「渲染语义」与「图片的两条去向」两段（含三条代价的原文登记），**契约只新增段落、未修改任何既有句子**（diff 为 +4 行、0 删除）；被更新的是 `ContentSnapshot.tsx` 顶部那段英文注释里的同类说法。此前本条写成「把 TASK-036 那句…更新为指向 4.13」是**被 diff 证伪的自述**，已更正——那句话在 TASK-036 的任务记录里，不在契约里，本任务也不该改写历史任务记录。**openapi 与 `/api/v1` 一字未改**（15 个文件中无 `docs/contracts/openapi-v1.json`、无 `backend/**`、无 `extension/**`）。
+- **新增依赖（完成条件 12）**：`markdown-it`，**生产依赖**——渲染发生在浏览器里，不是构建期。**它带来的不是一个包而是 7 个**：`markdown-it` 加 `argparse@2.0.1`、`linkify-it@5.0.2`、`entities@4.5.0`、`mdurl@2.1.0`、`punycode.js@2.3.1`、`uc.micro@2.1.0`。锁文件核对：这 7 条的 `resolved` 全部指向 `https://registry.npmjs.org/`，无 `file:`/`git+`/非官方源。前端生产依赖树因此由 7 个变为 14 个。**它从此属安全关键面**：本任务的安全性依赖它的 `html:false` 与 `validateLink`，版本更新须同步复核这两处行为。
+  - **版本写成精确版本，不用 `^`（Review 后改）**：首版写的是 `"markdown-it": "^14.3.1"` 与 `"@types/markdown-it": "^14.2.0"`，而 `package.json` 里**其余每一条依赖都是精确版本**——本项目的既有做法就是钉死。对一个「安全性依赖其具体行为」的包放开次版本范围，与上面那句「版本更新须同步复核」直接相抵。现已改为 `14.3.1` 与 `14.2.0`，并重跑 `npm install` 同步锁文件（锁文件里 `packages[""]` 的两条声明随之变为精确值，已解析的 `resolved`/`integrity` 未变）。
+  - **新增的 3 个 dev 依赖如实登记（Review 后补）**：直接声明的是 `@types/markdown-it@14.2.0`；它又带进 `@types/linkify-it@5.0.0` 与 `@types/mdurl@2.0.0` 两个传递 dev 依赖（不在 `package.json` 里，在锁文件里）。三者都是**仅类型**的包，不进产物、不在运行时执行。
 - **命令与真实退出结果**（全部由实现者本人在本机运行，无第三方复核）：
-  - `check_task.py --worktree` → **CHECKS PASS**，`profiles=contracts,frontend`，`files=15`，`product_fingerprint=c9478a330ef02a7180b1e3b7e00ff586ecebaa25c29e1a99bcfc709b6d021f9f`。
-  - **frontend 465 passed**（21 文件）。基线**实测**：在 `0106953` 的临时 worktree 上跑出 **440**（19 文件），净增 **25**。
-  - **e2e 43 passed**，基线 **42**，净增 1（`e2e/snapshot-rendering.spec.ts`，走真实后端：建资料 → 写正文 → 上传一张资产 → 打开详情页断言冻结那张是 `blob:`、未冻那张是原址且带 `referrerpolicy`）。
+  - `check_task.py --worktree` → **CHECKS PASS**，`profiles=contracts,frontend`，`files=16`，`product_fingerprint=ed023c8b5da294721c44bf4a90f691c77afabd1fcd0f7f1ea17f38167ab50f71`（首轮为 `files=15`、`c9478a33…`）。
+  - **frontend 488 passed**（21 文件）。基线**实测**：在 `0106953` 的临时 worktree 上跑出 **440**（19 文件），净增 **48**（首轮 465，Review 后又补 23 条：`downloadSnapshotAsset` 的响应校验一组、相对地址解析一组、`alt`/`loading` 各一条、本机副本失败时的可见提示一条）。
+  - **e2e 43 passed**，基线 **42**，净增 1（`e2e/snapshot-rendering.spec.ts`，走真实后端：建资料 → 写正文 → 上传一张资产 → 打开详情页断言冻结那张是 `blob:`、未冻那张是原址且带 `referrerpolicy`）。Review 后又加严了两处，**文件数与用例数不变**：两张图改为分属不同主机（`frozen.example.test` 与 `origin.example.test`）——同主机时「冻结那张也跑去原站取」这种退化会和未冻那张混在一起而看不出来；以及断言冻结那张的 `naturalWidth > 0`——`src` 是 `blob:` 只证明地址对，不证明字节能显示。
   - `npm run typecheck`（`tsc -b`）/ `lint` / `prettier --check` 全绿。
   - **backend 与 extension 未运行**：本任务在这两棵树下零改动、不在 `allowed_paths` 内，检查脚本据变更自动选组因而未选中它们。**这是结构性论据，不是观察到它们仍为绿。**
   - 环境：macOS Darwin 25.5.0；Node 24；Chromium（Playwright）。
@@ -168,6 +172,8 @@ checks = []
   4. **没有 CSP**：本任务未引入内容安全策略。有 CSP 的话，即使渲染器某天失守也还有一层；当前没有这一层。
   5. **图片按原址加载的失败态不可见**：`<img>` 加载失败（原站删图、防盗链）时浏览器显示破图，页面不给任何解释。冻结那条路有降级说明，这条没有。
   6. **渲染/源码的切换不持久**：刷新回到渲染视图。这是有意的（默认展示可读的那一面），但用户若长期偏好源码会每次都要点一次。
+  7. **快照没有 `captured_from_url` 时，相对图片地址不渲染**：手工粘贴的正文里若写着 `/img/a.png` 这类相对地址，那些图片在页面上**不出现任何元素**（连破图都没有），只在源码视图里看得到，界面不给解释。退回资料 `source_url` 能覆盖「WEB 资料 + 手工粘贴正文」这一种，但需改 `allowed_paths` 之外的 `ResourceDetail.tsx`，本任务不做。
+  8. **`loading="lazy"` 让外部请求的时机变成滚动才发**：未冻结的图片不在打开页面的一瞬间全部请求出去，而是滚到才发。这不改变设计决定 ③ 的三条代价（原站照样知道你读了、cookie 照样带出去），只是把时间点摊开；e2e 那条「外部请求只来自已知的那一类」的断言因此覆盖的是首屏，不是整篇。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据

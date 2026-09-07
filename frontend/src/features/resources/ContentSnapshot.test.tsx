@@ -44,13 +44,19 @@ const asset = {
   created_at: '2026-09-06T00:00:00Z',
 }
 
-function mount(options: { assets?: unknown; failAssets?: boolean } = {}) {
+function mount(
+  options: {
+    assets?: unknown
+    failAssets?: boolean
+    snapshot?: Record<string, unknown>
+  } = {},
+) {
   vi.spyOn(api, 'request').mockImplementation(async (path: string) => {
     if (path === assetsPath) {
       if (options.failAssets) throw new ApiError('SNAPSHOT_NOT_FOUND', 404)
       return { data: options.assets ?? [asset] }
     }
-    if (path === snapshotPath) return { data: snapshot }
+    if (path === snapshotPath) return { data: options.snapshot ?? snapshot }
     if (path.startsWith(`${detailPath}/notes?`))
       return {
         data: [],
@@ -144,13 +150,45 @@ describe('rendered snapshot', () => {
     }
   })
 
-  it('falls back to the origin address for a frozen image whose bytes fail', async () => {
+  it('falls back to the origin address for a frozen image whose bytes fail, and says so', async () => {
     vi.spyOn(api, 'downloadSnapshotAsset').mockRejectedValue(new ApiError('FILE_CORRUPTED', 409))
     mount()
     await screen.findByRole('heading', { name: '冻结的标题', level: 1 })
     await waitFor(() => expect(document.querySelectorAll('img')).toHaveLength(2))
     expect(document.querySelectorAll('img')[0]?.getAttribute('src')).toBe(FROZEN_URL)
     expect(created).toEqual([])
+    // **必须让用户看见**：他对「向图床发请求」的知情同意是针对「这张没冻上」给的。
+    // 本机副本坏掉时静默改走原站，等于在他以为看的是本机那一份时发了外部请求。
+    expect(await screen.findByRole('alert')).toHaveTextContent('1 张图片的本机副本读不出来')
+  })
+
+  it('resolves relative image addresses against the address the snapshot was captured from', async () => {
+    // 采集地址（`captured_from_url`）优先。不解析成绝对地址，冻结表匹配不上，
+    // 用户为它付过一次授权代价的本机副本就白存了。
+    const relative = `![已冻结](/frozen.png)\n\n![没冻上](/not-frozen.png)\n`
+    vi.spyOn(api, 'downloadSnapshotAsset').mockResolvedValue(new Blob([new Uint8Array([1])]))
+    mount({
+      snapshot: {
+        ...snapshot,
+        content: relative,
+        char_count: relative.length,
+        captured_from_url: 'https://cdn.example.com/guide/page.html',
+      },
+    })
+    await waitFor(() => expect(document.querySelectorAll('img')).toHaveLength(2))
+    const [frozenImg, originImg] = [...document.querySelectorAll('img')]
+    expect(frozenImg?.getAttribute('src')).toBe(created[0])
+    expect(originImg?.getAttribute('src')).toBe(ORIGIN_URL)
+  })
+
+  it('renders no img for a relative address when the snapshot has no captured address', async () => {
+    // 手工粘贴进来的快照没有 `captured_from_url`，此时相对地址无从解析。
+    // **不渲染**好过渲染一个指向本机 UI 自己的 src（那会向本机服务发必然 404 的请求）。
+    // 代价是这些图片在页面上凭空消失，只在源码视图里看得到——已记入已知限制。
+    const relative = '![图](/img/a.png)\n\n正文一段。\n'
+    mount({ snapshot: { ...snapshot, content: relative, char_count: relative.length }, assets: [] })
+    expect(await screen.findByText('正文一段。')).toBeInTheDocument()
+    expect(document.querySelectorAll('img')).toHaveLength(0)
   })
 
   it('never writes anything just to display the text', async () => {

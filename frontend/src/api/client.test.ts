@@ -647,3 +647,87 @@ describe('uploadSnapshotAsset', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })
+
+describe('downloadSnapshotAsset', () => {
+  const resourceId = '018f1f58-4eb2-4a0d-a716-fb81b1960001'
+  const assetId = '018f1f58-4eb2-4a0d-a716-fb81b1960002'
+  // 1×1 GIF 的前几个字节就够：这里检验的是响应校验，不是图片解码。
+  const bytes = new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61])
+  const assetResponse = (headers: Partial<Record<string, string>> = {}, body = bytes) =>
+    new Response(body, {
+      headers: {
+        'content-type': 'image/gif',
+        'content-length': String(body.byteLength),
+        'content-disposition': 'attachment; filename="snapshot-asset"',
+        'x-content-type-options': 'nosniff',
+        ...Object.fromEntries(Object.entries(headers).filter(([, value]) => value !== undefined)),
+      },
+    })
+
+  it('returns the bytes with the recognized type and no credentials', async () => {
+    fetchMock.mockResolvedValueOnce(session()).mockResolvedValueOnce(assetResponse())
+    const blob = await createApiClient().downloadSnapshotAsset(resourceId, assetId)
+    expect(blob.type).toBe('image/gif')
+    expect(blob.size).toBe(bytes.byteLength)
+    expect(fetchMock.mock.calls[1][0]).toBe(
+      '/api/v1/resources/' + resourceId + '/snapshot/assets/' + assetId + '/bytes',
+    )
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({
+      method: 'GET',
+      credentials: 'omit',
+      cache: 'no-store',
+      redirect: 'error',
+      referrerPolicy: 'no-referrer',
+      body: undefined,
+    })
+    expect(new Headers(fetchMock.mock.calls[1][1]?.headers).get('X-StudyPilot-Token')).toBe(token)
+  })
+
+  it.each([
+    ['资料 id 不是 id', '../escape', assetId],
+    ['资产 id 不是 id', resourceId, 'https://evil.test/'],
+    ['资产 id 带查询串', resourceId, assetId + '?token=bad'],
+  ])('rejects %s before network', async (_label, resource: string, asset: string) => {
+    await expect(createApiClient().downloadSnapshotAsset(resource, asset)).rejects.toMatchObject({
+      code: 'INVALID_REQUEST',
+    })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  // **这一组是 downloadOriginal 那一组的对应物**：此前资产下载只查了类型与 nosniff，
+  // 既不要求 attachment、也没有任何长度上限（直接 arrayBuffer），而注释却自称
+  // 「与 downloadOriginal 同形」。每一条都要真的挡住。
+  it.each([
+    ['声明成 HTML', { 'content-type': 'text/html' }],
+    ['声明成 SVG（可执行 XML，不在白名单）', { 'content-type': 'image/svg+xml' }],
+    ['不是 attachment', { 'content-disposition': 'inline; filename="x.gif"' }],
+    ['没有 content-length', { 'content-length': '' }],
+    ['content-length 为 0', { 'content-length': '0' }],
+    ['声明长度超过 10 MiB', { 'content-length': String(10 * 1024 * 1024 + 1) }],
+    ['声明长度大于实际字节', { 'content-length': '7' }],
+    ['声明长度小于实际字节', { 'content-length': '5' }],
+    ['缺少 nosniff', { 'x-content-type-options': '' }],
+  ])('rejects a response that %s', async (_label, headers) => {
+    fetchMock.mockResolvedValueOnce(session()).mockResolvedValueOnce(assetResponse(headers))
+    await expect(
+      createApiClient().downloadSnapshotAsset(resourceId, assetId),
+    ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps the backend asset error codes', async () => {
+    fetchMock
+      .mockResolvedValueOnce(session())
+      .mockResolvedValueOnce(
+        Response.json(
+          { error: { code: 'SNAPSHOT_ASSET_NOT_FOUND', message: '/private path', details: {} } },
+          { status: 404 },
+        ),
+      )
+    const error = await createApiClient()
+      .downloadSnapshotAsset(resourceId, assetId)
+      .catch((cause: unknown) => cause)
+    expect(error).toMatchObject({ code: 'SNAPSHOT_ASSET_NOT_FOUND' })
+    expect(JSON.stringify(error)).not.toContain('private')
+  })
+})

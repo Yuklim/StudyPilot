@@ -10,8 +10,13 @@ import { expect, test } from '@playwright/test'
  */
 const PNG_BASE64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
-const FROZEN = 'https://cdn.example.test/frozen.png'
-const NOT_FROZEN = 'https://cdn.example.test/never-frozen.png'
+// **两张图必须分属不同的主机。** 同主机时，「冻结那张也跑去原站取」这种回退
+// 在网络断言里和未冻结那张混在一起，一个真实的退化看不出来。分开之后，
+// `frozen.example.test` 一旦出现在请求里就说明本机那一份没被用上。
+const FROZEN_HOST = 'https://frozen.example.test'
+const ORIGIN_HOST = 'https://origin.example.test'
+const FROZEN = `${FROZEN_HOST}/frozen.png`
+const NOT_FROZEN = `${ORIGIN_HOST}/never-frozen.png`
 
 test('a rendered snapshot shows the local copy of a frozen image', async ({ page }) => {
   const external: string[] = []
@@ -73,6 +78,11 @@ test('a rendered snapshot shows the local copy of a frozen image', async ({ page
   await expect(images).toHaveCount(2)
   // 冻结过的那张走本机：src 是 blob URL，不是原站地址。
   await expect(images.nth(0)).toHaveAttribute('src', /^blob:/)
+  // 而且**真的解码出来了**：`blob:` 这个 src 只证明地址对，不证明字节能显示。
+  // 上传的字节坏掉、媒体类型丢失、blob URL 提前回收，src 都还是 blob: 而画面是空的。
+  await expect
+    .poll(async () => images.nth(0).evaluate((img: HTMLImageElement) => img.naturalWidth))
+    .toBeGreaterThan(0)
   // 没冻过的那张按原址加载，且撤掉 referrer。
   await expect(images.nth(1)).toHaveAttribute('src', NOT_FROZEN)
   await expect(images.nth(1)).toHaveAttribute('referrerpolicy', 'no-referrer')
@@ -82,10 +92,10 @@ test('a rendered snapshot shows the local copy of a frozen image', async ({ page
   await expect(section.locator('pre.snapshot-body')).toContainText(`![冻结过](${FROZEN})`)
 
   // 本页向外部发出的请求**只可能来自那张未冻结的图片**——不得有别的（字体、
-  // 渲染器 CDN、链接预取等）。这条守的是「外部请求只能来自用户已知的那一类」，
-  // 而不是「没有外部请求」——后者在用户选择自动加载之后就不成立了。
-  const unexpected = [...new Set(external)].filter(
-    (origin) => origin !== 'https://cdn.example.test',
-  )
+  // 渲染器 CDN、链接预取等），**尤其不得有冻结那张所在的主机**：它出现就等于
+  // 本机副本没被用上，而用户为那一份付过一次授权代价。
+  // 这条守的是「外部请求只能来自用户已知的那一类」，而不是「没有外部请求」——
+  // 后者在用户选择自动加载之后就不成立了。
+  const unexpected = [...new Set(external)].filter((origin) => origin !== ORIGIN_HOST)
   expect(unexpected).toEqual([])
 })

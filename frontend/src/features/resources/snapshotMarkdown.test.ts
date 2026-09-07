@@ -99,6 +99,55 @@ describe('image sources', () => {
   })
 })
 
+describe('relative image addresses', () => {
+  // 冻结表里的键是采集时算好的**绝对**地址，而 Defuddle 产出的正文里常常留着
+  // `/img/a.png`、`../img/a.png` 这类相对写法。不先解析成绝对地址，冻结表既匹配不上
+  // （用户为它付过一次授权代价的本机副本白存），渲染出的 `src` 也是打不开的本机路径。
+  const BASE = 'https://docs.example.com/guide/page.html'
+  const ABSOLUTE = 'https://docs.example.com/img/a.png'
+  const frozen = new Map([[ABSOLUTE, 'blob:http://127.0.0.1:5173/abc']])
+
+  it.each(['/img/a.png', '../img/a.png', 'https://docs.example.com/img/a.png'])(
+    'resolves %s against the captured address before looking it up',
+    (src) => {
+      const host = document.createElement('div')
+      host.innerHTML = renderSnapshot(`![图](${src})`, frozen, BASE)
+      expect(host.querySelector('img')?.getAttribute('src')).toBe('blob:http://127.0.0.1:5173/abc')
+    },
+  )
+
+  it('renders an unfrozen relative image at its absolute origin address', () => {
+    const host = document.createElement('div')
+    host.innerHTML = renderSnapshot('![图](/img/b.png)', new Map(), BASE)
+    const img = host.querySelector('img')
+    expect(img?.getAttribute('src')).toBe('https://docs.example.com/img/b.png')
+    expect(img?.getAttribute('referrerpolicy')).toBe('no-referrer')
+  })
+
+  it('emits no img at all for a relative address with no base to resolve against', () => {
+    // 手工粘贴的正文没有采集地址。此时相对地址无从解析，**不渲染**好过渲染一个
+    // 指向本机 UI 自己的 `src`（那会向本机服务发一串必然 404 的请求）。
+    const host = document.createElement('div')
+    host.innerHTML = renderSnapshot('![图](/img/b.png)', new Map(), null)
+    expect(host.querySelector('img')).toBeNull()
+  })
+})
+
+describe('alt text', () => {
+  it('keeps the alt so the image is still described when it cannot load', () => {
+    // 自定义 image 规则一旦忘了填 alt，读屏与加载失败时的占位文字会一起消失。
+    const host = document.createElement('div')
+    host.innerHTML = renderSnapshot('![一张流程图](https://cdn.example.com/a.png)', new Map())
+    expect(host.querySelector('img')?.getAttribute('alt')).toBe('一张流程图')
+  })
+
+  it('marks every rendered image as lazily loaded', () => {
+    const host = document.createElement('div')
+    host.innerHTML = renderSnapshot('![图](https://cdn.example.com/a.png)', new Map())
+    expect(host.querySelector('img')?.getAttribute('loading')).toBe('lazy')
+  })
+})
+
 describe('links in the body', () => {
   it('opens externally without carrying the local address along', () => {
     const host = document.createElement('div')

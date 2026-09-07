@@ -42,6 +42,10 @@ export function createRenderer(resolve: (src: string) => ImageSource | null): Ma
     }
     token.attrSet('src', target.url)
     token.attrSet('loading', 'lazy')
+    // 默认的 image 规则唯一多做的一件事就是把 alt 填上（renderer.mjs 里
+    // `renderInlineAsText`）。自定义规则取代了它，若不补这一行，**正文里每一张图的
+    // alt 都是空的**：读屏会把它们当装饰性图片跳过，而原址加载失败时连替代文字都没有。
+    token.attrSet('alt', self.renderInlineAsText(token.children ?? [], _options, _env))
     if (target.kind === 'origin') {
       // 唯一的缓解措施：默认策略会把 `http://127.0.0.1:5173/` 这个本机源发出去，
       // 图床的防盗链本就不认它，**去掉零功能代价**，少泄露一位信息。
@@ -72,14 +76,36 @@ export function createRenderer(resolve: (src: string) => ImageSource | null): Ma
  * **正文一字不动**：替换只发生在渲染管线里，不回写数据库——原站地址是溯源信息
  * （TASK-039 设计决定 ②）。
  */
-export function renderSnapshot(markdown: string, frozen: ReadonlyMap<string, string>): string {
+export function renderSnapshot(
+  markdown: string,
+  frozen: ReadonlyMap<string, string>,
+  base?: string | null,
+): string {
   const md = createRenderer((src) => {
     if (!src) return null
-    const local = frozen.get(src)
+    // **先解析成绝对地址再查表。** 资产表里的 `source_url` 是扩展用
+    // `new URL(raw, pageUrl).href` 解析过的**绝对**地址，而正文一字不动地保留了原写法。
+    // 不解析就直接比较的话，`![图](/img/a.png)` 这种相对写法既匹配不上本机那一份、
+    // 又不满足下面的 http(s) 判定，于是**连 img 都不产生** —— 一张确实冻下来、
+    // 用户为它付过权限代价的图，页面上什么都看不到。
+    const absolute = toAbsolute(src, base)
+    if (!absolute) return null
+    const local = frozen.get(absolute)
     if (local) return { kind: 'frozen', url: local }
     // markdown-it 已经用 validateLink 过滤过 src；到这里的都是它放行的地址。
     // 再挡一次协议：只有 http(s) 才值得去请求。
-    return /^https?:\/\//i.test(src) ? { kind: 'origin', url: src } : null
+    return /^https?:\/\//i.test(absolute) ? { kind: 'origin', url: absolute } : null
   })
   return md.render(markdown)
+}
+
+/** 把正文里的图片地址解析成绝对地址；解析不了就原样返回，由调用方按协议判定。 */
+function toAbsolute(src: string, base?: string | null): string | null {
+  if (/^https?:\/\//i.test(src)) return src
+  if (!base) return src
+  try {
+    return new URL(src, base).href
+  } catch {
+    return src
+  }
 }
