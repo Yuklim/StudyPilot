@@ -234,6 +234,7 @@ describe('memory-only local API client', () => {
     impact_revision: 'b'.repeat(64),
     impact: {
       original_file_count: 1,
+      snapshot_asset_count: 0,
       note_count: 2,
       study_record_count: 3,
       active_review_plan_count: 0,
@@ -589,5 +590,60 @@ describe('memory-only local API client', () => {
     await expect(createApiClient().request('/api/v1/resources')).rejects.toMatchObject({
       code: 'INVALID_RESPONSE',
     })
+  })
+})
+
+describe('uploadSnapshotAsset', () => {
+  const resourceId = '018f1f58-4eb2-4a0d-a716-fb81b1960001'
+  const assetForm = () => {
+    const form = new FormData()
+    form.append('file', new File([new Uint8Array([1])], 'image'))
+    form.append('source_url', 'https://cdn.example.com/a.png')
+    return form
+  }
+
+  it('sends the snapshot version as a strong If-Match and lets the browser set the boundary', async () => {
+    fetchMock
+      .mockResolvedValueOnce(session())
+      .mockResolvedValueOnce(Response.json({ data: { id: 'synthetic' } }, { status: 201 }))
+    await expect(
+      createApiClient().uploadSnapshotAsset(resourceId, assetForm(), 4),
+    ).resolves.toEqual({ data: { id: 'synthetic' } })
+    const [path, init] = fetchMock.mock.calls[1]
+    expect(path).toBe(`/api/v1/resources/${resourceId}/snapshot/assets`)
+    expect(init?.method).toBe('POST')
+    const headers = new Headers(init?.headers)
+    expect(headers.get('If-Match')).toBe('"4"')
+    // multipart 的 boundary 必须由浏览器生成；自己设 Content-Type 会让后端解不出部件。
+    expect(headers.get('Content-Type')).toBeNull()
+  })
+
+  it.each([
+    ['资料 id 不是 uuid', 'not-a-uuid', 4],
+    ['版本是 0', resourceId, 0],
+    ['版本不是整数', resourceId, 1.5],
+  ])('refuses before sending when %s', async (_label, id, version) => {
+    await expect(
+      createApiClient().uploadSnapshotAsset(id, assetForm(), version),
+    ).rejects.toMatchObject({ code: 'INVALID_REQUEST' })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['多了一个字段', ['file', 'source_url', 'title']],
+    ['少了 source_url', ['file']],
+    ['少了文件', ['source_url']],
+    ['文件字段不是文件', ['text-file', 'source_url']],
+  ])('refuses a form that %s', async (_label, fields: string[]) => {
+    const form = new FormData()
+    for (const name of fields) {
+      if (name === 'file') form.append('file', new File([new Uint8Array([1])], 'image'))
+      else if (name === 'text-file') form.append('file', 'not a file')
+      else form.append(name, 'x')
+    }
+    await expect(createApiClient().uploadSnapshotAsset(resourceId, form, 1)).rejects.toMatchObject({
+      code: 'INVALID_REQUEST',
+    })
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })

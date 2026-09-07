@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { CAPTURE_PAYLOAD, CAPTURE_READY, PENDING_KEY } from '../shared/protocol'
+import {
+  CAPTURE_IMAGE_REQUEST,
+  CAPTURE_IMAGE_RESULT,
+  CAPTURE_PAYLOAD,
+  CAPTURE_READY,
+  PENDING_KEY,
+} from '../shared/protocol'
 
 import { relayHandler } from './relay'
 
@@ -9,6 +15,7 @@ const stored = {
   title: '如何理解数据库索引',
   url: 'https://example.com/db-index',
   markdown: '# 如何理解数据库索引\n\n索引的本质是用空间换时间。\n',
+  images: ['https://cdn.example.com/a.png'],
 }
 
 function storageWith(value: unknown) {
@@ -76,6 +83,129 @@ describe('relayHandler', () => {
     ['网址不是 http(s)', { ...stored, url: 'javascript:alert(1)' }],
   ])('posts nothing when the stash holds %s', async (_label, value) => {
     await relayHandler(window, storageWith(value))(messageEvent())
+    expect(posted).toEqual([])
+  })
+})
+
+describe('relayHandler image requests', () => {
+  let posted: unknown[]
+
+  beforeEach(() => {
+    posted = []
+    vi.spyOn(window, 'postMessage').mockImplementation((message: unknown) => {
+      posted.push(message)
+    })
+  })
+
+  function handlerWith(
+    ask = vi.fn(async () => ({ ok: true, base64: 'AAA', mediaType: 'image/png' })),
+  ) {
+    return { handle: relayHandler(window, storageWith(stored), ask), ask }
+  }
+
+  async function ready(handle: (event: MessageEvent) => Promise<void>) {
+    await handle(messageEvent())
+  }
+
+  it('serves only the addresses this capture actually offered', async () => {
+    // 这条是这段新链路的信任边界：中转脚本跑在本机 UI 源上，而该源上的任何脚本
+    // 都能向本窗口 postMessage。不限定范围，扩展就成了一个绕过 CORS 的通用代理。
+    const { handle, ask } = handlerWith()
+    await ready(handle)
+    posted.length = 0
+
+    await handle(
+      messageEvent({
+        data: { type: CAPTURE_IMAGE_REQUEST, url: 'https://evil.test/secret' },
+      } as Partial<MessageEvent>),
+    )
+    expect(ask).not.toHaveBeenCalled()
+    expect(posted).toEqual([
+      {
+        type: CAPTURE_IMAGE_RESULT,
+        url: 'https://evil.test/secret',
+        result: { ok: false, reason: 'not-offered' },
+      },
+    ])
+  })
+
+  it('asks the worker for an offered address and hands the result back', async () => {
+    const { handle, ask } = handlerWith()
+    await ready(handle)
+    posted.length = 0
+
+    await handle(
+      messageEvent({
+        data: { type: CAPTURE_IMAGE_REQUEST, url: 'https://cdn.example.com/a.png' },
+      } as Partial<MessageEvent>),
+    )
+    expect(ask).toHaveBeenCalledWith('https://cdn.example.com/a.png')
+    expect(posted).toEqual([
+      {
+        type: CAPTURE_IMAGE_RESULT,
+        url: 'https://cdn.example.com/a.png',
+        result: { ok: true, base64: 'AAA', mediaType: 'image/png' },
+      },
+    ])
+  })
+
+  it('answers even when the worker is gone, so the page never waits forever', async () => {
+    const ask = vi.fn(async () => {
+      throw new Error('service worker asleep')
+    })
+    const handle = relayHandler(window, storageWith(stored), ask)
+    await ready(handle)
+    posted.length = 0
+
+    await handle(
+      messageEvent({
+        data: { type: CAPTURE_IMAGE_REQUEST, url: 'https://cdn.example.com/a.png' },
+      } as Partial<MessageEvent>),
+    )
+    expect(posted).toEqual([
+      {
+        type: CAPTURE_IMAGE_RESULT,
+        url: 'https://cdn.example.com/a.png',
+        result: { ok: false, reason: 'failed' },
+      },
+    ])
+  })
+
+  it('refuses image requests that arrive before any capture was delivered', async () => {
+    // 没交付过就没有允许清单，一律不服务。
+    const { handle, ask } = handlerWith()
+    await handle(
+      messageEvent({
+        data: { type: CAPTURE_IMAGE_REQUEST, url: 'https://cdn.example.com/a.png' },
+      } as Partial<MessageEvent>),
+    )
+    expect(ask).not.toHaveBeenCalled()
+    expect(posted).toEqual([
+      {
+        type: CAPTURE_IMAGE_RESULT,
+        url: 'https://cdn.example.com/a.png',
+        result: { ok: false, reason: 'not-offered' },
+      },
+    ])
+  })
+
+  it('ignores image requests from another window or origin', async () => {
+    const { handle, ask } = handlerWith()
+    await ready(handle)
+    posted.length = 0
+    await handle(
+      messageEvent({
+        source: {} as Window,
+        data: { type: CAPTURE_IMAGE_REQUEST, url: 'https://cdn.example.com/a.png' },
+      } as Partial<MessageEvent>),
+    )
+    await handle(
+      messageEvent({
+        origin: 'https://evil.test',
+        data: { type: CAPTURE_IMAGE_REQUEST, url: 'https://cdn.example.com/a.png' },
+      } as Partial<MessageEvent>),
+    )
+    expect(ask).not.toHaveBeenCalled()
     expect(posted).toEqual([])
   })
 })

@@ -119,6 +119,7 @@ function deletionImpact(value: unknown): DeletionImpact {
   const row = object(value)
   const keys = [
     'original_file_count',
+    'snapshot_asset_count',
     'note_count',
     'study_record_count',
     'active_review_plan_count',
@@ -346,6 +347,64 @@ export async function getResourceSnapshot(resourceId: string): Promise<ContentSn
     if (cause instanceof ApiError && cause.code === 'SNAPSHOT_NOT_FOUND') return null
     throw cause
   }
+}
+
+/** 一张已冻结图片的元数据。字段与后端 `SnapshotAsset` 一致，不含内部存储键。 */
+export interface SnapshotAsset {
+  id: string
+  snapshot_id: string
+  source_url: string
+  media_type: string
+  size_bytes: number
+  sha256: string
+  created_at: string
+}
+
+function snapshotAsset(value: unknown): SnapshotAsset {
+  const row = object(value)
+  const size = row.size_bytes
+  if (typeof size !== 'number' || !Number.isSafeInteger(size) || size < 1) return invalid()
+  return {
+    id: string(row.id),
+    snapshot_id: string(row.snapshot_id),
+    source_url: string(row.source_url),
+    media_type: string(row.media_type),
+    size_bytes: size,
+    sha256: string(row.sha256),
+    created_at: instant(row.created_at),
+  }
+}
+
+/**
+ * 冻结正文里的一张图片。
+ *
+ * `expectedVersion` 是**快照的**版本，不是资料的：图片挂在某一份正文上，这个前置
+ * 条件保证它挂到的是调用方刚写下的那一份。上传成功不推进快照版本，所以连传多张
+ * 时这个值不变。
+ */
+export async function uploadSnapshotAsset(
+  resourceId: string,
+  bytes: Blob,
+  sourceUrl: string,
+  expectedVersion: number,
+): Promise<SnapshotAsset> {
+  if (!isResourceId(resourceId) || !sourceUrl) throw new ApiError('INVALID_REQUEST')
+  const form = new FormData()
+  // 文件名不参与任何判定 —— 后端按字节魔数认类型、也不保存这个名字。给一个固定
+  // 值而不是从地址里猜，免得把不可信站点提供的字符串带进 multipart 头。
+  form.append('file', new File([bytes], 'image'))
+  form.append('source_url', sourceUrl)
+  const envelope = object(await api.uploadSnapshotAsset(resourceId, form, expectedVersion))
+  return snapshotAsset(envelope.data)
+}
+
+/** 列出这份资料已冻结的图片。 */
+export async function listSnapshotAssets(resourceId: string): Promise<SnapshotAsset[]> {
+  if (!isResourceId(resourceId)) throw new ApiError('INVALID_REQUEST')
+  const envelope = object(await api.request(`/api/v1/resources/${resourceId}/snapshot/assets`))
+  const rows = envelope.data
+  if (!Array.isArray(rows)) return invalid()
+  return rows.map(snapshotAsset)
 }
 
 export async function putResourceSnapshot(

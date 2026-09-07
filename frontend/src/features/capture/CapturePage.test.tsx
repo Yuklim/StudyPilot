@@ -6,12 +6,46 @@ import { renderWithRouter } from '../../test/render'
 import App from '../../App'
 import { resourceId, sample } from '../resources/fixtures'
 
-import { CAPTURE_PAYLOAD, CAPTURE_READY } from './protocol'
+import {
+  CAPTURE_IMAGE_REQUEST,
+  CAPTURE_IMAGE_RESULT,
+  CAPTURE_PAYLOAD,
+  CAPTURE_READY,
+} from './protocol'
+
+/** 后端返回的快照与资产形状，只用到本测试关心的字段。 */
+const snapshotSample = {
+  id: resourceId,
+  resource_id: resourceId,
+  format: 'MARKDOWN',
+  content: '正文',
+  char_count: 2,
+  sha256: '0'.repeat(64),
+  captured_at: '2026-09-07T02:00:00Z',
+  captured_from_url: null,
+  extractor: 'manual',
+  status: 'READY',
+  failure_code: null,
+  version: 1,
+  created_at: '2026-09-07T02:00:00Z',
+  updated_at: '2026-09-07T02:00:00Z',
+}
+
+const assetSample = {
+  id: '018f1f58-4eb2-4a0d-a716-fb81b1960010',
+  snapshot_id: resourceId,
+  source_url: 'https://cdn.example.com/a.png',
+  media_type: 'image/png',
+  size_bytes: 8,
+  sha256: '0'.repeat(64),
+  created_at: '2026-09-07T02:00:00Z',
+}
 
 const captured = {
   title: '如何理解数据库索引',
   url: 'https://example.com/db-index',
   markdown: '# 如何理解数据库索引\n\n索引的本质是用空间换时间。\n',
+  images: [],
 }
 
 /** 模拟扩展中转脚本的一次交付。默认构造一条**合法**消息。 */
@@ -150,5 +184,113 @@ describe('capture page', () => {
     // 提示语让用户「把下面这段正文粘贴进去」，那段正文就必须还在屏幕上：
     // 扩展暂存在交付时已删、原网页可能已关，这是用户手上唯一的一份。
     expect(screen.getByLabelText(/待粘贴的正文/)).toHaveValue(captured.markdown)
+  })
+})
+
+describe('capture page with images', () => {
+  const withImages = {
+    ...captured,
+    images: ['https://cdn.example.com/a.png', 'https://cdn.example.com/b.png'],
+  }
+  const PNG = btoa('\x89PNG\r\n\x1a\n')
+
+  /** 假扮中转脚本：页面每问一张图，就按 answers 给出答复。 */
+  function relay(answers: Record<string, { ok: boolean; base64?: string }>) {
+    vi.spyOn(window, 'postMessage').mockImplementation((message: unknown) => {
+      const envelope = message as { type?: string; url?: string }
+      if (envelope?.type !== CAPTURE_IMAGE_REQUEST || !envelope.url) return
+      const answer = answers[envelope.url] ?? { ok: false }
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: { type: CAPTURE_IMAGE_RESULT, url: envelope.url, result: answer },
+          origin: window.location.origin,
+          source: window,
+        }),
+      )
+    })
+  }
+
+  it('uploads images only after the snapshot exists, with its version', async () => {
+    // 顺序不是风格问题：上传资产要带**快照**版本作前置条件，正文没写成就没有版本。
+    const calls: string[] = []
+    vi.spyOn(api, 'request').mockImplementation(async (path: string, options = {}) => {
+      if (options.method === 'POST' && path === '/api/v1/resources') {
+        calls.push('create')
+        return { data: sample() }
+      }
+      if (options.method === 'PUT' && path.endsWith('/snapshot')) {
+        calls.push('snapshot')
+        return { data: { ...snapshotSample, version: 4 } }
+      }
+      return undefined
+    })
+    const upload = vi
+      .spyOn(api, 'uploadSnapshotAsset')
+      .mockImplementation(async () => ({ data: assetSample }))
+    relay({
+      'https://cdn.example.com/a.png': { ok: true, base64: PNG },
+      'https://cdn.example.com/b.png': { ok: true, base64: PNG },
+    })
+
+    mount()
+    await screen.findByText(/还没有收到扩展发来的内容/)
+    deliver({}, withImages)
+    await screen.findByDisplayValue('如何理解数据库索引')
+    fireEvent.submit(screen.getByRole('form', { name: '确认采集内容' }))
+
+    await waitFor(() => expect(upload).toHaveBeenCalledTimes(2))
+    expect(calls).toEqual(['create', 'snapshot'])
+    expect(upload.mock.calls.map((call) => call[2])).toEqual([4, 4])
+  })
+
+  it('stays on the page and says how many images were not saved', async () => {
+    // 跳走等于把「2 张里只存下 1 张」咽掉，而用户此刻还能重新采集。
+    vi.spyOn(api, 'request').mockImplementation(async (_path: string, options = {}) => {
+      if (options.method === 'POST') return { data: sample() }
+      if (options.method === 'PUT') return { data: { ...snapshotSample, version: 1 } }
+      return undefined
+    })
+    vi.spyOn(api, 'uploadSnapshotAsset').mockImplementation(async () => ({ data: assetSample }))
+    relay({
+      'https://cdn.example.com/a.png': { ok: true, base64: PNG },
+      'https://cdn.example.com/b.png': { ok: false },
+    })
+
+    mount()
+    await screen.findByText(/还没有收到扩展发来的内容/)
+    deliver({}, withImages)
+    await screen.findByDisplayValue('如何理解数据库索引')
+    fireEvent.submit(screen.getByRole('form', { name: '确认采集内容' }))
+
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toContain('冻结了 1 张')
+    expect(alert.textContent).toContain('1 张没能保存')
+    expect(alert.textContent).toContain('仍然指向原网站')
+    expect(screen.getByRole('link', { name: '打开这份资料' })).toBeInTheDocument()
+  })
+
+  it('asks for nothing when the capture carried no images', async () => {
+    const posted: unknown[] = []
+    vi.spyOn(window, 'postMessage').mockImplementation((message: unknown) => {
+      posted.push(message)
+    })
+    vi.spyOn(api, 'request').mockImplementation(async (_path: string, options = {}) => {
+      if (options.method === 'POST') return { data: sample() }
+      if (options.method === 'PUT') return { data: { ...snapshotSample, version: 1 } }
+      return undefined
+    })
+    const upload = vi.spyOn(api, 'uploadSnapshotAsset')
+
+    mount()
+    await screen.findByText(/还没有收到扩展发来的内容/)
+    deliver()
+    await screen.findByDisplayValue('如何理解数据库索引')
+    fireEvent.submit(screen.getByRole('form', { name: '确认采集内容' }))
+
+    await waitFor(() => expect(screen.queryByRole('form')).not.toBeInTheDocument())
+    expect(upload).not.toHaveBeenCalled()
+    expect(posted.filter((m) => (m as { type?: string })?.type === CAPTURE_IMAGE_REQUEST)).toEqual(
+      [],
+    )
   })
 })

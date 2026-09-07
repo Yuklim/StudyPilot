@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 import {
   CAPTURE_PAYLOAD,
   CAPTURE_READY,
+  MAX_IMAGES,
   MAX_MARKDOWN,
   MAX_TITLE,
   MAX_URL,
@@ -102,7 +103,7 @@ describe('isSafeSourceUrl', () => {
 })
 
 describe('isCapturePayload', () => {
-  const good = { title: '标题', url: 'https://example.com/a', markdown: '正文' }
+  const good = { title: '标题', url: 'https://example.com/a', markdown: '正文', images: [] }
 
   it('accepts a well-formed payload and an empty title', () => {
     expect(isCapturePayload(good)).toBe(true)
@@ -119,5 +120,44 @@ describe('isCapturePayload', () => {
     ['是 null', null],
   ])('rejects %s', (_label, value) => {
     expect(isCapturePayload(value)).toBe(false)
+  })
+})
+
+describe('image list', () => {
+  const good = {
+    title: '标题',
+    url: 'https://example.com/a',
+    markdown: '正文',
+    images: ['https://cdn.example.com/a.png'],
+  }
+
+  it('accepts absolute http(s) image addresses, including ones with a fragment', () => {
+    // `#` 在资料网址上是拒的（后端不接受），在图片地址上不是 —— 后端对资产的
+    // source_url 不设该限制，在这里一并拒掉会让带 # 的图连原样保留都做不到。
+    expect(isCapturePayload(good)).toBe(true)
+    expect(isCapturePayload({ ...good, images: ['https://cdn.example.com/a.png#x'] })).toBe(true)
+  })
+
+  it.each([
+    ['缺少 images 字段', undefined],
+    ['不是数组', 'https://cdn.example.com/a.png'],
+    ['含非字符串', [1]],
+    ['含 data: 地址', ['data:image/png;base64,AAAA']],
+    ['含 blob: 地址', ['blob:https://example.com/abc']],
+    ['含 file: 地址', ['file:///etc/passwd']],
+    ['含相对地址', ['/img/a.png']],
+    ['含带凭据的地址', ['https://u:p@cdn.example.com/a.png']],
+    ['含空白字符', ['https://cdn.example.com/a b.png']],
+    [
+      '超过张数上限',
+      Array.from({ length: MAX_IMAGES + 1 }, (_, i) => `https://cdn.example.com/${i}.png`),
+    ],
+  ])('refuses a payload whose images %s', (_label, images) => {
+    expect(isCapturePayload({ ...good, images })).toBe(false)
+  })
+
+  it('refuses an image address longer than the backend accepts', () => {
+    const long = `https://cdn.example.com/${'a'.repeat(MAX_URL)}.png`
+    expect(isCapturePayload({ ...good, images: [long] })).toBe(false)
   })
 })

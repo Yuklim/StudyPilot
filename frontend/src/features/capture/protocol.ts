@@ -6,6 +6,10 @@
 
 export const CAPTURE_READY = 'studypilot-capture-ready'
 export const CAPTURE_PAYLOAD = 'studypilot-capture-payload'
+/** 页面向中转脚本要一张图片的字节。由页面发出，逐张。 */
+export const CAPTURE_IMAGE_REQUEST = 'studypilot-capture-image-request'
+/** 中转脚本把一张图片的结果交给页面（成功带字节，失败带原因）。 */
+export const CAPTURE_IMAGE_RESULT = 'studypilot-capture-image-result'
 
 /** 与后端 `SnapshotContent` 的 max_length 一致。 */
 export const MAX_MARKDOWN = 1_000_000
@@ -14,10 +18,28 @@ export const MAX_URL = 2048
 /** 与后端标题的 max_length 一致；标题可空。 */
 export const MAX_TITLE = 200
 
+/** 与后端 `MAX_ASSET_BYTES` 一致。 */
+export const MAX_IMAGE_BYTES = 10 * 1024 * 1024
+/**
+ * 一次采集最多冻结多少张图。
+ *
+ * 后端**不设**每篇张数上限（用户 2026-09-06 决定），这个上限只管**采集这一次**：
+ * 它限的是「一次点击最多让扩展向外发多少个请求」，属授权面而非存储策略。
+ * 超出的图片保留原站地址，页面会如实说有多少张没冻结。
+ */
+export const MAX_IMAGES = 60
+
 export interface CapturePayload {
   title: string
   url: string
   markdown: string
+  /**
+   * 正文里引用的图片地址，绝对 http(s)，已去重并截断到 MAX_IMAGES。
+   *
+   * 空数组是正常状态：正文没有图片、或提取时一张都没认出来。它**不表示**
+   * 用户拒绝了权限 —— 那件事发生在此之后，由页面按取回结果如实告知。
+   */
+  images: string[]
 }
 
 /**
@@ -51,6 +73,36 @@ export function isSafeSourceUrl(value: string): boolean {
   }
 }
 
+/**
+ * 图片地址的校验，比 `isSafeSourceUrl` **松一处、紧一处**，两处都是有意的。
+ *
+ * 松：允许 `#`。后端的 `source_url`（资料的网址）拒绝片段标识符，而资产的
+ * `source_url` 只是「这张图在正文里的地址」这一匹配键，后端对它不设该限制；
+ * 若在这里一并拒掉，带 `#` 的图片地址会连原样保留都做不到。
+ *
+ * 紧：这个地址会被扩展**真的发出去请求**，而资料网址不会。所以照样拒绝空白、
+ * 控制字符与 authority 段里的 `@`（携带凭据的地址），并要求可解析且有主机名。
+ * `data:`/`blob:`/`file:` 一律不匹配 http(s) 前缀，从这里就被挡住。
+ */
+export function isSafeImageUrl(value: string): boolean {
+  if (!/^https?:\/\//.test(value) || value.length > MAX_URL) return false
+  if (/[\s\\]/u.test(value)) return false
+  if ([...value].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) return false
+  if (/^https?:\/\/[^/?#]*@/.test(value)) return false
+  try {
+    const url = new URL(value)
+    return Boolean(url.hostname) && !url.username && !url.password
+  } catch {
+    return false
+  }
+}
+
+/** 载荷里的图片清单：已去重、已截断到 MAX_IMAGES，每一条都过 isSafeImageUrl。 */
+export function isImageList(value: unknown): value is string[] {
+  if (!Array.isArray(value) || value.length > MAX_IMAGES) return false
+  return value.every((item) => typeof item === 'string' && isSafeImageUrl(item))
+}
+
 // 页面用它，防的是「谁都能往这个窗口发消息」。
 /**
  * 接收端一律先过这道校验再使用：结构对不上就丢弃，不猜测、不补救。
@@ -69,7 +121,36 @@ export function isCapturePayload(value: unknown): value is CapturePayload {
   if (typeof title !== 'string' || title.length > MAX_TITLE) return false
   if (typeof url !== 'string' || !isSafeSourceUrl(url)) return false
   if (typeof markdown !== 'string') return false
+  if (!isImageList(candidate.images)) return false
   return markdown.trim().length > 0 && markdown.length <= MAX_MARKDOWN
+}
+
+/** 扩展交回的一张图片的结果。失败时只有一个粗粒度原因，不带站点的错误细节。 */
+export interface ImageResult {
+  url: string
+  ok: boolean
+  base64?: string
+}
+
+/**
+ * 从一条 message 事件里取出图片结果；不可信则返回 null。
+ *
+ * 与 `capturedFrom` 同样的信任边界：**任何同源脚本都能向本窗口 postMessage**，
+ * 所以字节也要过校验。base64 只做形状检查（合法字符集、非空），真正的裁决在
+ * 后端 —— 它按字节魔数判定类型，不采信这里的任何声明。
+ */
+export function imageResultFrom(event: MessageEvent, win: Window): ImageResult | null {
+  if (event.source !== win) return null
+  if (event.origin !== win.location.origin) return null
+  const envelope = event.data as { type?: unknown; url?: unknown; result?: unknown } | null
+  if (envelope?.type !== CAPTURE_IMAGE_RESULT) return null
+  if (typeof envelope.url !== 'string') return null
+  const result = envelope.result as { ok?: unknown; base64?: unknown } | null
+  if (result?.ok !== true) return { url: envelope.url, ok: false }
+  if (typeof result.base64 !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(result.base64)) {
+    return { url: envelope.url, ok: false }
+  }
+  return { url: envelope.url, ok: true, base64: result.base64 }
 }
 
 /** 从一条 message 事件里取出可信的采集内容；不可信则返回 null。 */
@@ -82,6 +163,9 @@ export function capturedFrom(event: MessageEvent, win: Window): CapturePayload |
   if (!isCapturePayload(envelope.payload)) return null
   // 返回**已校验字段的副本**而不是原对象：让「校验的即所用的」在代码层面自明。
   // 结构化克隆已经挡住了 getter/Proxy，这一步是把不变量写进代码而非依赖运行时特性。
-  const { title, url, markdown } = envelope.payload
-  return { title, url, markdown }
+  const { title, url, markdown, images } = envelope.payload
+  // images 也要跟着复制一份：漏掉它，页面永远看不到图片清单，冻结这条路
+  // 会一声不响地什么都不做 —— 这正是 `protocol.test.ts` 那条「返回的是副本」
+  // 断言在本次改动中抓到的。数组本身也复制，避免与来源共享引用。
+  return { title, url, markdown, images: [...images] }
 }

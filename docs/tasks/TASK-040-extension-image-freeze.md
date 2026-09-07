@@ -13,6 +13,7 @@ allowed_paths = [
   "extension/**",
   "frontend/src/features/capture/**",
   "frontend/src/features/resources/api.ts",
+  "frontend/src/features/resources/api.test.ts",
   "frontend/src/features/resources/ResourceDeletion.tsx",
   "frontend/src/features/resources/ResourceDeletion.test.tsx",
   "frontend/src/api/client.ts",

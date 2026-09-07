@@ -71,8 +71,11 @@ describe('extension boundaries', () => {
       name,
       text: readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf8'),
     }))
+    // 可选权限同样是 reach：它安装时不生效，但一旦用户授予就长期有效，
+    // 因此三处宣称必须一样点名它。漏掉 optional 那一半，等于门闩只守了一半。
     const declared = [
       ...manifest.permissions,
+      ...manifest.optional_host_permissions,
       ...manifest.content_scripts.flatMap((entry) => entry.matches),
     ]
     for (const { name, text } of docs) {
@@ -80,6 +83,24 @@ describe('extension boundaries', () => {
         expect(text, `${name} 没有提到已申请的 ${item}`).toContain(item)
       }
     }
+  })
+
+  it('keeps the network reach confined to the service worker', () => {
+    // 「扩展只有一个地方会主动发请求」这句承诺的机器守卫。popup、注入脚本与中转
+    // 脚本都不许出现 fetch/XMLHttpRequest —— 它们要字节时应当经消息问 worker。
+    const offenders = sources()
+      .filter((path) => !path.includes('/background/'))
+      .filter((path) => /\bfetch\s*\(|XMLHttpRequest|navigator\.sendBeacon/.test(code(path)))
+    expect(offenders).toEqual([])
+  })
+
+  it('never lets the service worker carry site credentials', () => {
+    // 取图必须 credentials: 'omit'。登录墙后的图片因此取不到，那是设计而非缺陷；
+    // 反过来，任何一处 'include' 都会把用户在该站的登录态带出去。
+    const worker = code(fileURLToPath(new URL('./background/worker.ts', import.meta.url)))
+    expect(worker).toContain("credentials: 'omit'")
+    expect(worker).not.toContain("credentials: 'include'")
+    expect(worker).not.toContain("credentials: 'same-origin'")
   })
 
   it('scans a non-empty set of files', () => {

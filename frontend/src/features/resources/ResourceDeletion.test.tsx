@@ -10,6 +10,7 @@ import { resourceTitle } from './resourceTitle'
 const token = 't'.repeat(43)
 const impact = {
   original_file_count: 1,
+  snapshot_asset_count: 0,
   note_count: 2,
   study_record_count: 3,
   active_review_plan_count: 1,
@@ -59,6 +60,10 @@ describe('resource deletion page', () => {
       fireEvent.click(screen.getByRole('button', { name: '删除这份资料' }))
       expect(await screen.findByRole('dialog', { name: /确认删除/ })).toBeInTheDocument()
       expect(screen.getByText('原件')).toBeInTheDocument()
+      // TASK-039 遗留 G：后端从那时起就返回图片张数，但界面上三处解析器/标签表都
+      // 忽略它，带图资料的删除预览会**少报**将被删除的东西。扩展一旦开始写图片，
+      // 这就是用户可见的漏报，所以本条与后端那侧的计数一起钉住。
+      expect(screen.getByText('已冻结的图片')).toBeInTheDocument()
       expect(screen.getByText('心得')).toBeInTheDocument()
       expect(screen.getByText(/不可撤销/)).toBeInTheDocument()
       expect(request.mock.calls.map(([path]) => path)).toContain(

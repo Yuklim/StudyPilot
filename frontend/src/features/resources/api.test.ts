@@ -21,6 +21,7 @@ describe('resource view adapter', () => {
     confirmation_token: 't'.repeat(43),
     impact: {
       original_file_count: 1,
+      snapshot_asset_count: 0,
       note_count: 2,
       study_record_count: 3,
       active_review_plan_count: 1,

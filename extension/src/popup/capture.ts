@@ -17,8 +17,13 @@ export interface CaptureBridge {
   inject(tabId: number): Promise<void>
   /** 暂存待交付内容，供中转脚本在 UI 页面就绪后取走。 */
   stash(payload: CapturePayload): Promise<void>
-  /** 打开本机 UI 的确认页。 */
+  /** 打开本机 UI 的确认页；能复用上次那个就复用，不再新开一个。 */
   openConfirmPage(): Promise<void>
+  /**
+   * 请求取图所需的站点权限。**必须在用户手势里调用** —— 这就是采集要分两步的原因：
+   * 提取是异步的，`await` 会消耗掉第一次点击的手势，所以请求只能发生在第二次点击里。
+   */
+  requestImageAccess(): Promise<boolean>
 }
 
 export type CaptureOutcome =
@@ -71,13 +76,36 @@ export async function runCapture(
       return { ok: false, reason: badUrl ? 'unusable-url' : 'unusable' }
     }
 
-    await bridge.stash(raced)
-    await bridge.openConfirmPage()
     return { ok: true, payload: raced }
   } finally {
     unsubscribe()
     if (timer !== undefined) clearTimeout(timer)
   }
+}
+
+/**
+ * 第二步：把内容交给确认页。
+ *
+ * `withImages` 为 false 时把图片清单**清空后**再暂存 —— 用户选了「只存正文」，
+ * 那么连地址清单都不该跟过去：留着它，页面就会去逐张请求，而那正是用户拒绝的事。
+ *
+ * 权限请求放在这里而不是 `runCapture` 里，是因为它必须在用户手势内发生（见
+ * `CaptureBridge.requestImageAccess`）。请求被拒不阻断交付：正文照存，图片保留原站
+ * 地址 —— 与「取不到」同一条降级路径。
+ */
+export async function deliverCapture(
+  bridge: CaptureBridge,
+  payload: CapturePayload,
+  withImages: boolean,
+): Promise<{ images: number }> {
+  let images = withImages ? payload.images : []
+  if (images.length > 0) {
+    const granted = await bridge.requestImageAccess()
+    if (!granted) images = []
+  }
+  await bridge.stash({ ...payload, images })
+  await bridge.openConfirmPage()
+  return { images: images.length }
 }
 
 /** 注入脚本回传的信封；只认自己的消息类型。 */

@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
-import { createResource, failureText, putResourceSnapshot } from '../resources/api'
+import {
+  createResource,
+  failureText,
+  putResourceSnapshot,
+  uploadSnapshotAsset,
+} from '../resources/api'
 
+import { askExtensionForImage, freezeImages } from './freeze'
 import {
   CAPTURE_READY,
   MAX_MARKDOWN,
@@ -30,6 +36,8 @@ export function CapturePage() {
   const [error, setError] = useState('')
   const [partial, setPartial] = useState<{ id: string; reason: string } | null>(null)
   const [pending, setPending] = useState(false)
+  const [images, setImages] = useState<{ id: string; frozen: number; failed: number } | null>(null)
+  const [freezing, setFreezing] = useState<{ done: number; total: number } | null>(null)
   const busy = useRef(false)
   const alive = useRef(true)
 
@@ -74,6 +82,7 @@ export function CapturePage() {
     setPending(true)
     setError('')
     setPartial(null)
+    setImages(null)
     let created: { id: string } | null = null
     try {
       created = await createResource({
@@ -81,7 +90,26 @@ export function CapturePage() {
         source_type: 'WEB',
         source_url: captured.url,
       })
-      await putResourceSnapshot(created.id, markdown)
+      const snapshot = await putResourceSnapshot(created.id, markdown)
+      // 图片必须在正文写成之后：上传资产要带**快照**版本作前置条件。
+      if (captured.images.length > 0) {
+        if (alive.current) setFreezing({ done: 0, total: captured.images.length })
+        const result = await freezeImages(created.id, captured.images, snapshot.version, {
+          ask: askExtensionForImage(window),
+          upload: uploadSnapshotAsset,
+          onProgress: (done, total) => {
+            if (alive.current) setFreezing({ done, total })
+          },
+        })
+        if (!alive.current) return
+        setFreezing(null)
+        // 有图没冻上就**停在这一页如实说清**，不跳转 —— 跳走等于把「12 张里只存下 3 张」
+        // 这件事咽掉，而用户此刻还能重新采集。全部成功才走。
+        if (result.failed > 0) {
+          setImages({ id: created.id, ...result })
+          return
+        }
+      }
       if (alive.current) navigate(`/resources/${created.id}`)
     } catch (cause) {
       if (!alive.current) return
@@ -94,7 +122,10 @@ export function CapturePage() {
       }
     } finally {
       busy.current = false
-      if (alive.current) setPending(false)
+      if (alive.current) {
+        setPending(false)
+        setFreezing(null)
+      }
     }
   }
 
@@ -104,6 +135,26 @@ export function CapturePage() {
         <span className="small-label">FROM THE PAGE YOU WERE READING</span>
         <h2 id="capture-title">确认要保存的正文</h2>
       </div>
+
+      {freezing ? (
+        <p role="status">
+          正文已保存，正在下载图片（{freezing.done} / {freezing.total}
+          ）。这一步失败不会影响已经保存的正文。
+        </p>
+      ) : null}
+
+      {images ? (
+        <div className="resource-error">
+          <p role="alert">
+            正文已经保存好了。图片冻结了 {images.frozen} 张，有 {images.failed} 张没能保存 ——
+            那几张仍然指向原网站，原网站改版或删图后会失效。常见原因是图片需要登录才能看、 体积超过
+            10 MiB，或者不是 PNG/JPEG/GIF/WebP。这里不会自动重试。
+          </p>
+          <Link className="journal-button" to={`/resources/${images.id}`}>
+            打开这份资料
+          </Link>
+        </div>
+      ) : null}
 
       {partial ? (
         <div className="resource-error">

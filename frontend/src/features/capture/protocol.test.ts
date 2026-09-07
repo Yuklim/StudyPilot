@@ -64,7 +64,7 @@ describe('isSafeSourceUrl', () => {
 })
 
 describe('capturedFrom', () => {
-  const payload = { title: '标题', url: 'https://example.com/a', markdown: '正文' }
+  const payload = { title: '标题', url: 'https://example.com/a', markdown: '正文', images: [] }
   const event = (overrides: Partial<MessageEventInit> = {}) =>
     new MessageEvent('message', {
       data: { type: CAPTURE_PAYLOAD, payload },
@@ -90,7 +90,7 @@ describe('capturedFrom', () => {
 })
 
 describe('isCapturePayload', () => {
-  const good = { title: '标题', url: 'https://example.com/a', markdown: '正文' }
+  const good = { title: '标题', url: 'https://example.com/a', markdown: '正文', images: [] }
 
   it('accepts a well-formed payload and an empty title', () => {
     expect(isCapturePayload(good)).toBe(true)
