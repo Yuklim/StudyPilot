@@ -215,14 +215,14 @@ export function ContentSnapshot({
             <>
               {frozen.listFailed ? (
                 <p className="resource-hint" role="alert">
-                  已冻结图片的清单没有读出来，因此这一次正文里的图片<strong>全部</strong>
-                  改用原网站的地址显示 —— 也就是说会向原网站发请求。重新读取这份资料可以再试一次。
+                  已冻结图片的清单没有读出来。正文里若有图片，这一次会一律按原网站的地址显示 ——
+                  也就是说会向原网站发请求。刷新页面可以再试一次。
                 </p>
               ) : (
                 frozen.failed > 0 && (
                   <p className="resource-hint" role="alert">
-                    有 {frozen.failed} 张图片的本机副本读不出来，这几张改用了原网站的地址显示——
-                    也就是说这几张会向原网站发请求。原网站删图或改版后它们会失效。
+                    有 {frozen.failed} 张已冻结的图片，本机那一份读不出来。它们若出现在正文里，
+                    会改用原网站的地址显示 —— 也就是会向原网站发请求，且原网站删图或改版后失效。
                   </p>
                 )
               )}

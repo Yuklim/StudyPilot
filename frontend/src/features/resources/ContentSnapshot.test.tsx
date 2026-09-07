@@ -163,7 +163,9 @@ describe('rendered snapshot', () => {
     expect(created).toEqual([])
     // **必须让用户看见**：他对「向图床发请求」的知情同意是针对「这张没冻上」给的。
     // 本机副本坏掉时静默改走原站，等于在他以为看的是本机那一份时发了外部请求。
-    expect(await screen.findByRole('alert')).toHaveTextContent('1 张图片的本机副本读不出来')
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      '1 张已冻结的图片，本机那一份读不出来',
+    )
   })
 
   it('resolves relative image addresses against the address the snapshot was captured from', async () => {
