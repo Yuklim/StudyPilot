@@ -208,8 +208,8 @@ checks = []
 
 ## 实现与测试
 
-- **实现 SHA**：`e1e2b53`（base `e937201`，21 个文件，全部在 `allowed_paths` 内）。
-  - **数据层**：`models.py` 新增 `SnapshotAsset`（不继承 `Versioned` —— 资产只有新增与删除两种写）；`0005_snapshot_assets.py` 建表，`compare_metadata(context, Base.metadata) == []` 证明迁移与模型逐字段一致；`asset_store.py` 是新的只写该表的适配器，每个读都按所属资料收窄。
+- **实现 SHA**：第一轮 `e1e2b53`（base `e937201`，21 个文件）；**处置两位 Reviewer 的 F1 后为第二轮修订**，改动见下方「第一轮 Review 处置」。全部文件仍在 `allowed_paths` 内。
+  - **数据层**：`models.py` 新增 `SnapshotAsset`（不继承 `Versioned` —— 资产只有新增与删除两种写）；`0005_snapshot_assets.py` 建表。`compare_metadata(context, Base.metadata) == []` 证明的是**字段层面**一致（表、列名/类型/可空/`server_default`、索引与唯一约束）——alembic 的 autogenerate **不比较 CHECK 约束，也不比较外键的 `ondelete`**，而这两项恰是本表语义的核心，因此该断言证明不到它们（此点由 R1 指出，原记录「证明逐字段一致」的措辞宽于证据，已更正）。这两部分为人工逐字比对，R1 独立复核后确认全部对上；`asset_store.py` 是新的只写该表的适配器，每个读都按所属资料收窄。
   - **存储层**：`images.py` 按文件头字节识别四种位图（PNG 另核 `IHDR`、WebP 另核 RIFF 第 8 字节的 `WEBP`）；`storage.py` 新增 `inspect_image`，与 `inspect` 共用 `_bytes` 但不走文件名与容器解析。**未新增任何生产依赖**。
   - **应用层**：`snapshot_assets.py` 的 `AssetService` 复用 `FileService` 的锁与 active 暂存集合（不自己调 `LocalFileStorage.begin`），顺序为「暂存 → 识别 → 提升 → 落行」；`snapshots.py` 的 `put`/`remove` 改为在同一事务内先清资产行、再写快照，提交后隔离字节。
   - **接口层**：`snapshot_assets.py` 有自己的 `MESSAGES` 与 `failure`（不复用快照那份，避免把资产错误码塞进快照的表），multipart 读取器按 `file_upload.py` 同形实现但去掉文件名与声明类型两处；四个路由挂在 `/api/v1/resources/{id}/snapshot/assets` 下。
@@ -218,19 +218,31 @@ checks = []
   - **契约**：openapi 新增 4 个 schema、3 个响应组件、3 条路径共 4 个操作，并给 `DeletionImpact` 加 `snapshot_asset_count`（含两处示例）；中文契约新增 **§4.14**、4.12 关系表一行、第 9 节绑定字段清单、§10 操作表四行、§12 错误码三行与逐操作错误码四行，1.3 交付状态段补一句。**既有 `ContentSnapshot` schema 与三个快照操作的响应形状一字未改。**
 - **命令与真实退出结果**（全部由实现者本人在本机运行，无第三方复核）：
   - `backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-039-snapshot-assets.md --worktree` → **CHECKS PASS**，`profiles=backend,contracts`，含 ruff format/lint、mypy、pytest、`uv build --offline` 与 OpenAPI 模型校验，各步 `exit=0`。
-  - `pytest` → **548 passed**，基线 **525**，净增 **23**（新文件 `tests/test_snapshot_assets.py`）。
+  - `pytest` → **550 passed**，基线 **525**，净增 **25**（新文件 `tests/test_snapshot_assets.py`；第二轮由 23 增至 25）。
   - `mypy .` → `Success: no issues found in 77 source files`。`ruff check` / `ruff format --check` → 全绿。
-  - `--candidate e1e2b53 --static-only` → **STATIC PASS**，`files=21`，`product_fingerprint=64b999fff95fe4b1cd4f7c396359984d5030e9e81c6718c73e00979896e53ca2`。
   - **未运行 `frontend` 与 `extension` 两组**：本任务在这两棵树下零改动，检查脚本据变更自动选组因而未选中它们。**这是结构性论据，不是观察到的计数相等** —— 完成条件 18 中「两组计数与基线完全一致」这一半没有实跑证据。
   - 环境：macOS Darwin 25.5.0、`backend/.venv`（Python 3.13）、SQLite 文件库；每个用例用 `tmp_path` 独立的数据库与受控目录。
 - **既有断言无删除、无弱化**：只改了两处，且都仍是精确相等 —— `test_migrations.py`（head `0004`→`0005`、表数 `13`→`14`）与 `test_resource_deletion.py`（影响字典多一个键，仍为整字典 `==`）。
+- **第一轮 Review 处置（两位 Reviewer 独立发现同一缺陷；R2 判为阻断，已接受）**：
+  - **F1 修复**：`api/snapshots.py` 的 `failure()` 原为 `MESSAGES[error.code]`。本任务让写/删快照首次触碰受控目录（`assets.isolate` → `quarantine` 可抛 `STORAGE_PATH_UNAVAILABLE`），该码不在那份 `MESSAGES` 里 —— KeyError 会在**正在构造错误响应的那个 handler 内部**抛出，逃出路由后由 Starlette 最外层返回**裸 500 纯文本**：没有 `code`、没有 `request_id`、不经 `protected_send` 因而也没有 `Cache-Control`。违反契约 §2.2 与第 86 行。**要害是本次引入的不对称**：同一个 diff 里的新文件 `api/snapshot_assets.py` 已用 `MESSAGES.get(..., UNKNOWN_ERROR)` 防了这一手，兄弟文件被漏掉。改为 `.get` 兜底并补 `STORAGE_PATH_UNAVAILABLE` 文案。
+  - **契约同步**：openapi 给 `putResourceSnapshot`/`deleteResourceSnapshot` 补 `503` 响应与 `STORAGE_PATH_UNAVAILABLE` 错误码，两处 description 说明为何现在会触碰存储；中文契约 §10 两行、逐操作错误码两行、§4.13 写入语义段同步。
+  - **回归用例并经变异验证**：`test_a_failed_isolation_still_answers_in_the_error_envelope` 断言 503 时仍是完整信封且 `request_id` 与响应头一致。**把修复回退后该用例失败于 `KeyError: 'STORAGE_PATH_UNAVAILABLE'`，与两位 Reviewer 描述的失败形态逐字相同**；恢复后通过。
+  - **N2 条件 9 的直证补齐**：新增 `test_the_served_content_type_is_the_recognized_one_not_the_declared_one`（声明 `image/png`、字节是 GIF，断言响应头为 `image/gif`）。原先只有元数据被断言过，取字节的响应头那条是靠传递性推出的。
+  - **N4 补断言**：删资料用例增加「资产行数归零」与「其后一次 `reconcile` 收走 trash」两条。若行残留，`references()` 会永久钉住其 trash 键，隔离区变成永久堆积 —— 正是设计决定 ⑤ 要避免的形态，此前无断言。
+  - **不修的三条，及理由**：R1 的 **F2**（同址并发上传返回 500）—— `create` 全程持 `FileService.lock`，同进程内不可达，只有多进程共库才可能，本部署没有；**F3**（CHECK 正文与 `IMAGE_MEDIA_TYPES` 双源）—— 加第五种格式时必然要动迁移，测试会拦住，属可维护性提示；R2 的 **N1**（前端受影响处是四处而非记录里写的一处）—— 结论「不报错、只少报」属实，覆盖面已按 R2 的定位补全，见已知限制 2。
+- **完成条件中仍未被测试直证的部分（如实标注，不以「不阻断」顶替「是否满足」）**：
+  - **条件 6 部分满足**：「超限**在流式读取中途即中断**」——用例只证明了返回 413 且事后无残留字节；TestClient 无法区分「中途拒」与「读完再拒」。中断机制由 `part_data` 超限即抛加 `feed` 的总量上限**可由代码论证**，但不是测试证明的。
+  - **条件 2 部分满足**：`downgrade` 全链路确实执行（降到 base 再重升到 14 张表），但「退回后 13 张表与 0004 一致」这一句没有对应断言。
+  - **条件 20 部分满足**：用例直接调 `FileService.begin()`，证明的是 active 集合的语义，不是「上传端点确实走了它」；后者由 `api/snapshot_assets.py` 的调用点可证。
+  - 条件 9 与 19 在第二轮后为**满足**（各有直证用例）。
 - **已知限制/未完成项**：
   1. **本任务没有任何调用方**。扩展抓图上传与渲染替换都在 TASK-040，所以界面上看不到变化，表与端点当前无人调用。
-  2. **删除预览的界面不显示图片张数**。后端已返回 `snapshot_asset_count`，但 `frontend/src/api/client.ts` 的 `deletionImpact()` 按固定六键解析（多余键被忽略，**不会报错**），`ResourceDeletion.tsx` 的标签表也只有六项。因此带图资料的删除预览会**少报**将被删除的图片。当前不可达（还没有调用方能产生资产），但 TASK-040 一旦让扩展开始写资产，这就变成用户可见的漏报，必须在那之前补上。
+  2. **删除预览的界面不显示图片张数**。后端已返回 `snapshot_asset_count`，但前端有**两份**各自固定六键的解析器，都忽略多余键因而**不会报错**，只会少报。**TASK-040 要改的是四处**（按 R2 的定位补全，原记录只写了第一处）：`frontend/src/api/client.ts` 的 `DeletionImpact` 接口与键表（服务于 409 `current_impact` 的展示）、`frontend/src/features/resources/api.ts` 的键表（`previewResourceDeletion` 实际走的这份）、以及 `ResourceDeletion.tsx` 的标签表。`frontend/e2e/notes-pages.spec.ts` 只取单个计数、非整对象断言，不受影响。因此 openapi 里 `DeletionImpact` 的 `additionalProperties: false` 加新 `required` 键在**形式上是破坏性变更**，对本仓库的实际消费者兼容。当前不可达（还没有调用方能产生资产），但扩展一旦开始写资产就是用户可见的漏报，必须在那之前补上。
   3. **取字节没有修复路径**。字节缺失或校验不符一律 `409 FILE_CORRUPTED`，不像 `original_files` 有 `reconcile` 的 PENDING/trash 恢复。资产没有 `status` 列，恢复语义要另设计。
   4. **提升与落行之间中断会留下孤儿字节**，由既有 24 小时回收清除（决定 ⑦ 的取舍）。反方向不可能发生。
   5. **跨快照不去重、不清洗 EXIF、不设张数上限** —— 均为登记时已写明的取舍，非交付后补记。
-  6. **`snapshot_asset_count` 未做上界断言**：openapi 只写 `minimum: 0`，与 `original_file_count` 的 `maximum: 1` 不同，因为按用户决定它本就无上限。
+  6. **multipart 收紧后的分支几乎没有用例**（R2 的 N3）。部件数超限、重复 `source_url`、只有文件没有地址、两个 file 部件、超长头、重复头名、空文件等分支，R2 已**逐条读码核实**去向正确（422 或 400），但除 `source_url` 校验与正常路径外没有用例绑定。
+  7. **`snapshot_asset_count` 未做上界断言**：openapi 只写 `minimum: 0`，与 `original_file_count` 的 `maximum: 1` 不同，因为按用户决定它本就无上限。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据

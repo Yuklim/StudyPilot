@@ -25,6 +25,9 @@ MESSAGES = {
     "VALIDATION_ERROR": "输入不符合要求。请检查正文内容与版本。",
     "MALFORMED_REQUEST": "请求内容无法解析。",
     "CONTENT_TYPE_UNSUPPORTED": "当前操作只接受 application/json。",
+    # Reachable since TASK-039: replacing or deleting the text isolates its
+    # frozen images, which touches the controlled directory.
+    "STORAGE_PATH_UNAVAILABLE": "本机存储暂时不可用。",
     "UNKNOWN_ERROR": "快照操作未完成。请使用请求编号排查。",
 }
 
@@ -38,7 +41,10 @@ def failure(request: Request, error: ResourceError) -> JSONResponse:
         content={
             "error": {
                 "code": error.code,
-                "message": MESSAGES[error.code],
+                # An unmapped code must not escape as a bare 500 without the
+                # error envelope: a KeyError here would be raised inside the
+                # handler that is supposed to be producing this response.
+                "message": MESSAGES.get(error.code, MESSAGES["UNKNOWN_ERROR"]),
                 "details": details,
                 "request_id": request.state.request_id,
             }

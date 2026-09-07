@@ -394,7 +394,7 @@ OpenAPI 中 `ReviewRecord` 用条件 schema 固化上述规则：`NEEDS_REVIEW` 
 
 **冻结语义。** 快照是保存当时那个版本的副本，**不随原文更新**。这不是缺陷：用户的心得是针对当时那个版本写的，强行显示最新版会让笔记与正文对不上。资料同时保留 `source_url`，需要最新内容时由界面提供「打开原文」入口，因此「看最新」与「笔记长期有效」两件事并不冲突。真正不可兼得的只有「原文更新后标注自动迁移到新版」，本契约不承诺该能力。
 
-**写入语义。** `putResourceSnapshot` 是**整份替换**，不追加：首次写入省略 `expected_version` 并返回 201；已有快照时必须携带，缺失 `428`、不匹配 `409 VERSION_CONFLICT`；对尚不存在的快照携带 `expected_version` 返回 `404 SNAPSHOT_NOT_FOUND`（调用方的认知已过期）。删除只移除快照，资料及其标签、心得、学习数据与原件一律不变。
+**写入语义。** `putResourceSnapshot` 是**整份替换**，不追加：首次写入省略 `expected_version` 并返回 201；已有快照时必须携带，缺失 `428`、不匹配 `409 VERSION_CONFLICT`；对尚不存在的快照携带 `expected_version` 返回 `404 SNAPSHOT_NOT_FOUND`（调用方的认知已过期）。删除只移除快照，资料及其标签、心得、学习数据与原件一律不变。**TASK-039 起，替换与删除都会连同该快照已冻结的图片一并作废并隔离其字节**（见 4.14），因此这两个操作会触碰受控文件目录，受控目录不可用时返回 `503 STORAGE_PATH_UNAVAILABLE`；此时快照本身的写入已提交，未被引用的字节退化为孤儿并由 24 小时回收清除。
 
 **本阶段的边界（TASK-036）。** 服务端**不抓取任何外部内容、不发起任何对外网络请求**，正文只由调用方提供。据此本阶段也**不引入任何第三方站点凭证**：需要登录才能看到的内容，由用户在自己的浏览器中取得后提供，凭证始终由浏览器持有，本系统不接触。`FAILED` 形态已在数据模型中建好但本阶段不产生，供后续自动抓取记录「资料已保存但没取到正文」。**快照中的图片在本任务里仍指向原站**，冻结并不完整；该缺口已由 TASK-039 关闭，见 4.14。
 
@@ -574,8 +574,8 @@ OpenAPI 中 `ReviewRecord` 用条件 schema 固化上述规则：`NEEDS_REVIEW` 
 | POST `/resources/{resource_id}/deletion-preview` | 删除预览 / resources | 写安全；200 `DeletionPreview` | 200/403/404/500；只创建确认记录 |
 | DELETE `/resources/{resource_id}` | 确认删除 / resources | 专用删除头；204 | 204/403/404/409/410/500/503；不可逆删除，按第9节恢复 |
 | GET `/resources/{resource_id}/snapshot` | 读取正文快照 / resources | 无体；200 `ContentSnapshot` | 200/403/404/500；只读 |
-| PUT `/resources/{resource_id}/snapshot` | 写入或整份替换快照 / resources | `SnapshotPut`；201 首次 / 200 替换 | 200/201/400/403/404/409/415/422/428/500；只写快照表 |
-| DELETE `/resources/{resource_id}/snapshot` | 删除快照 / resources | 无体，强版本头；204 | 204/403/404/409/428/500；资料保留 |
+| PUT `/resources/{resource_id}/snapshot` | 写入或整份替换快照 / resources | `SnapshotPut`；201 首次 / 200 替换 | 200/201/400/403/404/409/415/422/428/500/503；写快照表，并作废该快照已冻结的图片、隔离其字节（TASK-039 起触碰受控目录，故有 503） |
+| DELETE `/resources/{resource_id}/snapshot` | 删除快照 / resources | 无体，强版本头；204 | 204/403/404/409/428/500/503；资料保留；连同该快照已冻结的图片一并删除并隔离其字节（TASK-039 起触碰受控目录，故有 503） |
 | GET `/resources/{resource_id}/snapshot/assets` | 列出已冻结图片 / resources | 无体；200 `SnapshotAssetList` | 200/403/404/500；只读，不含字节与存储键 |
 | POST `/resources/{resource_id}/snapshot/assets` | 冻结一张图片 / resources | multipart（`file` + `source_url`），强版本头；201 `SnapshotAsset` | 201/400/403/404/409/413/415/422/428/500/503；写字节与一行资产，不推进快照版本，地址重复即幂等 |
 | GET `/resources/{resource_id}/snapshot/assets/{asset_id}/bytes` | 取回图片字节 / resources | 无体；200 二进制 | 200/403/404/409/500/503；只读，须用 fetch，`<img src>` 会被门禁拒绝 |
@@ -648,8 +648,8 @@ DELETE review 带 JSON 是契约列明的例外；它仍是写请求并必须先
 | `updateTag` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `TAG_NOT_FOUND`, `DUPLICATE_TAG`, `VERSION_CONFLICT`, `CONTENT_TYPE_UNSUPPORTED`, `VALIDATION_ERROR`, `VERSION_REQUIRED`, `UNKNOWN_ERROR` |
 | `deleteTag` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `TAG_NOT_FOUND`, `TAXONOMY_IN_USE`, `VERSION_CONFLICT`, `VERSION_REQUIRED`, `UNKNOWN_ERROR` |
 | `getResourceSnapshot` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `RESOURCE_NOT_FOUND`, `SNAPSHOT_NOT_FOUND`, `UNKNOWN_ERROR` |
-| `putResourceSnapshot` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `CONTENT_TYPE_UNSUPPORTED`, `VALIDATION_ERROR`, `RESOURCE_NOT_FOUND`, `SNAPSHOT_NOT_FOUND`, `VERSION_CONFLICT`, `VERSION_REQUIRED`, `UNKNOWN_ERROR` |
-| `deleteResourceSnapshot` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `RESOURCE_NOT_FOUND`, `SNAPSHOT_NOT_FOUND`, `VERSION_CONFLICT`, `VERSION_REQUIRED`, `UNKNOWN_ERROR` |
+| `putResourceSnapshot` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `CONTENT_TYPE_UNSUPPORTED`, `VALIDATION_ERROR`, `RESOURCE_NOT_FOUND`, `SNAPSHOT_NOT_FOUND`, `VERSION_CONFLICT`, `VERSION_REQUIRED`, `STORAGE_PATH_UNAVAILABLE`, `UNKNOWN_ERROR` |
+| `deleteResourceSnapshot` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `RESOURCE_NOT_FOUND`, `SNAPSHOT_NOT_FOUND`, `VERSION_CONFLICT`, `VERSION_REQUIRED`, `STORAGE_PATH_UNAVAILABLE`, `UNKNOWN_ERROR` |
 | `listSnapshotAssets` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `RESOURCE_NOT_FOUND`, `SNAPSHOT_NOT_FOUND`, `UNKNOWN_ERROR` |
 | `uploadSnapshotAsset` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `VALIDATION_ERROR`, `ASSET_TYPE_UNSUPPORTED`, `ASSET_TOO_LARGE`, `RESOURCE_NOT_FOUND`, `SNAPSHOT_NOT_FOUND`, `VERSION_CONFLICT`, `VERSION_REQUIRED`, `STORAGE_PATH_UNAVAILABLE`, `UNKNOWN_ERROR` |
 | `downloadSnapshotAsset` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `RESOURCE_NOT_FOUND`, `SNAPSHOT_NOT_FOUND`, `SNAPSHOT_ASSET_NOT_FOUND`, `FILE_CORRUPTED`, `STORAGE_PATH_UNAVAILABLE`, `UNKNOWN_ERROR` |

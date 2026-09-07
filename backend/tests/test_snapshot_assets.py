@@ -17,6 +17,7 @@ from support import RuntimePaths
 from test_files import service
 
 from studypilot.infrastructure.database.models import SnapshotAsset
+from studypilot.modules.resources.contracts import ResourceError
 from studypilot.modules.resources.files import trash_key
 
 CONTEXT = {"sec-fetch-site": "same-origin", "sec-fetch-mode": "cors", "sec-fetch-dest": "empty"}
@@ -155,6 +156,22 @@ def test_the_declared_content_type_never_decides_the_format(authorized: TestClie
     accepted = upload(authorized, resource, data=PNG, media="image/svg+xml")
     assert accepted.status_code == 201, accepted.text
     assert accepted.json()["data"]["media_type"] == "image/png"
+
+
+@pytest.mark.usefixtures("database")
+def test_the_served_content_type_is_the_recognized_one_not_the_declared_one(
+    authorized: TestClient,
+) -> None:
+    """Declared and recognized deliberately disagree, and the header follows bytes."""
+
+    resource = frozen(authorized)
+    asset = upload(authorized, resource, data=GIF, media="image/png").json()["data"]
+    assert asset["media_type"] == "image/gif"
+
+    served = authorized.get(f"{path(resource)}/assets/{asset['id']}/bytes")
+    assert served.status_code == 200
+    assert served.headers["content-type"] == "image/gif"
+    assert served.content == GIF
 
 
 @pytest.mark.usefixtures("database")
@@ -323,7 +340,7 @@ def test_deleting_the_snapshot_isolates_every_image(
 
 @pytest.mark.usefixtures("database")
 def test_deleting_the_resource_counts_and_isolates_its_images(
-    authorized: TestClient, runtime: RuntimePaths
+    authorized: TestClient, runtime: RuntimePaths, session_factory: sessionmaker[Session]
 ) -> None:
     resource = frozen(authorized)
     upload(authorized, resource)
@@ -356,6 +373,12 @@ def test_deleting_the_resource_counts_and_isolates_its_images(
     )
     assert removed.status_code == 204, removed.text
     assert area(runtime, "objects") == [] and len(area(runtime, "trash")) == 2
+    # The rows must be gone too. If they survived, `references()` would keep
+    # naming their trash keys and the isolated bytes would pile up forever.
+    with session_factory() as session:
+        assert session.scalar(select(func.count()).select_from(SnapshotAsset)) == 0
+    service(authorized).reconcile(datetime.now(UTC) + timedelta(hours=25))
+    assert area(runtime, "trash") == []
 
 
 @pytest.mark.usefixtures("database")
@@ -420,3 +443,30 @@ def test_an_upload_in_progress_is_not_swept_from_under_itself(
 
     files.release(key)
     assert not staged.exists()
+
+
+@pytest.mark.usefixtures("database")
+def test_a_failed_isolation_still_answers_in_the_error_envelope(
+    authorized: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Replacing or deleting the text now touches storage, so it can fail there.
+
+    The snapshot endpoints had never reached the controlled directory before, so
+    `STORAGE_PATH_UNAVAILABLE` had no message on that side. Without a fallback the
+    lookup raises inside the very handler that is building the error response, and
+    the caller gets a bare 500 with no code and no request id.
+    """
+
+    resource = frozen(authorized)
+    upload(authorized, resource)
+
+    def unavailable(key: str) -> None:
+        raise ResourceError("STORAGE_PATH_UNAVAILABLE", 503)
+
+    monkeypatch.setattr(service(authorized).storage, "quarantine", unavailable)
+    refused = authorized.delete(path(resource), headers={"If-Match": '"1"'})
+    assert refused.status_code == 503, refused.text
+    body = refused.json()["error"]
+    assert set(body) == {"code", "message", "details", "request_id"}
+    assert body["code"] == "STORAGE_PATH_UNAVAILABLE"
+    assert body["message"] and body["request_id"] == refused.headers["x-request-id"]
