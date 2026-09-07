@@ -536,6 +536,31 @@ export function createApiClient() {
         throw new ApiError('INVALID_RESPONSE', response.status)
       return payload
     },
+    async downloadSnapshotAsset(resourceId: string, assetId: string): Promise<Blob> {
+      // 与 `downloadOriginal` 同形，但返回 Blob 而非 `FileDownload`：资产没有文件名、
+      // 也不做另存，它只用来在页面上显示，所以只需要字节与识别出的类型。
+      //
+      // **`<img src>` 打不到这个端点**：门禁要求 `sec-fetch-dest: empty` 与进程令牌，
+      // 而浏览器的图片请求两样都不满足（契约 §4.14）。所以必须先 fetch 再转 blob URL。
+      if (!fileIdPattern.test(resourceId) || !fileIdPattern.test(assetId))
+        throw new ApiError('INVALID_REQUEST')
+      const usedToken = await acquire()
+      const response = await transport(
+        '/api/v1/resources/' + resourceId + '/snapshot/assets/' + assetId + '/bytes',
+        'GET',
+        new Headers({ 'X-StudyPilot-Token': usedToken }),
+      )
+      await checked(response, usedToken)
+      const mediaType = response.headers.get('content-type')?.toLowerCase().trim() ?? ''
+      // 只接受后端**按字节魔数**判定出的那四种；不采信任何别的声明。
+      if (
+        response.status !== 200 ||
+        !['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(mediaType) ||
+        response.headers.get('x-content-type-options') !== 'nosniff'
+      )
+        throw new ApiError('INVALID_RESPONSE', response.status)
+      return new Blob([await response.arrayBuffer()], { type: mediaType })
+    },
     async downloadOriginal(fileId: string): Promise<FileDownload> {
       if (!fileIdPattern.test(fileId)) throw new ApiError('INVALID_REQUEST')
       const usedToken = await acquire()

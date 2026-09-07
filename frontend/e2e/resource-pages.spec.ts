@@ -231,7 +231,14 @@ test('a web resource can keep a pasted snapshot of its text alongside the link',
   await page.getByLabel('正文（Markdown）').fill(body)
   await section.getByRole('button', { name: '保存正文' }).click()
   await expect(section).toContainText(`共 ${Array.from(body).length} 字`)
-  await expect(section.locator('pre')).toContainText('冻结正文 ' + suffix)
+  // TASK-042 起默认展示的是**渲染后**的正文，不再是 `<pre>` 源码。断言相应加强：
+  // 渲染视图里要看得见这段文字，切到源码视图后 `<pre>` 里也要看得见原始 Markdown。
+  await expect(section.locator('.snapshot-rendered')).toContainText('冻结正文 ' + suffix)
+  await section.getByRole('button', { name: '看 Markdown 源码' }).click()
+  await expect(section.getByRole('button', { name: '看渲染后的正文' })).toBeVisible()
+  await expect(section.locator('pre.snapshot-body')).toContainText('冻结正文 ' + suffix)
+  await section.getByRole('button', { name: '看渲染后的正文' }).click()
+  await expect(section.locator('.snapshot-rendered')).toBeVisible()
 
   // The whole point of the shape: frozen text and the original link coexist.
   await expect(page.getByRole('link', { name: /打开原网页/ })).toHaveAttribute(
@@ -239,7 +246,9 @@ test('a web resource can keep a pasted snapshot of its text alongside the link',
     'https://example.com/snapshot',
   )
   await page.reload()
-  await expect(section.locator('pre')).toContainText('冻结正文 ' + suffix)
+  // 刷新后回到渲染视图（源码/渲染的切换不持久，这是有意的：默认展示可读的那一面）。
+  // 这一行守的是「刷新后正文还在」，所以断言渲染视图即可。
+  await expect(section.locator('.snapshot-rendered')).toContainText('冻结正文 ' + suffix)
 
   await section.getByRole('button', { name: '删除正文' }).click()
   await expect(section).toContainText('还没有保存正文')

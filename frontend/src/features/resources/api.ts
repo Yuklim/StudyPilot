@@ -398,6 +398,16 @@ export async function uploadSnapshotAsset(
   return snapshotAsset(envelope.data)
 }
 
+/**
+ * 取回一张已冻结图片的字节，并给出一个可以放进 `<img src>` 的 blob URL。
+ *
+ * **调用方必须负责 `URL.revokeObjectURL`**：不回收的话，每切换一份资料就多留一份
+ * 字节在内存里，看图越多占得越狠。回收时机见 `ContentSnapshot`。
+ */
+export async function frozenImageUrl(resourceId: string, assetId: string): Promise<string> {
+  return URL.createObjectURL(await api.downloadSnapshotAsset(resourceId, assetId))
+}
+
 /** 列出这份资料已冻结的图片。 */
 export async function listSnapshotAssets(resourceId: string): Promise<SnapshotAsset[]> {
   if (!isResourceId(resourceId)) throw new ApiError('INVALID_REQUEST')
