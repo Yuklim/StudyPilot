@@ -130,6 +130,9 @@ export function isImageList(value: unknown): value is string[] {
  * 去掉端口是有意的：`URL.origin` 在非默认端口时带端口，而 match pattern 的 host 段
  * 不接受端口号（依 Chrome match pattern 文档判断，**未实机验证**）。match pattern 本就
  * 端口无关，去掉它不损失任何覆盖面。
+ *
+ * 前端侧目前**没有调用方**：那份副本存在的理由是让平行副本的逐字比对成立
+ * （扩展侧的 `protocol.test.ts` 把本函数列进了比对名单）。删掉它守卫会变红。
  */
 export function matchPatternFor(url: URL): string {
   return `${url.protocol}//${url.hostname}/` + '*'

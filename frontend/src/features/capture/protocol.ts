@@ -112,6 +112,9 @@ export function isImageList(value: unknown): value is string[] {
  * 去掉端口是有意的：`URL.origin` 在非默认端口时带端口，而 match pattern 的 host 段
  * 不接受端口号（依 Chrome match pattern 文档判断，**未实机验证**）。match pattern 本就
  * 端口无关，去掉它不损失任何覆盖面。
+ *
+ * 前端侧目前**没有调用方**：那份副本存在的理由是让平行副本的逐字比对成立
+ * （扩展侧的 `protocol.test.ts` 把本函数列进了比对名单）。删掉它守卫会变红。
  */
 export function matchPatternFor(url: URL): string {
   return `${url.protocol}//${url.hostname}/` + '*'
@@ -146,9 +149,14 @@ export interface ImageResult {
   base64?: string
   /**
    * 失败的粗粒度原因，用于**让用户看懂为什么**，不带站点的错误细节。
-   * 取值见扩展侧 `FetchImageResult`：`no-permission`（未授权）、`http-error`（站点拒绝）、
-   * `too-large`（超过 10 MiB）、`unsafe-url`、`failed`（取不到/扩展没答话）、
-   * `not-offered`（不在本次采集的清单里）。未知值一律按「取不到」处理。
+   *
+   * 来自 worker：`no-permission`（未授权）、`http-error`（站点拒绝）、`too-large`
+   * （超过 10 MiB）、`unsafe-url`、`failed`（网络失败或 worker 侧超时）。
+   * 来自中转脚本：`not-offered`（不在本次采集的清单里）、`no-worker`（问不到 worker）。
+   * 来自本页：`no-answer`（等答复超时）、`bad-bytes`（收到的不是可用的 base64）。
+   * 上传失败时则是后端错误码或 `upload-failed`。
+   *
+   * 未知值不解释也不回显，只说「没能保存到本机」——它可能来自任意同源脚本。
    */
   reason?: string
 }

@@ -91,16 +91,16 @@ export function askExtensionForImage(win: Window, timeoutMs = 30_000) {
     })
 }
 
-/**
- * 把失败原因说成人话。**这一条是一次真实故障的直接产物**：当时界面只说「没能保存」，
- * 六张图全失败，而未授权、站点拒绝、超限、扩展没答话在屏幕上长得完全一样，
- * 用户和实现者都无法从界面判断问题出在哪一环。
- */
 /** 长得像后端错误码的字符串。挡住从 postMessage 带进来的任意文本。 */
 function isBackendCode(reason: string): boolean {
   return /^[A-Z][A-Z_]{2,39}$/.test(reason)
 }
 
+/**
+ * 把失败原因说成人话。**这一条是一次真实故障的直接产物**：当时界面只说「没能保存」，
+ * 六张图全失败，而未授权、站点拒绝、超限、扩展没答话在屏幕上长得完全一样，
+ * 用户和实现者都无法从界面判断问题出在哪一环。
+ */
 export function imageFailureText(reason: string, count: number): string {
   switch (reason) {
     case 'no-permission':
@@ -123,6 +123,11 @@ export function imageFailureText(reason: string, count: number): string {
       return `${count} 张：收到的内容不是可用的图片数据。`
     case 'failed':
       return `${count} 张：没能取到（网络不通、站点无响应，或站点拒绝了下载）。`
+    case 'upload-failed':
+      // 我们自己产生的内部标记（上传抛出非 ApiError，或 atob 失败），**可安全回显**。
+      // 上一轮为挡住不可信字符串时，把自家标记的可诊断性一起赔进去了：它是小写，
+      // 落进 else 分支后渲染得和注入垃圾一模一样。
+      return `${count} 张：本机保存这张图片时出错了（upload-failed）。`
     case 'no-answer':
       // **与 `failed` 分开**：这条是扩展一直没答话（被停用、刚重载、消息过大而丢失），
       // 补救方向和「网络不通」完全不同。上一版的兜底文案恰好覆盖了它，改写时漏掉了。

@@ -310,7 +310,10 @@ describe('imageFailureText', () => {
     expect(imageFailureText('no-answer', 1)).toContain('chrome://extensions')
     // 认不出的原因**必须仍然说人话**。上一版这里会渲染成「1 张：（upload-failed）」——
     // 一个字都没说，而当时的断言（不含「扩展未响应」、含原始码）正好绕过了空串。
-    const unknown = imageFailureText('upload-failed', 1)
+    // 我们自己的内部标记可以安全回显，别和注入垃圾同一个下场。
+    expect(imageFailureText('upload-failed', 1)).toContain('upload-failed')
+    // 认不出的原因**必须仍然说人话**，不能渲染成「1 张：（xxx）」这种一个字没说的提示。
+    const unknown = imageFailureText('SOME_NEW_CODE', 1)
     expect(unknown).not.toContain('扩展未响应')
     expect(unknown).toContain('没能保存到本机')
     // 不可信的 reason 不拿去查 messages，也不回显。
