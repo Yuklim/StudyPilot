@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-042"
-status = "IN_ACCEPTANCE"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "本任务把「不可信内容退化为惰性文本」这条自 TASK-036 起就成立的结构性安全性质，换成「由渲染器的配置来保证」。TASK-036 明写选 Markdown 而非 HTML 的理由是「抓自开放网络的 HTML 属不可信输入，需永久维护消毒器；Markdown 让不可信内容退化为惰性文本」——一旦开始渲染，这道门就重新打开，此后安全性依赖渲染器选项、链接协议校验与依赖版本，而不再依赖「压根不进 DOM」。被攻破的后果也比一般 XSS 重：本机 UI 源是后端门禁**唯一信任**的源，页面内存里握着本次会话的访问令牌，且扩展的中转脚本也跑在这个源上；那里跑起一段外来脚本等于拿到整个资料库的读写删权限。第二处实质风险：首次引入 Markdown 渲染这一**生产依赖**（前端此前生产依赖只有 React 三件套），它从此是安全关键面。第三处：改变「打开一份资料会不会向外部站点发请求」这一可观察行为。不改后端一行、不改 `/api/v1` 契约、不改本机访问门禁、不改扩展。"
 risk_flags = ["security", "architecture", "business"]
@@ -181,21 +181,25 @@ checks = []
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：`4e2c3a53fc332045b2aec0e21b5e74ea92f42183`（base `01069535d9910aecc56c6b7380dd17d68985c169`）。此前候选依次为 `99a545d`（首轮审查对象）、`1f1fbc0`（处置首轮 findings）、`b666d93`（处置增量 findings）。每次修订都重新冻结，并交由**同两位** Reviewer 验证 `previous_candidate..new_candidate`。
-- 检查（实现者本人在本机运行）：`check_task.py --worktree` → **CHECKS PASS**，`profiles=contracts,frontend`，`files=16`，`product_fingerprint=b2110dcbb5ff8faa601ccc8fea311bc600b08cffe063f5b8bd700134f44ce2ef`；frontend **488 passed**（基线实测 440）；e2e **43 passed**（基线 42）；`typecheck` / `lint` / `prettier --check` 全绿。
-- Review：L3，两位独立只读 Reviewer（R1 渲染与安全面、R2 数据通路/契约/测试面），均**独立于实现者**，运行器只授予 `Read`/`Grep`/`Glob`，无写工具、无 Bash。两位对最终候选 `4e2c3a5` 均给出 **PASS，无阻断项**。全部报告原文见下。
-- Acceptance：L3，独立只读，待填
-- 最终状态/风险/用户操作：待填
-- 非阻断遗留项（仅有真实问题时）：
+- **最终候选 SHA**：`50910fab5801609376ae541e3b613acbb5ef2b8e`（base `01069535d9910aecc56c6b7380dd17d68985c169`）。候选依次为 `99a545d`（首轮审查对象）→ `1f1fbc0`（处置首轮 findings）→ `b666d93`（处置增量 findings）→ `4e2c3a5`（文案修订）→ `ea2cc93`（处置验收更正出的两处自评漏项）→ `50910fa`（修掉一条永真断言）。每次修订都重新冻结，并交由**同一批**审查实例验证 `previous_candidate..new_candidate`。
+- **检查（实现者本人在本机运行，无第三方复核）**：`check_task.py --worktree` → **CHECKS PASS**，`profiles=contracts,frontend`，`files=16`，`product_fingerprint=3b235620f06474aacbb9c73942f1daf237c03fec243b64cdcc47204c33f07331`；frontend **494 passed**（基线在 `0106953` 的临时 worktree 上实测 **440**）；e2e **43 passed**（基线 **42**）；`typecheck` / `lint` / `prettier --check` 全绿。backend 与 extension 未运行——本任务在这两棵树下零改动、不在 `allowed_paths` 内，检查脚本据变更自动选组因而未选中它们；**这是结构性论据，不是观察到它们仍为绿**。
+- **Review**：L3，两位独立只读 Reviewer（R1 渲染与安全面、R2 数据通路/契约/测试面），均独立于实现者，运行器只授予 `Read`/`Grep`/`Glob`，无写工具、无 Bash。R1 五轮、R2 四轮，两位对最终候选 `50910fa`／`4e2c3a5` 起的各自最后一轮均给出 **PASS，无阻断项**。
+- **Acceptance**：L3，独立只读，独立于实现者与两位 Reviewer，此前未参与本任务。三轮（`4e2c3a5` → `ea2cc93` → `50910fa`），终局 **PASS，无阻断项**，**14 条完成条件全部判定为「满足」**（条件 11 在补上超长正文用例后由「部分满足」升为「满足」）。
+- **最终状态/风险/用户操作**：status=**ACCEPTED**，等待用户决定是否合并。本任务交付的是「打开一份资料能看见渲染后的正文，以及 TASK-039/040 冻结下来的图片」——这是那两个任务的成果第一次在界面上可见。**须向用户当面说明的三点**：① 安全性质由「不可信内容压根不进 DOM」变为「按渲染器配置转义」，这是用户在两条路线中主动选甲的结果，三条机器守卫都在，但守的是当前依赖版本的行为；② 打开一份带未冻结图片的资料会向那些图床各发一次请求，三条隐私代价是用户在知情后接受的；③ **本任务的三个真实缺陷全部由他人发现**——两处由 Reviewer、两处由独立验收（含一条我和两位 Reviewer 都漏掉的「非规范绝对地址静默走原站」），且其中三次是同一形态：陈述比证据宽。
+- **非阻断遗留项**（按独立验收终局报告的清单原样登记）：
   1. 流中途读失败的异常统一映射为 `NETWORK_ERROR`，无用例钉住（R2 首次增量报告指出）。
-  2. 剩余风险四条已在「已知取舍」与「已知限制」中登记，两位 Reviewer 均确认未新增：安全性质由结构性转为配置性、`markdown-it` 的 `validateLink` 变体未穷举、无 CSP、未冻结图片的三条隐私代价。
-  3. 采集时 pageUrl 与 `captured_from_url` 因重定向不一致时，相对图片地址会匹配不上冻结表而走原站（R1 指出，属已登记风险的延伸）。
+  2. 采集时的 pageUrl 与快照 `captured_from_url` 因重定向不一致时，正文里的相对图片地址会匹配不上冻结表而**静默走原站**（`failed` 计数不增、界面不提示）。R1 指出。**验收后的地址规范化关不掉这一支**：它的根因是 base 本身与采集时不同，不是正文写法不规范。
+  3. 无 base 时 `https:/host/a.png` 这类单斜杠绝对地址，此前被正则拒掉、现在被 `new URL` 规范成合法 http 地址并按原址加载。方向正确且仍受 `^https?:` 闸门约束，只是「按原址加载」的入口略宽了一点。
+  4. 完成条件 11 的超长正文用例作用于 `renderSnapshot` **模块层**，未经 `ContentSnapshot` 的 `useMemo` 与编辑框那条页面路径，也未断言耗时（0.7 秒为实现者观察，验收未复算）。判定「满足」建立在这个范围之上。
+  5. 剩余风险四条已在「已知取舍」与「已知限制」中登记，本轮未新增：安全性质由结构性转为配置性、`markdown-it` 的 `validateLink` 变体未穷举、无 CSP、未冻结图片的三条隐私代价。
 
-## Reviewer 报告原文
+  验收明确建议**不**进本清单的两条，照其判断不登记：完成条件 9 的「切换资料」回收无用例（与卸载同一段清理分支，已被覆盖）；以及「本任务三次出现同一形态的陈述宽于证据」这一流程性观察（已写在实现说明里，重复登记只会稀释清单）。
 
-以下八份**逐字照录**，未删改、未择要。
+## 审查报告原文
 
-### Reviewer R1 · 首轮报告（候选 `99a545d`）
+以下十三份**逐字照录**，未删改、未择要。按时间顺序排列。
+
+### Reviewer R1 · 首轮（候选 `99a545d`）
 
 ## 权限证据
 
@@ -257,7 +261,7 @@ checks = []
 
 **PASS**，指向 `99a545dde0ed676a1f6602c78ae73e3f62b18ca4`。无阻断项：未发现可达的脚本执行路径，`html:false` + `validateLink` 的三条守卫在当前版本上真实成立，blob 生命周期正确。F1–F7 全为非阻断，但 **F1、F2、F3 必须由主 Agent 或修掉、或如实写入已知限制/EVIDENCE**——只写 PASS 而不记录这三条，会让记录比事实宽（尤其 F2 使完成条件 5/6 在一类可能输入上不成立、F3 与完成条件 9 原文不符）。
 
-### Reviewer R2 · 首轮报告（候选 `99a545d`）
+### Reviewer R2 · 首轮（候选 `99a545d`）
 
 ## 权限证据（R2）
 
@@ -427,7 +431,7 @@ blob URL 指向一堆解不开的字节，本候选的所有测试仍会通过�
 
 **结论：PASS，覆盖新最终候选 `b666d93`**。继承此前对 `0106953..1f1fbc0` 的全部审查范围（本轮未触及部分不变），先前列出的非阻断项已全部关闭。剩余风险仍为记录中已登记的四条（配置性安全性质、`validateLink` 未穷举、无 CSP、未冻结图片的三条隐私代价）。
 
-### Reviewer R1 · 最终确认（`b666d93..4e2c3a5`）
+### Reviewer R1 · 确认（`b666d93..4e2c3a5`）
 
 **确认：`4e2c3a5` 通过，无阻断项、无待处置项。**
 
@@ -439,7 +443,7 @@ blob URL 指向一堆解不开的字节，本候选的所有测试仍会通过�
 
 无逻辑改动，先前认定的安全形态、blob 回收、`base` 解析与契约一致性不受影响。剩余风险同前一份报告（无 CSP、`validateLink` 变体未穷举、依赖升级无自动提醒、原址图片失败态不可见、重定向致 `captured_from_url` 与采集 pageUrl 不一致时匹配不上冻结表），均已在记录中登记。测试计数与 `check_task.py` 为实现者机械证据，我未重跑，定向核对未见矛盾。
 
-### Reviewer R2 · 最终确认（`b666d93..4e2c3a5`）
+### Reviewer R2 · 确认（`b666d93..4e2c3a5`）
 
 确认：`b666d93..4e2c3a5` 的三处改动与实现相符，断言咬合力未减。
 
@@ -448,6 +452,131 @@ blob URL 指向一堆解不开的字节，本候选的所有测试仍会通过�
 - 记录 `:155` 已补 `nullableString` 那处投影加固，与 `api.ts:330-332` 的实现和注释一致。
 
 **结论：PASS，覆盖最终候选 `4e2c3a5`**。继承 `0106953..b666d93` 的全部审查范围；此前列出的阻断项为零，非阻断项全部关闭。剩余风险仍是记录中已登记的四条（安全性质由结构性转配置性、`validateLink` 未穷举、无 CSP、未冻结图片的三条隐私代价）。计数与指纹（488 / 43 / `files=16` / `b2110dcb…`）我无执行工具，按 §6 复用实现者的机械证据；本轮改动为纯文案与文档，与「用例数不变」自洽。
+
+### Acceptance · 首轮（候选 `4e2c3a5`）
+
+## 结论：**PASS**（无阻断项）
+
+**只读证明**：运行器只授予 `Read`/`Grep`/`Glob`，无写工具、无 Bash。**因此以下项目未复算，按 §6 复用实现者机械证据**：frontend 488/基线 440、e2e 43/42、`CHECKS PASS`、指纹、`git diff` 层面的文件清单与 `4e2c3a5..754f5f3` 的逐行 diff。候选链经 `.git/logs/HEAD:419-427` 核实：`0106953 → 2965083 → b143af5 → efdc5dc → 99a545d → 1f1fbc0 → b666d93 → 4e2c3a5 → 754f5f3`（HEAD）。
+
+### 完成条件逐条
+
+| # | 判定 | 依据 |
+|---|---|---|
+|1 渲染生效 + 源码入口|满足|`ContentSnapshot.tsx:202-213`；`snapshotMarkdown.test.ts:164-171`（h1/li/strong/code）、`:154-160`（链接）；`ContentSnapshot.test.tsx:113-121`|
+|2 原始 HTML 不进 DOM|满足|`snapshotMarkdown.test.ts:22-46`，5 类标签 `querySelector` 为 null + 文本仍可见；`[onmouseover]` 断言形态正确|
+|3 危险协议|满足|`:49-65`（三种协议 + 伪协议图片不产 `img`）|
+|4 配置守卫|满足|`:9-14` 断 `createRenderer(...).options.html`，是实例真实生效值|
+|5 冻结走本机 + 打到 bytes 端点|满足|`client.test.ts:672-674` 断言路径字符串；`ContentSnapshot.test.tsx:105-106`|
+|6 两类图片各自形态|满足|`ContentSnapshot.test.tsx:96-111`、`snapshotMarkdown.test.ts:73-99`|
+|7 `referrerpolicy`|满足|`snapshotMarkdown.ts:54`；`:90`、`ContentSnapshot.test.tsx:110`|
+|8 外部请求只来自未冻结图片|满足|`snapshot-rendering.spec.ts:22-25,102-103`；`styles.css` 全文无 `url()`/`@import`（已核）。首屏局限已记入已知限制 8|
+|9 blob 回收 + 失败降级|满足|`ContentSnapshot.test.tsx:123-141`、`:157-169`。「切换资料」一支无用例（结构同路径，未登记，可选）|
+|10 正文未被改写|满足|`:202-211`|
+|11 无快照/空快照/超长正文|**部分满足**|无快照：`ResourcePages.test.tsx:617-622`；空快照：`api.ts:320` 投影拒绝（结构性）；**超长正文既无用例也无实测，且未登记为已知限制**|
+|12 依赖交代|满足|`package.json:23,33` 精确版；记录 157-159 行 7 生产 + 3 dev、来源核对、安全关键面|
+|13 契约同步|满足|契约 `:395`「渲染语义」、`:397`「图片的三条去向」；R2 首轮 F1 的伪引用已改为指向 TASK-036 任务记录。openapi 未出现在任何证据中|
+|14 计数只增不减 + 新 e2e|满足（计数未复算）|`e2e/snapshot-rendering.spec.ts` 双主机 + `naturalWidth>0`；`resource-pages.spec.ts:234-241` 净加严|
+
+### 对自述的核对
+
+- **「16 个文件全部在 allowed_paths 内」**：未用 git 复算。但按证据重建的 16 项（`package.json`/`package-lock.json`/`ContentSnapshot.{tsx,test.tsx}`/`snapshotMarkdown.{ts,test.ts}`/`resources/api.ts`/`api/client.{ts,test.ts}`/`styles.css`/两个 e2e/契约/TASK-040/TASK-042/任务索引）恰为 16 且全部在白名单内，`README.md`、`api.test.ts`、`ResourcePages.test.tsx` 虽在白名单但未改。**`ResourceDetail.tsx` 确未被改**，缩小范围的取舍在记录 153 行与已知限制 7 如实登记，且与 `snapshotMarkdown.ts:41`、`snapshotMarkdown.test.ts:127-135`、`ContentSnapshot.test.tsx:190-200` 对得上。
+- **「backend/extension 零改动」**：全仓（排除 `node_modules`）检索 `TASK-042|markdown-it|snapshotMarkdown` 只命中 12 个文件，无 `backend/**`、`extension/**`、`openapi-v1.json`。属支持性证据，非 git 级证明。
+- **「openapi 与 `/api/v1` 一字未改」**：同上，未被证伪。
+- **§6 写回边界**：未复算 diff。间接核对成立——`754f5f3` 写入的两份最终报告引用「记录 155 行已补 `nullableString`」，当前 155 行正是该条；148/156 行的「16 个文件」也与 `b666d93` 轮报告的行号引用对齐，说明标记区外**无行的增删**。纯就地单行改动（除 status 外）无法排除。
+- **用户决定**：(a) 甲路线——`RENDERER_OPTIONS.html:false`，`package.json` 依赖中无任何消毒器 ✓；(b) 未冻结图片自动加载 ✓，三条代价在设计决定 ③、已知取舍 2、契约 `:397` 三处原文登记，`loading="lazy"` 会推迟请求这一点也照实写出（未淡化）。
+
+### Findings
+
+**必须修复**：无。
+
+**可记录后继续**
+
+1. **完成条件 11 的「超长正文」是自评遗漏的空档**：无用例、无实测，且未进「已知限制」。R1 首轮 F4 提出后只处置了 `useMemo` 性能面，覆盖缺口本身从未登记。建议在 EVIDENCE 非阻断遗留项补一条。
+2. **`snapshotMarkdown.ts:104` 的早返回让非规范写法的绝对地址匹配不上冻结表**：`toAbsolute` 对已 `^https?://` 的 src 原样返回，不经 `new URL()` 规范化；而冻结表的键是扩展存的 `new URL().href`（已规范化）。且 `mdurl.parse` 不小写 protocol/hostname（`mdurl/lib/parse.mjs:132-136`），故正文里写成 `HTTPS://CDN.example.com/a.png`、`https://host:443/a.png` 或含 `..` 点段时，`frozen.get()` 落空 → **静默走原站**，`failed` 计数不增、界面无任何提示。与已登记的「重定向致 `captured_from_url` 不一致」同类但触发条件不同，未登记。修复是一行（`new URL(src, base ?? src).href`）+ 一条用例，但要再冻结一轮；建议登记而非现在改。（协议相对地址 `//host/a.png` 走 `new URL` 分支，不受影响。）
+3. **TASK-040 记录的改动多于自述**：TASK-042 记录 69 行称「仅用于把它的 `status` 登记为 MERGED，除此之外不改该记录一个字」，但 `TASK-040-extension-image-freeze.md:264`（「最终状态/风险/用户操作」）也被改写以记入 PR #46 / merge `0106953` / 「并入 TASK-042 控制面提交」——该行引用的事实在 TASK-040 自身最终提交时尚不存在，故必在 `base..candidate` 内。改动落在 TASK-040 的 EVIDENCE 标记区（`:224-614`）内，符合 §5/§6；不合的只是本记录的自述宽度。两位 Reviewer 均把「TASK-040 状态登记的合规性」列为未覆盖切片。
+
+**可选建议**：完成条件 9 的「切换资料」回收无用例（仅卸载有），结构上同一条清理路径，可不补但宜登记。
+
+### 剩余风险
+
+记录已登记的四条（安全性质由结构性转配置性、`validateLink` 变体未穷举、无 CSP、未冻结图片三条隐私代价）+ 原址图片失败态不可见 + 重定向致匹配落空，均属实且未被淡化；新增上述第 2 条（非规范绝对地址静默走原站）与第 1 条（超长正文无覆盖）两处未登记项。
+
+### Reviewer R1 · 确认（`4e2c3a5..ea2cc93`）
+
+**确认：`ea2cc93` 通过。** `.git/refs/heads/agent/coordinator/TASK-042-snapshot-rendering` = `ea2cc93ed57e82c2df0895066e774d333c6a605b`；只读，无写工具/Bash。缺陷属实且处置正确——这处是我漏掉的，验收抓得对。
+
+**规范化不会放过任何此前被拦住的地址，顺序正确。** 三道闸门的次序是：① markdown-it 在**解析期**对原始 src 跑 `normalizeLink` + `validateLink`，被拒时 `href` 置空，到我们的规则里 `!src` → 走 refused span（这就是 `![图](javascript:…)` 不产 `img` 的原因）；② `toAbsolute` 规范化；③ `^https?:` 闸门。关键点：`new URL(src, base)` 对**带 scheme 的绝对地址会忽略 base**，因此规范化只能改大小写/默认端口/点段/百分号编码，**改不了 scheme**——`data:`/`mailto:`/`ftp:` 规范化后仍不是 http(s)，仍被第③道拦下（`snapshotMarkdown.test.ts:156-161` 正是这条，且非空断言：闸门若失效就会产出 `img`）。相对地址在 `base` 为 null 时 `new URL` 抛错 → 回落原串 → 被闸门拒，与旧的 `if (!base) return src` 等价，`:127-135` 仍守着。
+
+**无新的匹配歧义。** 我核了另一侧：`extension/src/injected/extract.ts:74` 的键正是 `new URL(trimmed, baseUrl).href`，与前端现在用的是同一套规范化，且 `.href` 幂等——所以此前能命中的键必然已是规范形式，规范化只会新增正确命中，不会丢失既有命中；两种写法折叠到同一资产是同一张图，属正确行为而非歧义。
+
+**超长正文用例不是空断言，但有一条子断言写空了。** `:176-177` 的 `p` 数 > 1000 与 `strong` 文本是真绑定，确实证明 100 万字下渲染出了内容，不是「没抛异常」式。但 `:178` 的 `expect(host.querySelector('script')).toBeNull()` **永远为真**——被重复的段落里根本没有 `<script>`，转义即使失效它也通过，而 `:175` 的注释却说「原始 HTML 那条守卫在这个规模下同样成立」，属注释宽于断言。**可选建议**（非阻断）：把 `<script>alert(1)</script>` 掺进被重复的段落，再同时断言元素为 null 且文本可见即可；`html:false` 本身与正文长度无关，已有直接配置断言与 5 条转义用例覆盖，故不影响结论。
+
+剩余风险（并入原有清单，无需处置）：markdown-it 的 `normalizeLink`（mdurl 编码/punycode）与扩展侧 `new URL().href` 在极少数编码写法上仍可能算出不同串，那时退化为「静默走原站」的老形态——范围已比修复前窄得多，失败面与已登记的第 5 条同类。
+
+**结论：PASS，覆盖最终候选 `ea2cc93`，无阻断项。** 继承我对 `4e2c3a5` 及更早候选的全部审查范围；本轮只复核 `toAbsolute` 及其调用链、新增 6 条用例与记录改动。
+
+### Acceptance · 第二轮（候选 `ea2cc93`）
+
+## 覆盖 `ea2cc93` 的验收结论：**PASS**（无阻断项）
+
+只读依旧（仅 `Read`/`Grep`/`Glob`，无 Bash）。`494` / `CHECKS PASS` / 指纹 / 4 个文件的 git 级清单**未复算**；`494 = 488 + 6`（规范化 4 + 「不得变成绕过」1 + 超长正文 1）与新增用例数精确吻合，属内部一致性核对。
+
+**1. 规范化处置成立，未引入新的匹配或安全问题。**
+`snapshotMarkdown.ts:112-117` 现为 `new URL(src, base ?? undefined).href`，早退分支已删除。我按四条路径核过：
+
+- **不构成绕过**：`validateLink` 仍在解析期先行，伪协议图片的 href 被置空 → `if (!src) return null`，进不到 `toAbsolute`。`new URL` 不改变绝对地址的 scheme；相对地址只能继承 base 的 scheme。**最后一道 `^https?://` 闸门（`:97`）一字未动**，仍是唯一出口，`file:`/`data:`/`blob:` 一律落到 `null` → `span.snapshot-image-refused`。用例 `:156-161` 绑住了这一点。
+- **base 恶意/畸形不放大**：`captured_from_url` 为 `javascript:`/`data:`/`blob:` 等不透明 base 时 `new URL` 抛错 → catch 原样返回 → 被闸门拦下；为 `file:///a` 时结果 `file:///x` 同样被拦。与 R1 对上一版的判断一致。
+- **无 base 的相对地址行为未变**：`new URL('/img/b.png', undefined)` 抛错 → 原样返回 → 不产 `img`、留替代文字。已知限制 7 与 `:127-135` 的用例都仍然成立且未被弱化。
+- **匹配面只收敛不发散**：查表键与冻结表键现在同为 `URL` 规范形式，假匹配需要两个不同地址规范化到同一 href（即 URL 等价），不构成风险。`:145-154` 四条（大写协议+主机、`:443`、`..` 点段、幂等）各自命中 blob，缺任一处规范化都会红。
+
+一处**非阻断的行为微扩**值得登记一句：无 base 时，`https:/host/a.png` 这类单斜杠写法此前被拒（正则不匹配），现在被 `new URL` 规范成合法 http 地址并按原址加载。方向正确（它确是 http 地址）且仍受闸门约束，只是「按原址加载」的入口略宽了一点。另：`toAbsolute` 的返回类型 `string | null` 现在已不可能返回 null，属陈旧签名，纯外观。
+
+**2. 超长正文那条不是空断言。**
+`:167-179` 先 `expect(markdown).toHaveLength(1_000_000)` 钉住输入规模，再断 `p` 元素 > 1000、`strong` 文本为 `粗体`、`script` 为 null。若 `renderSnapshot` 返回空串、抛错或在该规模下退化，前两条必失败——它咬的是「确实渲染出来了」，不是「没抛异常」，并顺带把转义守卫在该规模上再钉一次。
+
+**3. 完成条件 11：现在判「满足」。** 无快照有用例、空快照由 `api.ts:320-321` 投影直接拒收（结构性）、超长正文有上述用例。两点如实说明，不影响判定：该用例作用于 `renderSnapshot` 模块层，未经 `ContentSnapshot` 的 `useMemo`/编辑框那条页面路径；也未断言耗时（0.7 秒是实现者的观察，我未复算）。
+
+**4. 第 3 条（自述宽度）已更正。** 记录 `:69` 现写明「实际改动为两行」并点出第二行落在 TASK-040 的 EVIDENCE 标记区内、符合 §5/§6；`:153`、`:163`、`:168` 三处也把「由独立验收指出、属自评空档」如实写出，未淡化。这些改动都在 EVIDENCE 标记区**外**——因为本轮是产品修订后重新冻结，不是证据写回，符合 §6。
+
+**5. 关于「切换资料」的回收用例：建议不登记为遗留项。** effect 依赖 `[resourceId, revision]`，切换资料触发的是与卸载**完全相同**的清理分支（`ContentSnapshot.tsx:124-127`），已被 `ContentSnapshot.test.tsx:123-141` 覆盖同一段代码；R1 也明确表示不要求补。把它写进非阻断遗留清单只会稀释真实条目，作可选建议留在报告里即可。
+
+**剩余风险**：记录已登记的四条不变；我上一轮提出的两条已由代码关闭，不再是剩余风险。新增仅上述「单斜杠绝对地址现按原址加载」一处微扩，可并入下一次任何再冻结时顺手记一句，不值得为它单独再冻结一轮。
+
+### Reviewer R1 · 最后确认（`ea2cc93..50910fa`）
+
+**确认：`50910fa` 通过——这是我这轮的最后一句。** `.git/refs/heads/...TASK-042-snapshot-rendering` = `50910fab5801609376ae541e3b613acbb5ef2b8e`；只读。
+
+**断言现在真有咬合力，两个方向都咬。** `<script>alert(1)</script>` 已在被 `repeat` 的段落里（`snapshotMarkdown.test.ts:172`），`:174` 仍钉住正文恰为 1,000,000 字，因此输入里确实存在原始 HTML。`html: false` 下 `<` 被转义，`innerHTML` 里是 `&lt;script&gt;…`，于是 `:182` 无 script 元素、`:183` 的 `textContent` 含那串字面字符；一旦转义在该规模下失效，jsdom 会把它解析成真的 `<script>` 元素——`:182` 立刻失败，且 `textContent` 不再含该字面串，`:183` 同时失败。不再是「输入里根本没有 HTML」的空转，注释也拆成两句、各自只罩自己那条。`:179-180` 的规模断言未受影响（段落变长后 `p` 数仍远超 1000）。
+
+`toAbsolute` 收窄为 `string` 与 `renderSnapshot` 里的 `if (!absolute)` 兼容，无行为变化；记录补记的单斜杠 `https:/host/a.png` 微扩属 `new URL` 的既有规范化语义，落在已登记的「按原址加载」那一类，不新增形态。
+
+**结论：PASS，覆盖最终候选 `50910fa`，无阻断项、无待处置项。** 继承此前对 `1f1fbc0`/`b666d93`/`4e2c3a5`/`ea2cc93` 的全部审查范围，本轮只复核该用例、`toAbsolute` 签名与记录三处。剩余风险同前，均已在任务记录中登记。
+
+### Acceptance · 终局（候选 `50910fa`）
+
+## 覆盖 `50910fa` 的终局验收结论：**PASS**（无阻断项）
+
+只读依旧（仅 `Read`/`Grep`/`Glob`，无 Bash）。`CHECKS PASS` / `files=16` / 指纹 `3b23562…` / frontend 494 / e2e 43 **未复算**，按 §6 复用；本轮为纯测试与文档，与「用例数不变（494）」自洽。继承我对 `ea2cc93` 的全部结论。
+
+**三处处置逐条成立（看实现，不看自述）**
+
+1. **永真断言已修好，且改法正确。** `snapshotMarkdown.test.ts:172` 把 `<script>alert(1)</script>` 掺进**被重复的** `paragraph` 里（约 7000 次完整出现，`slice` 截断不影响），`:182` 断元素为 null、`:183` 断 `textContent` 仍含那串字符。两条现在都有咬合：转义在该规模下失效则 `:182` 红，被静默吞掉则 `:183` 红。R1 抓的正是「注释宣称的守卫强于断言实际守的东西」，已闭合。
+2. **`toAbsolute` 返回类型收为 `string`**（`:112`），签名与实现一致。`renderSnapshot:92` 的 `if (!absolute)` 因此成为冗余分支——`src` 非空已由 `:85` 保证，`new URL().href` 与 catch 分支都不会返回空串。无害、不改行为，不再提。
+3. **单斜杠那处行为微扩已如实记入**记录 153 行末，措辞与我的判断一致（方向正确、仍受 `^https?:` 闸门约束、只是入口略宽），未淡化。
+
+**14 条完成条件最终判定：仅一项变化。**
+**条件 11 由「部分满足」升为「满足」**——依据：无快照有用例（`ResourcePages.test.tsx:617-622`）、空快照由 `api.ts:320-321` 投影直接拒收（结构性）、超长正文有 `snapshotMarkdown.test.ts:164-184`（1,000,000 字，断言渲染确实发生 + 转义守卫在该规模成立，非空断言）。其余 13 条与我上一轮表格一致，无变化。
+
+**建议原样登记的 EVIDENCE 非阻断遗留项（5 条）**
+
+1. 流中途读失败的异常统一映射为 `NETWORK_ERROR`，无用例钉住（R2 首次增量报告指出）。
+2. 采集时的 pageUrl 与快照 `captured_from_url` 因重定向不一致时，正文里的相对图片地址会匹配不上冻结表而**静默走原站**（`failed` 计数不增、界面不提示）。R1 指出。**验收后的地址规范化关不掉这一支**：它的根因是 base 本身与采集时不同，不是正文写法不规范。
+3. 无 base 时 `https:/host/a.png` 这类单斜杠绝对地址，此前被正则拒掉、现在被 `new URL` 规范成合法 http 地址并按原址加载。方向正确且仍受 `^https?:` 闸门约束，只是「按原址加载」的入口略宽了一点（验收指出，已记入实现说明 153 行）。
+4. 完成条件 11 的超长正文用例作用于 `renderSnapshot` **模块层**，未经 `ContentSnapshot` 的 `useMemo` 与编辑框那条页面路径，也未断言耗时（0.7 秒为实现者观察，验收未复算）。判定「满足」建立在这个范围之上。
+5. 剩余风险四条已在「已知取舍」与「已知限制」中登记，本轮未新增：安全性质由结构性转为配置性、`markdown-it` 的 `validateLink` 变体未穷举、无 CSP、未冻结图片的三条隐私代价。
+
+**明确建议不进遗留项的两条**：完成条件 9 的「切换资料」回收无用例（与卸载同一段清理分支 `ContentSnapshot.tsx:124-127`，已被 `ContentSnapshot.test.tsx:123-141` 覆盖，R1 亦不要求补）；以及「本任务三次出现同一形态的陈述宽于证据」这一流程性观察——它已如实写在记录 168 行，重复进遗留项只会稀释清单。
 
 - 日期与决定日志：2026-09-07 用户合并 PR #46 后指示做完整渲染，并主动问「消毒器是什么」。主 Agent 解释后给出两条路线（甲：关掉原始 HTML、不需消毒器；乙：允许 HTML + 消毒器），并出示对用户库中 7 份快照的实测（无 `<script>`/`on*`/`javascript:`，唯一的 `<` 命中来自 C++ 代码块），说明甲方案在当前语料上的还原度代价接近于零。用户选甲。主 Agent 据此另定两项：选 `markdown-it`（`html` 默认为 false，安全是默认值而非需要主动开启的选项），以及未冻结图片起初定为不自动加载。用户随后追问自动加载的安全隐患并在听完后明确选择**直接自动加载**，主 Agent 按其决定改为自动加载，三条代价逐条写入设计决定 ③ 与已知取舍，并采纳 `referrerpolicy="no-referrer"` 作为唯一缓解。
 <!-- EVIDENCE:END -->
