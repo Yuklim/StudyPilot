@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-039"
-status = "IN_ACCEPTANCE"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "四项各自都是 L3 判入条件：① 新表 `snapshot_assets` 与 0005 迁移（关键数据模型）；② 新增公共 API 操作与错误码，并首次让后端返回**外部站点的原始字节**给浏览器消费（安全面）；③ 改动资料安全删除的影响清单与受控文件隔离路径 —— 漏掉即产生已删除资料的图片字节永久滞留在受控目录（数据残留）；④ 冻结资产与快照正文同为不可回溯资产，归属语义（挂快照还是挂资料）、替换时的作废语义与去重键在第一版必须定对，事后迁移无法为存量数据补齐。不改核心表 `learning_resources`、不改其来源互斥 CHECK、不改本机访问门禁、后端仍不出网。"
 risk_flags = ["migration", "public-api", "security", "critical-data", "sensitive-storage", "deletion"]
@@ -217,11 +217,10 @@ checks = []
   - **回收**：`file_store.py` 的 `references()` 增读 `snapshot_assets`，同时纳入其 `storage_key` 与 `trash_key`。
   - **契约**：openapi 新增 4 个 schema、3 个响应组件、3 条路径共 4 个操作，并给 `DeletionImpact` 加 `snapshot_asset_count`（含两处示例）；中文契约新增 **§4.14**、4.12 关系表一行、第 9 节绑定字段清单、§10 操作表四行、§12 错误码三行与逐操作错误码四行，1.3 交付状态段补一句。**既有 `ContentSnapshot` schema 与三个快照操作的响应形状一字未改。**
 - **命令与真实退出结果**（全部由实现者本人在本机运行，无第三方复核）：
-  - `backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-039-snapshot-assets.md --worktree` → **CHECKS PASS**，`profiles=backend,contracts`，含 ruff format/lint、mypy、pytest、`uv build --offline` 与 OpenAPI 模型校验，各步 `exit=0`。**这一次是在第一轮 Review 的 F1 修复之后重跑的**（两位 Reviewer 都指出原记录没写明这一点）。
+  - `backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-039-snapshot-assets.md --worktree` → **CHECKS PASS**，`profiles=backend,contracts`，含 ruff format/lint、mypy、pytest、`uv build --offline` 与 OpenAPI 模型校验，各步 `exit=0`。
   - `pytest` → **550 passed**，基线 **525**，净增 **25**（新文件 `tests/test_snapshot_assets.py`；第二轮由 23 增至 25）。
   - `mypy .` → `Success: no issues found in 77 source files`。`ruff check` / `ruff format --check` → 全绿。
   - **未运行 `frontend` 与 `extension` 两组**：本任务在这两棵树下零改动，检查脚本据变更自动选组因而未选中它们。**这是结构性论据，不是观察到的计数相等** —— 完成条件 18 中「两组计数与基线完全一致」这一半没有实跑证据。
-  - `--candidate ffd88c9 --static-only` → **STATIC PASS**，`files=21`，`product_fingerprint=32a1ca98b0b8749e0fcb3904f225560e9f95938e32d6ba31c847e21cf85c4f37`。该值与修复后 `--worktree` 那次算出的指纹相同，因此上面那条 `CHECKS PASS` 对应的确实是候选 `ffd88c9` 的内容。**第一轮候选 `e1e2b53` 的旧指纹行已删除**（它指向已被取代的 SHA）——两位 Reviewer 都指出删了旧行却没补新行，本行即为补齐。
   - 环境：macOS Darwin 25.5.0、`backend/.venv`（Python 3.13）、SQLite 文件库；每个用例用 `tmp_path` 独立的数据库与受控目录。
 - **既有断言无删除、无弱化**：只改了两处，且都仍是精确相等 —— `test_migrations.py`（head `0004`→`0005`、表数 `13`→`14`）与 `test_resource_deletion.py`（影响字典多一个键，仍为整字典 `==`）。
 - **第一轮 Review 处置（两位 Reviewer 独立发现同一缺陷；R2 判为阻断，已接受）**：
@@ -248,20 +247,55 @@ checks = []
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- **候选 SHA**：第一轮冻结候选 **`bb9004fe56f490c547ddf77e065e263da45ced63`**（`product_fingerprint=64b999ff…`，`files=21`）。经两位 Reviewer 第一轮处置后的**最终候选为 `ffd88c9f14f4bb67537da031ff382547f2a24048`**（`product_fingerprint=32a1ca98b0b8749e0fcb3904f225560e9f95938e32d6ba31c847e21cf85c4f37`，`files=21`，`CHECKS PASS`，pytest 550）。**本条写回所在的提交只改本记录的 EVIDENCE 标记区**：指纹不计任务记录，故最终候选的产品内容仍为 `ffd88c9`；该事实由主 Agent 用 `git diff ffd88c9..HEAD --name-only` 核实（仅 `docs/tasks/TASK-039-snapshot-assets.md` 一个文件）。
+- **候选 SHA**：第一轮冻结候选 **`bb9004fe56f490c547ddf77e065e263da45ced63`**（`product_fingerprint=64b999ff…`，`files=21`）。经两位 Reviewer 第一轮处置后的**最终候选为 `ffd88c9f14f4bb67537da031ff382547f2a24048`**。
+  - **最终候选的静态核对**（两位 Reviewer 第二轮各自独立要求补，落点按 R1「若打算写进 EVIDENCE 区亦可」与 R2「请在冻结 EVIDENCE 时补」置于本区内）：`--candidate ffd88c9 --static-only` → **STATIC PASS**，`files=21`，`product_fingerprint=32a1ca98b0b8749e0fcb3904f225560e9f95938e32d6ba31c847e21cf85c4f37`。
+  - **「实现与测试」段那条 `CHECKS PASS` 对应的是修复后的工作区**：该次 `--worktree` 运行算出的指纹与上面这个候选指纹逐字相同。（此句为 EVIDENCE 区对既有记录的澄清，未改动标记区外的原文。）
+  - **本次写回实际改了什么**：EVIDENCE 标记区全部内容、`docs/tasks/任务索引.md` 的本任务行、以及 TOML 的 `status`。**目标、风险、`allowed_paths`、`checks`、完成条件 1–20 正文、实现与测试记录均未改动。**（此处不再用 `git diff --name-only` 支撑区域级断言 —— 文件名从原理上证明不到改在文件的哪个区域，Acceptance 的 B1 指出的正是这一点，详见其报告。）
 
 - **Review（L3，两位独立只读 Reviewer，各两轮，互不通信、无上下文继承）**：**PASS + PASS**。
   - 两位**独立发现了同一个缺陷**（R1 记为 F1/P2「建议修复」，R2 记为 F1「阻断」）。主 Agent 采纳较严的判定并实修。R2 对后果的追查比 R1 更远一层，是采纳阻断的直接依据：KeyError 在 `except ResourceError` 分支内抛出后，**同级的 `except Exception` 按 Python 语义不再接手**，异常逃出路由，由 Starlette 最外层返回纯文本 500，且因不经 `protected_send` 而连 `Cache-Control` 也没有。
   - **权限证据（两位各自自述，均未通过试写探测）**：工具白名单只有 `Read` / `Grep` / `Glob`；**无** `Write`/`Edit`/`NotebookEdit`，**未授予** `Bash`。因此两位**都无法运行任何命令**——`550 passed`、`CHECKS PASS`、变异验证三项机械证据**全部由实现者单方运行，无第三方复核**，两位均明确声明只能判断其与代码是否自洽、不能证实。两位也都无法独立核对候选 SHA 身份与指纹。
   - 报告原文见下方四节。
 
-- **Acceptance（L3 独立只读）**：待填。
+- **Acceptance（L3 独立只读，第三个全新实例，独立于唯一写入者与两位 Reviewer，无上下文继承）**：首次结论 **BLOCKED**，阻断项一条（B1，见下）；**B1 与 B2 已按其指定的最小方式闭合，其结论声明「按此闭合后，本次验收的全部条件判定即适用于闭合后的记录，无须再走一轮独立 Acceptance」。**
+  - **权限证据（自述，未通过试写探测）**：工具白名单只有 `Read`/`Grep`/`Glob`，**无** `Write`/`Edit`/`NotebookEdit`、**未授予** `Bash`。因此 `550 passed`、`CHECKS PASS`、变异验证、`product_fingerprint`、`files=21`、以及「工作树 == 候选 + 一个 docs 提交」**均非其核实**，它只判断了这些与代码的自洽性。
+  - **完成条件判定（以 Acceptance 的独立判定为准，非实现者自评）**：**满足 15 条，部分满足 5 条（2、6、8、18、20），不满足 0 条。**
+    - 实现者自评的 6/2/20「部分满足」与 9/19「满足」经其复核**准确**。
+    - **它更正了两条**：**条件 18** 应为部分满足（实现者在「命令与真实退出结果」段如实披露了 `frontend`/`extension` 未运行，**却没有把条件 18 写进自己的部分满足清单**）；**条件 8** 应为部分满足（「顺序稳定」只有 `asset_store.py:69` 的 `order_by(created_at, id)` 可代码论证，全仓没有任何 ≥2 元素的列表顺序断言，此前两位 Reviewer 与实现者均未提出）。
+    - 未发现反向错误（把已满足的写成部分满足）。
+  - **B1（阻断，已闭合）**：EVIDENCE 区原写「本条写回所在的提交只改本记录的 EVIDENCE 标记区」，而事实是「实现与测试」段（标记区外）第 220 与 224 行也在候选之后被改过 —— 补的正是两位 Reviewer 要求的「CHECKS PASS 是修复后重跑」与最终候选指纹。**该自述可被证伪，且其所引的 `git diff --name-only` 从原理上无法支撑区域级断言**（文件名证明不到改在文件的哪个区域）；同时触碰 `AGENTS.md` §6「实现与测试记录在标记区外，禁止借证据写回变更它们」。**闭合方式（按其指定，不改代码、不重新冻结、不再走一轮 Review）**：把那两行还原为候选时的措辞，把两项事实改写进本 EVIDENCE 区的候选条目，并把该自述改为如实描述本次写回实际改了什么。**闭合后主 Agent 做了区域级核实**：以 EVIDENCE 起始标记为界取标记区外全文与候选 `ffd88c9` 逐行比对，**差异仅 `status` 一行**（`IN_PROGRESS` → `ACCEPTED`，§6 明确允许）—— 这是文件名级别的 `--name-only` 给不出的证据。
+  - **B2（已闭合）**：条件 18 与条件 8 的「部分满足」按其要求**由本 EVIDENCE 区声明**，不再写入标记区外的清单（那样又是一次越界）。
+  - **Reviewer 报告原文写回完整性**：判定为**完整、未美化、未截断**。其三条内证：① 过时数字被原样保留（R1 第一轮仍写「548/525」、R2 第一轮仍写「新增 23 条与 548−525 吻合」，若为配合最终 550/+25 润色过则必被改）；② 不利于实现者的措辞完整在册（R2 的 `CHANGES_REQUIRED`、F1 全链条、四份报告的「未覆盖」段，含「全部机械证据未复核」）；③ 摘要转述未夸大（如实并列 R1 记 P2、R2 记阻断并采纳较严者）。
+  - 报告原文见下。
 
-- **最终状态/风险/用户操作**：待填。
+- **最终状态/风险/用户操作**：status=**ACCEPTED**。L3 执行链完整：Worker → 自动检查（`CHECKS PASS`，`profiles=backend,contracts`）→ 两位独立只读 Reviewer **各两轮**（第一轮 R1 PASS / R2 CHANGES_REQUIRED，两位独立发现同一缺陷；实修后第二轮 R1 PASS / R2 PASS）→ 独立只读 Acceptance（BLOCKED → 按其指定方式闭合 B1/B2 后适用其判定）。三个审查实例互不相同，均只有 `Read`/`Grep`/`Glob`，无 `Bash` 与写工具，无上下文继承。
+  - **须向用户当面说明的五点**：
+    1. **完成条件 20 条中有 5 条只是部分满足**（2、6、8、18、20），其中 **18 与 8 是 Acceptance 更正出来的，我自己的自评漏了**。没有一条不满足。
+    2. **全部机械证据由实现者单方运行**：`550 passed`、`CHECKS PASS`、变异验证、指纹与 `files=21` 一律 NOT_RUN 于三个只读实例。本仓库当前没有具备执行能力的独立审查实例（遗留 N）。
+    3. **本任务交付时界面上看不到任何变化**：表与四个端点建好了，但没有任何调用方——扩展与前端都在 TASK-040。
+    4. **遗留 G 是硬性前置**：删除预览的界面会少报图片张数，当前不可达（还没有调用方能产生资产），但**扩展开始写资产之前必须改完前端四处**，否则即成用户可见的删除漏报。
+    5. **本任务链里出现了两次同一形态的失效**，都被独立实例抓到而非我自查发现：一次是 `MESSAGES[...]` 下标取值（新文件防了、兄弟文件漏了），一次是用 `--name-only` 去支撑区域级断言。两次都是「描述/证据比它实际能支撑的更宽」。
+  - **需要用户操作**：审阅后决定是否合并本分支。合并后 TASK-040（扩展抓图上传、正文渲染替换、确认页标签页复用、前端四处删除预览）方可开始。
 
-- **非阻断遗留项（按 `风险分级与检查规则.md:29` 的四要素登记）**：待 Acceptance 后与其结论一并登记。
+- **非阻断遗留项（按 `风险分级与检查规则.md:29` 的四要素登记；清单由独立 Acceptance 给出，主 Agent 照单落实，未增删）**：
+  - **（A）条件 18 半边无实跑证据**：`frontend`/`extension` 的计数与基线相等只有结构性论据，未观察。暂不修理由：两棵树零改动，跑两组对本 diff 无信息增益。**责任角色：coordinator。重评触发条件：下一个触及 `frontend/` 或 `extension/` 的任务（即 TASK-040）必须实跑两组并记录计数。**
+  - **（B）条件 6「中途中断」无测试绑定**：只证明了 413 与事后无残留。暂不修理由：TestClient 无法区分「中途拒」与「读完再拒」，真证需改测试传输层，成本远高于收益。**责任角色：coordinator。重评触发条件：上限逻辑（`part_data`/`feed`）被改动，或出现大图上传的内存/磁盘异常。**
+  - **（C）条件 2 无「退回 0004 后 13 张表」断言**。暂不修理由：0005 的 `downgrade` 全链路已执行；补断言约 3 行，R2 判为可选建议。**责任角色：coordinator。重评触发条件：下一次新增迁移（0006）时顺手补。**
+  - **（D）条件 20 无「端点确实走 `FileService.begin()`」的用例绑定**。暂不修理由：由 `api/snapshot_assets.py` 的调用点可证。**责任角色：coordinator。重评触发条件：资产上传的暂存路径改为自建键或绕过 `FileService`。**
+  - **（E）条件 8「顺序稳定」无 ≥2 元素的列表顺序断言**（Acceptance 本轮新发现，两位 Reviewer 与实现者均未提出）。暂不修理由：`order_by(created_at, id)` 的确定性可代码论证，影响限于展示顺序。**责任角色：coordinator。重评触发条件：TASK-040 渲染时按列表顺序替换图片，须补一条多元素顺序用例。**
+  - **（F）multipart 收紧后的分支无用例**（R2 的 N3）：部件数超限、重复 `source_url`、两个 file 部件、超长头、重复头名、空文件等。暂不修理由：R2 已逐条读码核实去向正确（422/400），补齐成本高于当前收益。**责任角色：coordinator。重评触发条件：TASK-040 让扩展成为真实调用方后，出现任何 400/422 归因困难即补。**
+  - **（G）删除预览界面少报图片张数**：前端两份各自固定六键的解析器加一份标签表都忽略 `snapshot_asset_count`（不报错，只少报）。暂不修理由：当前不可达——还没有调用方能产生资产。**责任角色：TASK-040 的写入者。重评触发条件：硬性——扩展开始写资产之前必须改完四处（`frontend/src/api/client.ts` 的接口与键表、`frontend/src/features/resources/api.ts` 的键表、`ResourceDeletion.tsx` 的标签表），否则即成用户可见的删除漏报。**
+  - **（H）取字节没有修复路径**：字节缺失或校验不符一律 409 `FILE_CORRUPTED`，资产无 `status` 列与 reconcile 恢复。暂不修理由：恢复语义需新设计与新列，本版不做。**责任角色：coordinator。重评触发条件：出现任一例真实的资产 409，或引入资产重传能力时。**
+  - **（I）提升与落行之间中断留下孤儿字节**（设计决定 ⑦ 的取舍）。暂不修理由：由既有 24 小时回收清除；反方向（有行无字节）不可能发生。**责任角色：coordinator。重评触发条件：回收周期或 `references()` 语义变化时。**
+  - **（J）R1 的 F2 —— 同一 `source_url` 并发上传返回 500 而非幂等 201**。暂不修理由：`create` 全程持 `FileService.lock`，同进程内不可达，只有多进程共库才可能，本部署单进程。**责任角色：coordinator。重评触发条件：出现多进程共库部署，或 `create` 不再全程持锁。**
+  - **（K）R1 的 F3 —— CHECK 正文与 `IMAGE_MEDIA_TYPES` 双源**。暂不修理由：加第五种格式必然要写新迁移，`test_migrations` 会拦住。**责任角色：coordinator。重评触发条件：新增或删除受支持的图片格式时。**
+  - **（L）活着的资产行会钉住其 trash 副本**（仅「隔离成功而删除事务回滚」时出现）。暂不修理由：用户重试删除即自愈；`quarantine` 对已不存在的源是 no-op。**责任角色：coordinator。重评触发条件：出现 trash 区不随时间清空的实例。**
+  - **（M）`uploadSnapshotAsset` 的 409 `FILE_CORRUPTED` 未登记进契约**。暂不修理由：需暂存文件在 inspect 与 promote 之间被第三方改写，持锁 + 0700 + 随机键下实际不可达；两位 Reviewer 均判不要求。**责任角色：coordinator。重评触发条件：上传路径不再全程持锁，或该码在真实日志中出现。**
+  - **（N）三项机械证据无第三方复核**：`550 passed`、`CHECKS PASS`、变异验证均由实现者单方运行；两位 Reviewer 与 Acceptance 都无 `Bash`。暂不修理由：本仓库当前不具备可执行命令的独立审查实例。**责任角色：主 Agent / 用户。重评触发条件：引入具备只读执行沙箱的运行器，或出现证据可疑迹象。**
+  - **（O）`snapshot_asset_count` 无上界**（openapi 只有 `minimum: 0`）。暂不修理由：用户明确决定不设张数上限。**责任角色：coordinator。重评触发条件：日后加总量或张数上限时（届时须处理存量超限资料）。**
+  - 另：`content_snapshots` 仍不在删除影响清单、跨快照不去重、不清洗 EXIF、不设张数上限，属**登记时已写明的取舍**（见「已知取舍」段），按 Acceptance 判断不必作为遗留项重复登记。
 
-- **日期与决定日志（续「实现与测试」段之后）**：2026-09-06 两位 Reviewer 第一轮返回后，主 Agent 接受 R2 的阻断判定并实修 F1，形成第二轮候选 `ffd88c9`；同一次修订顺带补齐 R2 的 N2 条件 9 直证与 N4 的两条断言，并把条件 6/2/20 如实标注为「部分满足」而非补测试或改写条件正文。两位第二轮均给出 PASS，并各自独立指出同一处证据卫生缺口（删除了第一轮候选的指纹行却未补第二轮的对应行），已在「实现与测试」段补齐。
+- **日期与决定日志（续「实现与测试」段之后）**：2026-09-06 两位 Reviewer 第一轮返回后，主 Agent 接受 R2 的阻断判定并实修 F1，形成第二轮候选 `ffd88c9`；同一次修订顺带补齐 R2 的 N2 条件 9 直证与 N4 的两条断言，并把条件 6/2/20 如实标注为「部分满足」而非补测试或改写条件正文。两位第二轮均给出 PASS，并各自独立指出同一处证据卫生缺口（删除了第一轮候选的指纹行却未补第二轮的对应行）。主 Agent 起初把补的两项写进了「实现与测试」段——**那是标记区外，§6 禁止审查后改动**，并用 `git diff --name-only` 去支撑「只改了 EVIDENCE 标记区」这一区域级断言。独立 Acceptance 以此判 BLOCKED（B1），指出文件名从原理上证明不到改在文件的哪个区域。按其指定的最小方式闭合后（两行还原、两项事实移入 EVIDENCE 区、自述改为如实描述），主 Agent 以 EVIDENCE 起始标记为界做了区域级逐行比对，标记区外与候选的差异仅 `status` 一行。Acceptance 另更正了实现者自评漏掉的两条部分满足（条件 18 与条件 8），并给出 A–O 十五条遗留项清单，主 Agent 照单登记未增删。
 
 ---
 
@@ -461,5 +495,97 @@ checks = []
 > **本轮继承的上轮审查范围**：`e937201..bb9004f` 中我的切片结论全部继承——资产四端点的字段/错误码三方一致、`storage_key` 全路径不外露、`If-Match` 三分支顺序与"拒绝时零字节"、multipart 收紧后各分支去向（逐条读码）、双 router 无遮蔽、`DeletionImpact` 加键对前端两处解析器与 e2e 的兼容性、既有断言完整性、21 文件中 `frontend/`/`extension/` 零改动的枚举核实。增量未触及其中任何一项，除本报告点名的 `api/snapshots.py::failure`、两个快照操作的契约条目与三处测试改动。
 >
 > **未覆盖**：本轮与上轮均未执行任何命令 —— `550 passed`、`CHECKS PASS`、变异验证三项皆为实现者自报，我只能判断其与代码一致，不能证实；R1 切片（0005 迁移与模型的 CHECK/`ondelete` 人工比对、`images.py` 魔数边界、F2/F3 的原始判断）未复核，记录中"R1 独立复核后确认全部对上"这句由 R1 自己的报告负责；`frontend/`/`extension/` 运行时行为未测；本轮未重读 `base..ffd88c9` 全量 diff，只读了 `bb9004f..ffd88c9` 加上一轮已完整读过的上下文。
+
+### Acceptance · 原文（独立只读，第三个全新实例）
+
+> ## 0. 权限证据（运行器层，非试写探测）
+>
+> 我的工具白名单只有 **Read / Grep / Glob** 三个只读工具。**没有** `Write`/`Edit`/`NotebookEdit`，**未授予** `Bash`。因此我不能写文件、不能提交/推送/合并、不能执行任何命令（含 git、pytest、check_task.py），也不能修改权限配置。以上是运行器给我的配置本身，我未通过试写仓库文件探测。
+>
+> 由此：`550 passed`、`CHECKS PASS`、变异验证、`product_fingerprint=32a1ca98…`、`files=21`、以及「工作树 == 候选 + 一个 docs 提交」这些**都不是我核实的**，我只能判断其与代码是否自洽。我核实的一切来自阅读工作树源码、`/tmp/sp-t039/T039.patch`、`/tmp/sp-t039/T039r2.patch` 与两份契约。
+>
+> ## 1. 逐条判定完成条件 1–20
+>
+> | # | 判定 | 据以判断的证据 |
+> |---|---|---|
+> | 1 | **满足** | `0005_snapshot_assets.py:25-67` 八个字段齐备、FK `ondelete="CASCADE"`+`create_index`、`uq_snapshot_assets_storage_key`、`UNIQUE(snapshot_id, source_url)`、`media_type` CHECK 枚举四种。我独立比对了 `models.py:316-338` 与迁移：五条 CHECK 正文、`ondelete`、唯一/索引全部逐字对上（R1 结论我复核成立）。`test_migrations.py:32` head=`0005`、`:47` `== 14`（patch 1173-1174 显示由 `13` 改为 `14`，仍为精确相等）、`:27` 仍是集合精确相等 |
+> | 2 | **部分满足** | `test_migrations.py:40-49` 降到 `base` 再重升断言 14 张表；**没有**任何「退回 0004 后 13 张表」的断言。记录自评准确 |
+> | 3 | **满足** | `asset_store.py:18-32` `FIELDS` 七项，`project()` 显式排除 `storage_key`；`api/snapshot_assets.py:248` 201 返回 `project()` 结果；`test_snapshot_assets.py:110-122` 精确键集 + `"storage_key" not in response.text` |
+> | 4 | **满足** | `api/snapshot_assets.py:230` 在读 body 前 `precondition`；`api/snapshots.py:105-114` 缺失/非法 → 428；`asset_store.py:51-62` 不符 → 409 + `current_version`；`test:206-222` 三段齐全，含 `stored(runtime) == []` 与「上传后 version 仍为 1」 |
+> | 5 | **满足** | `images.py:17-29`；`test:142`（×4 参数化）、`:152`（PNG 声明成 svg+xml 仍 201/png）、`:182`（×3：SVG/HTML/PDF 声明成 image/png → 415 + `stored()==[]` + 列表为空） |
+> | 6 | **部分满足** | `test:192-202` 只证明 413 与事后无残留；「流式中途即中断」仅由 `api/snapshot_assets.py:166-179` + `:197-201` 可代码论证。记录自评准确。**另补一点**：边界值恰好 `10485760` 未被用例覆盖（用例用 10 MiB−1），代码 `> MAX_ASSET_BYTES` 与 CHECK `BETWEEN 1 AND 10485760`、openapi `maximum` 三处一致 |
+> | 7 | **满足** | `application/snapshot_assets.py:78-82`（去重命中返回既有行）+ `:91-92`（丢弃新键）；`test:226-236` objects 仍 1、行数 1、载荷相同 |
+> | 8 | **部分满足**（自评未列） | 内容与「不含 storage_key」已直证（`test:124-126` 整对象相等）；但**「顺序稳定」只有 `asset_store.py:69` 的 `order_by(created_at, id)` 可代码论证，全仓没有任何 ≥2 元素的列表顺序断言**（`test:282` 删除后只剩 1 元素）。按记录自己对条件 20 的口径（代码可证但无用例绑定 ⇒ 部分满足），这一条也应是部分满足 |
+> | 9 | **满足** | `api/snapshot_assets.py:266-279` 三个头；`test:162-174` 声明 `image/png`／字节是 GIF → 头 `image/gif` 且字节原样（直证已补齐）；`test:128-133` 三个头齐验。字节校验复用 `storage.py:136-140`（size+sha256 不符 → 409），该校验函数在原件下载路径已有覆盖（`test_files.py:409`）；资产侧无专门的损坏用例，但「复用」是代码可见事实 |
+> | 10 | **满足** | `test:271-290`（204、列表只剩另一张、trash 1/objects 1、其后取字节 404） |
+> | 11 | **满足** | `test:294-306`（3 张 → 替换后列表空、`objects == []`、`trash == 3`） |
+> | 12 | **满足** | `test:328-338`（2 张 → 删快照后 objects 空、trash 2） |
+> | 13 | **满足** | `resource_store.py:295-305` join 出资产、`:336-338` 进 manifest、`:340-349` `snapshot_asset_count`、`:363-364` 并入 `storage_keys`、`:78-86` `DELETION_IMPACT_KEYS` 新增键；`test:342-381` 覆盖预览计数=1 →**加一张图后旧令牌 409**（资产不推进 `resource_version`，故 409 只能来自 `impact_revision`/manifest 变化 ⇒ 资产确实计入 revision）→ 新预览=2 → 删除后 objects 空/trash 2/**资产行 0**/`reconcile(+25h)` 后 trash 清空。**微瑕**：stale 那步只断言 `status_code == 409`，未断言 `DELETION_IMPACT_CHANGED`（同状态码的另一来源 `DELETION_TOKEN_REPLAYED` 在该用例不可能触发，因果链仍成立） |
+> | 14 | **满足** | `asset_store.py:94-105` 跨资料与不存在同码同状态；`test:247-256`、`:260-267` |
+> | 15 | **满足**（结构性 + 采信） | 两份 patch 的 `diff --git` 全枚举共 21 文件，不含 `pyproject.toml`/`uv.lock`；`python_multipart` 是既有依赖（`api/file_upload.py:10` 早已使用）；新代码不含 `import httpx`/`requests`/`urllib.request`/`aiohttp`（即 `test_snapshots.py:271-283` 的扫描口径）。测试实跑结果我未复核 |
+> | 16 | **满足** | `local_access.py` 不在 21 个文件内；`test:406-425` 两半（`sec-fetch-dest: image` → `REQUEST_ORIGIN_FORBIDDEN`；去令牌 → `LOCAL_TOKEN_REQUIRED`） |
+> | 17 | **满足**（抽查 + 采信 R2 的完整核对） | openapi:387 `SnapshotAsset.required` 七项 ≡ `asset_store.FIELDS` ≡ 中文契约 §4.14；openapi:164/165/169/173 的 `x-error-codes` 与中文契约 654-656 行逐字一致；`ContentSnapshot` schema 与三个快照操作的**成功**响应在 diff 中为上下文行未改，新增的只有 `503` |
+> | 18 | **部分满足** | backend 侧成立且自洽：新测试文件 20 个函数 + 5 个参数化实例 = **25**，与 `550−525` 吻合；既有断言只更新未弱化（patch 1160-1198，两处仍为精确相等）。但 **`frontend`/`extension` 两组从未运行**，「计数与基线完全一致」没有观察证据，只有结构性论据，而 R2 已明确指出该论据不普适（e2e 打真后端跑）。记录在 line 223 如实披露了这一点，**却没有把条件 18 写进它自己的「部分满足」清单（234-238 行只列 6/2/20）** |
+> | 19 | **满足** | `file_store.py:100-102` 同时纳入 `storage_key` 与 `trash_key`；`test:385-402` 两半齐全（用把 `reconcile` 的 `now` 推到 +25h 代替改 mtime，效果等价） |
+> | 20 | **部分满足** | 记录自评准确；用例直接调 `files.begin()`，端点走它由 `api/snapshot_assets.py:162` 的调用点可证 |
+>
+> **合计：满足 15 条，部分满足 5 条（2、6、8、18、20），不满足 0 条。**
+>
+> ### 对自评准确性的独立判断
+> - 条件 **6/2/20 标「部分满足」——准确**。
+> - 条件 **9/19 标「满足」——准确**（各有直证用例，我复核成立）。
+> - **有两条应为「部分满足」而记录未如此标注**：**条件 18**（记录在别处披露了事实，但未进入自己的部分满足清单）与 **条件 8**（顺序稳定无用例绑定，此前无人提出）。没有发现反向错误（把已满足的写成部分满足）。
+>
+> ## 2. Reviewer 报告原文写回是否完整未削弱
+>
+> **判断：完整、未美化、未截断。** 我不能与 Reviewer 的原始返回逐字比对（我看不到它们），但有三条内证很强：
+>
+> 1. **过时数字被原样保留**：R1 第一轮仍写「548/525 计数与指纹均未独立验证」，R2 第一轮仍写「新增 23 条与 548−525 吻合」。若为配合最终 550/+25 做过润色，这两处必然被改。
+> 2. **不利于实现者的措辞完整存在**：R2 第一轮结论 `CHANGES_REQUIRED` 原样在册，F1 的「裸 500、无 code/request_id/Cache-Control」全链条在册；四份报告的「未覆盖（不以沉默暗示已审）」段全部保留，包括「全部机械证据未复核」「未核对候选 SHA 身份与指纹」。
+> 3. **摘要转述未夸大**：EVIDENCE 253-255 行把 R1 记为 P2、R2 记为阻断如实并列，采纳较严者；并主动写明三项机械证据由实现者单方运行、两位均无法证实。R1 第二轮报告本身也确认了记录对 F2/F3 的转述「与我上一轮的原意一致，没有把『我判为可选建议』写成『我认为无问题』」。
+>
+> **未发现任何一份报告的结论、findings 或「未覆盖」声明被削弱。**
+>
+> ## 3. 陈述宽于证据之处（本次唯一的必须闭合项）
+>
+> ### B1（必须先闭合）EVIDENCE 区 251 行的说法与事实不符，且触碰 `AGENTS.md` §6 的标记区边界
+>
+> - **记录的说法**（`docs/tasks/TASK-039-snapshot-assets.md:251`）：「**本条写回所在的提交只改本记录的 EVIDENCE 标记区**」，依据是 `git diff ffd88c9..HEAD --name-only`。
+> - **事实**：当前工作树在 **EVIDENCE 标记区之外**（标记从第 248 行才开始）至少有两处是候选 `ffd88c9` 之后才写的：
+>   - 第 **220** 行的 `CHECKS PASS` 条目末尾新增「**这一次是在第一轮 Review 的 F1 修复之后重跑的**（两位 Reviewer 都指出原记录没写明这一点）」；
+>   - 第 **224** 行整条新增 `--candidate ffd88c9 --static-only → STATIC PASS，files=21，product_fingerprint=32a1ca98…`。
+> - **证据链**：`/tmp/sp-t039/T039r2.patch:180-190` 的**后像**显示，在 `ffd88c9` 时该段是「CHECKS PASS（上下文行、无那句补充）／pytest 550／mypy／**旧指纹行被删且未补新行**／未运行 frontend／环境」；两位 Reviewer 第二轮**各自独立**确认了同一状态（R1：「现在『实现与测试』段没有任何指纹/静态核对证据」；R2：「删掉了那一行，未补第二轮的对应行」「`CHECKS PASS` 那行原文保留，没写明是在第二轮改动之后重跑的」）。而这两处新文本自身就写着「两位 Reviewer 都指出……」，只可能写于收到第二轮报告之后。
+> - **为什么这是「陈述宽于证据」**：`--name-only` 只能给出**文件名**，从原理上无法支持任何关于**区域**的断言；用它来证明「只改了 EVIDENCE 标记区」，是典型的结论宽于所引证据。
+> - **同时是规则问题**：`AGENTS.md` §6 明写「审查后仅可更新同任务的 status 和 EVIDENCE 标记区……**实现与测试记录在标记区外，禁止借证据写回变更它们**」。两位 Reviewer 要求补的指纹，R1 说得很清楚「若打算写进 EVIDENCE 区亦可」，R2 说「请在**冻结 EVIDENCE 时**补」——正确的落点是标记区内。
+> - **实际风险评估**：新增内容本身**准确**、且正是两位 Reviewer 要求的证据卫生项；不改目标/风险/路径/检查/完成条件正文（我已逐字比对完成条件 2/6/18/19/20 与 TOML 的 `allowed_paths`：与 `T039.patch:1838-1874`、`:2002-2020` 完全一致，只有 `status` 变化）；`product_fingerprint` 不计任务记录，故「产品内容仍为 `ffd88c9`」这一半成立。所以这不是产品缺陷，是**记录内一条可被证伪的自述**加一处规则越界。
+> - **最小安全闭合**（无需改代码、无需重新冻结、无需新一轮 Review）：把 220/224 两行还原为 `ffd88c9` 时的措辞，把「CHECKS PASS 是修复后重跑」与 `ffd88c9` 的 `STATIC PASS / files=21 / 指纹` 两项事实写进 **EVIDENCE 区的候选条目**；并把 251 行改成如实描述本次写回实际改了什么（不要再用 `--name-only` 支撑区域级断言）。
+>
+> ### B2（一并闭合）条件 18 与条件 8 的判定需按本报告更正
+> 条件 18 的「部分满足」不要再写进标记区外的清单（那样又是一次越界），**由 Acceptance 结论在 EVIDENCE 区内声明**即可：条件 18 与条件 8 为部分满足。
+>
+> ### 未发现的其它宽化
+> 其余抽查均未发现宽于证据的措辞：`compare_metadata` 的证明范围已被更正为「字段层面」并明说不比较 CHECK 与 `ondelete`（属实）；已知限制 2 的前端四处定位准确；R1/R2 报告内的措辞与代码一致。
+>
+> ## 4. 必须登记的非阻断遗留项（四要素）
+>
+> （原文清单 A–O 已按其内容逐条落入本记录上方的「非阻断遗留项」段，未增删。）
+>
+> ## 5. 我未覆盖的部分（不以沉默暗示已审）
+>
+> - **全部机械证据**：未运行任何命令，`550 passed` / `CHECKS PASS` / 变异验证 / `product_fingerprint` / `files=21` 均未证实，只判断了与代码的自洽性（测试函数数 20 + 参数化 5 = 25，与 `550−525` 吻合）。
+> - **候选 SHA 身份**：无 git，无法证实 `ffd88c9`、`bb9004f`、`e937201` 的存在与内容对应关系，也无法证实工作树等于「候选 + 一个 docs 提交」。我能证实的是：工作树的产品源码与两份 patch 的后像一致（我逐处读过 13 个产品文件的相关部分，含 `api/snapshots.py:47` 的 `.get` 修复）。
+> - **未逐行复审 base..candidate 全量 diff**（按 §4，Acceptance 不从头再审代码）：`api/snapshot_assets.py` 的 multipart 回调细节、`images.py` 的魔数边界穷举、`snapshot_store.py`/`application/files.py` 的既有行为、openapi 与中文契约中与资产无关的部分，均沿用两位 Reviewer 的切片结论。
+> - **前端与扩展的运行时行为**：只做了「两份 patch 中零改动」的枚举核实，未读 `frontend/`/`extension/` 源码、未跑其检查组。
+> - **任务记录标记区外文本的完整逐字比对**：我只定点比对了 TOML 块、完成条件 2/6/18/19/20 与「命令与真实退出结果」段；其余段落是否也在 `ffd88c9` 之后被改过，我未穷举。
+>
+> ## 6. 结论
+>
+> # BLOCKED
+>
+> **产品与完成条件层面本可 PASS**：21 个文件全部在 `allowed_paths` 内，三条销毁路径、孤儿回收、类型识别、门禁、契约三方一致、`storage_key` 全响应路径不外露（我逐条核过：`project()` 排除、错误 `details` 只可能为 `{}` 或 `{current_version}`、`current_impact` 只含计数、字节响应头为固定文件名）均成立；20 条完成条件 15 满足、5 部分满足、0 不满足；两位 Reviewer 的报告原文完整未削弱。
+>
+> **阻断点只有一处，且不需要改代码、不需要重新冻结、不需要新一轮 Review**：任务记录 EVIDENCE 区第 251 行「本条写回所在的提交只改本记录的 EVIDENCE 标记区」**可被证伪**——第 220 与 224 行这两处标记区外的「实现与测试」文本是候选之后才写的（证据见 §3 B1），而其所引的 `--name-only` 从原理上就无法支持区域级断言。这既是本项目反复出现的「陈述宽于证据」，也触碰 `AGENTS.md` §6「实现与测试记录在标记区外，禁止借证据写回变更它们」。
+>
+> 按 §3 B1 的最小闭合方式改完，并按 §4 登记 A–O、按 §3 B2 在 EVIDENCE 区声明条件 18 与条件 8 为部分满足之后，**本次验收的全部条件判定即适用于闭合后的记录，无须再走一轮独立 Acceptance**。
 
 <!-- EVIDENCE:END -->
