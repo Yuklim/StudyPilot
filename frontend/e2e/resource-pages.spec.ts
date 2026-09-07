@@ -47,12 +47,12 @@ test('real UI saves WEB and PASTE, refreshes details, searches and safely reads 
   await page.keyboard.press('Enter')
   await expect(page).toHaveURL(/\/resources\/[0-9a-f-]{36}$/)
   await expect(
-    page.getByRole('heading', { name: '页面合成 · 一页阅读方法', level: 2 }),
+    page.getByRole('heading', { name: '页面合成 · 一页阅读方法', level: 1 }),
   ).toBeVisible()
   expect(creates).toBe(1)
   await page.reload()
   await expect(
-    page.getByRole('heading', { name: '页面合成 · 一页阅读方法', level: 2 }),
+    page.getByRole('heading', { name: '页面合成 · 一页阅读方法', level: 1 }),
   ).toBeVisible()
   const externalLink = page.getByRole('link', { name: /原网页/ })
   await expect(externalLink).toHaveAttribute('href', 'https://example.com/reading')
@@ -119,7 +119,7 @@ test('a WEB link can be saved without a title and stays untitled in the library'
   await page.getByLabel('网页地址（必填）').fill('https://example.com/quick-save')
   await page.getByRole('button', { name: '保存到资料库' }).click()
   await expect(page).toHaveURL(/\/resources\/[0-9a-f-]{36}$/)
-  await expect(page.getByRole('heading', { name: '未命名资料', level: 2 })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '未命名资料', level: 1 })).toBeVisible()
   const id = new URL(page.url()).pathname.split('/').pop()!
   await page.getByRole('link', { name: '返回资料库' }).click()
   await expect(page.locator(`a[href="/resources/${id}"]`)).toHaveText('未命名资料')

@@ -8,6 +8,7 @@ import { ResourceEditor } from './ResourceEditor'
 import { FileOriginal } from './FileOriginal'
 import { LearningPanel } from '../learning/LearningPanel'
 import { ResourceTagEditor } from '../taxonomy/ResourceTagEditor'
+import { Icon } from '../../shell/Icon'
 
 /**
  * 阅读器的顶部工具条。**两层，且两层都常驻。**
@@ -31,14 +32,20 @@ export function ResourceToolbar({
   refreshed,
   deleted,
   notesTargetId,
+  headingSlot,
 }: {
   resource: Resource
   /** 元数据被改动后重新读取这份资料。 */
   refreshed: () => void
   /** 资料已被删除，由调用方决定去哪。 */
   deleted: () => void
-  /** 「心得」按钮要跳到的区域 id。本步心得仍在正文下方（侧栏属 TASK-044）。 */
+  /** 「心得」按钮要跳到的区域 id。本步心得仍在正文下方（侧栏属 TASK-045）。 */
   notesTargetId: string
+  /**
+   * 把这一页的 `h1`（资料标题）交回外壳做路由焦点落点（TASK-044）。
+   * 这一页的标题本来就该是资料的名字，而不是「资料详情」四个字。
+   */
+  headingSlot: (element: HTMLHeadingElement | null) => void
 }) {
   const [panel, setPanel] = useState<PanelKey | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -102,7 +109,9 @@ export function ResourceToolbar({
         <span className={`source-chip ${resource.source_type.toLowerCase()}`}>
           {sourceLabels[resource.source_type]}
         </span>
-        <h2 className="reader-title">{resourceTitle(resource)}</h2>
+        <h1 className="reader-title" ref={headingSlot} tabIndex={-1}>
+          {resourceTitle(resource)}
+        </h1>
         <div className="reader-toolbar-buttons">
           <button
             type="button"
@@ -112,8 +121,17 @@ export function ResourceToolbar({
           >
             {statusLabels[progress.status]} · {progress.progress_percent}%
           </button>
-          <a className="journal-button" href={`#${notesTargetId}`}>
-            心得
+          {/* **图标按钮一律不留文字节点**：`textContent` 因此为空，用例可以直接断言
+              「文字确实拿掉了」；名字由 `aria-label` 提供，鼠标用户由 `title` 兜底。
+              本仓所有测试都按可访问名称查控件，所以只断言名称是抓不到图标化退化的
+              ——这两条断言必须成对存在。 */}
+          <a
+            className="journal-button icon-button"
+            href={`#${notesTargetId}`}
+            aria-label="心得"
+            title="心得"
+          >
+            <Icon name="note" />
           </a>
           <OriginalEntry
             resource={resource}
@@ -124,13 +142,14 @@ export function ResourceToolbar({
           <button
             type="button"
             ref={menuTrigger}
-            className="journal-button reader-more"
+            className="journal-button icon-button reader-more"
             aria-haspopup="menu"
             aria-expanded={menuOpen}
             aria-label="更多操作"
+            title="更多操作"
             onClick={openMenu}
           >
-            ⋯
+            <Icon name="more" />
           </button>
         </div>
       </div>
@@ -295,20 +314,29 @@ function OriginalEntry({
       )
     return (
       <a
-        className="journal-button"
+        className="journal-button icon-button"
         href={link}
         target="_blank"
         rel="noopener noreferrer"
         referrerPolicy="no-referrer"
+        aria-label="原网页"
+        title="原网页（在新标签页打开）"
       >
-        原网页
-        <span aria-hidden="true"> ↗</span>
+        <Icon name="external" />
       </a>
     )
   }
+  const label = resource.source_type === 'FILE' ? '原件' : '粘贴原文'
   return (
-    <button type="button" className="journal-button" aria-expanded={open} onClick={onOpen}>
-      {resource.source_type === 'FILE' ? '原件' : '粘贴原文'}
+    <button
+      type="button"
+      className="journal-button icon-button"
+      aria-expanded={open}
+      aria-label={label}
+      title={label}
+      onClick={onOpen}
+    >
+      <Icon name={resource.source_type === 'FILE' ? 'file' : 'paste'} />
     </button>
   )
 }

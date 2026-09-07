@@ -5,6 +5,9 @@ import App from './App'
 import { api } from './api/client'
 import { renderWithRouter } from './test/render'
 
+/** 主内容区。「没有假输入」那几条断言只针对它，不针对左栏的真控件。 */
+const main = () => document.getElementById('main-content')!
+
 const routes = [
   ['/', '学习概览'],
   ['/reviews', '复习安排'],
@@ -36,8 +39,14 @@ describe('StudyPilot journal shell', () => {
       const { container } = renderWithRouter(<App />, route)
       expect(screen.getByRole('heading', { name: title, level: 1 })).toBeInTheDocument()
       expect(document.title).toBe(`${title} · StudyPilot`)
-      expect(screen.getByText('网页、文件与粘贴资料已开放')).toBeInTheDocument()
-      expect(screen.queryByRole('button')).not.toBeInTheDocument()
+      // **开发阶段横幅 TASK-044 起只在概览页。** 它是一句关于产品阶段的说明，属于首页；
+      // 此前每一页都显示，对每天用的人没有信息量，却在阅读器上占掉 45–87px。
+      const notice = screen.queryByText('网页、文件与粘贴资料已开放')
+      if (route === '/') expect(notice).toBeInTheDocument()
+      else expect(notice).not.toBeInTheDocument()
+      // 「没有假输入」这条守的是**主内容区**。左栏的折叠按钮是一个真控件，不该被它误伤，
+      // 所以把范围收到 main 里——这比原来的全文档范围更贴近这条断言本来的意思。
+      expect(within(main()).queryByRole('button')).not.toBeInTheDocument()
       expect(container.querySelector('input, textarea, select, form')).toBeNull()
       expect(fetchSpy).not.toHaveBeenCalled()
       expect(api.request).not.toHaveBeenCalled()

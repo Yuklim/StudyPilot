@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { api } from '../../api/client'
+import { api, ApiError } from '../../api/client'
 import App from '../../App'
 import { renderWithRouter } from '../../test/render'
 import { resourceId, sample, sampleFile, samplePage } from './fixtures'
@@ -45,6 +45,19 @@ const more = () => screen.getByRole('button', { name: '更多操作' })
 // **状态徽章按真值表取名，不写字面量。** 初稿写的是 `/未开始|在读|读完|归档/`，
 // 而实际标签是「学习中 / 已完成 / 待复习 / 已归档」——「未开始」恰好匹配上，于是
 // 那条正则里三个分支全是错的却照样绿。断言必须绑在真正的数据上。
+/**
+ * 页面自己的一级标题（不含正文里的）。
+ *
+ * **正文渲染出来的 `# 标题` 本身就是 `h1`**（markdown-it 按原级别渲染），所以整页会有
+ * 不止一个 `h1`。这在 TASK-044 之前就存在（那时是「资料详情」+ 正文标题），本任务只是
+ * 让页面那一个变成了资料名。要把正文标题降级得改 `snapshotMarkdown.ts`，而那个文件是
+ * 本任务明确排除的——已记入已知限制，留给后续任务。
+ */
+const pageHeadings = () =>
+  screen
+    .getAllByRole('heading', { level: 1 })
+    .filter((element) => !element.closest('.snapshot-rendered'))
+
 const statusBadge = () => screen.getByRole('button', { name: `${statusLabels.UNREAD} · 0%` })
 
 beforeEach(() => {
@@ -66,7 +79,7 @@ describe('reader toolbar', () => {
     mount(sample({ save_reason: '想搞清双指针', tags: [{ id: resourceId, name: '算法' }] }))
     await screen.findByRole('button', { name: '更多操作' })
     expect(screen.getByRole('link', { name: '返回资料库' })).toBeVisible()
-    expect(screen.getByRole('heading', { name: '合成阅读资料', level: 2 })).toBeVisible()
+    expect(screen.getByRole('heading', { name: '合成阅读资料', level: 1 })).toBeVisible()
     expect(statusBadge()).toBeVisible()
     expect(screen.getByRole('link', { name: '心得' })).toBeVisible()
     expect(screen.getByRole('link', { name: /原网页/ })).toBeVisible()
@@ -76,6 +89,34 @@ describe('reader toolbar', () => {
       within(screen.getByRole('navigation', { name: '资料标签' })).getByText('算法'),
     ).toBeVisible()
     expect(screen.getByText(/想搞清双指针/)).toBeVisible()
+  })
+
+  it('makes the resource title the only h1, and the page heading block is gone', async () => {
+    // TASK-044：这一页的标题本来就该是资料的名字，而不是「资料详情」四个字。
+    mount()
+    await screen.findByRole('button', { name: '更多操作' })
+    const headings = pageHeadings()
+    expect(headings).toHaveLength(1)
+    expect(headings[0]).toHaveTextContent('合成阅读资料')
+    expect(screen.queryByText('原始资料与自己的理解，各有一个位置。')).toBeNull()
+  })
+
+  it('still has exactly one h1 and a way back while the resource is loading', async () => {
+    // **读取中也必须有 h1**：它是路由切换后的焦点落点，没有它键盘用户会失去落点，
+    // 而这种失效在屏幕上完全看不出来。
+    vi.spyOn(api, 'request').mockImplementation(() => new Promise(() => {}))
+    renderWithRouter(<App />, `/resources/${resourceId}`)
+    expect(pageHeadings()).toHaveLength(1)
+    expect(pageHeadings()[0]).toHaveTextContent('正在打开资料')
+    expect(screen.getByRole('link', { name: '返回资料库' })).toBeInTheDocument()
+  })
+
+  it('still has exactly one h1 and a way back when the resource cannot be read', async () => {
+    vi.spyOn(api, 'request').mockRejectedValue(new ApiError('NETWORK_ERROR'))
+    renderWithRouter(<App />, `/resources/${resourceId}`)
+    await screen.findByRole('heading', { name: '这份资料打不开', level: 1 })
+    expect(pageHeadings()).toHaveLength(1)
+    expect(screen.getByRole('link', { name: '返回资料库' })).toBeInTheDocument()
   })
 
   it('says so plainly when there is neither a tag nor a save reason', async () => {
@@ -162,7 +203,7 @@ describe('reader toolbar', () => {
     expect(more()).not.toHaveFocus()
   })
 
-  it('keeps the arrows out of the accessible names', async () => {
+  it('keeps the back arrow out of the accessible name', async () => {
     // `::before`/`::after` 的生成内容在 Chromium 与 Firefox 里**是计入**可访问名称的，
     // 只有 jsdom 不算——所以箭头必须是 `aria-hidden` 的真实元素，否则「箭头不进名称」
     // 这句话只在测试环境里成立。这条断言在 jsdom 里同样能钉住结构：装饰元素必须带
@@ -172,9 +213,31 @@ describe('reader toolbar', () => {
     const back = screen.getByRole('link', { name: '返回资料库' })
     expect(back.textContent).toContain('←')
     expect(back.querySelector('[aria-hidden="true"]')?.textContent).toBe('← ')
-    const external = screen.getByRole('link', { name: '原网页' })
-    expect(external.textContent).toContain('↗')
-    expect(external.querySelector('[aria-hidden="true"]')?.textContent).toBe(' ↗')
+  })
+
+  it('renders the icon buttons with no visible text but a real accessible name and tooltip', async () => {
+    // **这一条是图标化唯一的机器守卫，而且它必须是「反向」的。** 本仓所有测试都按
+    // 可访问名称查控件，所以把文字换成图标之后它们照样全绿——只断言名称是抓不到
+    // 「按钮上没有可见文字了」这件事的。这里同时断言两面：可见文本为空、名称与
+    // 悬停提示都在。
+    mount()
+    await screen.findByRole('button', { name: '更多操作' })
+    for (const [role, name] of [
+      ['link', '心得'],
+      ['link', '原网页'],
+      ['button', '更多操作'],
+    ] as const) {
+      const control = screen.getByRole(role, { name })
+      expect(control.textContent).toBe('')
+      expect(control).toHaveAttribute('title')
+      expect(control.querySelector('svg')).not.toBeNull()
+    }
+  })
+
+  it('keeps the status badge as text, because it shows a value and not an action', async () => {
+    mount()
+    await screen.findByRole('button', { name: '更多操作' })
+    expect(statusBadge().textContent).toBe(`${statusLabels.UNREAD} · 0%`)
   })
 
   it('moves focus into the menu when it opens', async () => {

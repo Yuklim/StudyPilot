@@ -9,6 +9,15 @@ export interface ShellPage {
   icon: IconName
   /** 导航分区：'primary' 主入口（当前高频可用），'more' 次级/后续能力（仍可达）。 */
   section?: 'primary' | 'more'
+  /**
+   * 这一页自己渲染 `h1` 并把它交给外壳做焦点落点（TASK-044）。
+   *
+   * 阅读器页用它来把「资料详情」那个页头块整个去掉——那一页的标题本来就该是资料的
+   * 名字。**`h1` 是路由切换后的焦点落点**（`App.tsx` 的 effect 聚焦它），所以「谁来渲染
+   * 它」是一条无障碍契约而不只是版面选择：置为 true 的页面**必须在每一种状态下都恰好
+   * 渲染一个 `h1`**（含读取中与读取失败），否则导航过去的键盘用户会失去落点。
+   */
+  ownHeading?: boolean
   emptyTitle: string
   description: string
 }
@@ -55,6 +64,9 @@ export const pages: ShellPage[] = [
     title: '资料详情',
     caption: '原始资料与自己的理解，各有一个位置。',
     icon: 'library',
+    // 页头块在这一页整个不渲染，标题由 `ResourceDetail` 自己出（见 `ownHeading`）。
+    // `title` 仍然在用：它是浏览器标签页的名字。
+    ownHeading: true,
     emptyTitle: '打开收藏的这一页',
     description: '查看原始资料，随手写下心得，再回来继续补充。',
   },

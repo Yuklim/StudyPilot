@@ -1,5 +1,21 @@
 export type IconName =
-  'overview' | 'library' | 'record' | 'review' | 'topic' | 'plus' | 'arrow' | 'info'
+  | 'overview'
+  | 'library'
+  | 'record'
+  | 'review'
+  | 'topic'
+  | 'plus'
+  | 'arrow'
+  | 'info'
+  // TASK-044 起工具条与左栏用图标代替文字。**图标只是装饰**（`aria-hidden`），
+  // 名字一律由按钮自己的 `aria-label` 提供，见 `ResourceToolbar.tsx`。
+  | 'note'
+  | 'external'
+  | 'file'
+  | 'paste'
+  | 'more'
+  | 'collapse'
+  | 'expand'
 
 const paths: Record<IconName, string> = {
   overview: 'M3 10 12 3l9 7M5 9v11h5v-6h4v6h5V9',
@@ -10,6 +26,13 @@ const paths: Record<IconName, string> = {
   plus: 'M12 5v14M5 12h14',
   arrow: 'M4 12h16M14 6l6 6-6 6',
   info: 'M12 8v1M12 12v5M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0',
+  note: 'M4 4h11l5 5v11H4zM15 4v5h5M8 13h8M8 17h5',
+  external: 'M14 4h6v6M20 4l-9 9M18 14v6H4V6h6',
+  file: 'M6 3h8l4 4v14H6zM14 3v4h4M9 12h6M9 16h6',
+  paste: 'M9 3h6v3H9zM7 5H5v16h14V5h-2M9 11h6M9 15h4',
+  more: 'M6 12h.01M12 12h.01M18 12h.01',
+  collapse: 'M15 6l-6 6 6 6',
+  expand: 'M9 6l6 6-6 6',
 }
 
 export function Icon({ name }: { name: IconName }) {

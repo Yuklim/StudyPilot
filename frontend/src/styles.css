@@ -2298,3 +2298,57 @@ a.source-chip:focus-visible {
     width: 100%;
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * 图标按钮与可折叠左栏（TASK-044）。
+ *
+ * 图标按钮**不含任何文字节点**，名字全靠 `aria-label`；这里只管尺寸与对齐。
+ * --------------------------------------------------------------------------- */
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  min-width: 38px;
+  padding: 0;
+}
+.icon-button .icon {
+  width: 18px;
+  height: 18px;
+}
+.nav-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-bottom: 10px;
+  padding: 0;
+  border: 1px solid #cfd6c6;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.nav-toggle .icon {
+  width: 16px;
+  height: 16px;
+}
+/* 折叠态：左栏收窄，只留图标。文字节点在 React 里就没渲染，不是靠这里藏。 */
+.app-shell.nav-collapsed .sidebar {
+  width: 68px;
+  min-width: 68px;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+.app-shell.nav-collapsed .brand-copy,
+.app-shell.nav-collapsed .nav-label,
+.app-shell.nav-collapsed .sidebar-note {
+  display: none;
+}
+.app-shell.nav-collapsed .primary-nav a,
+.app-shell.nav-collapsed .add-link {
+  justify-content: center;
+  padding-left: 8px;
+  padding-right: 8px;
+}
