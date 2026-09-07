@@ -10,6 +10,17 @@ async function openOptionalFields(page: Page) {
   await expect(page.getByLabel('保存原因（选填）')).toBeVisible()
 }
 
+/**
+ * TASK-043 起粘贴原文在阅读器工具条的「粘贴原文」面板里，先点开才看得到。
+ * 面板一次只开一个，重复点会收起，所以这里先看它在不在。
+ */
+async function openPasted(page: import('@playwright/test').Page) {
+  const panel = page.getByRole('region', { name: '粘贴原文' })
+  if (await panel.isVisible().catch(() => false)) return
+  await page.getByRole('button', { name: '粘贴原文', exact: true }).click()
+  await expect(panel).toBeVisible()
+}
+
 test('real UI saves WEB and PASTE, refreshes details, searches and safely reads originals', async ({
   page,
 }, testInfo) => {
@@ -43,7 +54,7 @@ test('real UI saves WEB and PASTE, refreshes details, searches and safely reads 
   await expect(
     page.getByRole('heading', { name: '页面合成 · 一页阅读方法', level: 2 }),
   ).toBeVisible()
-  const externalLink = page.getByRole('link', { name: /打开原网页/ })
+  const externalLink = page.getByRole('link', { name: /原网页/ })
   await expect(externalLink).toHaveAttribute('href', 'https://example.com/reading')
   await expect(externalLink).toHaveAttribute('rel', 'noopener noreferrer')
   await expect(externalLink).toHaveAttribute('target', '_blank')
@@ -57,10 +68,12 @@ test('real UI saves WEB and PASTE, refreshes details, searches and safely reads 
   await openOptionalFields(page)
   await page.getByLabel('保存原因（选填）').fill('先收藏，下一次再慢慢读。')
   await page.getByRole('button', { name: '保存到资料库' }).click()
+  await openPasted(page)
   await expect(page.getByLabel('粘贴原文内容')).toBeVisible()
   expect(await page.getByLabel('粘贴原文内容').textContent()).toBe(original)
   expect(creates).toBe(2)
   await page.reload()
+  await openPasted(page)
   await expect(page.getByLabel('粘贴原文内容')).toBeVisible()
   expect(await page.getByLabel('粘贴原文内容').textContent()).toBe(original)
   expect(await page.locator('body').getAttribute('data-executed')).toBeNull()
@@ -92,6 +105,7 @@ test('real UI saves WEB and PASTE, refreshes details, searches and safely reads 
   await page.getByRole('button', { name: '搜索 / 应用筛选' }).click()
   await expect(page.getByText('共 1 份资料', { exact: true })).toBeVisible()
   await page.getByRole('link', { name: '页面合成 · 写在页边的小记' }).click()
+  await openPasted(page)
   await expect(page.getByLabel('粘贴原文内容')).toBeVisible()
   expect(await page.evaluate(() => localStorage.length + sessionStorage.length)).toBe(0)
   expect(await page.context().cookies()).toEqual([])
@@ -241,7 +255,7 @@ test('a web resource can keep a pasted snapshot of its text alongside the link',
   await expect(section.locator('.snapshot-rendered')).toBeVisible()
 
   // The whole point of the shape: frozen text and the original link coexist.
-  await expect(page.getByRole('link', { name: /打开原网页/ })).toHaveAttribute(
+  await expect(page.getByRole('link', { name: /原网页/ })).toHaveAttribute(
     'href',
     'https://example.com/snapshot',
   )

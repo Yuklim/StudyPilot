@@ -65,10 +65,22 @@ test('classification UI manages real data and organizes resources with combined 
   await button(page, '保存到资料库').focus()
   await page.keyboard.press('Enter')
   await expect(page).toHaveURL(/\/resources\/[0-9a-f-]{36}$/)
-  await expect(page.getByText('分类页面 · 阅读方法', { exact: true })).toBeVisible()
+  // TASK-043 起主题名在工具条的「资料信息」面板里；标签则常驻在工具条第二层，
+  // 不需要点开——这两处的区别正是本次改版的产品决定，所以分开断言。
+  await button(page, '更多操作').click()
+  await page.getByRole('menuitem', { name: '资料信息' }).click()
+  await expect(
+    page.getByRole('region', { name: '资料信息' }).getByText('分类页面 · 阅读方法', {
+      exact: true,
+    }),
+  ).toBeVisible()
   const detailUrl = page.url()
   await page.reload()
-  await expect(page.getByText('分类页面 · 待读', { exact: true })).toBeVisible()
+  await expect(
+    page.getByRole('navigation', { name: '资料标签' }).getByText('分类页面 · 待读', {
+      exact: true,
+    }),
+  ).toBeVisible()
   await page.getByRole('link', { name: '返回资料库' }).click()
   await button(page, '按主题与标签筛选').click()
   await page.getByRole('radio', { name: '分类页面 · 阅读方法', exact: true }).check()
@@ -84,14 +96,18 @@ test('classification UI manages real data and organizes resources with combined 
   await button(page, '确认删除主题').click()
   await expect(page.getByRole('alert')).toContainText('仍有 1 份资料')
   await page.goto(detailUrl)
+  // TASK-043 起编辑标签在阅读器工具条的 ⋯ 菜单里，且**改完标签面板不会被掀掉**
+  // （旧版那次「折叠回按钮」其实是刷新时整块被卸载重挂的副作用）。所以这里改为
+  // 直接看常驻的标签行有没有跟着变——那才是「真的写进去了」的证据。
+  await button(page, '更多操作').click()
+  await page.getByRole('menuitem', { name: '编辑标签' }).click()
   await button(page, '管理这份资料的标签').click()
+  const tagRow = page.getByRole('navigation', { name: '资料标签' })
   await button(page, '解除标签 分类页面 · 待读').click()
-  await expect(button(page, '管理这份资料的标签')).toBeVisible()
-  await expect(page.getByText('分类页面 · 待读', { exact: true })).toHaveCount(0)
-  await button(page, '管理这份资料的标签').click()
+  await expect(tagRow.getByText('分类页面 · 待读', { exact: true })).toHaveCount(0)
   await button(page, '添加标签 分类页面 · 待读').click()
-  await expect(button(page, '管理这份资料的标签')).toBeVisible()
-  await expect(page.getByText('分类页面 · 待读', { exact: true })).toBeVisible()
+  await expect(tagRow.getByText('分类页面 · 待读', { exact: true })).toBeVisible()
+  await expect(button(page, '收起标签管理')).toBeVisible()
   await expect(page.getByText('未开始 · 0%', { exact: true })).toBeVisible()
   await page.screenshot({ path: info.outputPath('classified-detail.png'), fullPage: true })
   expect(await page.evaluate(() => localStorage.length + sessionStorage.length)).toBe(0)

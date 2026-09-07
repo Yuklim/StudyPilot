@@ -1,141 +1,87 @@
 import { useCallback, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
-import { displayTime, getResource, safeWebUrl, sourceLabels } from './api'
-import { resourceTitle } from './resourceTitle'
+import { getResource } from './api'
 import { ContentSnapshot } from './ContentSnapshot'
 import { ResourceError } from './ResourceState'
-import { LearningPanel } from '../learning/LearningPanel'
+import { ResourceToolbar } from './ResourceToolbar'
 import { NotesPanel } from '../notes/NotesPanel'
 import { useResourceQuery } from './useResourceQuery'
-import { ResourceTagEditor } from '../taxonomy/ResourceTagEditor'
-import { FileOriginal } from './FileOriginal'
-import { ResourceEditor } from './ResourceEditor'
-import { ResourceDeletion } from './ResourceDeletion'
+
+// TASK-043 起这一页是**阅读器**：正文占主体，动作与上下文都收在顶部工具条里。
+//
+// 此前它是一条长滚动：心得与编辑框在最上面，正文夹在元数据与原件之间，学习状态在最
+// 底下。用户的原话是「从资料库点开资料之后应该直接显示的是阅读器窗口」。
+//
+// 本步**不动心得的形态**（仍在正文下方），挤压式侧栏属 TASK-044；这是用户选的两步走。
+const NOTES_ANCHOR = 'resource-notes'
 
 export function ResourceDetail({ resourceId }: { resourceId: string }) {
   const navigate = useNavigate()
   const load = useCallback(() => getResource(resourceId), [resourceId])
   const { result, retry } = useResourceQuery(resourceId, load)
   const item = result?.data
-  // Keep the editor mounted during same-resource metadata refreshes (for example, tag edits).
+  // Keep the notes panel mounted during same-resource metadata refreshes (for example, tag edits).
   const [openedId, setOpenedId] = useState<string | null>(null)
   if (item && openedId !== resourceId) setOpenedId(resourceId)
-  const link = item?.source_url ? safeWebUrl(item.source_url) : null
+  // **工具条也要跨刷新活着。** `retry()` 会先把 result 清空再重新读取，那一瞬间 `item`
+  // 是 undefined；若直接按 `item` 渲染，工具条整个卸载，用户正开着的面板（编辑标签、
+  // 编辑资料…）当场关掉——而改标签本身就会触发这次刷新，于是「改一个标签，面板就没了」。
+  // 旧版所有区块常驻，不存在这个问题；这是改版引入的退化，由标签用例先抓到。
+  // 因此留住上一次读到的这份资料，只在换资料时丢弃。
+  const [shown, setShown] = useState<typeof item>(undefined)
+  if (item && item !== shown) setShown(item)
+  // **只留 id 守卫，不再额外 setShown(undefined)。** 那一行与上一行在同一次渲染里可以
+  // 互相抵消：只要出现 `item.id !== resourceId`（后端返回的 id 与请求的不一致），两条会
+  // 无限交替触发 "Too many re-renders"。守卫放在读取处就够，也不会显示上一份资料。
+  const toolbarItem = shown?.id === resourceId ? shown : undefined
   return (
-    <section className="resource-sheet resource-detail" aria-label="资料内容">
-      <Link className="text-link" to="/resources">
-        返回资料库
-      </Link>
+    <section className="resource-sheet reader" aria-label="资料内容">
+      {/* 工具条只在资料读到之后才渲染，而**读取中与读取失败时同样需要出口**。
+          旧版这条返回链接是无条件的；改版初稿把它并进工具条，结果「正在打开这份
+          资料…」那一屏一个链接都没有，用户被困在页面上。既有用例正是按可访问名称
+          「返回资料库」取它的。 */}
+      {!toolbarItem && (
+        <Link className="text-link" to="/resources">
+          返回资料库
+        </Link>
+      )}
       {!result && (
         <p role="status" className="resource-loading">
           正在打开这份资料…
         </p>
       )}
       {result?.error !== undefined && <ResourceError error={result.error} retry={retry} />}
-      {item && (
-        <div className="resource-sheet-heading">
-          <span className={`source-chip ${item.source_type.toLowerCase()}`}>
-            {sourceLabels[item.source_type]}
-          </span>
-          <h2>{resourceTitle(item)}</h2>
-        </div>
+      {toolbarItem && (
+        <ResourceToolbar
+          resource={toolbarItem}
+          refreshed={retry}
+          deleted={() => navigate('/resources')}
+          notesTargetId={NOTES_ANCHOR}
+        />
+      )}
+      {toolbarItem && (
+        // 正文**紧接着工具条**，先于心得与元数据出现——这是本任务的全部意义。
+        // 快照的安全形态（`html: false`、无消毒器、图片三条去向）全部落在
+        // `snapshotMarkdown.ts` 里，**本任务不进那个文件一个字符**，因此那条性质是文件
+        // 清单能证明的，不靠自述。`ContentSnapshot.tsx` 只改了五条方位文案——入口搬到
+        // 上方之后旧文案变假，见 TASK-043 记录「授权范围的两次修订」。
+        <ContentSnapshot resourceId={toolbarItem.id} sourceType={toolbarItem.source_type} />
       )}
       {openedId === resourceId && (
-        <section className="detail-block" aria-label="记录与理解">
+        <section
+          className="detail-block"
+          id={NOTES_ANCHOR}
+          // 跳转目标要接得住焦点，否则点「心得」只滚动、焦点还留在工具条上。
+          // 与本仓 `#main-content` 的做法一致。
+          tabIndex={-1}
+          aria-label="记录与理解"
+        >
           <div className="detail-block-heading">
             <span className="note-tab">记录与理解</span>
             <span className="resource-hint">写下此刻的想法，时间自动记录。</span>
           </div>
           <NotesPanel key={resourceId} resourceId={resourceId} available={!!item} />
-          <ResourceEditor key={'editor-' + resourceId} resource={item} refreshed={retry} />
-        </section>
-      )}
-      {item && (
-        <section className="detail-block" aria-label="资料信息">
-          <div className="detail-block-heading">
-            <span className="note-tab">资料信息</span>
-            <span className="resource-hint">这份收藏本身的内容与来源。</span>
-          </div>
-          <dl className="resource-metadata">
-            <div>
-              <dt>主要主题</dt>
-              <dd>
-                {item.topic_id ? (item.topic_name ?? '暂无法读取名称，请重新加载') : '未分配'}
-              </dd>
-            </div>
-            <div>
-              <dt>来源名称</dt>
-              <dd>{item.source_name || '未填写'}</dd>
-            </div>
-            <div>
-              <dt>收藏时间</dt>
-              <dd>
-                <time dateTime={item.created_at}>{displayTime(item.created_at)}</time>
-              </dd>
-            </div>
-            <div>
-              <dt>最近更新</dt>
-              <dd>
-                <time dateTime={item.updated_at}>{displayTime(item.updated_at)}</time>
-              </dd>
-            </div>
-            <div>
-              <dt>标签</dt>
-              <dd>
-                {item.tags.length
-                  ? item.tags.map((tag) => (
-                      <Link className="source-chip" key={tag.id} to={`/resources?tag_id=${tag.id}`}>
-                        {tag.name}
-                      </Link>
-                    ))
-                  : '暂无标签'}
-              </dd>
-            </div>
-          </dl>
-          <ResourceTagEditor resource={item} refreshed={retry} />
-          <ContentSnapshot resourceId={item.id} sourceType={item.source_type} />
-          <section className="save-reason-note" aria-label="保存原因">
-            <span className="note-tab">为什么收下这一页</span>
-            <p>{item.save_reason || '还没有填写保存原因。'}</p>
-          </section>
-          {item.source_type === 'WEB' && (
-            <section className="resource-original" aria-labelledby="original-title">
-              <h3 id="original-title">原始网页</h3>
-              <p>{item.source_url}</p>
-              {link ? (
-                <a
-                  className="text-link"
-                  href={link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  referrerPolicy="no-referrer"
-                >
-                  在新标签页打开原网页 ↗
-                </a>
-              ) : (
-                <p role="alert">该网址无法安全打开，仅显示文本。</p>
-              )}
-              <p className="resource-hint">这里只保存网址；网页内容未抓取，也未生成摘要。</p>
-            </section>
-          )}
-          {item.source_type === 'PASTE' && (
-            <section className="resource-original" aria-labelledby="original-title">
-              <h3 id="original-title">粘贴原文</h3>
-              <p className="resource-hint">按纯文本原样展示，Markdown 和代码不会被执行。</p>
-              <pre tabIndex={0} aria-label="粘贴原文内容">
-                {item.pasted_content}
-              </pre>
-            </section>
-          )}
-          {item.source_type === 'FILE' && item.original_file && (
-            <FileOriginal key={item.original_file.id} file={item.original_file} />
-          )}
-          <ResourceDeletion resource={item} deleted={() => navigate('/resources')} />
-          <p className="resource-hint feature-boundary">
-            复习安排与正文解析尚未开放；文件原件不能替换。
-          </p>
-          <LearningPanel key={'learning-' + item.id} resource={item} />
         </section>
       )}
     </section>

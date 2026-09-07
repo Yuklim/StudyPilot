@@ -282,6 +282,11 @@ describe('resource detail', () => {
       data: sample({ source_type: 'PASTE', pasted_content: text }),
     })
     const { container } = renderWithRouter(<App />, `/resources/${resourceId}`)
+    // TASK-043 起粘贴原文在工具条的面板里，要先点开。**先断言它默认不在**：
+    // 「收进按钮」这件事本身就是本次改版的内容，默认就渲染出来等于没搬。
+    await screen.findByRole('button', { name: '粘贴原文' })
+    expect(screen.queryByLabelText('粘贴原文内容')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '粘贴原文' }))
     const original = await screen.findByLabelText('粘贴原文内容')
     expect(original.textContent).toBe(text)
     expect(container.querySelector('script, img, iframe')).toBeNull()
@@ -291,10 +296,15 @@ describe('resource detail', () => {
     async (url) => {
       vi.spyOn(api, 'request').mockResolvedValue({ data: sample({ source_url: url }) })
       renderWithRouter(<App />, `/resources/${resourceId}`)
-      await screen.findByText('原始网页')
-      const link = screen.queryByRole('link', { name: /打开原网页/ })
-      if (url.startsWith('javascript:')) expect(link).toBeNull()
-      else {
+      // TASK-043 起原网页是工具条上的一个链接，不再是正文下方的「原始网页」区块。
+      // 三件套（target / rel / referrerpolicy）与「伪协议不生成链接」一条不改。
+      await screen.findByRole('button', { name: '更多操作' })
+      const link = screen.queryByRole('link', { name: /原网页/ })
+      if (url.startsWith('javascript:')) {
+        expect(link).toBeNull()
+        // 拒掉之后不能只是静默消失：用户要知道这条网址打不开。
+        expect(screen.getByText('原网址无法安全打开')).toHaveAttribute('role', 'alert')
+      } else {
         expect(link).toHaveAttribute('target', '_blank')
         expect(link).toHaveAttribute('rel', 'noopener noreferrer')
         expect(link).toHaveAttribute('referrerpolicy', 'no-referrer')
@@ -563,24 +573,28 @@ describe('content snapshot', () => {
   // assertions could not catch it: they checked that a sentence was on screen, not
   // that it was true. These pin the sentence each source type should get, and the
   // WEB-only ones it must not get.
+  // TASK-043 把原文/原件的入口搬到了上方工具条，因此这里的方位词由「下方」改为
+  // 「上方工具条」，锚点也由「下方的区块」改为「工具条上的那个控件」。
   const sources = [
-    ['WEB', sample(), '下方的「打开原网页」', '只存链接的话', '原始网页'],
+    ['WEB', sample(), '上方工具条的「原网页」', '只存链接的话', 'link', '原网页'],
     [
       'PASTE',
       sample({ source_type: 'PASTE', pasted_content: '合成原文' }),
-      '下方的「粘贴原文」',
-      '粘贴的原文见下方',
+      '上方工具条里的「粘贴原文」',
+      '粘贴的原文在上方工具条里',
+      'button',
       '粘贴原文',
     ],
-    ['FILE', sampleFile(), '下方的原件', '原件见下方', '原始文件'],
+    ['FILE', sampleFile(), '上方工具条里的原件', '原件在上方工具条里', 'button', '原件'],
   ] as const
 
-  // 「下方」是一句关于版面的陈述，不是一句文案。只断言字符串的话，把被指向的区块
-  // 挪到快照上面，这句话当场变假而断言全绿 —— 那正是 TASK-036 那个 bug 的复发形态。
-  // 所以把方位词和 DOM 实际顺序绑成一条：被指向的区块必须真的排在快照区块之后。
-  const assertBelow = (region: HTMLElement, anchorName: string) => {
-    const anchor = screen.getByRole('region', { name: anchorName })
-    expect(region.compareDocumentPosition(anchor) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  // 「上方」是一句关于版面的陈述，不是一句文案。只断言字符串的话，把被指向的控件
+  // 挪到快照下面，这句话当场变假而断言全绿 —— 那正是 TASK-036 那个 bug 的复发形态。
+  // 所以把方位词和 DOM 实际顺序绑成一条：被指向的控件必须真的排在快照区块之前。
+  // **本次改版正是被这条守卫拦下的**：入口搬上去之后旧文案「见下方」变假，它先红了。
+  const assertAbove = (region: HTMLElement, role: string, controlName: string) => {
+    const control = screen.getByRole(role, { name: controlName })
+    expect(region.compareDocumentPosition(control) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy()
   }
 
   const mount = (item: Resource, snapshot: typeof frozen | undefined) => {
@@ -602,29 +616,29 @@ describe('content snapshot', () => {
 
   it.each(sources)(
     'points a %s resource at the original it actually has',
-    async (source, item, hint, _empty, anchorName) => {
+    async (source, item, hint, _empty, role, controlName) => {
       mount(item, frozen)
       await screen.findByText(/共 12 字/)
       const region = screen.getByRole('region', { name: '正文快照' })
       expect(region).toHaveTextContent(hint)
-      // The link only exists for WEB, and it sits below this block, never above.
-      if (source !== 'WEB') expect(region).not.toHaveTextContent('打开原网页')
-      expect(region).not.toHaveTextContent('上方')
-      assertBelow(region, anchorName)
+      // The link only exists for WEB, and it sits above this block, never below.
+      if (source !== 'WEB') expect(region).not.toHaveTextContent('原网页')
+      expect(region).not.toHaveTextContent('下方')
+      assertAbove(region, role, controlName)
     },
   )
 
   it.each(sources)(
     'tells a %s resource with no snapshot what it is missing',
-    async (source, item, _hint, empty, anchorName) => {
+    async (source, item, _hint, empty, role, controlName) => {
       mount(item, undefined)
       const region = await screen.findByRole('region', { name: '正文快照' })
       await waitFor(() => expect(region).toHaveTextContent(empty))
       // "只存链接的话" is only true of a WEB resource: PASTE and FILE keep their own
       // original in the record, so losing the link is not what is at stake for them.
       if (source !== 'WEB') expect(region).not.toHaveTextContent('只存链接的话')
-      // The empty-state copy says 下方 too, so it needs the same guard.
-      assertBelow(region, anchorName)
+      // The empty-state copy says 上方 too, so it needs the same guard.
+      assertAbove(region, role, controlName)
     },
   )
 

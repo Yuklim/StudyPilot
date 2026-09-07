@@ -14,6 +14,17 @@ async function openOptionalFields(page: Page) {
 
 test.use({ trace: 'off' })
 
+/**
+ * TASK-043 起原件在阅读器工具条的「原件」面板里，先点开才看得到下载按钮。
+ * 面板一次只开一个，重复点会把它收起来，所以这里判断一下再点。
+ */
+async function openOriginal(page: import('@playwright/test').Page) {
+  const panel = page.getByRole('region', { name: '原件' })
+  if (await panel.isVisible().catch(() => false)) return
+  await page.getByRole('button', { name: '原件', exact: true }).click()
+  await expect(panel).toBeVisible()
+}
+
 test('file page saves an original, filters it and downloads identical bytes after reload', async ({
   page,
 }, testInfo) => {
@@ -43,9 +54,11 @@ test('file page saves an original, filters it and downloads identical bytes afte
     })
   }
   await page.getByRole('button', { name: '保存到资料库' }).click()
+  await openOriginal(page)
   await expect(page.getByRole('button', { name: '下载原件' })).toBeVisible()
   expect(writes).toBe(1)
   await page.reload()
+  await openOriginal(page)
   await expect(page.getByText(fileName, { exact: true })).toBeVisible()
   await expect(page.getByText('未开始 · 0%', { exact: true })).toBeVisible()
   for (const width of [320, 390, 1440]) {
@@ -70,6 +83,7 @@ test('file page saves an original, filters it and downloads identical bytes afte
   await page.getByRole('button', { name: '搜索 / 应用筛选' }).click()
   await expect(page.getByText('共 1 份资料', { exact: true })).toBeVisible()
   await page.getByRole('link', { name: '原件端到端 · 日常小记' }).click()
+  await openOriginal(page)
   await expect(page.getByRole('button', { name: '下载原件' })).toBeVisible()
   expect(await page.evaluate(() => localStorage.length + sessionStorage.length)).toBe(0)
   expect(await page.context().cookies()).toEqual([])
@@ -122,6 +136,7 @@ test('download failure gives no false success and only an explicit retry downloa
     buffer: Buffer.from('# synthetic'),
   })
   await page.getByRole('button', { name: '保存到资料库' }).click()
+  await openOriginal(page)
   await expect(page.getByRole('button', { name: '下载原件' })).toBeVisible()
   let attempts = 0
   let downloads = 0

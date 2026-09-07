@@ -3,14 +3,25 @@ import { expect, test, type Page } from '@playwright/test'
 
 test.use({ timezoneId: 'Asia/Shanghai', trace: 'off' })
 
+/**
+ * TASK-043 起学习状态在阅读器工具条的徽章后面，且**点开即落在状态表单上**
+ * （用户选「常驻工具条，点开即改」）——不再是「查看旧学习历史 → 更多：状态与归档管理」
+ * 那两层。徽章上写的是当前状态与进度，所以按正则取。
+ */
+async function openLearning(page: Page) {
+  const badge = page.getByRole('button', { name: /^(未开始|学习中|已完成|待复习|已归档) · \d+%$/ })
+  if ((await badge.getAttribute('aria-expanded')) === 'true') return
+  await badge.click()
+  await expect(page.getByRole('region', { name: '学习状态与进度' })).toBeVisible()
+}
+
 async function createResource(page: Page, title: string) {
   await page.goto('/resources/new')
   await page.getByLabel('标题').fill(title)
   await page.getByLabel('网页地址（必填）').fill('https://example.com/learning')
   await page.getByRole('button', { name: '保存到资料库' }).click()
   await expect(page).toHaveURL(/\/resources\/[0-9a-f-]{36}$/)
-  await page.getByRole('button', { name: '查看旧学习历史' }).click()
-  await page.getByRole('button', { name: '更多：状态与归档管理' }).click()
+  await openLearning(page)
   await expect(page.getByRole('heading', { name: '这一页还没有学习记录' })).toBeVisible()
   return page.url().split('/').at(-1)!
 }
@@ -42,14 +53,21 @@ test('real learning journal saves, refreshes, archives and restores with keyboar
   }
   await page.getByRole('button', { name: '保存学习记录', exact: true }).focus()
   await page.keyboard.press('Enter')
-  await expect(page.getByRole('status')).toHaveText('学习记录已保存，当前进度已更新。')
+  // 学习历史现在随面板一起展开，页面上因此可能同时有「正在翻开学习历史…」这条 status。
+  // 仍然断言保存提示**是一条 status**（不是普通文本），只是从「页面上唯一那条」收窄到
+  // 「这一条」——保存后不出提示，或提示不再是 status，本条照样红。
+  await expect(page.getByRole('status').filter({ hasText: '学习记录已保存' })).toHaveText(
+    '学习记录已保存，当前进度已更新。',
+  )
   await expect(page.getByRole('progressbar')).toHaveAttribute('value', '35')
   await expect(page.getByLabel('本次总结（选填）')).toHaveValue('')
   expect(posts).toBe(1)
   await page.reload()
+  // TASK-043 起进度条随学习面板收在工具条后面；**常驻的是徽章上的文字**。
+  // 所以刷新后先断言徽章（这是用户不点任何东西就能看到的那份状态），再展开面板断言进度条。
+  await expect(page.getByRole('button', { name: '学习中 · 35%' })).toBeVisible()
+  await openLearning(page)
   await expect(page.getByRole('progressbar')).toHaveAttribute('value', '35')
-  await page.getByRole('button', { name: '查看旧学习历史' }).click()
-  await page.getByRole('button', { name: '更多：状态与归档管理' }).click()
   const history = page.getByRole('list', { name: '学习历史结果' })
   await expect(history.locator('li')).toHaveCount(1)
   await expect(history).toContainText(summary)
@@ -65,15 +83,21 @@ test('real learning journal saves, refreshes, archives and restores with keyboar
   await page.getByRole('checkbox', { name: /归档后资料从默认资料库隐藏/ }).check()
   await page.getByRole('button', { name: '保存学习记录', exact: true }).click()
   await expect(history.locator('li')).toHaveCount(2)
+  // 归档同样要当场反映到徽章上，不靠刷新。
+  await expect(page.getByRole('button', { name: '已归档 · 35%' })).toBeVisible()
   await page.reload()
-  await expect(page.getByText('已归档 · 35%', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: '查看旧学习历史' }).click()
-  await page.getByRole('button', { name: '更多：状态与归档管理' }).click()
+  await expect(page.getByRole('button', { name: '已归档 · 35%' })).toBeVisible()
+  await openLearning(page)
   await page.getByLabel('学习后状态').selectOption('IN_PROGRESS')
   await page.getByRole('checkbox', { name: /恢复到原来的/ }).check()
   await page.getByRole('button', { name: '保存学习记录', exact: true }).click()
   await expect(history.locator('li')).toHaveCount(3)
-  await expect(page.getByText('学习中 · 35%', { exact: true })).toBeVisible()
+  // **保存成功后，常驻徽章与面板里的进度必须当场一致，不能等刷新。**
+  // 改版把进度条收进了面板、让徽章成为唯一常驻的状态显示；徽章若不跟着更新，
+  // 用户会在「面板 35%、徽章 0%」之间二选一，可能以为没存上而再提交一条记录。
+  // 这一条是 R1 F1 的回归守卫：修复前这里只会匹配到面板那一个，修复后是两个。
+  await expect(page.getByRole('button', { name: '学习中 · 35%' })).toBeVisible()
+  await expect(page.getByRole('region', { name: '学习状态与进度' })).toContainText('学习中 · 35%')
   expect(posts).toBe(3)
   await page.goto('/study-records')
   await expect(page.getByRole('list', { name: '学习历史结果' })).toContainText(summary)

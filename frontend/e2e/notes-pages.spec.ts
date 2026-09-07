@@ -203,17 +203,23 @@ test('real note pages keep drafts when paging, and legacy history remains reacha
   )
   await expect(page.getByRole('button', { name: '下一页心得' })).toBeDisabled()
   expect((await call(page, '/tags', 'POST', { name: '000心得草稿保全' })).status).toBe(201)
+  // TASK-043 起编辑标签在阅读器工具条的 ⋯ 菜单里；改完标签面板不再被刷新掀掉，
+  // 所以这里看常驻标签行有没有跟着变，而不是看面板有没有折叠回按钮。
+  await page.getByRole('button', { name: '更多操作' }).click()
+  await page.getByRole('menuitem', { name: '编辑标签' }).click()
   await page.getByRole('button', { name: '管理这份资料的标签' }).click()
   await page.getByRole('button', { name: '添加标签 000心得草稿保全' }).click()
-  await expect(page.getByRole('button', { name: '管理这份资料的标签' })).toBeVisible()
+  await expect(
+    page.getByRole('navigation', { name: '资料标签' }).getByText('000心得草稿保全'),
+  ).toBeVisible()
+  // 这才是本条要守的东西：改标签这一串操作不能把心得草稿冲掉。
   await expect(page.getByRole('textbox', { name: '这次想记下什么？' })).toHaveValue(
     '翻页也要留着的草稿',
   )
-  await page.getByRole('button', { name: '查看旧学习历史' }).click()
-  await expect(page.getByRole('heading', { name: '这一页还没有学习记录' })).toBeVisible()
-  await expect(page.getByLabel('学习后状态')).toHaveCount(0)
-  await page.getByRole('button', { name: '更多：状态与归档管理' }).click()
+  // 学习状态改由工具条上的徽章进入，且**直接落在状态表单上**（用户选「点开即改」）。
+  await page.getByRole('button', { name: '未开始 · 0%' }).click()
   await expect(page.getByLabel('学习后状态')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '这一页还没有学习记录' })).toBeVisible()
 })
 
 test('top-level notes page records a standalone note that survives edits and deletes independently of resources', async ({

@@ -85,6 +85,8 @@ describe('file upload form', () => {
     expect(send.mock.calls[0][0].has('source_url')).toBe(false)
     expect(send.mock.calls[0][0].has('pasted_content')).toBe(false)
     await act(async () => pending.resolve({ data: sampleFile() }))
+    // TASK-043 起原件在工具条的「原件」面板里，要先点开才看得到下载按钮。
+    fireEvent.click(await screen.findByRole('button', { name: '原件' }))
     expect(await screen.findByRole('button', { name: '下载原件' })).toBeEnabled()
     expect(screen.getByText('合成原件.txt')).toBeInTheDocument()
     expect(persist).not.toHaveBeenCalled()
@@ -115,7 +117,9 @@ describe('file upload form', () => {
       target: { value: 'https://example.test/' },
     })
     submit()
-    await screen.findByText('原始网页')
+    // 保存成功后进到详情页：TASK-043 起它是阅读器，认它的标志是工具条上的「原网页」
+    // 链接与「更多操作」按钮，不再是正文下方的「原始网页」区块。
+    await screen.findByRole('link', { name: /原网页/ })
     expect(fileSend).not.toHaveBeenCalled()
     expect(jsonSend.mock.calls[0][1]?.body).toEqual({
       title: '合成文件资料',
