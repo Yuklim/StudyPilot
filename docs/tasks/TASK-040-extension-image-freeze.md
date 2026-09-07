@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-040"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "本任务把扩展从「只读当前页已渲染的 DOM、不发任何网络请求」变成「可代表用户向任意站点取字节」。这是一次实质的授权面扩张，也是本扩展第一次真正联网。虽然采用可选权限（安装时不要、采集时才请求、可撤销），但一旦授予即长期有效，用户不会重新审视，所以这次授予的边界就是它此后的边界。第二处实质风险：新增 background service worker —— 扩展从此有了一个不依附于用户点击的常驻执行上下文，它能做什么必须一次定清。第三处：取回的字节来自不可信的第三方站点，经消息通道穿过本机 UI 页面写入受控目录，这条新的数据流全程要有边界。另有跨模块面：同时改 `extension/` 与 `frontend/`，并关闭 TASK-039 遗留 G（删除预览少报图片张数，属用户可见的数据陈述错误）。不改后端一行、不改 `/api/v1` 契约、不改本机访问门禁。"
 risk_flags = ["security", "architecture", "public-api", "business"]
@@ -261,7 +261,7 @@ TASK-039 的删除预览已返回 `snapshot_asset_count`，但前端**两份**�
   - **（I）三条未实机验证的浏览器行为**（Acceptance 新增，合并登记）：① match pattern 的 host 段不接受端口号（依 Chrome 文档判断）；② `chrome.tabs.update` 对已知 id 不需要 `tabs` 权限；③ popup 是否会被授权框关闭。三者均已在代码注释中标注为未验证。**责任角色：coordinator。重评触发条件：用户报告「授权了但图片仍全部 no-permission」，或标签页复用异常。**
   - **（J）剩余风险，不作为遗留项但如实记下**（Acceptance）：`isSafeImageUrl` 允许 `http://127.0.0.1:*` 一类本机/内网地址，恶意页面可诱使扩展代取——但凭证已 `omit`、目标源会出现在授权框里、后端按魔数拒非图片、且字节只流向本机 UI 页面无外发通道，故影响有限。如需收紧可在后续任务加内网例外。
 
-- **最终状态/风险/用户操作**：status=**ACCEPTED**。L3 执行链完整：Worker → 自动检查（CHECKS PASS）→ 两位独立只读 Reviewer **各三轮** → 独立只读 Acceptance（PASS + 两条硬要求，均已落实）。四个审查实例互不相同，均只有 `Read`/`Grep`/`Glob`、无 `Bash` 与写工具、无上下文继承。
+- **最终状态/风险/用户操作**：status=**MERGED**（2026-09-07 用户合并 PR #46，merge commit `0106953`；本行状态登记按根 `AGENTS.md` §5 并入下一个已授权任务 TASK-042 的控制面提交）。交付时为 **ACCEPTED**。L3 执行链完整：Worker → 自动检查（CHECKS PASS）→ 两位独立只读 Reviewer **各三轮** → 独立只读 Acceptance（PASS + 两条硬要求，均已落实）。四个审查实例互不相同，均只有 `Read`/`Grep`/`Glob`、无 `Bash` 与写工具、无上下文继承。
   - **须向用户当面说明的六点**：
     1. **完成条件 16 条中 4 条只是部分满足**（3、5、6、12），**其中 3 与 12 是 Acceptance 更正出我自评的遗漏**——两步 popup 的界面分支与标签页复用至今零机器证据。没有一条不满足。
     2. **全部机械证据由实现者单方运行**：CHECKS PASS、145/440/42、指纹、变异验证、真实浏览器诊断运行一律 NOT_RUN 于四个只读实例（遗留见下）。
