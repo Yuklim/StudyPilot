@@ -278,10 +278,22 @@ function RecordForm({
   )
 }
 
-export function LearningPanel({ resource }: { resource: Resource }) {
+export function LearningPanel({
+  resource,
+  initialView = 'collapsed',
+}: {
+  resource: Resource
+  /**
+   * `manage` 让状态与归档表单直接展开。TASK-043 起工具条上的状态徽章用它——用户选的是
+   * 「常驻工具条，点开即改」，而默认形态要再点两层（查看旧学习历史 → 更多：状态与归档
+   * 管理）才够得着表单。**这只改初始展开状态，不改这个表单本身的任何一步**：改状态
+   * 仍然是「选一个状态 → 按保存学习记录」，归档与冲突确认也照旧。
+   */
+  initialView?: 'collapsed' | 'manage'
+}) {
   const [snapshot, setSnapshot] = useState(resource)
-  const [open, setOpen] = useState(false)
-  const [manage, setManage] = useState(false)
+  const [open, setOpen] = useState(initialView === 'manage')
+  const [manage, setManage] = useState(initialView === 'manage')
   const [savedCount, setSavedCount] = useState(0)
   const [historyRevision, setHistoryRevision] = useState(0)
   const [savedNotice, setSavedNotice] = useState(false)

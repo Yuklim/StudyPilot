@@ -313,6 +313,10 @@ describe('resource editor', () => {
     fireEvent.change(within(notes).getByRole('textbox'), {
       target: { value: '不能丢失的心得草稿' },
     })
+    // TASK-043 起「编辑资料」在工具条的 ⋯ 菜单里。心得草稿必须活过这一整套操作：
+    // 开菜单 → 进编辑面板 → 改标题 → 保存 → 详情重新读取。
+    fireEvent.click(screen.getByRole('button', { name: '更多操作' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '编辑资料' }))
     fireEvent.click(screen.getByRole('button', { name: '编辑资料' }))
     change('标题', '新的资料标题')
     submit()

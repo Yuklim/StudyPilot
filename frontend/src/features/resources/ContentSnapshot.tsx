@@ -49,16 +49,20 @@ async function loadFrozenImages(resourceId: string): Promise<{
 // component has to know the source type: a WEB resource has an "open the original
 // page" link, a PASTE resource has its pasted text, a FILE resource has its file.
 // Writing WEB-only wording for all three told PASTE and FILE users something untrue.
+// **方位词是一句关于版面的陈述，不是一句文案。** TASK-043 把原文/原件的入口从正文
+// 下方搬到了上方工具条，这几句里的「下方」当场变假，因此一并改为「上方工具条」。
+// TASK-036 栽的就是「只断言句子在屏幕上、不断言它为真」这一跤，`ResourcePages.test.tsx`
+// 里那条把方位词与 DOM 顺序绑在一起的守卫正是为此而写，本次它先红了才有这次修改。
 const snapshotHints: Record<Source, string> = {
-  WEB: '这是保存当时的副本，不随原文更新；需要最新内容请用下方的「打开原网页」。',
-  PASTE: '这是另存的一份正文副本，与下方的「粘贴原文」各自独立保存。',
-  FILE: '这是另存的一份纯文本正文，不随下方的原件变化。',
+  WEB: '这是保存当时的副本，不随原文更新；需要最新内容请用上方工具条的「原网页」。',
+  PASTE: '这是另存的一份正文副本，与上方工具条里的「粘贴原文」各自独立保存。',
+  FILE: '这是另存的一份纯文本正文，不随上方工具条里的原件变化。',
 }
 
 const emptyHints: Record<Source, string> = {
   WEB: '还没有保存正文。只存链接的话，原文改版或消失后这份资料就找不回来了；可以把正文粘贴进来存一份。',
-  PASTE: '还没有另存正文。粘贴的原文见下方；如果想再留一份整理过的正文，可以粘贴进来。',
-  FILE: '还没有保存正文。原件见下方；如果想留一份可检索的纯文本正文，可以粘贴进来。',
+  PASTE: '还没有另存正文。粘贴的原文在上方工具条里；如果想再留一份整理过的正文，可以粘贴进来。',
+  FILE: '还没有保存正文。原件在上方工具条里；如果想留一份可检索的纯文本正文，可以粘贴进来。',
 }
 
 // 资料正文的冻结副本。TASK-042 起这里**渲染**它，而不再只显示 Markdown 源码。

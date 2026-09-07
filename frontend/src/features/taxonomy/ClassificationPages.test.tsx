@@ -11,6 +11,14 @@ import { category, categoryPage, tagId, topicId } from './fixtures'
 const change = (label: string, value: string) =>
   fireEvent.change(screen.getByLabelText(label), { target: { value } })
 const click = (name: string) => fireEvent.click(screen.getByRole('button', { name }))
+/**
+ * TASK-043 起资料详情页是阅读器：编辑标签与资料信息都在工具条的 `⋯` 菜单里。
+ * 这一步是入口多了一层，不是断言放宽——菜单打不开或该项不在里面，用例照样红。
+ */
+const openFromMenu = (item: string) => {
+  fireEvent.click(screen.getByRole('button', { name: '更多操作' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: item }))
+}
 function deferred<T>() {
   let resolve!: (value: T) => void
   const promise = new Promise<T>((done) => {
@@ -215,6 +223,9 @@ describe('classification selection and resource integration', () => {
     change('网页地址（必填）', 'https://example.com')
     click('保存到资料库')
     expect(await screen.findByRole('heading', { name: '资料详情', level: 1 })).toBeInTheDocument()
+    // 主题名在工具条的「资料信息」面板里（TASK-043），等资料读到工具条才在。
+    await screen.findByRole('button', { name: '更多操作' })
+    openFromMenu('资料信息')
     expect(await screen.findByText('合成主题')).toBeInTheDocument()
     expect(request.mock.calls.filter(([, options]) => options?.method === 'POST')).toEqual([
       [
@@ -288,15 +299,21 @@ describe('classification selection and resource integration', () => {
     fireEvent.change(screen.getByLabelText('这次想记下什么？'), {
       target: { value: '修改标签也要保留这份草稿' },
     })
+    openFromMenu('编辑标签')
     click('管理这份资料的标签')
     await screen.findByText('合成标签')
     click('添加标签 合成标签')
+    // 改完标签后资料被重新读取，新标签出现在工具条常驻的标签行里——这是「真的重读了」
+    // 的证据。**TASK-043 起面板不再被这次刷新掀掉**：旧版这里断言的是「标签管理折叠回
+    // 按钮」，而那个折叠其实是刷新期间整块被卸载再挂载的副作用，不是有意的行为。
+    // 用户正开着面板改标签，改一个就被关掉一次是退化，所以改成断言面板仍然开着。
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: '管理这份资料的标签' })).toBeInTheDocument(),
+      expect(
+        within(screen.getByRole('navigation', { name: '资料标签' })).getByText('合成标签'),
+      ).toBeInTheDocument(),
     )
-    expect(screen.getByText('合成标签')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '收起标签管理' })).toBeInTheDocument()
     expect(screen.getByLabelText('这次想记下什么？')).toHaveValue('修改标签也要保留这份草稿')
-    click('管理这份资料的标签')
     await screen.findByRole('button', { name: '已添加 合成标签' })
     click('解除标签 合成标签')
     expect(await screen.findByRole('alert')).toHaveTextContent('没有自动重试')
@@ -386,6 +403,7 @@ describe('creating a tag where it is used', () => {
     })
     renderWithRouter(<App />, `/resources/${resourceId}`)
     await screen.findByText('合成阅读资料')
+    openFromMenu('编辑标签')
     click('管理这份资料的标签')
     await screen.findByRole('button', { name: '添加标签 合成标签' })
     change('新建标签', '临时想到的标签')

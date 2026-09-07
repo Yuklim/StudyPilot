@@ -39,6 +39,16 @@ async function seed(page: Page, source: 'WEB' | 'PASTE' | 'FILE') {
   ).data.id as string
 }
 
+/**
+ * TASK-043 起「编辑资料」在阅读器工具条的 `⋯` 菜单里：开菜单 → 选菜单项 → 面板里
+ * 才是 `ResourceEditor` 自己的那个按钮。三步都要走到，少一步就说明入口没搬对。
+ */
+async function openEditor(page: import('@playwright/test').Page) {
+  await page.getByRole('button', { name: '更多操作' }).click()
+  await page.getByRole('menuitem', { name: '编辑资料' }).click()
+  await page.getByRole('button', { name: '编辑资料', exact: true }).click()
+}
+
 for (const source of ['WEB', 'PASTE', 'FILE'] as const) {
   test(`${source} resource edits persist, keep notes/history/original files, and remain responsive`, async ({
     page,
@@ -56,11 +66,11 @@ for (const source of ['WEB', 'PASTE', 'FILE'] as const) {
     await call(page, path + '/notes', 'POST', { content: '编辑资料之前保存的心得' })
     const before = (await call(page, path)).data
     await page.goto(path)
-    await expect(page.getByRole('button', { name: '编辑资料', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: '更多操作' })).toBeVisible()
     await expect(page.getByRole('form', { name: '编辑资料表单' })).toHaveCount(0)
     const note = page.getByRole('form', { name: '心得编辑' }).getByRole('textbox')
     await note.fill('编辑资料时不能丢失的心得草稿')
-    await page.getByRole('button', { name: '编辑资料', exact: true }).click()
+    await openEditor(page)
     const form = page.getByRole('form', { name: '编辑资料表单' })
     await expect(form.getByRole('button', { name: '保存资料修改' })).toBeDisabled()
     await form.getByLabel('标题').fill(`整理好了 · ${source}`)
@@ -110,12 +120,15 @@ for (const source of ['WEB', 'PASTE', 'FILE'] as const) {
     await page.reload()
     await expect(page.getByRole('heading', { name: `整理好了 · ${source}` })).toBeVisible()
     if (source === 'WEB')
-      await expect(page.getByRole('link', { name: /打开原网页/ })).toHaveAttribute(
+      await expect(page.getByRole('link', { name: /原网页/ })).toHaveAttribute(
         'href',
         'https://example.com/edited?q=hello%20world',
       )
-    if (source === 'PASTE')
+    if (source === 'PASTE') {
+      // TASK-043 起粘贴原文在工具条的面板里，先点开。
+      await page.getByRole('button', { name: '粘贴原文', exact: true }).click()
       expect(await page.getByLabel('粘贴原文内容').textContent()).toBe(original)
+    }
     if (source === 'FILE') {
       const content = await page.evaluate(async (fileId: string) => {
         const modulePath = '/src/api/client.ts'
@@ -125,7 +138,7 @@ for (const source of ['WEB', 'PASTE', 'FILE'] as const) {
       }, after.original_file.id)
       expect(content).toBe('synthetic original file')
     }
-    await page.getByRole('button', { name: '编辑资料', exact: true }).click()
+    await openEditor(page)
     await form.getByRole('button', { name: '更改主要主题' }).click()
     await form.getByRole('radio', { name: '未分配主题', exact: true }).check()
     await form.getByRole('button', { name: '保存资料修改' }).click()
@@ -145,7 +158,7 @@ test('real competing updates preserve the draft and never overwrite fields the u
   const id = await seed(page, 'WEB')
   const path = '/resources/' + id
   await page.goto(path)
-  await page.getByRole('button', { name: '编辑资料', exact: true }).click()
+  await openEditor(page)
   const form = page.getByRole('form', { name: '编辑资料表单' })
   await form.getByLabel('标题').fill('本页明确修改的标题')
   await call(page, path, 'PATCH', {
@@ -173,7 +186,7 @@ test('clearing the title in the editor saves an untitled resource', async ({ pag
   const id = await seed(page, 'WEB')
   const path = '/resources/' + id
   await page.goto(path)
-  await page.getByRole('button', { name: '编辑资料', exact: true }).click()
+  await openEditor(page)
   const form = page.getByRole('form', { name: '编辑资料表单' })
   await form.getByLabel('标题').fill('')
   await form.getByRole('button', { name: '保存资料修改' }).click()
@@ -187,7 +200,7 @@ test('a real committed update with a lost response is read back before an explic
   const id = await seed(page, 'PASTE')
   const path = '/resources/' + id
   await page.goto(path)
-  await page.getByRole('button', { name: '编辑资料', exact: true }).click()
+  await openEditor(page)
   const form = page.getByRole('form', { name: '编辑资料表单' })
   await form.getByLabel('标题').fill('已经保存但回执丢失')
   await page.evaluate((target) => {
@@ -244,7 +257,7 @@ test('tags can be filled in later from the edit page, as a whole replacement set
   ])
 
   await page.goto(path)
-  await page.getByRole('button', { name: '编辑资料', exact: true }).click()
+  await openEditor(page)
   const form = page.getByRole('form', { name: '编辑资料表单' })
   await expect(form.getByText('标签：后补标签 · 保留、后补标签 · 移除')).toBeVisible()
   await form.getByRole('button', { name: '移除已选标签 后补标签 · 移除 ×' }).click()

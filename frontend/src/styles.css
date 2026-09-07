@@ -2152,3 +2152,157 @@ a.source-chip:focus-visible {
   color: #6b6157;
   font-style: italic;
 }
+
+/* ---------------------------------------------------------------------------
+ * 阅读器（TASK-043）：正文占主体，两层顶部工具条。
+ *
+ * 两层都常驻：上层是动作，下层是阅读时要看见的上下文（标签与保存原因）。
+ * 全部用 flex-wrap 而不是固定列宽 —— 320px 下按钮换行，不横向溢出。
+ * --------------------------------------------------------------------------- */
+.reader-toolbar {
+  position: relative;
+  margin-bottom: 18px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e5e5da;
+}
+.reader-toolbar-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.reader-back {
+  white-space: nowrap;
+}
+/* 箭头走 ::before：它是装饰，不该混进可访问名称里。既有用例按「返回资料库」
+   这个名字取这个链接，把箭头写进文本会让那条断言失效——那是弱化，不是更新。 */
+.reader-back::before {
+  content: '← ';
+}
+.reader-title {
+  flex: 1 1 12ch;
+  min-width: 0;
+  margin: 0;
+  font-size: 1.15rem;
+  /* 长标题不许把按钮挤出屏幕：它让位，按钮不让。 */
+  overflow-wrap: anywhere;
+}
+.reader-toolbar-buttons {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+}
+.reader-toolbar-buttons .journal-button {
+  min-height: 38px;
+  padding: 7px 13px;
+}
+.reader-more {
+  font-size: 1.1rem;
+  line-height: 1;
+}
+.reader-toolbar-context {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-top: 10px;
+}
+.reader-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.reader-save-reason {
+  flex: 1 1 20ch;
+  min-width: 0;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.reader-save-reason .note-tab {
+  margin-right: 8px;
+}
+
+/* `⋯` 菜单。绝对定位在工具条右下，窄屏退化为普通块（不出屏）。 */
+.reader-menu {
+  position: absolute;
+  right: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  width: min(340px, calc(100vw - 32px));
+  max-height: min(70vh, 560px);
+  overflow-y: auto;
+  margin-top: 6px;
+  padding: 8px;
+  border: 1px solid #d9dccf;
+  border-radius: 12px;
+  background: var(--paper);
+  box-shadow: 0 10px 28px rgba(60, 55, 45, 0.18);
+}
+.reader-menu-item {
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.reader-menu-item:hover,
+.reader-menu-item:focus-visible {
+  background: #f1f0e6;
+}
+/* 分隔线不是装饰：销毁性动作与普通动作之间必须有可见的断点。 */
+.reader-menu-separator {
+  height: 0;
+  margin: 8px 4px;
+  border: 0;
+  border-top: 1px solid #e0d6cd;
+}
+.reader-menu-danger {
+  padding: 4px;
+}
+.reader-menu-danger .resource-deletion {
+  margin: 0;
+}
+
+.reader-panel {
+  margin-top: 12px;
+  padding: 16px 18px 18px;
+  border: 1px solid #e5e5da;
+  border-radius: 6px 16px 16px 16px;
+  background: var(--paper);
+}
+.reader-panel-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed #dfe2d6;
+}
+.reader-panel pre {
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .reader-toolbar-buttons {
+    margin-left: 0;
+    width: 100%;
+  }
+  .reader-menu {
+    position: static;
+    width: 100%;
+  }
+}
