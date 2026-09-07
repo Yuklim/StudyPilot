@@ -121,6 +121,20 @@ export function isImageList(value: unknown): value is string[] {
   return value.every((item) => typeof item === 'string' && isSafeImageUrl(item))
 }
 
+/**
+ * 一个地址对应的扩展 match pattern。**popup 请求权限与 worker 查询权限必须用同一个
+ * 模式串**，否则「请求的」与「查询的」是两个不同的东西，权限明明授了却查不到。
+ * 上一版这段表达式在两个文件里各手写一份，靠注释叮嘱「两处必须一致」——那是纪律，
+ * 不是保证；抽到这里之后两端共用同一份实现，想不一致也难。
+ *
+ * 去掉端口是有意的：`URL.origin` 在非默认端口时带端口，而 match pattern 的 host 段
+ * 不接受端口号（依 Chrome match pattern 文档判断，**未实机验证**）。match pattern 本就
+ * 端口无关，去掉它不损失任何覆盖面。
+ */
+export function matchPatternFor(url: URL): string {
+  return `${url.protocol}//${url.hostname}/` + '*'
+}
+
 // 中转脚本用它，防的是「自己存坏了」。
 /**
  * 接收端一律先过这道校验再使用：结构对不上就丢弃，不猜测、不补救。

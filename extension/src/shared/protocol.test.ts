@@ -60,7 +60,9 @@ describe('protocol mirror', () => {
   ])('shares the same %s limit', (name, value) => {
     // 比数值而不是比字面量文本：两边写 1_000_000 还是 1000000 无所谓，数值必须相等。
     // 允许右侧是算式（`10 * 1024 * 1024`）：比的是**数值**，不是写法。
-    const found = new RegExp(`export const ${name} = ([0-9_ *]+)`).exec(mirrorSource())
+    // **右锚是必须的**：没有它，镜像写成 `60 + 1` 只会捕获到 `60 `，算出来仍等于 60
+    // 而照样绿。放宽到「右侧可以是算式」之后，这个洞比以前更不容易被人眼发现。
+    const found = new RegExp(`export const ${name} = ([0-9_ *]+)\\s*$`, 'm').exec(mirrorSource())
     expect(found, `镜像里没有 ${name}`).not.toBeNull()
     const literal = found?.[1].replace(/_/g, '').trim() ?? ''
     const computed = literal.split('*').reduce((total, part) => total * Number(part), 1)
@@ -88,7 +90,13 @@ describe('protocol mirror', () => {
     const theirs = mirrorSource()
     // `isSafeImageUrl` 决定扩展会**真的向哪些地址发请求**，两边不同步的后果比
     // 另外两个更直接，必须一并逐字比对。
-    for (const name of ['isSafeSourceUrl', 'isSafeImageUrl', 'isImageList', 'isCapturePayload']) {
+    for (const name of [
+      'isSafeSourceUrl',
+      'isSafeImageUrl',
+      'isImageList',
+      'matchPatternFor',
+      'isCapturePayload',
+    ]) {
       expect(body(theirs, name)).toBe(body(mine, name))
     }
   })

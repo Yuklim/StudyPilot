@@ -106,7 +106,13 @@ describe('askExtensionForImage', () => {
     // 扩展被禁用、service worker 唤不醒、消息过大而丢失 —— 没有超时的话，页面
     // 会为一张取不到的图永远停在「正在下载图片」。
     vi.spyOn(window, 'postMessage').mockImplementation(() => {})
-    await expect(askExtensionForImage(window, 5)(A)).resolves.toEqual({ url: A, ok: false })
+    // 超时有**专属**原因：这条路的真实含义是扩展一直没答话，补救方向与
+    // 「网络不通」完全不同，不能和它共用一句文案。
+    await expect(askExtensionForImage(window, 5)(A)).resolves.toEqual({
+      url: A,
+      ok: false,
+      reason: 'no-answer',
+    })
   })
 })
 

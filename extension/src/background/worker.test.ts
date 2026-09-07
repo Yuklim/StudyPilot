@@ -189,3 +189,19 @@ describe('the default fetch dependency', () => {
     }
   })
 })
+
+describe('the permission pattern the worker checks', () => {
+  it('is the same shape the popup requests, port dropped', async () => {
+    // popup 用 originsOf → matchPatternFor 请求；worker 用 matchPatternFor 查询。
+    // 两处必须是同一个字符串，所以这条断言看的就是那个模式串本身。
+    const asked: string[] = []
+    await fetchImage('https://cdn.example.com:8443/a.png', {
+      fetch: async () => respondWith(PNG),
+      hasPermission: async (origin) => {
+        asked.push(origin)
+        return true
+      },
+    })
+    expect(asked).toEqual(['https://cdn.example.com/*'])
+  })
+})

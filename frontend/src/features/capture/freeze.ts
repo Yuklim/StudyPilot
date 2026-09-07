@@ -85,7 +85,7 @@ export function askExtensionForImage(win: Window, timeoutMs = 30_000) {
         const result = imageResultFrom(event, win)
         if (result && result.url === url) done(result)
       }
-      const timer = setTimeout(() => done({ url, ok: false }), timeoutMs)
+      const timer = setTimeout(() => done({ url, ok: false, reason: 'no-answer' }), timeoutMs)
       win.addEventListener('message', listener)
       win.postMessage({ type: CAPTURE_IMAGE_REQUEST, url }, win.location.origin)
     })
@@ -96,6 +96,11 @@ export function askExtensionForImage(win: Window, timeoutMs = 30_000) {
  * 六张图全失败，而未授权、站点拒绝、超限、扩展没答话在屏幕上长得完全一样，
  * 用户和实现者都无法从界面判断问题出在哪一环。
  */
+/** 长得像后端错误码的字符串。挡住从 postMessage 带进来的任意文本。 */
+function isBackendCode(reason: string): boolean {
+  return /^[A-Z][A-Z_]{2,39}$/.test(reason)
+}
+
 export function imageFailureText(reason: string, count: number): string {
   switch (reason) {
     case 'no-permission':
@@ -117,12 +122,23 @@ export function imageFailureText(reason: string, count: number): string {
     case 'bad-bytes':
       return `${count} 张：收到的内容不是可用的图片数据。`
     case 'failed':
-      return `${count} 张：没能取到（网络不通、站点无响应或已超时）。`
+      return `${count} 张：没能取到（网络不通、站点无响应，或站点拒绝了下载）。`
+    case 'no-answer':
+      // **与 `failed` 分开**：这条是扩展一直没答话（被停用、刚重载、消息过大而丢失），
+      // 补救方向和「网络不通」完全不同。上一版的兜底文案恰好覆盖了它，改写时漏掉了。
+      return `${count} 张：扩展一直没有响应。在 chrome://extensions 里确认 StudyPilot 已启用（或刚重新加载过）后重新采集。`
     default:
       // **不臆断原因。** 上传失败时这里拿到的是后端的错误码（版本冲突、快照不存在、
       // 本机存储不可用…），把它们一律说成「扩展未响应、网络不通」会把人指向
       // chrome://extensions，而问题根本不在那里 —— 上一版的兜底就是这么写的。
       // 已知的后端码交给 `failureText` 说人话，认不出的只说「没保存」外加原始码。
-      return `${count} 张：${failureText(new ApiError(reason as never))}（${reason}）`
+      // **不拿不可信字符串去查 `messages`**：reason 是从 postMessage 原样带过来的，
+      // `'constructor'` 之类会取到 Object 的构造函数并把它的源码显示到界面上。
+      // 只有长得像后端错误码的才交给 `failureText`；其余一律不解释，也不回显。
+      // 另外 `failureText` 对未知码返回**空串**，所以必须有 `||` 兜底 —— 否则界面上
+      // 会出现「1 张：（upload-failed）」这种一个字都没说的提示。
+      return isBackendCode(reason)
+        ? `${count} 张：${failureText(new ApiError(reason as never)) || '没能保存到本机。'}（${reason}）`
+        : `${count} 张：没能保存到本机。`
   }
 }

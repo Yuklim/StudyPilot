@@ -2,7 +2,13 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { CAPTURE_EXTRACTED } from '../shared/protocol'
 
-import { deliverCapture, extractedPayload, runCapture, type CaptureBridge } from './capture'
+import {
+  deliverCapture,
+  extractedPayload,
+  originsOf,
+  runCapture,
+  type CaptureBridge,
+} from './capture'
 
 const payload = {
   title: '如何理解数据库索引',
@@ -203,5 +209,29 @@ describe('deliverCapture', () => {
     expect(calls).toContain('open')
     // 先带图暂存、被拒后再清空重存：先落盘那一份不能留下图片清单。
     expect(stashed.at(-1)).toEqual({ ...withImages, images: [] })
+  })
+})
+
+describe('originsOf', () => {
+  it('asks per host, de-duplicated', () => {
+    expect(
+      originsOf([
+        'https://cdn.a.test/1.png',
+        'https://cdn.a.test/2.png',
+        'https://img.b.test/3.png',
+      ]),
+    ).toEqual(['https://cdn.a.test/*', 'https://img.b.test/*'])
+  })
+
+  it('drops the port, because a match pattern host cannot carry one', () => {
+    // 这条与 worker 侧那条是**同一个** `matchPatternFor` 的两端断言：两处用的模式串
+    // 必须逐字相同，否则「请求的」与「查询的」不是一个东西，授了权也查不到。
+    // 修这个问题时两侧一条断言都没有，全靠代码注释叮嘱 —— 与本任务已被咬过两次的
+    // 形态（顺序、默认 fetch）同源。
+    expect(originsOf(['https://cdn.a.test:8443/x.png'])).toEqual(['https://cdn.a.test/*'])
+  })
+
+  it('ignores an address it cannot parse instead of dropping the whole batch', () => {
+    expect(originsOf(['not a url', 'https://cdn.a.test/1.png'])).toEqual(['https://cdn.a.test/*'])
   })
 })

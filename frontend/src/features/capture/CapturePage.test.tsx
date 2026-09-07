@@ -307,8 +307,15 @@ describe('imageFailureText', () => {
     const conflict = imageFailureText('VERSION_CONFLICT', 1)
     expect(conflict).not.toContain('扩展未响应')
     expect(conflict).toContain('VERSION_CONFLICT')
-    const unknown = imageFailureText('something-new', 1)
+    expect(imageFailureText('no-answer', 1)).toContain('chrome://extensions')
+    // 认不出的原因**必须仍然说人话**。上一版这里会渲染成「1 张：（upload-failed）」——
+    // 一个字都没说，而当时的断言（不含「扩展未响应」、含原始码）正好绕过了空串。
+    const unknown = imageFailureText('upload-failed', 1)
     expect(unknown).not.toContain('扩展未响应')
-    expect(unknown).toContain('something-new')
+    expect(unknown).toContain('没能保存到本机')
+    // 不可信的 reason 不拿去查 messages，也不回显。
+    const injected = imageFailureText('constructor', 1)
+    expect(injected).toBe('1 张：没能保存到本机。')
+    expect(imageFailureText('VERSION_CONFLICT', 1)).toContain('VERSION_CONFLICT')
   })
 })
