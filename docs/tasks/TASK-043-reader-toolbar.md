@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-043"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "本任务改的是「打开一份资料之后看到什么」这个应用主界面的信息架构，影响面不是一个组件而是四个 feature 目录（resources / notes / learning / taxonomy）在同一页上的摆位与入口方式。三处实质风险：① 这一页承载全仓**唯一**的 `dangerouslySetInnerHTML`（TASK-042 的正文渲染），重排布局必然改动它周围的容器、样式与滚动关系，任何一处把它挪进新的 innerHTML 上下文都可能悄悄改变安全形态；② 「删除资料」的入口从常驻区搬进 `⋯` 菜单——销毁性动作的可发现性与误触面发生变化，而它的三步确认流程（预览影响 → 一次性令牌 → 确认）必须一字不改；③ 学习状态徽章进工具条意味着一个**版本化写请求**从折叠区搬到常驻区，误触后果是写库。另有跨模块面：同时改 resources、notes、learning、taxonomy 四处的调用与断言。不改后端一行、不改 `/api/v1` 与 openapi、不改本机访问门禁、不改 `extension/`、不改任何数据含义。"
 risk_flags = ["architecture", "security", "business"]
