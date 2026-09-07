@@ -133,17 +133,33 @@ test('the resource title is the page heading and takes focus on arrival', async 
   await expect(page.getByRole('heading', { name: title, exact: true, level: 1 })).toBeFocused()
 })
 
-test('the sidebar collapses to icons and really gets narrower', async ({ page }) => {
+test('collapsing the sidebar actually gives the space to the reading area', async ({ page }) => {
+  // **这条断言必须绑在正文区上，不能只量左栏。** 初版只断言 `.sidebar` 变窄，
+  // 于是「左栏收到 68px、网格轨道仍是 228px、正文一个像素没变宽」全绿通过——
+  // 折叠等于白折。用户在真机上先发现，验收随后独立判为阻断项。
+  await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/resources')
   const sidebar = page.locator('.sidebar')
-  const expanded = (await sidebar.boundingBox())!.width
+  const workspace = page.locator('.workspace')
+  const expandedSidebar = (await sidebar.boundingBox())!.width
+  const expandedWorkspace = (await workspace.boundingBox())!
   await page.getByRole('button', { name: '收起导航栏' }).click()
   await expect(page.getByRole('button', { name: '展开导航栏' })).toBeVisible()
-  const collapsed = (await sidebar.boundingBox())!.width
-  // **收益要用数值说话，不是靠截图看。**
-  expect(collapsed).toBeLessThan(expanded * 0.6)
+  const collapsedSidebar = (await sidebar.boundingBox())!.width
+  const collapsedWorkspace = (await workspace.boundingBox())!
+  expect(collapsedSidebar).toBeLessThan(expandedSidebar * 0.6)
+  // 省下来的宽度要真的落到正文区：起点左移、宽度增加，且增量与左栏的减量相当。
+  expect(collapsedWorkspace.x).toBeLessThan(expandedWorkspace.x)
+  expect(collapsedWorkspace.width).toBeGreaterThan(expandedWorkspace.width)
+  expect(collapsedWorkspace.width - expandedWorkspace.width).toBeCloseTo(
+    expandedSidebar - collapsedSidebar,
+    0,
+  )
   // 折叠态下入口仍按名字取得到，且没有可见文字。
-  const library = page.getByRole('link', { name: '资料库' })
+  const library = page.getByRole('complementary', { name: '学习空间导航' }).getByRole('link', {
+    name: '资料库',
+    exact: true,
+  })
   await expect(library).toBeVisible()
   expect((await library.textContent())?.trim()).toBe('')
   // 折叠态也不能横向溢出。

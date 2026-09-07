@@ -49,7 +49,7 @@ describe('other pages keep their heading block', () => {
   // 说明句这一半此前一条用例都没有——Reviewer 指出的缺口。
   // **从真值表取，不写字面量。** 我第一版凭印象写了两句 caption，全都不对——
   // 这正是本仓反复栽的那个形态（断言绑在臆想的字符串上）。
-  it.each([['/'], ['/resources'], ['/study-records']])(
+  it.each([['/'], ['/resources'], ['/study-records'], ['/classifications'], ['/notes']])(
     'keeps the heading and caption on %s',
     (route) => {
       const page = pageAt(route)

@@ -2288,6 +2288,16 @@ a.source-chip:focus-visible {
   overflow-wrap: anywhere;
 }
 
+/* ≤760px 是 `display:block` 的另一套布局（见上方那条媒体查询）：那里没有网格轨道
+   可收，`width:68px` 只会把顶栏压成一条窄带。本任务对那一档只保证不横向溢出。 */
+@media (max-width: 760px) {
+  .app-shell.nav-collapsed,
+  .app-shell.nav-collapsed .sidebar {
+    grid-template-columns: none;
+    width: auto;
+    min-width: 0;
+  }
+}
 @media (max-width: 640px) {
   .reader-toolbar-buttons {
     margin-left: 0;
@@ -2335,6 +2345,12 @@ a.source-chip:focus-visible {
   height: 16px;
 }
 /* 折叠态：左栏收窄，只留图标。文字节点在 React 里就没渲染，不是靠这里藏。 */
+/* **收窄的必须是网格轨道，不只是侧栏元素自己。** 初版只给 `.sidebar` 设了宽度，
+   第一列轨道仍是 228px，于是折叠只换来一条 68px 图标栏加 160px 空白带，正文区
+   一个像素都没变宽——折叠等于白折。用户在真机上先发现，验收随后独立判为阻断项。 */
+.app-shell.nav-collapsed {
+  grid-template-columns: 68px minmax(0, 1fr);
+}
 .app-shell.nav-collapsed .sidebar {
   width: 68px;
   min-width: 68px;
