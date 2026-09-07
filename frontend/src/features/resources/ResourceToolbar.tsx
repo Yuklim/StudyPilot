@@ -73,9 +73,12 @@ export function ResourceToolbar({
       const target = event.target as Node
       if (menuRegion.current?.contains(target) || menuTrigger.current?.contains(target)) return
       setMenuOpen(false)
-      // **外点关闭也要把焦点还回去。** 打开时焦点被送进了菜单，菜单一卸载它就掉到
-      // `body`，下次 Tab 从文档开头开始 —— 这是「打开即入焦」带出来的新分支。
-      menuTrigger.current?.focus()
+      // **这里不抢焦点。** 曾经在这里调过 `menuTrigger.focus()`，jsdom 里断言通过，
+      // 而在真实 Chromium 里**根本不生效**：浏览器在 `pointerdown` 之后才执行
+      // `mousedown` 的默认聚焦动作，点到空白处时会把焦点清到 `body`，把这次归还覆盖掉。
+      // （实测过，不是推理：`Esc` 那条焦点确实回到 ⋯ 按钮，外点这条 `activeElement`
+      // 是 `BODY`。）而且抢回来本身也不对——用户点了别处，焦点就该跟着去别处，
+      // 这正是 WAI-ARIA 菜单按钮模式的规定。焦点归还只属于 `Esc` 那一支。
     }
     document.addEventListener('keydown', onKeyDown)
     document.addEventListener('pointerdown', onPointerDown)

@@ -72,6 +72,17 @@ test('the reader puts the body first and keeps its context in view', async ({ pa
   await page.getByRole('button', { name: '编辑资料', exact: true }).click()
   await expect(page.getByRole('form', { name: '编辑资料表单' })).toBeVisible()
 
+  // **焦点归还要在真实浏览器里验，不能只在 jsdom 里验。** 本任务已经两次栽在这类
+  // 分歧上（伪元素的生成内容会进可访问名称；`pointerdown` 之后浏览器的默认聚焦动作
+  // 会把手动归还覆盖掉）。`Esc` 这一支是实测成立的那一条，钉在这里。
+  await page.getByRole('button', { name: '更多操作' }).focus()
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('menu')).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: '编辑资料' })).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('menu')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '更多操作' })).toBeFocused()
+
   // 窄屏只要求「不横向溢出、正文可读」；侧栏的窄屏形态属 TASK-044。
   for (const width of [320, 390, 1440]) {
     await page.setViewportSize({ width, height: width === 1440 ? 1100 : 844 })

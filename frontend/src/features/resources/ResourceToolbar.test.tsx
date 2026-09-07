@@ -149,14 +149,17 @@ describe('reader toolbar', () => {
     expect(screen.getByRole('region', { name: '放下这一页' })).toBeInTheDocument()
   })
 
-  it('returns focus to the trigger when a click elsewhere closes the menu', async () => {
-    // 打开时焦点被送进了菜单，菜单一卸载它就掉到 body，下次 Tab 从文档开头开始。
+  it('does not steal focus back when a click elsewhere closes the menu', async () => {
+    // **这条断言的是「不抢焦点」，而不是「抢回来了」。** 初版在外点这一支调了
+    // `menuTrigger.focus()`，jsdom 里绿，真实 Chromium 里被 `mousedown` 的默认聚焦
+    // 动作覆盖（实测 `activeElement` 是 `BODY`）——那是一条只在测试环境成立的断言。
+    // 用户点了别处，焦点就该跟着去别处；归还只属于 `Esc` 那一支（见上一条）。
     mount()
     await screen.findByRole('button', { name: '更多操作' })
     fireEvent.click(more())
     fireEvent.pointerDown(document.body)
     await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
-    expect(more()).toHaveFocus()
+    expect(more()).not.toHaveFocus()
   })
 
   it('keeps the arrows out of the accessible names', async () => {
