@@ -37,8 +37,8 @@ function bridgeWith(emits: unknown = payload, overrides: Partial<CaptureBridge> 
     openConfirmPage: async () => {
       calls.push('open')
     },
-    requestImageAccess: async () => {
-      calls.push('permission')
+    requestImageAccess: async (origins: string[]) => {
+      calls.push(`permission:${origins.join(',')}`)
       return true
     },
     ...overrides,
@@ -74,7 +74,7 @@ describe('runCapture', () => {
     await expect(runCapture(bridge, 200)).resolves.toEqual({ ok: false, reason })
     expect(calls).not.toContain('stash')
     expect(calls).not.toContain('open')
-    expect(calls).not.toContain('permission')
+    expect(calls.some((call) => call.startsWith('permission'))).toBe(false)
   })
 
   it('reports the page refusing injection instead of hanging', async () => {
@@ -134,6 +134,35 @@ describe('deliverCapture', () => {
     expect(calls).toEqual(['stash', 'open'])
   })
 
+  it('stashes before asking, so a popup closed by the prompt loses nothing', async () => {
+    // 浏览器在弹权限框时可能关掉 popup，这段代码连同它后面的一切当场消失。
+    // 先请求后暂存的话，整篇正文会一起丢 —— 用户看到的就是「点了没反应」。
+    const { bridge, calls } = bridgeWith()
+    await deliverCapture(bridge, withImages, true)
+    expect(calls.indexOf('stash')).toBeLessThan(
+      calls.findIndex((call) => call.startsWith('permission')),
+    )
+  })
+
+  it('asks only for the origins these images actually live on', async () => {
+    // 一篇文章的图通常只挂在一两个图床上。按源请求让授权框说的就是实际要做的事，
+    // 而不是「读取你在所有网站上的数据」。
+    const { bridge, calls } = bridgeWith()
+    await deliverCapture(
+      bridge,
+      {
+        ...payload,
+        images: [
+          'https://cdn.a.test/1.png',
+          'https://cdn.a.test/2.png',
+          'https://img.b.test/3.png',
+        ],
+      },
+      true,
+    )
+    expect(calls).toContain('permission:https://cdn.a.test/*,https://img.b.test/*')
+  })
+
   it('drops the image list when the user chose text only', async () => {
     // 留着地址清单，页面就会去逐张请求 —— 那正是用户拒绝的事。
     const stashed: unknown[] = []
@@ -143,7 +172,7 @@ describe('deliverCapture', () => {
       },
     })
     await expect(deliverCapture(bridge, withImages, false)).resolves.toEqual({ images: 0 })
-    expect(calls).not.toContain('permission')
+    expect(calls.some((call) => call.startsWith('permission'))).toBe(false)
     expect(stashed).toEqual([{ ...withImages, images: [] }])
   })
 
@@ -169,6 +198,7 @@ describe('deliverCapture', () => {
     })
     await expect(deliverCapture(bridge, withImages, true)).resolves.toEqual({ images: 0 })
     expect(calls).toContain('open')
-    expect(stashed).toEqual([{ ...withImages, images: [] }])
+    // 先带图暂存、被拒后再清空重存：先落盘那一份不能留下图片清单。
+    expect(stashed.at(-1)).toEqual({ ...withImages, images: [] })
   })
 })

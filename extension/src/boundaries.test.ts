@@ -103,6 +103,20 @@ describe('extension boundaries', () => {
     expect(worker).not.toContain("credentials: 'same-origin'")
   })
 
+  it('does not let a stray comment opener blind the scanners', () => {
+    // `code()` 是朴素正则剥离器：源码里出现 `/*`（哪怕是在字符串或正则里）会让它把
+    // 之后的一切当注释吃掉，于是上面几条扫描对该文件变成空扫、**静默通过**。
+    // 这条断言让那种情况响一声：剥离后至少要保留一半的非空行。
+    for (const path of sources()) {
+      const raw = readFileSync(path, 'utf8')
+      const rawLines = raw.split('\n').filter((line) => line.trim()).length
+      const keptLines = code(path)
+        .split('\n')
+        .filter((line) => line.trim()).length
+      expect(keptLines, `${path} 的注释剥离吃掉了过多内容`).toBeGreaterThan(rawLines * 0.3)
+    }
+  })
+
   it('scans a non-empty set of files', () => {
     // 防止上面两条因为扫描器写坏而变成恒真。
     expect(sources().length).toBeGreaterThanOrEqual(6)

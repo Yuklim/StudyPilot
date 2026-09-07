@@ -45,9 +45,11 @@ export function chromeBridge(): CaptureBridge {
         await chrome.storage.local.set({ [CONFIRM_TAB_KEY]: tab.id })
       }
     },
-    async requestImageAccess() {
+    async requestImageAccess(origins: string[]) {
       // 必须在用户手势内调用，调用点是 popup 上「一并保存」那一下点击。
-      return chrome.permissions.request({ origins: ['<all_urls>'] })
+      // 只请求这批图片实际涉及的源，不请求 `<all_urls>`。
+      if (origins.length === 0) return false
+      return chrome.permissions.request({ origins })
     },
   }
 }

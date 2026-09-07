@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { api, ApiError } from '../../api/client'
 import { renderWithRouter } from '../../test/render'
+import { imageFailureText } from './freeze'
 import App from '../../App'
 import { resourceId, sample } from '../resources/fixtures'
 
@@ -292,5 +293,15 @@ describe('capture page with images', () => {
     expect(posted.filter((m) => (m as { type?: string })?.type === CAPTURE_IMAGE_REQUEST)).toEqual(
       [],
     )
+  })
+})
+
+describe('imageFailureText', () => {
+  it('names the cause a user can act on, per reason', () => {
+    expect(imageFailureText('no-permission', 3)).toContain('权限')
+    expect(imageFailureText('http-error', 1)).toContain('拒绝')
+    expect(imageFailureText('too-large', 2)).toContain('10 MiB')
+    // 未知原因不能装作知道，落到一个诚实的兜底。
+    expect(imageFailureText('something-new', 1)).toContain('没能取到')
   })
 })

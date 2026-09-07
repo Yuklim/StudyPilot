@@ -18,7 +18,7 @@ describe('freezeImages', () => {
     const upload = vi.fn(async (_id: string, _bytes: Blob, url: string) => {
       order.push(`upload:${url}`)
     })
-    await expect(freezeImages('r1', [A, B], 3, { ask, upload })).resolves.toEqual({
+    await expect(freezeImages('r1', [A, B], 3, { ask, upload })).resolves.toMatchObject({
       frozen: 2,
       failed: 0,
     })
@@ -44,7 +44,7 @@ describe('freezeImages', () => {
         ask: async (url) => (url === A ? { url, ok: false } : { url, ok: true, base64: BYTES }),
         upload,
       }),
-    ).resolves.toEqual({ frozen: 1, failed: 1 })
+    ).resolves.toMatchObject({ frozen: 1, failed: 1 })
     expect(upload).toHaveBeenCalledTimes(1)
   })
 
@@ -57,7 +57,7 @@ describe('freezeImages', () => {
           if (url === A) throw new Error('ASSET_TYPE_UNSUPPORTED')
         },
       }),
-    ).resolves.toEqual({ frozen: 1, failed: 1 })
+    ).resolves.toMatchObject({ frozen: 1, failed: 1 })
   })
 
   it('reports progress so the page can say where it is', async () => {
@@ -116,5 +116,36 @@ describe('base64ToBlob', () => {
     expect(new Uint8Array(await blob.arrayBuffer())).toEqual(
       new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     )
+  })
+})
+
+describe('failure reasons', () => {
+  it('tallies why each image failed, instead of collapsing them into one number', async () => {
+    // 上一轮真实故障里六张图全失败，而未授权、站点拒绝、超限在界面上长得一模一样，
+    // 结果是没人能从界面判断问题在哪。这条钉住「原因要分开计数」。
+    const result = await freezeImages('r1', [A, B, 'https://cdn.example.com/c.png'], 1, {
+      ask: async (url) => {
+        if (url === A) return { url, ok: false, reason: 'no-permission' }
+        if (url === B) return { url, ok: false, reason: 'http-error' }
+        return { url, ok: true, base64: BYTES }
+      },
+      upload: async () => undefined,
+    })
+    expect(result).toEqual({
+      frozen: 1,
+      failed: 2,
+      reasons: { 'no-permission': 1, 'http-error': 1 },
+    })
+  })
+
+  it('keeps the backend error code when an upload is refused', async () => {
+    const refusal = Object.assign(new Error('refused'), { code: 'ASSET_TYPE_UNSUPPORTED' })
+    const result = await freezeImages('r1', [A], 1, {
+      ask: async (url) => ({ url, ok: true, base64: BYTES }),
+      upload: async () => {
+        throw refusal
+      },
+    })
+    expect(result.reasons).toEqual({ ASSET_TYPE_UNSUPPORTED: 1 })
   })
 })

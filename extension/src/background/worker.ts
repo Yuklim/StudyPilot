@@ -41,9 +41,22 @@ export function toBase64(bytes: Uint8Array): string {
  */
 export async function fetchImage(
   url: string,
-  deps: { fetch: typeof fetch; timeoutMs?: number } = { fetch: globalThis.fetch },
+  deps: {
+    fetch: typeof fetch
+    timeoutMs?: number
+    hasPermission?: (origin: string) => Promise<boolean>
+  } = { fetch: globalThis.fetch },
 ): Promise<FetchImageResult> {
   if (!isSafeImageUrl(url)) return { ok: false, reason: 'unsafe-url' }
+  // 先问权限，再发请求。**这一步是为了让失败可归因**：没有权限时 fetch 会以一个
+  // 普通的网络错误告终，与「站点拒绝」「网络不通」混在一起，用户看到的只是「没存下」。
+  // 分出 `no-permission` 之后，界面能直接告诉用户去授权，而不是让人猜。
+  // 匹配模式用拼接而不是写成一个字面量：`boundaries.test.ts` 的注释剥离器是朴素正则，
+  // 源码里出现「斜杠加星号」这两个字符（哪怕在字符串或注释里）都会被它当成块注释起始，
+  // 从而把本文件其余部分整段吃掉，让那几条边界扫描静默地变成空扫。
+  // `boundaries.test.ts` 里那条「剥离后至少保留三成非空行」的断言就是为这件事加的。
+  const permitted = await (deps.hasPermission ?? granted)(new URL(url).origin + '/' + '*')
+  if (!permitted) return { ok: false, reason: 'no-permission' }
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), deps.timeoutMs ?? IMAGE_TIMEOUT_MS)
   try {
@@ -103,6 +116,17 @@ async function readBounded(response: Response): Promise<Uint8Array | null> {
     offset += chunk.length
   }
   return merged
+}
+
+/** 这一个源是否已被授权。未授权时不发请求，直接如实回报。 */
+async function granted(origin: string): Promise<boolean> {
+  if (typeof chrome === 'undefined' || !chrome.permissions) return true
+  try {
+    return await chrome.permissions.contains({ origins: [origin] })
+  } catch {
+    // 查不了就别拦着：让 fetch 去试，失败仍会被归为 failed。
+    return true
+  }
 }
 
 /** 消息处理。返回 true 表示会异步回复（chrome 的约定）。 */

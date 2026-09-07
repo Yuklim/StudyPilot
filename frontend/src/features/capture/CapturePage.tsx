@@ -8,7 +8,7 @@ import {
   uploadSnapshotAsset,
 } from '../resources/api'
 
-import { askExtensionForImage, freezeImages } from './freeze'
+import { askExtensionForImage, freezeImages, imageFailureText } from './freeze'
 import {
   CAPTURE_READY,
   MAX_MARKDOWN,
@@ -36,7 +36,12 @@ export function CapturePage() {
   const [error, setError] = useState('')
   const [partial, setPartial] = useState<{ id: string; reason: string } | null>(null)
   const [pending, setPending] = useState(false)
-  const [images, setImages] = useState<{ id: string; frozen: number; failed: number } | null>(null)
+  const [images, setImages] = useState<{
+    id: string
+    frozen: number
+    failed: number
+    reasons: Record<string, number>
+  } | null>(null)
   const [freezing, setFreezing] = useState<{ done: number; total: number } | null>(null)
   const busy = useRef(false)
   const alive = useRef(true)
@@ -147,9 +152,13 @@ export function CapturePage() {
         <div className="resource-error">
           <p role="alert">
             正文已经保存好了。图片冻结了 {images.frozen} 张，有 {images.failed} 张没能保存 ——
-            那几张仍然指向原网站，原网站改版或删图后会失效。常见原因是图片需要登录才能看、 体积超过
-            10 MiB，或者不是 PNG/JPEG/GIF/WebP。这里不会自动重试。
+            那几张仍然指向原网站，原网站改版或删图后会失效。这里不会自动重试。
           </p>
+          <ul>
+            {Object.entries(images.reasons).map(([reason, count]) => (
+              <li key={reason}>{imageFailureText(reason, count)}</li>
+            ))}
+          </ul>
           <Link className="journal-button" to={`/resources/${images.id}`}>
             打开这份资料
           </Link>

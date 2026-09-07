@@ -130,6 +130,13 @@ export interface ImageResult {
   url: string
   ok: boolean
   base64?: string
+  /**
+   * 失败的粗粒度原因，用于**让用户看懂为什么**，不带站点的错误细节。
+   * 取值见扩展侧 `FetchImageResult`：`no-permission`（未授权）、`http-error`（站点拒绝）、
+   * `too-large`（超过 10 MiB）、`unsafe-url`、`failed`（取不到/扩展没答话）、
+   * `not-offered`（不在本次采集的清单里）。未知值一律按「取不到」处理。
+   */
+  reason?: string
 }
 
 /**
@@ -145,10 +152,13 @@ export function imageResultFrom(event: MessageEvent, win: Window): ImageResult |
   const envelope = event.data as { type?: unknown; url?: unknown; result?: unknown } | null
   if (envelope?.type !== CAPTURE_IMAGE_RESULT) return null
   if (typeof envelope.url !== 'string') return null
-  const result = envelope.result as { ok?: unknown; base64?: unknown } | null
-  if (result?.ok !== true) return { url: envelope.url, ok: false }
+  const result = envelope.result as { ok?: unknown; base64?: unknown; reason?: unknown } | null
+  if (result?.ok !== true) {
+    const reason = typeof result?.reason === 'string' ? result.reason : undefined
+    return { url: envelope.url, ok: false, reason }
+  }
   if (typeof result.base64 !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(result.base64)) {
-    return { url: envelope.url, ok: false }
+    return { url: envelope.url, ok: false, reason: 'bad-bytes' }
   }
   return { url: envelope.url, ok: true, base64: result.base64 }
 }

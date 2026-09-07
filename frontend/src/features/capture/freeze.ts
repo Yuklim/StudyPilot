@@ -25,27 +25,35 @@ export async function freezeImages(
     ) => Promise<unknown>
     onProgress?: (done: number, total: number) => void
   },
-): Promise<{ frozen: number; failed: number }> {
+): Promise<{ frozen: number; failed: number; reasons: Record<string, number> }> {
   let frozen = 0
   let failed = 0
+  // 分原因计数。**上一版把所有失败合并成一句「没能保存」，结果是一次真实故障
+  // 完全无法归因**：未授权、站点拒绝、超限、扩展没答话在界面上长得一模一样。
+  const reasons: Record<string, number> = {}
+  const note = (reason: string) => {
+    reasons[reason] = (reasons[reason] ?? 0) + 1
+    failed += 1
+  }
   for (const [index, url] of images.entries()) {
     deps.onProgress?.(index, images.length)
     try {
       const result = await deps.ask(url)
       if (!result.ok || result.base64 === undefined) {
-        failed += 1
+        note(result.reason ?? 'failed')
         continue
       }
       await deps.upload(resourceId, base64ToBlob(result.base64), url, snapshotVersion)
       frozen += 1
-    } catch {
-      // 取不到、传不上、后端拒收（类型不符、超限）—— 对用户的处置完全相同：
-      // 这张保留原站地址。不追问具体原因，也不自动重试。
-      failed += 1
+    } catch (cause) {
+      // 后端拒收（类型不符、超限）与本地异常。仍不追问站点细节，也不自动重试，
+      // 但要把后端给的错误码留下 —— 它是「为什么没存下」这个问题的答案。
+      const code = (cause as { code?: unknown })?.code
+      note(typeof code === 'string' ? code : 'upload-failed')
     }
   }
   deps.onProgress?.(images.length, images.length)
-  return { frozen, failed }
+  return { frozen, failed, reasons }
 }
 
 /** base64 → Blob。扩展消息通道会 JSON 序列化，字节只能以 base64 过来。 */
@@ -78,4 +86,32 @@ export function askExtensionForImage(win: Window, timeoutMs = 30_000) {
       win.addEventListener('message', listener)
       win.postMessage({ type: CAPTURE_IMAGE_REQUEST, url }, win.location.origin)
     })
+}
+
+/**
+ * 把失败原因说成人话。**这一条是一次真实故障的直接产物**：当时界面只说「没能保存」，
+ * 六张图全失败，而未授权、站点拒绝、超限、扩展没答话在屏幕上长得完全一样，
+ * 用户和实现者都无法从界面判断问题出在哪一环。
+ */
+export function imageFailureText(reason: string, count: number): string {
+  switch (reason) {
+    case 'no-permission':
+      return `${count} 张：浏览器没有授予访问该图片所在网站的权限。重新采集一次，并在弹出的授权框里点允许。`
+    case 'http-error':
+      return `${count} 张：图片所在网站拒绝了这次下载（例如需要登录，或限制外部引用）。`
+    case 'too-large':
+      return `${count} 张：单张超过 10 MiB 上限。`
+    case 'unsafe-url':
+      return `${count} 张：图片地址不是可以安全下载的普通网址。`
+    case 'ASSET_TYPE_UNSUPPORTED':
+      return `${count} 张：不是 PNG、JPEG、GIF 或 WebP，本机拒收。`
+    case 'ASSET_TOO_LARGE':
+      return `${count} 张：本机拒收，超过 10 MiB 上限。`
+    case 'not-offered':
+      return `${count} 张：不在这次采集交来的清单里，没有下载。`
+    case 'bad-bytes':
+      return `${count} 张：收到的内容不是可用的图片数据。`
+    default:
+      return `${count} 张：没能取到（扩展未响应、网络不通或已超时）。`
+  }
 }
