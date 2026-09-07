@@ -8,7 +8,7 @@ risk = "L1"
 risk_reason = "把一份 2026-09-05 就写好、此后一直未跟踪的调研文档提交入库，并加一节状态说明。它是明示的「调研，不是提案，更不是已生效的架构决定」，不改任何代码、接口、数据、契约或治理规则，没有公共行为影响，验证方式是可复现的检查脚本。不判 L2 的理由：它不落在 risk-policy 的任何高风险路径下（`docs/research/**` 不在 high_risk_paths 内），也不承载任何决定 —— 文中被用户确认过的那条方向早已由 TASK-036 走完整 L3 链交付。唯一的实质风险是「后来者把这份写于 9 月 5 日的文档当成当前状态」，本任务用 1.4 节正面处理该风险。"
 risk_flags = ["documentation"]
 owner = "coordinator"
-base = "e9372015c42e55856ae8ba47884506444822f374"
+base = "5abf0eb944dcbe383ae6c3169a3f744df034bdee"
 allowed_paths = [
   "docs/research/阅读器与标注能力调研.md",
   "docs/tasks/TASK-039-snapshot-assets.md",
@@ -26,7 +26,7 @@ checks = []
   - **不重写调研正文**。除第 1 节「对应任务」一行、新增的 1.4 节、以及第 7 节开头一句状态说明外，正文一字不改 —— 它是某一天的认知快照，改写它就毁掉了它作为记录的价值。
   - 不把文中任何建议转成待办，不新建后续任务，不改任何代码、接口、数据或契约。
 - **禁止范围**：所有未列入 `allowed_paths` 的路径。
-- **依赖**：无。基线为 main `e937201`（TASK-039 的分支尚未合并，与本任务无路径交集）。
+- **依赖**：无。**基线随 PR #44 合并而前移**：登记时为 `e937201`，用户 2026-09-07 合并 TASK-039 后改为 `5abf0eb`（当前 main）。改基线的唯一原因是本分支已把 origin/main 合入以处置索引冲突；若仍写旧基线，检查脚本会把 TASK-039 的 21 个文件当成本任务的超范围改动。本任务与 TASK-039 无路径交集这一点不变。
 - **并行**：否。
 
 ### 顺带完成的状态登记与索引冲突处置（合并 PR #44 之后追加）
@@ -62,7 +62,8 @@ checks = []
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：首轮候选 `2190d90c3b7b15153f4bc1d2d8e77c4afd78d70a`；**合并 origin/main 并处置索引冲突后形成新候选，其精确 SHA 在下一次写回时补记**（提交无法引用自身）。首轮候选的记录如下：**`2190d90c3b7b15153f4bc1d2d8e77c4afd78d70a`**（base `e937201`，3 个文件，全部在 `allowed_paths` 内）。`check_task.py --worktree` → **CHECKS PASS**，`risk=L1`，`stages=('worker',)`，`files=3`，`product_fingerprint=85aee36ed86273b81d2390971c26a5ca9b5b86336f585fdd5d511ba330cf07d0`，`profiles=`（无代码改动，未选中任何检查组）。环境：macOS Darwin 25.5.0、`backend/.venv`。本次检查**没有再因未跟踪文件超范围而失败**——这正是完成条件 2 要的直证。
+- 候选 SHA：首轮候选 `2190d90c3b7b15153f4bc1d2d8e77c4afd78d70a`；**合并 origin/main 并处置索引冲突后形成新候选，其精确 SHA 在下一次写回时补记**（提交无法引用自身）。首轮候选的记录如下：**`2190d90c3b7b15153f4bc1d2d8e77c4afd78d70a`**（base `e937201`，3 个文件，全部在 `allowed_paths` 内）。`check_task.py --worktree` → **CHECKS PASS**，`risk=L1`，`stages=('worker',)`，`files=3`，`product_fingerprint=85aee36ed86273b81d2390971c26a5ca9b5b86336f585fdd5d511ba330cf07d0`，`profiles=`（无代码改动，未选中任何检查组）。
+  - **合并 origin/main、处置索引冲突并把基线前移到 `5abf0eb` 之后重跑**：`check_task.py --worktree` → **CHECKS PASS**，`files=4`（多出 `docs/tasks/TASK-039-snapshot-assets.md` 的状态登记），`product_fingerprint=4f8a923a43dc7fe6f4507a22cbae2d0d0b3f245d8b067282b69229c47282911a`，`profiles=` 仍为空。`git diff origin/main..HEAD` 为 **4 个文件、571 增 3 删**，与上述一致，没有把 TASK-039 的任何改动重新计入本 PR。环境：macOS Darwin 25.5.0、`backend/.venv`。本次检查**没有再因未跟踪文件超范围而失败**——这正是完成条件 2 要的直证。
 - Review：**L1，N/A**（按 `AGENTS.md` §4，L1 执行链为「1 Worker → 自动检查 + 自检 → 主 Agent 汇总」，Review 与验收明确 N/A）。本任务未派任何独立审查实例。
 - Acceptance：**L1，N/A**。
 - 最终状态/风险/用户操作：status=**ACCEPTED**。L1 执行链完整：Worker → 自动检查（CHECKS PASS）→ 主 Agent 自检；Review 与 Acceptance 按等级 **N/A，未派任何独立实例**。完成条件 5 条全部满足：①②由 `git status` 与上面那次 CHECKS PASS 直证；③**无法用 git 证明，如实说明**：文件是首次入库，历史里没有前一版可比，`git diff base..candidate` 只会显示整份新增。可依据的只有过程性论据 —— 对该文件的全部写入只有一次脚本化替换，三处各带精确匹配断言（不匹配即中止），此外没有任何写入。**这是过程论据，不是 git 级证据**；若要真证，须有该文件入库前的独立副本可比，而它此前从未被跟踪，副本并不存在。④⑤为文本内容，主 Agent 逐条比对四份任务记录后写入，无第三方复核（见已知限制 1）。**需要用户操作**：审阅后决定是否合并。它与 TASK-039 分支无路径交集，两者可各自独立合并、顺序不限。
