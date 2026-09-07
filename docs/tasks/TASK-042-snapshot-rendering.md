@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-042"
-status = "IN_PROGRESS"
+status = "IN_ACCEPTANCE"
 risk = "L3"
 risk_reason = "本任务把「不可信内容退化为惰性文本」这条自 TASK-036 起就成立的结构性安全性质，换成「由渲染器的配置来保证」。TASK-036 明写选 Markdown 而非 HTML 的理由是「抓自开放网络的 HTML 属不可信输入，需永久维护消毒器；Markdown 让不可信内容退化为惰性文本」——一旦开始渲染，这道门就重新打开，此后安全性依赖渲染器选项、链接协议校验与依赖版本，而不再依赖「压根不进 DOM」。被攻破的后果也比一般 XSS 重：本机 UI 源是后端门禁**唯一信任**的源，页面内存里握着本次会话的访问令牌，且扩展的中转脚本也跑在这个源上；那里跑起一段外来脚本等于拿到整个资料库的读写删权限。第二处实质风险：首次引入 Markdown 渲染这一**生产依赖**（前端此前生产依赖只有 React 三件套），它从此是安全关键面。第三处：改变「打开一份资料会不会向外部站点发请求」这一可观察行为。不改后端一行、不改 `/api/v1` 契约、不改本机访问门禁、不改扩展。"
 risk_flags = ["security", "architecture", "business"]
@@ -179,10 +179,273 @@ checks = []
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：待填
-- Review：L3，两位独立只读 Reviewer，待填
+- 候选 SHA：`4e2c3a53fc332045b2aec0e21b5e74ea92f42183`（base `01069535d9910aecc56c6b7380dd17d68985c169`）。此前候选依次为 `99a545d`（首轮审查对象）、`1f1fbc0`（处置首轮 findings）、`b666d93`（处置增量 findings）。每次修订都重新冻结，并交由**同两位** Reviewer 验证 `previous_candidate..new_candidate`。
+- 检查（实现者本人在本机运行）：`check_task.py --worktree` → **CHECKS PASS**，`profiles=contracts,frontend`，`files=16`，`product_fingerprint=b2110dcbb5ff8faa601ccc8fea311bc600b08cffe063f5b8bd700134f44ce2ef`；frontend **488 passed**（基线实测 440）；e2e **43 passed**（基线 42）；`typecheck` / `lint` / `prettier --check` 全绿。
+- Review：L3，两位独立只读 Reviewer（R1 渲染与安全面、R2 数据通路/契约/测试面），均**独立于实现者**，运行器只授予 `Read`/`Grep`/`Glob`，无写工具、无 Bash。两位对最终候选 `4e2c3a5` 均给出 **PASS，无阻断项**。全部报告原文见下。
 - Acceptance：L3，独立只读，待填
 - 最终状态/风险/用户操作：待填
-- 非阻断遗留项（仅有真实问题时）：待填
+- 非阻断遗留项（仅有真实问题时）：
+  1. 流中途读失败的异常统一映射为 `NETWORK_ERROR`，无用例钉住（R2 首次增量报告指出）。
+  2. 剩余风险四条已在「已知取舍」与「已知限制」中登记，两位 Reviewer 均确认未新增：安全性质由结构性转为配置性、`markdown-it` 的 `validateLink` 变体未穷举、无 CSP、未冻结图片的三条隐私代价。
+  3. 采集时 pageUrl 与 `captured_from_url` 因重定向不一致时，相对图片地址会匹配不上冻结表而走原站（R1 指出，属已登记风险的延伸）。
+
+## Reviewer 报告原文
+
+以下八份**逐字照录**，未删改、未择要。
+
+### Reviewer R1 · 首轮报告（候选 `99a545d`）
+
+## 权限证据
+
+运行器给我的工具白名单只有 `Read`、`Grep`、`Glob` 三项，**无 `Write`/`Edit`/`NotebookEdit`、无 `Bash`**。因此我不能写文件、不能提交/推送/合并、不能执行任何命令（含 `npm test`、`git`、`npm audit`）。本次全部结论来自静态阅读候选工作树与 `node_modules` 源码；**任何机械结果（465/43/CHECKS PASS/指纹）我都无法复算，只能按记录采信**。未试写探测。
+
+候选 `99a545d`，基线 `0106953`，`/tmp/sp-t042/T042.patch` 1210 行已逐行读完，切片内文件对照工作树复核。
+
+## 三条守卫的独立判断（问题 1）
+
+- **配置断言：真的断了配置，不是现象。** `snapshotMarkdown.test.ts` 断 `RENDERER_OPTIONS.html` 与 `createRenderer(() =&gt; null).options.html`；后者是 MarkdownIt 实例真实生效的 options，而 `html_block`/`html_inline` 两条规则的开关正是 `state.md.options.html`（`node_modules/markdown-it/lib/rules_block/html_block.mjs:26`、`rules_inline/html_inline.mjs:19`）。断言链闭合。
+- **协议断言：是现象断言**（三个具体输入），记录自己也这么写。守不住"所有伪协议"——见下我的独立复核。
+- **转义断言：形态正确**（`querySelector(tag)` 为 null + 文本仍可见），上一版那条断错的 `not.toContain('onmouseover=')` 已改对。
+
+## validateLink 独立复核（问题 2、3）：未找到绕过
+
+顺序核实：所有产生 href/src 的路径——inline link `rules_inline/link.mjs:44-50`、image `rules_inline/image.mjs:39-46`、引用定义 `rules_block/reference.mjs:115-116`、autolink `rules_inline/autolink.mjs:28-29,50-51`、linkify 两处——都是**解析期**先 `normalizeLink` 再 `validateLink`，**确实先于**渲染器规则。伪协议 image 的 href 只可能被置为 `''`（`image.mjs:44`），`resolve('')` 返回 null，该分支不可绕过。
+
+我试过的变体与结论：大小写（`validateLink` 先 `trim().toLowerCase()`，`lib/index.mjs:34-39`，拒）；前后空白（destination 解析跳空白 + trim，拒）；HTML 实体 `javascript&amp;colon;` / `&amp;#106;avascript:`（`parseLinkDestination` 返回前先 `unescapeAll`，实体在校验**之前**解码，拒）；`java&amp;Tab;script:` / `&amp;NewLine;`（控制字符能进字符串，但 `normalizeLink` 末尾 `mdurl.encode` 把非白名单字符一律百分号编码，`mdurl/lib/encode.mjs:12-21,86` → `java%09script:`，含 `%` 不构成合法 scheme，不执行）；裸 `\t`（`parse_link_destination.mjs:49` 直接终止 destination）；`java\0script:`（`rules_core/normalize.mjs:5,14` 把 `\0` 换成 U+FFFD）；属性闭合注入（`renderer.mjs:151-163` 对属性名与值都 `escapeHtml`，空格/控制字符已被编码）。`data:` 只放行 `image/(gif|png|jpeg|webp)`，**`data:image/svg+xml` 被拒**——这条是关键，SVG 是唯一能带脚本的图片型 data URI。
+
+**已知限制 3 的自述准确，且偏保守**：它说的复核我做了 6 类变体，未发现绕过。未覆盖：无浏览器实机点击验证、未审 IDN 同形字（属显示欺骗非执行）。
+
+## Findings（全部非阻断，按重要性）
+
+**F1 · 渲染出的每张 `&lt;img&gt;` 都丢了 alt（P2，建议现在修，成本近零）**
+`snapshotMarkdown.ts:34-54` 的自定义 image 规则完整取代了默认规则，而默认规则唯一多做的事就是填 alt：`node_modules/markdown-it/lib/renderer.mjs:77-89` 的 `token.attrs[token.attrIndex('alt')][1] = slf.renderInlineAsText(...)`；token 在解析期以 `[['src',href],['alt','']]` 建成（`rules_inline/image.mjs:125`）。所以输出必然是 `alt=""`。影响：读屏把正文所有图片当装饰性图片跳过；且未冻结图加载失败时（已知限制 5 的场景）连替代文字都没有——**这让已知限制 5 比记录写的更糟**。现有用例只查 src/referrerpolicy，查不到。修正：`renderToken` 前加一行 `token.attrSet('alt', self.renderInlineAsText(token.children ?? [], _options, _env))` + 一条断言。
+
+**F2 · 冻结匹配是"规范化后的 src"对"原样存下的 source_url"精确比较；相对地址必然不命中，且那张图一点都不显示（P2）**
+`snapshotMarkdown.ts:76-83` 用 `frozen.get(src)`，`src` 是 `normalizeLink` 之后的值；映射键是后端存的 `asset.source_url`，而它由扩展 `new URL(trimmed, baseUrl).href` 解析成**绝对**地址（`extension/src/injected/extract.ts:67-88`），正文却"一字不动"保留原写法。于是 `![图一](/img/a.png)`（正是扩展自己的用例形状，`extension/src/injected/extract.test.ts:114`）在正文里是相对地址、在资产表里是绝对地址：`frozen.get()` 未命中 → 又不满足 `/^https?:\/\//` → `resolve` 返回 null → **连 `&lt;img&gt;` 都不产生**，只剩一个斜体 span。后果：一张确实冻下来、用户为它付过权限代价的图，页面上什么都没有；完成条件 5/6 在这条路径上静默不成立。e2e 用的是绝对地址，证明不了这一支。修正：查表前用 `snapshot.captured_from_url` 把 src 解析成绝对地址（`new URL(src, base).href`）再匹配；若不修，**必须**把"匹配是精确字符串、相对/非规范写法既匹配不上也不渲染"写进已知限制。
+
+**F3 · 取字节失败的已冻结图静默改走原站，与完成条件 9 不符（P2）**
+`ContentSnapshot.tsx:27-33` catch 后不记入映射 → 走 origin 分支；`ContentSnapshot.test.tsx` 那条用例正是断言 src 变回 `FROZEN_URL`。完成条件 9 原文要求"退化为**可见的失败态**"，实现给的是无提示的原址回退。用户对"向图床发请求"的知情同意是针对"这张图没冻上"给的（设计决定 ③ 原文：自动加载只适用于没冻上的）；本机字节损坏/隔离时用户以为看的是本机副本，实际发了外部请求。触发需后端取字节失败，个人本机场景可能性低、影响为一次额外图床请求（同页通常已在请求该 CDN）。修正：加可见说明，或按条件 9 原文改为失败态占位；保留现状则须写进设计决定 ③ 与已知限制。
+
+**F4 · `renderSnapshot` 未 memo，编辑时每次按键重解析全文（P2）**
+`ContentSnapshot.tsx:183-185` 在 render 体内直接调用，`snapshotMarkdown.ts:75-84` 每次 `new MarkdownIt` + 全文 parse。快照块的渲染与 `editing` 无关（`:156` 的三元），所以**在上限 100 万字的正文旁边打字，每一次 `setDraft` 都重解析整篇**。完成条件 11 的"超长正文"既无用例也无实测（我 grep 过 `features/resources` 下没有任何超长正文渲染用例，命中的 `repeat(1_000_001)` 都是 PASTE 校验）。修正：`useMemo(..., [snapshot?.content, frozen])`，2-3 行。
+
+**F5 · 安全关键依赖用了 caret，与仓库惯例相反（P3）**
+`frontend/package.json:23` `"markdown-it": "^14.3.1"`（`:33` 同）——react/react-dom/react-router-dom 与**全部** devDependencies 都是精确钉版。记录把它登记为"安全关键面、版本更新须复核 `html:false` 与 `validateLink`"，caret 却允许 `npm install` 无人复核地推到任意 14.x（锁文件钉住 14.3.1，`npm ci` 仍确定，故影响有限）。修正：改精确版并同步锁文件。
+
+**F6 · 完成条件 12 的依赖交代少报 2 个 dev 包（P3）**
+锁文件实际新增 dev 三条：`@types/markdown-it@14.2.0`、`@types/linkify-it@5.0.0`、`@types/mdurl@2.0.0`；记录只写"另加 dev 依赖 `@types/markdown-it`"。生产 7 条与记录一致，`resolved` 全部 `registry.npmjs.org`、均带 sha512 integrity，无 `file:`/`git+`，**来源核对属实**。
+
+**F7 · `downloadSnapshotAsset` 无单元用例（P3，属 R2 切片但在我这条链上）**
+`client.ts` 的四种媒体类型白名单 + `nosniff` 判定只有 e2e 快乐路径经过（grep：该符号只出现在 `client.ts`、`api.ts`、`ContentSnapshot.test.tsx`，`client.test.ts` 未新增）。这条判定是"blob URL 类型只可能是四种图片"的唯一保证，挡的是同源 `blob:` 承载 text/html 的形态，值得一条直接用例。
+
+## 逐条核实通过的部分
+
+- **`dangerouslySetInnerHTML` 无旁路（问题 4）**：全仓仅 `ContentSnapshot.tsx:183` 一处（grep 确认）；唯一入参是 `snapshot.content ?? ''`，而 `content` 在投影层被强校验（`api.ts:319-321`：READY→非空字符串，FAILED→null）。草稿走 `&lt;textarea value&gt;`、错误态走文本节点，都不经过这里。
+- **blob 生命周期无泄漏、无过早回收（问题 5）**：创建点只有 `frozenImageUrl`（`api.ts:929-931`）经 `loadFrozenImages`（`ContentSnapshot.tsx:29`）一条路；`release` 遍历 map 全值。我特意去核了"同 `source_url` 覆盖导致漏收"这条——后端 `UNIQUE(snapshot_id, source_url)`（`backend/migrations/versions/0005_snapshot_assets.py:59-61`）排除了它。竞态：`.then` 先赋 `release` 再判 `alive`，与清理里先 `alive=false` 再 `release?.()` 互斥，unmount 早于 resolve 时由 `else loaded.release()` 兜住，既不双重回收也不漏收。失败路径不持有 URL（只可能在创建任何 URL **之前** reject，逐张失败被内层 try 吞）。过早回收被渲染门 `frozen?.key === ${resourceId}:${revision}`（`:175`）挡住，且 React 先提交 DOM（换成"正在取回…"）再跑旧 cleanup。未测到：切换资料、unmount 早于 resolve 两支无用例（结构上同一条清理路径，我不要求补）。
+- **降级路径（问题 7）**：资产列表失败→空映射+全走原址（有用例）；单张失败→见 F3；空快照结构上不可能；FAILED 快照渲染空 div，与改动前的空 `&lt;pre&gt;` 同形无回归；超长正文见 F4。
+- **依赖安全注意事项（问题 6）**：我无法跑 `npm audit`。据我所知 markdown-it 14.3.1 无公开公告（CVE-2022-21670 影响 &lt;12.3.2，不适用）。与 `html:false` 相关的注意点是：它只关原始 HTML，**不**限制 `data:image/*` 与目标域名——这两点实现方另加了 `/^https?:\/\//` 与 origin/blob 二分，配置面完整。
+- **styles.css**：新增块无任何 `url()`/`@import`/外部字体，不产生新的外部请求，与完成条件 8 一致。
+- **已知限制 1–6 如实性（问题 8）**：1、2、6 如实；3 如实且偏保守（可据本报告改写为"已定向复核 6 类变体、未发现绕过"）；4 如实（grep 确认前端无任何 CSP）；**5 偏窄**——F1 与 F3 各让它比记录写的更严重。
+
+## 未覆盖 / 剩余风险
+
+不在我切片、未审：`api/client.ts` 正文（仅看了新增段）、`features/resources/api.ts` 除 `frozenImageUrl`/`snapshot` 投影外部分、契约与任务索引文档措辞、e2e 运行行为（仅静态读）、TASK-040 状态登记的合规性。**全部机械证据未复算**（无 Bash）：测试计数、CHECKS PASS、指纹、`npm audit`、浏览器实机行为均按记录采信。
+
+## 结论
+
+**PASS**，指向 `99a545dde0ed676a1f6602c78ae73e3f62b18ca4`。无阻断项：未发现可达的脚本执行路径，`html:false` + `validateLink` 的三条守卫在当前版本上真实成立，blob 生命周期正确。F1–F7 全为非阻断，但 **F1、F2、F3 必须由主 Agent 或修掉、或如实写入已知限制/EVIDENCE**——只写 PASS 而不记录这三条，会让记录比事实宽（尤其 F2 使完成条件 5/6 在一类可能输入上不成立、F3 与完成条件 9 原文不符）。
+
+### Reviewer R2 · 首轮报告（候选 `99a545d`）
+
+## 权限证据（R2）
+
+运行器给我的工具白名单只有 **`Read` / `Grep` / `Glob`**（外加 TodoWrite 类无副作用工具）。**没有 `Write`/`Edit`/`NotebookEdit`，没有 `Bash`**：我不能写文件、不能提交/推送/合并、不能执行任何命令（因此 465/440/43/42、CHECKS PASS、指纹 `c9478a33…` 我一律**未复算**）。未做试写探测。
+
+审查对象：`/tmp/sp-t042/T042.patch`（逐行读完，15 文件；我按 diff 头逐条枚举确认**无** `openapi-v1.json`、**无** `backend/**`、**无** `extension/**`）+ 工作树实文件。前提：工作树 = 候选 `99a545d`；`efdc5dc → 99a545d` 的 git 关系我无法核（记录里证据仍署 `efdc5dc`，EVIDENCE 待填）。
+
+## Findings（仅我的切片）
+
+**F1（阻断，必须修复｜文档事实）契约把一句它自己从未有过的话当成「4.13 原先」的原文引用，记录又声称改了契约里的那句——两处都与 diff 不符。**
+- `docs/contracts/API与数据契约基线.md:395`：「这与 **4.13 原先**「Markdown 让不可信内容退化为惰性文本」的性质不完全相同」。我全仓检索：`惰性文本` 只出现在这一行与 TASK-042 记录的 `risk_reason`；`阅读器范畴` 只在 `docs/tasks/TASK-036-content-snapshot.md:62,124` 与 `docs/research/…:290`。**契约 §4.13 从来没有这两句**。
+- `docs/tasks/TASK-042-snapshot-rendering.md:153`：「并把 TASK-036 那句「渲染属阅读器范畴，不在本任务」更新为指向 4.13」。契约的 diff 只有一个 hunk `@@ -392,6 +392,10 @@`，**+4 行、0 删除、0 修改**——没有任何既有句子被更新。真正被改掉的那句在 `frontend/src/features/resources/ContentSnapshot.tsx:28`（英文注释），但记录把它写在「**契约**：」条目下，而完成条件 13 又明写「中文契约 §4.13 的…按实际情况更新」，读者只会理解为契约文件被改。
+- 触发/影响：契约是本仓「业务事实来源」，后续任务会照读；一处不可核对的自引用 + 一条被 diff 证伪的自述，正是 TASK-039 被 Acceptance 拦下的同一形态。最小修正：把 395 行该分句改为引用 **TASK-036 任务记录**（而非「4.13 原先」），并把记录 153 行改成「契约仅新增两段、未修改既有句子；被更新的是 `ContentSnapshot.tsx` 的注释」。纯文本改动，可与 R1 的要求合并成一个新候选。（TASK-036 记录不在 `allowed_paths`、也不该改写历史记录——不改它是对的。）
+
+**F2（非阻断 P2｜覆盖缺口）`downloadSnapshotAsset` 零单测，且「与 `downloadOriginal` 同形」不准确。**
+`client.test.ts` 在本次 diff 中**一行未改**（净增 25 = `snapshotMarkdown.test.ts` 18 + `ContentSnapshot.test.tsx` 7，逐条数过，全部落在两个新文件）。而同一文件里 `uploadSnapshotAsset`（`client.test.ts:596-644`）有完整的路径/`If-Match`/负例覆盖——同一任务加的取字节兄弟方法一条都没有：`client.ts:556-561` 的四种 media type 白名单、`nosniff`、`status!==200`、`fileIdPattern` 前置校验，**删掉任意一条都不会有测试变红**。完成条件 5「须有用例证明请求打到 `/snapshot/assets/{id}/bytes`」只由 e2e 的 `blob:` 间接兑现，无任何用例断言那条路径字符串。
+另：`client.ts:562` 用 `response.arrayBuffer()`，**无 content-length 上界、无流式尺寸校验、不要求 `Content-Disposition`**，而 `fileBody()`（`client.ts:407-437`）三者俱全；记录称「同形」属过述。实际风险有限（我读了后端 `api/snapshot_assets.py:266-279`：`Content-Type` 取 DB CHECK 约束过的 `row.media_type`、带 `nosniff` 与 `attachment`，字节由 `storage.read(key,size,digest)` 在服务端验尺寸与摘要），所以前端这几条属纵深防御，不是主边界。建议补 4 条廉价用例并把「同形」改为如实描述。
+
+**F3（非阻断 P2｜与记录自述的控制相矛盾）新依赖是 `package.json` 里唯一的两条 caret 范围。**
+`frontend/package.json:23` `"markdown-it": "^14.3.1"`、`:33` `"@types/markdown-it": "^14.2.0"`；其余 20 个依赖**全部精确锁定**（`react: 19.2.8`、`eslint: 10.9.1` …）。记录明写它「从此属安全关键面…版本更新须同步复核 `html:false` 与 `validateLink`」，而 caret 允许一次 `npm install` 静默拉进 14.x 新版。`npm ci` 走锁文件所以今天是确定的；最小修正是去掉两个 `^`。
+
+**F4（非阻断 P2｜断言强度低于宣称）e2e 那条「外部请求只能来自那一个已知源」守不住它自称守的东西。**
+`e2e/snapshot-rendering.spec.ts:13-14` 冻结图与未冻图**共用 `https://cdn.example.test`**，而 87-89 行按 **origin** 整体放行该源。于是「冻结的那张也被从原址请求了一次」——正是完成条件 6 要防的回归——这条断言**发现不了**；而 `toHaveAttribute('src', /^blob:/)` 是可重试的，先渲染原址再换 blob 的实现回归也会被它放过（当前实现用 `frozen.key` 闸门挡住了，所以现在不是缺陷，是测试盲区）。此外 90 行是即时快照，无 network-idle 等待，加上 `snapshotMarkdown.ts:1120` 给每张图都设了 `loading="lazy"`，外部请求可能根本还没发出，断言便"绿"了。最小加强：冻结图改用独立 origin（如 `cdn-frozen.example.test`）并断言它**从未**出现在 `external`。
+（时序假绿的另一面我判断**不成立**：Playwright 的 `expect` 全部自动重试，图片没加载完不会让 `toHaveCount(2)`/`toHaveAttribute` 提前假绿；`baseURL` 与硬编码的 `http://127.0.0.1:15173` 一致，写错端口只会全红不会假绿。）
+
+**F5（非阻断 P2｜目标 3 的最后一步无机器证据）全套用例只证明 `src` 是 `blob:`，没有一条证明那张图真的解码显示了。**
+blob URL 指向一堆解不开的字节，本候选的所有测试仍会通过。任务目标 3 是「让用户第一次能在界面上看见冻结下来的东西」，而 TASK-040 的教训恰是「三个缺陷全部由用户实测发现、测试套件一个没拦住」。一行即可：`expect(await images.nth(0).evaluate((i) =&gt; i.naturalWidth)).toBeGreaterThan(0)`。
+
+**F6（非阻断 P3｜依赖登记）7 个生产包、全官方源、7→14 我逐条核对**属实**：新增非 dev 条目为 `markdown-it@14.3.1`、`argparse@2.0.1`、`linkify-it@5.0.2`、`markdown-it/node_modules/entities@4.5.0`、`mdurl@2.1.0`、`punycode.js@2.3.1`、`uc.micro@2.1.0`，`resolved` 全为 `https://registry.npmjs.org/`，无 `file:`/`git+`；基线 7 个（react、react-dom、scheduler、react-router-dom、react-router、cookie、set-cookie-parser）→ 14 ✓。**漏报**：dev 侧还进了两个传递依赖 `@types/linkify-it@5.0.0`、`@types/mdurl@2.0.0`（记录只写了 `@types/markdown-it`），均官方源。
+
+**F7（非阻断 P3｜契约与实现的小出入）`loading="lazy"` 在契约与记录里一处未提。**
+契约 397 行「打开一份资料会向每个未冻结图片的图床**各发一次请求**」在懒加载下并不精确（可能推迟、甚至不发）。方向是把代价说重了，不是安全问题，但属实现事实未登记。
+
+**F8（非阻断 P3｜未登记的第三条去向）契约只写了「图片的两条去向」，实际有三条。**
+`snapshotMarkdown.ts:1152-1159`（`renderSnapshot` 的 `resolve`）对非 `http(s)` 的图片地址——包括 markdown-it 的 `validateLink` **会放行**的 `data:image/png;…` 与相对地址——返回 `null`，于是不产生 `img`，只留 `&lt;span class="snapshot-image-refused"&gt;` 替代文本。安全方向正确（比契约更严），但这是用户可见行为，契约「两条去向」与已知限制 1–6 均未登记。
+
+## 逐条回答你点名要核的
+
+1. **有没有顺带放宽别处**：没有。`request()` 的 `['method','body','ifMatchVersion','deletionToken']` 白名单与 `versionedDeleteTarget`/`resourceDeleteTarget` **一字未动**（client.ts 只有一个新增 hunk）；`fileIdPattern` 是全锚定 UUID，对 `resourceId`/`assetId` 各校验一次后才拼路径，不经 `localPath()` 与 `downloadOriginal`/`uploadSnapshotAsset` 的既有先例一致；`checked(response, usedToken)` 在状态/头校验**之前**调用，与两个先例同序，403 `LOCAL_TOKEN_*` 清缓存令牌的语义保留。响应校验够不够：够，且**没有把后端没保证的东西当保证**（四种类型来自后端按魔数判定 + DB CHECK，`nosniff` 后端确实发，摘要/尺寸后端已验）；缺的只有尺寸上界，见 F2。
+2. **既有断言是更强还是更弱**：更强，无删除。`resource-pages.spec.ts:236-241` 用渲染视图 + 源码视图两面覆盖了原来单一 `pre` 覆盖的东西（正文 `# 冻结正文 …` 是标题，渲染后原断言必失效，改动是必需的）；`:251` 刷新后只断言渲染视图，丢掉的是"刷新后**源码**仍在"这一层，但内容从 content 派生，实质强度不减。**唯一提醒**：新断言全部依赖 `.snapshot-rendered` 这个 class 名，class 一改测试就静默失效——可接受。
+3. **新增 e2e 的边界**：见 F4/F5。
+4. **契约 §4.13 与实现逐条**：`html:false` ✓（`RENDERER_OPTIONS`）、`target="_blank" rel="noreferrer noopener"` ✓（`link_open` 规则）、伪协议由渲染器拒 ✓、blob URL 与「`&lt;img src&gt;` 打不到该端点」✓（与后端 4.14 及门禁一致）、`referrerpolicy="no-referrer"` ✓、「正文一字不改写」✓（只改 token 属性）。三条代价与代码事实一致（代价一因 lazy 略有出入，见 F7）。**`/api/v1` 与 openapi 一字未改**：15 个 diff 条目我逐条枚举，成立。**不成立的是那句自引用与记录的契约自述，见 F1。**
+5. **计数与基线**：证据形态达标，且**没有混入首个候选的数字**——465−440=25，与本 diff 里新增用例数**精确吻合**（`snapshotMarkdown.test.ts` 2+6+4+3+1+2=18，`ContentSnapshot.test.tsx` 7），文件数 19+2=21 吻合，e2e 42+1=43 吻合（新 spec 恰好 1 个 `test(`，`resource-pages` 只加断言不加 test）。我未执行任何命令，这是**内部一致性核对**，不是复跑。
+6. **依赖登记**：见 F6（生产侧属实，dev 侧漏 2 个）。
+7. **投影与回收**：`snapshotAsset`（`api.ts:363-376`）7 个字段与后端 `asset_store.FIELDS` **逐项对应**，`storage_key` 仍不外露；该函数本次未改动。`frozenImageUrl` 的回收责任**在 JSDoc 之外有一条机器保证**——`ContentSnapshot.test.tsx` 的 `revoked` 等于 `created`（卸载路径），但只覆盖卸载 + 单张 + 成功路径；「切换资料/revision 变化」与「多张部分失败」的回收无用例（构造上由 effect 依赖数组 `[resourceId, revision]` 保证）。竞态我逐条走过：加载中卸载时 `release` 尚未赋值，但 `.then` 的 `else loaded.release()` 兜住了，StrictMode 双调用亦然；`UNIQUE(snapshot_id, source_url)`（0005 迁移）排除了同址覆盖导致的漏收。`frozenImageUrl` 本身对未来的第二个调用方无任何机器约束（可选建议）。
+8. **已知限制 1–6 与「写错的断言」那段**：如实。限制 4「没有 CSP」我全仓检索确认无 `Content-Security-Policy`；限制 3、5、6 与代码一致；`snapshotMarkdown.test.ts:985-986` 确有 `querySelector('[onmouseover]')` 为 null + 「它仍然看得见」，自陈属实。**缺的**是 F8、F7、F2 三项未进限制清单。
+
+## 我没有覆盖的
+
+`ContentSnapshot.tsx` 的 React 分支/状态语义与 `ContentSnapshot.test.tsx`、`snapshotMarkdown.ts` / `.test.ts` 的完整评审（R1 切片，我只读到与我切片相交处）；`styles.css`；`README.md`/索引措辞；`markdown-it@14.3.1` 上游源码与 `validateLink` 实现（记录已列为已知限制 3）；npm integrity 与上游产物的对应关系；任何命令的实际执行结果（CHECKS PASS、指纹、465/440/43/42 全部 NOT_RUN 于我）；`efdc5dc` 与 `99a545d` 的提交关系。
+
+## 结论
+
+**CHANGES_REQUIRED**，指向 `99a545d`。唯一阻断项为 **F1**（契约中不存在的自引用 + 记录被 diff 证伪的契约自述，纯文本修正，建议与 R1 的要求合并为一个新候选）。F2–F8 为非阻断，建议由主 Agent 逐条登记处置；其中 F4、F5 是我最建议顺手做掉的两处（各一行到数行，直接对着 TASK-040「测试套件一个没拦住」的教训）。安全实现本身我没有发现缺陷：`request()` 白名单未放宽，取字节路径的校验与后端实际保证对得上，冻结/未冻结两条去向的实现与用户决定一致。
+
+### Reviewer R1 · 增量复审（`99a545d..1f1fbc0`）
+
+## 只读证明与范围
+
+- 运行器只授予 Read/Grep/Glob，无 Write/Edit/Bash；未修改、未提交任何文件。
+- 候选：`/Users/yuklimching/Desktop/StudyPilot/.git/refs/heads/agent/coordinator/TASK-042-snapshot-rendering` = `1f1fbc0d1830dfc97879ac85bd7b8f71a04999f8`，`.git/HEAD` 指向该分支，工作树即候选。无 Bash 故未跑 `git diff`，改为按你给的 11 文件清单逐个读最终态并与首轮记忆比对。
+- 继承首轮（99a545d）覆盖：渲染器配置/转义/协议三组守卫、blob 回收、写请求为零、e2e 主干、契约 §4.13 未删既有句子。本轮复审 F2/F3/F5/F6 处置点及其受影响上下文（client.ts 全文、ContentSnapshot.tsx、snapshotMarkdown.ts、四个测试文件、契约 §4.13、package.json/lock）。
+
+## 1. 处置是否成立（看实现，不看自述）
+
+- **F5 成立**：`frontend/package.json` 为 `"markdown-it": "14.3.1"`、`"@types/markdown-it": "14.2.0"`；`package-lock.json` `packages[""]` 两处同为精确值，`resolved` 均为 registry.npmjs.org。
+- **F6 成立**：锁文件确有 `@types/linkify-it@5.0.0`、`@types/mdurl@2.0.0`（dev、仅类型），与记录一致。
+- **F2 部分成立，处置可接受**：`renderSnapshot(md, frozen, base)` → `toAbsolute` → 查表 → 最后 `^https?:` 闸门，顺序正确。不做 `source_url` 兜底的理由（`ResourceDetail.tsx` 不在 allowed_paths）属实，已知限制 7 与契约 §4.13「第三条去向」写法诚实，且契约明说这比其余规定更严。
+- **F3 只覆盖了一半**，见 F7。
+- **断言绑定正确、非永真**：`snapshotMarkdown.test.ts:110-117` 断 `src === blob URL`——解析若坏掉则连 `img` 都不产生，用例必失败；`ContentSnapshot.test.tsx:165-182` 同理，且 `:184-192` 先 `findByText('正文一段。')` 确认已渲染再断 `img` 为 0，不是空断言。`client.test.ts:656` 用真实 `new Response(bytes)`（真 ReadableStream），`:667-671` 断 `blob.size === 6`，证明 `boundedBlob` 真被走通，长度那 5 条不是靠 `response.body` 缺失假通过。e2e 双主机分离 + `naturalWidth > 0` 是有效加严。
+  - 弱形式两处（不算缺陷）：`snapshotMarkdown.test.ts:57` 与 `:18` 都是 `not.*` 形式，无 `<a>` 时亦为真；由 `:151-158` 的正例配平。
+
+## 2. 本轮是否引入新缺陷
+
+- **useMemo 无误**：`result` 是 `useResourceQuery` 的 state，identity 稳定 → `snapshot`/`frozen`/`base` 在编辑框打字时不变，缓存真的生效；`base` 由 `snapshot` 派生属冗余依赖，无害。effect 依赖 `[resourceId, revision]` 与 `frozen.key` 一致；promise 后到时 `alive===false` 分支调用 `loaded.release()`，两支都回收。
+- **base 边界安全**：非 http base、opaque base（`javascript:`）使 `new URL` 抛错 → catch 回落原串 → 被 `^https?:` 闸门拦下；`data:image/*` 一律不产 `img`。解析后的绝对地址仍要过该闸门，没有绕过 `validateLink`。
+- **`downloadOriginal` 行为未变**：`fileBody` 仍先做 `expected > MAX_FILE_BYTES` 前置检查，`boundedBlob` 的 `limit` 只是冗余第二道；既有 5 条长度/一致性用例（`client.test.ts:165-169`）未删未弱化。唯一可能的差别是流中途读失败的错误码经 `catch → NETWORK_ERROR` 归一，两侧均无用例覆盖，属文案级、非阻断。
+
+## Findings
+
+**F7（必须处置，二选一：3 行代码或如实登记）** `ContentSnapshot.tsx:106-111`——`listSnapshotAssets` 整体失败时 `failed: 0`，**所有**已冻结图片静默改走原站，界面无任何提示；`ContentSnapshot.test.tsx:143-151` 还把「无提示地全走 cdn.example.com」钉死为期望行为。这与 F3 是同一类知情同意缺口（用户的同意只针对「这张没冻上」），只是从一张扩大到全部。触发窗口真实但窄：快照 GET 成功而资产 GET 失败（令牌中途失效、瞬时 500）。**更关键的是记录 154 行的自述**「现在 `loadFrozenImages` 返回 `failed` 计数，快照区显示一条 `role="alert"`」读起来像该缺口已闭合，实际留了这一支——自述宽于证据。
+
+**F8（必须处置，记录准确性）** 记录 155 行说契约新增的是「图片的**两条**去向」，而 `docs/contracts/API与数据契约基线.md:397` 实为「图片的**三条**去向」；同句「**15 个文件**中无 openapi-v1.json」与 148/160 行的 16 个文件不一致（15 是首轮残留）。openapi 本身确未在 allowed_paths 内、确未改，结论不受影响，但两处数字须更正。
+
+**F9（可选建议）** 提示文案「这几张改用了原网站的地址显示」在「该资产 `source_url` 不出现在正文」或「相对地址无 base 因而根本不渲染」时不成立，略宽于事实；且该提示只在渲染视图出现，切到源码视图即消失。
+
+**F10（可选建议）** `features/resources/api.ts:330` 对 `captured_from_url` 用裸 cast 而非 `nullableString`，而这个值现在被当作 URL base 使用。无安全后果（最终 `^https?:` 闸门兜住），只是与同文件其余字段的校验风格不一致。
+
+## 剩余风险
+
+- 采集时的 pageUrl 与 `captured_from_url` 因重定向不一致时，相对地址会匹配不上冻结表而静默走原站（与 F7 同源，记录未提）。
+- 首轮已登记的残留仍在：无 CSP、`validateLink` 变体未穷举、依赖升级无自动提醒、原址图片失败态不可见。
+- 测试计数（frontend 488 / e2e 43）与 `check_task.py` 结果为实现者本人机械证据，我未重跑；上述定向核对未发现与之矛盾之处。
+
+## 结论
+
+**PASS（覆盖新最终候选 `1f1fbc0`）——无阻断项**：F2/F3/F5/F6 的处置在实现与用例上真实成立，本轮未引入代码缺陷，F2 的取舍与限制写得诚实。附 **F7、F8 两项必须处置**的非阻断项，处置方式限于「补 3 行提示+1 条断言」或「在已知限制中如实登记」及更正记录中的两处数字；两者都不需要我重新审代码，主 Agent 择一后可进入验收。
+
+### Reviewer R2 · 增量复审（`99a545d..1f1fbc0`）
+
+## 独立只读复审报告 — TASK-042 · Reviewer R2（增量）
+
+**只读证明**：本 Agent 工具白名单仅 `Read`/`Grep`/`Glob`，无 `Write`/`Edit`/`Bash`，运行器层面无法写入、提交或推送。
+**范围**：候选 `1f1fbc0`（基线 `0106953`，前一候选 `99a545d`）。本轮逐行复读了受影响文件的最终状态：`frontend/src/api/client.ts`、`client.test.ts`、`frontend/e2e/snapshot-rendering.spec.ts`、`frontend/e2e/resource-pages.spec.ts`、`features/resources/{snapshotMarkdown.ts,snapshotMarkdown.test.ts,ContentSnapshot.tsx,ContentSnapshot.test.tsx,api.ts:401-409}`、`frontend/package.json`、`package-lock.json`、`docs/contracts/API与数据契约基线.md §4.13`、任务记录。**继承首轮**（`0106953..99a545d`）对本轮未触及部分的覆盖：`styles.css`、`ResourcePages.test.tsx`、`api.test.ts` 其余部分、README、任务索引、TASK-040 状态登记、契约其余章节。无越 `allowed_paths` 的文件。
+
+### 1. 五条处置是否成立（看实现，不看自述）
+
+- **F2 成立**。`client.ts:424-452` 的 `boundedBlob` 双界限（`received > expected || received > limit` 早断 + 收尾 `received !== expected`）为真；`downloadSnapshotAsset`（:582-597）补齐 attachment、`^[1-9]\d*$` 长度、`expected > MAX_ASSET_BYTES`。新用例中**真正有咬合力**的是六条：`inline` 非 attachment、无 `content-length`、`content-length: 0`、`>10 MiB`、声明 7>实际 6、声明 5<实际 6 —— 旧实现只查状态/类型/nosniff 后直接 `arrayBuffer()`，这六条处置前必失败。`text/html` 与 `image/svg+xml` 两条旧实现的类型白名单本就挡得住，属补齐、非新咬合（记录未夸大，但也未区分，可忽略）。已核后端 `api/snapshot_assets.py:271-278` 确实发 `attachment; filename="snapshot-asset"` + `nosniff`，Content-Length 由 Starlette 按 bytes 自动补，故本轮收紧不会把真实响应挡在门外；e2e 的 `blob:` + `naturalWidth` 正是这条的端到端守卫。
+- **`boundedBlob` 抽取未改 `downloadOriginal` 行为、未弱化任何断言**。`fileBody`（:454-471）仍在**读体之前**做全部头部校验并调用 `attachmentName`；`client.test.ts:159-177` 的 11 条（含 `content-length` `'9'`/`'7'` 两个方向）全部保留。新增的 `!response.body` 判空把原本可能的 TypeError 变成 `ApiError('INVALID_RESPONSE')`，属收紧。唯一语义微调：流中途的非 ApiError 异常统一映射为 `NETWORK_ERROR`，无用例钉住（缺口，非阻断）。
+- **F3 成立**：`package.json:23,33` 与 lock `packages[""]:11,21` 均为 `14.3.1` / `14.2.0`；7 个生产包 `resolved` 全部 `registry.npmjs.org`（已逐条核对）。
+- **F4 成立**：`FROZEN_HOST`/`ORIGIN_HOST` 分属两主机，末尾 `unexpected` 过滤只放行 `origin.example.test`，冻结主机一旦出现即失败。
+- **F5 成立且有咬合**：字节坏、媒体类型丢失、blob URL 提前回收这三种退化下 `src` 仍是 `blob:` 而 `naturalWidth` 为 0，poll 会超时失败。
+- **F6 成立**：lock `1212-1235` 三个 `@types` 齐备且均 `dev: true`。
+
+### 2. 本轮新缺陷 / 陈述宽于证据
+
+无新的安全或功能缺陷。三处**记录与实物不一致**（均非阻断）：
+
+1. 记录 `TASK-042:155` 写「§4.13 新增…**图片的两条去向**」，而契约 `:397` 实际标题与内容是「**图片的三条去向**」（第三条 = 解析后非 http(s) 者不产 `img`）。记录落后于本轮契约文本。
+2. 已知限制 7（`:175`）称相对地址无 base 时「**不出现任何元素**…只在源码视图里看得到…界面不给解释」，与实现不符：`snapshotMarkdown.ts:41` 会产出 `<span class="snapshot-image-refused">替代文本</span>`，`styles.css:2150-2154` 还专门为它加了样式并注明「不静默消失」，契约也写的是「只留可读的替代文本」。方向是**低估**而非夸大，但两处文档互相矛盾。`ContentSnapshot.test.tsx:187` 的注释同此。
+3. 计数/指纹（frontend 488、e2e 43、`files=16`、`ed023c8b…`）我无执行工具、无法复算，按 §6 复用实现者机械证据；可核对的部分自洽：测试文件 21 个 ✓、e2e spec 13 个 ✓、「Review 后 +23」与代码可重建（`downloadSnapshotAsset` 14 + 相对地址 5 + alt/loading 2 + ContentSnapshot 相对地址 2 = 23，本机副本失败那条是在既有用例上加断言而非新增）✓。已知限制 8 与契约 `loading="lazy"` 表述一致 ✓。
+
+**可选建议**：e2e 的 `naturalWidth` poll 依赖冻结图落在首屏（`loading="lazy"`），若详情页上方内容变长把它推出视口，这条会退化为超时失败；`scrollIntoViewIfNeeded()` 后再 poll 可去掉这个不稳定源。
+
+### 3. 结论
+
+**PASS（覆盖新最终候选 `1f1fbc0`）**，无必须修复项。
+- **必须修复**：无。
+- **可记录后继续**：上述记录/契约表述不一致 1、2（改动记录会强制再冻结一轮候选，收益不抵成本，建议并入下一次任何再冻结时更正）；流中途异常映射为 `NETWORK_ERROR` 无用例。
+- **可选建议**：e2e `naturalWidth` 前显式滚动。
+- **剩余风险**（沿用记录，未新增）：安全性质由结构性变配置性、`validateLink` 未穷举、无 CSP、未冻结图片的三条隐私代价。
+
+### Reviewer R1 · 增量确认（`1f1fbc0..b666d93`）
+
+## 覆盖 `b666d93` 的确认
+
+只读（无写工具/无 Bash）；`.git/refs/heads/agent/coordinator/TASK-042-snapshot-rendering` = `b666d936dbc1a8ea79c48b7fb7133791b9a11135`，工作树即新候选。继承对 `1f1fbc0` 的全部审查结论，本轮只核 6 处改动点及其上下文。
+
+**处置成立**（逐条看实现，不看自述）：
+
+- **F7 已关闭**：`ContentSnapshot.tsx:87/104/121` 的 `listFailed` 与 `failed` 分开；`:216-228` 两支互斥（`listFailed` 为真时 `failed` 恒为 0，不丢信息），各自 `role="alert"`。`ContentSnapshot.test.tsx:154` 新增断言「已冻结图片的清单没有读出来」，原来那条把「无提示全走原站」钉死的用例已转为反向守卫，`:166` 单张那支的断言保留未弱化。记录 154 行改写成两支各自陈述，不再宽于证据。
+- **F8 已更正**：记录 155 行为「图片的三条去向」（与契约 §4.13:397 一致）、「16 个文件」（与 148 行一致），「+4 行、0 删除」已删。
+- **F10 已采纳**：`api.ts:332` 改为 `nullableString(item.captured_from_url ?? null)`；字段缺失仍归一为 null，非字符串改为 `INVALID_RESPONSE`——比原先严格，与同文件 `extractor` 等字段一致，符合契约「string/可空」。
+- **R2 两项**：e2e `:85` 的 `scrollIntoViewIfNeeded()` 只加稳不减断言；已知限制 7 改写为「留下替代文字（`span.snapshot-image-refused`）」，与 `snapshotMarkdown.ts:41` 相符，并由两条新断言（`snapshotMarkdown.test.ts:134`、`ContentSnapshot.test.tsx:197`）绑定 `textContent` 为 `一张图`/`图`——span 若被去掉即失败，不是永真断言。
+
+**未引入新问题**：两支 alert 互斥不会同时出现或互相遮蔽；`findByRole('alert')` 在各自用例中唯一；渲染分支的三元/`&&` 结构无 falsy 渲染问题；`listFailed` 未进 `useMemo` 依赖也无需进（不影响 `rendered`）；blob 回收、effect 依赖、`base` 解析路径均未被触碰。
+
+**仅剩一条可选建议**（不必处理）：清单失败提示里「重新读取这份资料可以再试一次」——该分支内并无重读按钮，`retry()` 也只重读正文不重取资产，实际有效路径是刷新页面；措辞略宽于界面提供的操作。原 F9（单张提示文案在「该资产不出现在正文里」时略宽）依旧成立，同为可选。
+
+**结论：PASS，覆盖最终候选 `b666d93`，无阻断项，无待处置项。** 我此前提出的 F7/F8/F10 均已实质关闭；剩余风险与 `1f1fbc0` 报告一致（无 CSP、`validateLink` 变体未穷举、依赖升级无自动提醒、原址图片失败态不可见、重定向致 `captured_from_url` 与采集时 pageUrl 不一致时相对地址匹配不上冻结表）。测试计数与 `check_task.py` 结果为实现者机械证据，我未重跑；定向核对未见与之矛盾处。
+
+### Reviewer R2 · 增量确认（`1f1fbc0..b666d93`）
+
+## 增量确认 — TASK-042 · Reviewer R2 · `1f1fbc0..b666d93`
+
+只读依旧（工具仅 `Read`/`Grep`/`Glob`）。逐条核对了 6 处改动的最终状态。
+
+**处置成立**
+
+- **第 1 点**：`TASK-042:155` 已改为「图片的**三条**去向」并补记本轮契约增补内容，`:148`/`:155` 的「16 个文件」一致，「+4 行、0 删除」已删除。与契约 `§4.13:397` 实际文本一致。
+- **第 2 点**：`:175` 已如实写为「留下 `span.snapshot-image-refused` 替代文字、与伪协议图片同一条降级路径」，与 `snapshotMarkdown.ts:41`、`styles.css:2150` 对齐；两条新断言有咬合力——`snapshotMarkdown.test.ts:134` 与 `ContentSnapshot.test.tsx:197` 断言 `.snapshot-image-refused` 的 `textContent` 恰为 alt 文本，若哪天改成静默丢弃或改回渲染 `img` 都会失败；两处注释同步更正。
+- **可选建议**：`snapshot-rendering.spec.ts:85` 的 `scrollIntoViewIfNeeded()` 在 poll 之前，位置正确。
+- **F7（listFailed）成立，分支逻辑与断言均有咬合力**：`ContentSnapshot.tsx:116-122` 仅在 `.catch` 支置 `listFailed: true`（该支 `failed` 恒为 0，与 `:216-228` 的三元互斥，不会两条提示同时出现）；正常返回支恒为 `false`，故「一张都没冻」不会误报。`ContentSnapshot.test.tsx:154` 的 `findByRole('alert')` + 文本「已冻结图片的清单没有读出来」在处置前必失败（旧实现该支无任何 alert），且该用例保留了「正文照常渲染、两张图都走原址」的原有断言，属加严不是替换。另确认提示挂在 `snapshot ?` 分支内，所以「本来就没有快照」时不会弹出无意义告警。
+- **F10 成立且是收紧**：`api.ts:332` 由裸 cast 改为 `nullableString(...)`，非字符串即 `INVALID_RESPONSE`；`?? null` 只让缺字段退化为 null，与同函数 `failure_code` 一致，未弱化任何既有校验。
+
+**新问题**：无阻断项。两处很小的非阻断记录/措辞：① 记录 `实现与测试` 未提 `nullableString` 这处投影加固（代码内注释已说明）；② 快照里一张图都没有时若清单取不到，仍会显示「图片全部改用原网站地址」——文案略过强，无功能影响。计数与指纹（488/43/`files=16`/`32d93bd2…`）我无执行工具，按 §6 复用；可核对部分自洽：本轮未新增 `it()`，只在既有用例上加断言，与「488 与上一候选同数」相符。
+
+**结论：PASS，覆盖新最终候选 `b666d93`**。继承此前对 `0106953..1f1fbc0` 的全部审查范围（本轮未触及部分不变），先前列出的非阻断项已全部关闭。剩余风险仍为记录中已登记的四条（配置性安全性质、`validateLink` 未穷举、无 CSP、未冻结图片的三条隐私代价）。
+
+### Reviewer R1 · 最终确认（`b666d93..4e2c3a5`）
+
+**确认：`4e2c3a5` 通过，无阻断项、无待处置项。**
+
+只读；`.git/refs/heads/agent/coordinator/TASK-042-snapshot-rendering` = `4e2c3a53fc332045b2aec0e21b5e74ea92f42183`，工作树即最终候选。继承 `b666d93` 的全部结论，本轮只核三处文案与记录。
+
+- **文案与实现相符**：`ContentSnapshot.tsx:218-219` 与 `:224-225` 两条提示现在都只陈述代码真正知道的事——清单失败那支只知道「这一次一律按原网站地址显示」（条件句「正文里若有图片」正确，因为该分支对正文内容一无所知）；单张那支只知道 `failed` 张资产的本机字节取不到，「它们若出现在正文里」如实反映了 `frozen` 表与正文可能不相交。我原先指出的两处过宽表述（断言正文必有该图、以及不存在的「重新读取」入口）均已消除；「刷新页面可以再试一次」与实现相符——effect 依赖 `[resourceId, revision]`，`retry()` 确实不重取资产，只有重新挂载才会。
+- **断言仍有咬合力**：`ContentSnapshot.test.tsx:154` 与 `:166-168` 仍绑在各自提示的实质区分点上（「清单没有读出来」对「N 张已冻结的图片，本机那一份读不出来」，含计数 1），两支互换或退回静默都会失败；`:147-150`、`:162-163` 的行为断言未删未弱化。
+- 记录 155 行已补 `nullableString` 投影加固一条，与 `api.ts:332` 相符。
+
+无逻辑改动，先前认定的安全形态、blob 回收、`base` 解析与契约一致性不受影响。剩余风险同前一份报告（无 CSP、`validateLink` 变体未穷举、依赖升级无自动提醒、原址图片失败态不可见、重定向致 `captured_from_url` 与采集 pageUrl 不一致时匹配不上冻结表），均已在记录中登记。测试计数与 `check_task.py` 为实现者机械证据，我未重跑，定向核对未见矛盾。
+
+### Reviewer R2 · 最终确认（`b666d93..4e2c3a5`）
+
+确认：`b666d93..4e2c3a5` 的三处改动与实现相符，断言咬合力未减。
+
+- 两条提示文案（`ContentSnapshot.tsx:216-228`）已改为条件式表述，不再断言正文里一定有那些图片；「刷新页面可以再试一次」与该分支确实没有重读按钮的事实相符（重读入口只在读快照失败那一支）。`listFailed` 三元互斥、`failed` 计数与两条分支的对应关系一字未动，属纯文案。
+- 断言仍咬合：`ContentSnapshot.test.tsx:154` 仍钉「已冻结图片的清单没有读出来」，`:166-168` 改为「1 张已冻结的图片，本机那一份读不出来」——**仍含变量 `{failed}` 渲染出的计数**，不是只匹配固定前缀，去掉计数或退回静默都会失败；两条断言分别命中两个互斥分支，未合并、未放宽。
+- 记录 `:155` 已补 `nullableString` 那处投影加固，与 `api.ts:330-332` 的实现和注释一致。
+
+**结论：PASS，覆盖最终候选 `4e2c3a5`**。继承 `0106953..b666d93` 的全部审查范围；此前列出的阻断项为零，非阻断项全部关闭。剩余风险仍是记录中已登记的四条（安全性质由结构性转配置性、`validateLink` 未穷举、无 CSP、未冻结图片的三条隐私代价）。计数与指纹（488 / 43 / `files=16` / `b2110dcb…`）我无执行工具，按 §6 复用实现者的机械证据；本轮改动为纯文案与文档，与「用例数不变」自洽。
+
 - 日期与决定日志：2026-09-07 用户合并 PR #46 后指示做完整渲染，并主动问「消毒器是什么」。主 Agent 解释后给出两条路线（甲：关掉原始 HTML、不需消毒器；乙：允许 HTML + 消毒器），并出示对用户库中 7 份快照的实测（无 `<script>`/`on*`/`javascript:`，唯一的 `<` 命中来自 C++ 代码块），说明甲方案在当前语料上的还原度代价接近于零。用户选甲。主 Agent 据此另定两项：选 `markdown-it`（`html` 默认为 false，安全是默认值而非需要主动开启的选项），以及未冻结图片起初定为不自动加载。用户随后追问自动加载的安全隐患并在听完后明确选择**直接自动加载**，主 Agent 按其决定改为自动加载，三条代价逐条写入设计决定 ③ 与已知取舍，并采纳 `referrerpolicy="no-referrer"` 作为唯一缓解。
 <!-- EVIDENCE:END -->
