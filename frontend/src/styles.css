@@ -2112,3 +2112,43 @@ a.source-chip:focus-visible {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* 渲染后的正文。与源码视图共用 .snapshot-body 的外框，只改内部排版。 */
+.snapshot-rendered {
+  white-space: normal;
+  font-family: inherit;
+  line-height: 1.75;
+}
+.snapshot-rendered img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 12px 0;
+  border-radius: 4px;
+}
+.snapshot-rendered pre {
+  overflow-x: auto;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 4px;
+}
+.snapshot-rendered :is(h1, h2, h3) {
+  margin: 18px 0 8px;
+  line-height: 1.4;
+}
+.snapshot-rendered :is(h1) {
+  font-size: 1.15rem;
+}
+.snapshot-rendered :is(h2, h3) {
+  font-size: 1.05rem;
+}
+.snapshot-rendered blockquote {
+  margin: 12px 0;
+  padding-left: 12px;
+  border-left: 3px solid rgba(0, 0, 0, 0.15);
+}
+/* 伪协议等被渲染器拒掉的图片：留下可读的替代文本，不静默消失。 */
+.snapshot-image-refused {
+  color: #6b6157;
+  font-style: italic;
+}

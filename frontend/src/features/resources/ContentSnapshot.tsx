@@ -1,13 +1,49 @@
-import { useCallback, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 
 import {
   deleteResourceSnapshot,
   failureText,
+  frozenImageUrl,
   getResourceSnapshot,
+  listSnapshotAssets,
   putResourceSnapshot,
   type Source,
 } from './api'
+import { renderSnapshot } from './snapshotMarkdown'
 import { useResourceQuery } from './useResourceQuery'
+
+/**
+ * 取回这份资料已冻结的图片，返回「原站地址 → blob URL」的映射，以及一个回收函数。
+ *
+ * 逐张取、失败一张不影响其余：取不到的那张会落回原址加载（未冻结图片的同一条路），
+ * 而不是让整篇正文渲染不出来。
+ */
+async function loadFrozenImages(resourceId: string): Promise<{
+  frozen: Map<string, string>
+  failed: number
+  release: () => void
+}> {
+  const frozen = new Map<string, string>()
+  const assets = await listSnapshotAssets(resourceId)
+  let failed = 0
+  for (const asset of assets) {
+    try {
+      frozen.set(asset.source_url, await frozenImageUrl(resourceId, asset.id))
+    } catch {
+      // 这一张的本机字节取不到，渲染时会退回原址。**必须让用户看见**：他对
+      // 「向图床发请求」的知情同意是针对「这张没冻上」给的；本机副本坏掉时
+      // 静默改走原站，等于在用户以为看的是本机那一份时发了外部请求。
+      failed += 1
+    }
+  }
+  return {
+    frozen,
+    failed,
+    release: () => {
+      for (const url of frozen.values()) URL.revokeObjectURL(url)
+    },
+  }
+}
 
 // The wording depends on what else the detail page shows below this block, so the
 // component has to know the source type: a WEB resource has an "open the original
@@ -25,8 +61,12 @@ const emptyHints: Record<Source, string> = {
   FILE: '还没有保存正文。原件见下方；如果想留一份可检索的纯文本正文，可以粘贴进来。',
 }
 
-// The frozen copy of the resource's text. This page only stores and shows the
-// Markdown source: rendering it as a document belongs to the reader, not here.
+// 资料正文的冻结副本。TASK-042 起这里**渲染**它，而不再只显示 Markdown 源码。
+//
+// 安全形态说清楚：渲染器以 `html: false` 运行，正文里的原始 HTML 一律转义成字面
+// 文本，**不引入消毒器**（用户 2026-09-07 在两条路线中选甲）。已冻结的图片显示本机
+// 那一份；没冻上的按原址自动加载（用户在知情三条隐私代价后决定），只加
+// `referrerpolicy="no-referrer"` 作缓解。详见 docs/tasks/TASK-042。
 export function ContentSnapshot({
   resourceId,
   sourceType,
@@ -38,11 +78,74 @@ export function ContentSnapshot({
   const load = useCallback(() => getResourceSnapshot(resourceId), [resourceId])
   const { result, retry } = useResourceQuery(`${resourceId}:snapshot:${revision}`, load)
   const [editing, setEditing] = useState(false)
+  // 键里带上 resourceId 与 revision：换资料或重读快照时，旧的映射不该被沿用，
+  // 而在新映射取回来之前要显示「正在取回」而不是拿旧的去渲染新正文。
+  const [frozen, setFrozen] = useState<{
+    key: string
+    images: ReadonlyMap<string, string>
+    failed: number
+    listFailed: boolean
+  } | null>(null)
+  const [showSource, setShowSource] = useState(false)
+
+  // 图片随快照一起取。**回收放在 effect 的清理里**：切换资料或离开页面时，
+  // 每个创建过的 blob URL 都要 revoke，否则看得越多留在内存里的字节越多。
+  useEffect(() => {
+    let alive = true
+    let release: (() => void) | undefined
+    void loadFrozenImages(resourceId)
+      .then((loaded) => {
+        release = loaded.release
+        if (alive)
+          setFrozen({
+            key: `${resourceId}:${revision}`,
+            images: loaded.frozen,
+            failed: loaded.failed,
+            listFailed: false,
+          })
+        else loaded.release()
+      })
+      .catch(() => {
+        // 资产列表取不到（没有快照、后端错误、连接失效）。**必须给出空映射而不是
+        // 停在等待态**：否则正文永远显示「正在取回已冻结的图片…」，而正文本身
+        // 明明已经在手上了。降级的结果是所有图片走原址那条路。
+        //
+        // **`listFailed` 必须与「一张都没冻」区分开。** 这一支下所有已冻结的图片
+        // 都会静默改走原站，而用户对「向图床发请求」的知情同意只针对「这张没冻上」。
+        // 此前这里记 `failed: 0`，于是缺口从一张扩大到全部，界面却一个字都不说。
+        if (alive)
+          setFrozen({
+            key: `${resourceId}:${revision}`,
+            images: new Map(),
+            failed: 0,
+            listFailed: true,
+          })
+      })
+    return () => {
+      alive = false
+      release?.()
+    }
+  }, [resourceId, revision])
   const [draft, setDraft] = useState('')
   const [error, setError] = useState('')
   const [pending, setPending] = useState(false)
   const busy = useRef(false)
   const snapshot = result?.data ?? null
+
+  // 相对图片地址（`![](/img/a.png)`）要先解析成绝对地址才能和冻结表对上 —— 表里的
+  // 键是采集时算好的绝对地址。基准用快照自己记的采集地址；它为空时（手工粘贴的正文
+  // 没有采集地址）相对地址不渲染成 img，而不是渲染一个指向本机 UI 自己的 src。
+  //
+  // **没有退回资料 `source_url` 那一层**：那要给本组件加一个属性、改
+  // `ResourceDetail.tsx`，而那个文件不在本任务的 `allowed_paths` 里。已记入已知限制。
+  const base = snapshot?.captured_from_url ?? null
+
+  // **必须 memo**：`renderSnapshot` 每次都新建渲染器并全文解析，而正文上限是
+  // 100 万字。不 memo 的话，在快照旁边的编辑框里每敲一个字都会重解析整篇。
+  const rendered = useMemo(
+    () => (snapshot && frozen ? renderSnapshot(snapshot.content ?? '', frozen.images, base) : ''),
+    [snapshot, frozen, base],
+  )
 
   async function run(work: () => Promise<unknown>) {
     if (busy.current) return
@@ -96,9 +199,48 @@ export function ContentSnapshot({
             {snapshot.extractor} · 第 {snapshot.version} 版
           </p>
           <p className="resource-hint">{snapshotHints[sourceType]}</p>
-          <pre className="snapshot-body" tabIndex={0}>
-            {snapshot.content}
-          </pre>
+          <button
+            type="button"
+            className="text-link"
+            onClick={() => setShowSource((shown) => !shown)}
+          >
+            {showSource ? '看渲染后的正文' : '看 Markdown 源码'}
+          </button>
+          {showSource ? (
+            // 源码视图保留：TASK-042 之前用户只能看到源码，不该因为加了渲染就失去它。
+            <pre className="snapshot-body" tabIndex={0}>
+              {snapshot.content}
+            </pre>
+          ) : frozen?.key === `${resourceId}:${revision}` ? (
+            <>
+              {frozen.listFailed ? (
+                <p className="resource-hint" role="alert">
+                  已冻结图片的清单没有读出来。正文里若有图片，这一次会一律按原网站的地址显示 ——
+                  也就是说会向原网站发请求。刷新页面可以再试一次。
+                </p>
+              ) : (
+                frozen.failed > 0 && (
+                  <p className="resource-hint" role="alert">
+                    有 {frozen.failed} 张已冻结的图片，本机那一份读不出来。它们若出现在正文里，
+                    会改用原网站的地址显示 —— 也就是会向原网站发请求，且原网站删图或改版后失效。
+                  </p>
+                )
+              )}
+              <div
+                className="snapshot-body snapshot-rendered"
+                tabIndex={0}
+                // 内容来自 `renderSnapshot`，它以 `html: false` 渲染：正文里的原始 HTML
+                // 已被转义成字面文本，进不了 DOM。这一处是本项目唯一的
+                // dangerouslySetInnerHTML，其安全性完全依赖那个配置，
+                // 而那个配置由 `snapshotMarkdown.test.ts` 直接断言。
+                dangerouslySetInnerHTML={{ __html: rendered }}
+              />
+            </>
+          ) : (
+            <p className="resource-hint" role="status">
+              正在取回已冻结的图片…
+            </p>
+          )}
         </>
       ) : (
         <p className="resource-hint">{emptyHints[sourceType]}</p>

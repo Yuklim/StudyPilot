@@ -327,7 +327,9 @@ function snapshot(value: unknown, resourceId: string): ContentSnapshot {
     char_count: ready ? integer(item.char_count, 1) : null,
     sha256: ready ? (item.sha256 as string) : null,
     captured_at: instant(item.captured_at),
-    captured_from_url: (item.captured_from_url ?? null) as string | null,
+    // **不用裸 cast**：TASK-042 起这个值被当作解析相对图片地址的 base 用，
+    // 与同文件其余字段一样交给 `nullableString` 校验（非字符串即 INVALID_RESPONSE）。
+    captured_from_url: nullableString(item.captured_from_url ?? null),
     extractor: item.extractor,
     status: item.status,
     failure_code: (item.failure_code ?? null) as string | null,
@@ -396,6 +398,16 @@ export async function uploadSnapshotAsset(
   form.append('source_url', sourceUrl)
   const envelope = object(await api.uploadSnapshotAsset(resourceId, form, expectedVersion))
   return snapshotAsset(envelope.data)
+}
+
+/**
+ * 取回一张已冻结图片的字节，并给出一个可以放进 `<img src>` 的 blob URL。
+ *
+ * **调用方必须负责 `URL.revokeObjectURL`**：不回收的话，每切换一份资料就多留一份
+ * 字节在内存里，看图越多占得越狠。回收时机见 `ContentSnapshot`。
+ */
+export async function frozenImageUrl(resourceId: string, assetId: string): Promise<string> {
+  return URL.createObjectURL(await api.downloadSnapshotAsset(resourceId, assetId))
 }
 
 /** 列出这份资料已冻结的图片。 */

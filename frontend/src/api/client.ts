@@ -38,6 +38,16 @@ export interface FileDownload {
   blob: Blob
   fileName: string
 }
+
+/** 与后端 `MAX_ASSET_BYTES` 一致（modules/resources/assets.py）：单张冻结图片 10 MiB。 */
+export const MAX_ASSET_BYTES = 10 * 1024 * 1024
+/** 后端**按字节魔数**认出的四种；SVG 不在内（它是可执行 XML）。 */
+export const assetMediaTypes: readonly string[] = [
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+]
 const fileIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 function versionedDeleteTarget(target: string): boolean {
@@ -404,6 +414,43 @@ function attachmentName(disposition: string): string {
   return name
 }
 
+/**
+ * 按「声明长度」与「硬上限」双重设界地读完响应体，边读边计数、超界立即中止。
+ *
+ * 抽出来是为了让原件下载与冻结图片下载真正共用同一套界限。此前资产下载直接
+ * `response.arrayBuffer()`，没有任何上限 —— 与它注释里自称的「与 downloadOriginal
+ * 同形」并不相符，一个撒谎或坏掉的响应体能把内存读爆。
+ */
+async function boundedBlob(
+  response: Response,
+  mediaType: string,
+  expected: number,
+  limit: number,
+): Promise<Blob> {
+  if (!response.body) throw new ApiError('INVALID_RESPONSE', response.status)
+  const reader = response.body.getReader()
+  const chunks: ArrayBuffer[] = []
+  let received = 0
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      received += value.byteLength
+      if (received > expected || received > limit) {
+        throw new ApiError('INVALID_RESPONSE', response.status)
+      }
+      chunks.push(new Uint8Array(value).buffer)
+    }
+    if (received !== expected) throw new ApiError('INVALID_RESPONSE', response.status)
+    return new Blob(chunks, { type: mediaType })
+  } catch (error) {
+    await reader.cancel().catch(() => undefined)
+    throw error instanceof ApiError ? error : new ApiError('NETWORK_ERROR')
+  } finally {
+    reader.releaseLock()
+  }
+}
+
 async function fileBody(response: Response): Promise<FileDownload> {
   const mediaType = response.headers.get('content-type')?.toLowerCase().trim() ?? ''
   const disposition = response.headers.get('content-disposition') ?? ''
@@ -416,32 +463,11 @@ async function fileBody(response: Response): Promise<FileDownload> {
     !/^[1-9]\d*$/.test(length) ||
     !Number.isSafeInteger(expected) ||
     expected > MAX_FILE_BYTES ||
-    response.headers.get('x-content-type-options') !== 'nosniff' ||
-    !response.body
+    response.headers.get('x-content-type-options') !== 'nosniff'
   )
     throw new ApiError('INVALID_RESPONSE', response.status)
   const fileName = attachmentName(disposition)
-  const reader = response.body.getReader()
-  const chunks: ArrayBuffer[] = []
-  let received = 0
-  try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      received += value.byteLength
-      if (received > expected || received > MAX_FILE_BYTES) {
-        throw new ApiError('INVALID_RESPONSE', response.status)
-      }
-      chunks.push(new Uint8Array(value).buffer)
-    }
-    if (received !== expected) throw new ApiError('INVALID_RESPONSE', response.status)
-    return { blob: new Blob(chunks, { type: mediaType }), fileName }
-  } catch (error) {
-    await reader.cancel().catch(() => undefined)
-    throw error instanceof ApiError ? error : new ApiError('NETWORK_ERROR')
-  } finally {
-    reader.releaseLock()
-  }
+  return { blob: await boundedBlob(response, mediaType, expected, MAX_FILE_BYTES), fileName }
 }
 
 export function createApiClient() {
@@ -535,6 +561,40 @@ export function createApiClient() {
       if (!object(payload) || !Object.hasOwn(payload, 'data'))
         throw new ApiError('INVALID_RESPONSE', response.status)
       return payload
+    },
+    async downloadSnapshotAsset(resourceId: string, assetId: string): Promise<Blob> {
+      // 与 `downloadOriginal` 走同一套响应校验（状态、类型白名单、nosniff、
+      // attachment、声明长度 + 硬上限的边读边计数），只有两处不同：类型白名单是
+      // 后端按字节魔数认出的四种图片，返回值是 Blob 而不是 `FileDownload` ——
+      // 资产没有文件名、也不做另存，只用来在页面上显示。
+      //
+      // **`<img src>` 打不到这个端点**：门禁要求 `sec-fetch-dest: empty` 与进程令牌，
+      // 而浏览器的图片请求两样都不满足（契约 §4.14）。所以必须先 fetch 再转 blob URL。
+      if (!fileIdPattern.test(resourceId) || !fileIdPattern.test(assetId))
+        throw new ApiError('INVALID_REQUEST')
+      const usedToken = await acquire()
+      const response = await transport(
+        '/api/v1/resources/' + resourceId + '/snapshot/assets/' + assetId + '/bytes',
+        'GET',
+        new Headers({ 'X-StudyPilot-Token': usedToken }),
+      )
+      await checked(response, usedToken)
+      const mediaType = response.headers.get('content-type')?.toLowerCase().trim() ?? ''
+      const disposition = response.headers.get('content-disposition') ?? ''
+      const length = response.headers.get('content-length') ?? ''
+      const expected = Number(length)
+      // 只接受后端**按字节魔数**判定出的那四种；不采信任何别的声明。
+      if (
+        response.status !== 200 ||
+        !assetMediaTypes.includes(mediaType) ||
+        !/^attachment\s*;/i.test(disposition) ||
+        !/^[1-9]\d*$/.test(length) ||
+        !Number.isSafeInteger(expected) ||
+        expected > MAX_ASSET_BYTES ||
+        response.headers.get('x-content-type-options') !== 'nosniff'
+      )
+        throw new ApiError('INVALID_RESPONSE', response.status)
+      return boundedBlob(response, mediaType, expected, MAX_ASSET_BYTES)
     },
     async downloadOriginal(fileId: string): Promise<FileDownload> {
       if (!fileIdPattern.test(fileId)) throw new ApiError('INVALID_REQUEST')
