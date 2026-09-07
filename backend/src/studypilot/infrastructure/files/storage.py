@@ -10,6 +10,8 @@ from typing import BinaryIO
 from uuid import uuid4
 
 from studypilot.infrastructure.files.formats import recognize, safe_name
+from studypilot.infrastructure.files.images import recognize_image
+from studypilot.modules.resources.assets import MAX_ASSET_BYTES, AssetBytes
 from studypilot.modules.resources.contracts import ResourceError
 from studypilot.modules.resources.files import MAX_FILE_BYTES, FileContent, trash_key
 
@@ -104,6 +106,28 @@ class LocalFileStorage:
             name,
             len(data),
             media_type,
+            hashlib.sha256(data).hexdigest(),
+            key,
+            f"objects/{uuid4().hex}",
+        )
+
+    def inspect_image(self, key: str) -> AssetBytes:
+        """Recognize a staged image from its bytes alone; never from a filename.
+
+        An asset has no user-supplied name to sanitize and no container to parse,
+        so this shares `_bytes` with `inspect` but stops at the signature check.
+        """
+
+        data = self._bytes(key)
+        # The streaming upload already refuses beyond this; re-checked here because
+        # `_bytes` only knows the 25 MiB ceiling that applies to uploaded originals.
+        if len(data) > MAX_ASSET_BYTES:
+            raise ResourceError("ASSET_TOO_LARGE", 413)
+        media_type = recognize_image(data)
+        self._sync(self._path(key).parent)
+        return AssetBytes(
+            media_type,
+            len(data),
             hashlib.sha256(data).hexdigest(),
             key,
             f"objects/{uuid4().hex}",

@@ -11,6 +11,7 @@ owner = "coordinator"
 base = "e9372015c42e55856ae8ba47884506444822f374"
 allowed_paths = [
   "docs/research/阅读器与标注能力调研.md",
+  "docs/tasks/TASK-039-snapshot-assets.md",
   "docs/tasks/TASK-041-reading-research-doc.md",
   "docs/tasks/任务索引.md",
 ]
@@ -27,6 +28,14 @@ checks = []
 - **禁止范围**：所有未列入 `allowed_paths` 的路径。
 - **依赖**：无。基线为 main `e937201`（TASK-039 的分支尚未合并，与本任务无路径交集）。
 - **并行**：否。
+
+### 顺带完成的状态登记与索引冲突处置（合并 PR #44 之后追加）
+
+`docs/tasks/TASK-039-snapshot-assets.md` 在 `allowed_paths` 内，**仅用于把它的 `status` 由 `ACCEPTED` 登记为 `MERGED`**（2026-09-07 用户合并 PR #44，merge commit `5abf0eb`，已用 `gh pr view` 与 `git log origin/main` 双向核实），并同步其 EVIDENCE 区「最终状态」一行。依据是根 `AGENTS.md` §5「合并后……状态登记可并入下一个已授权任务的控制面提交」，不为收尾另造 PR。**除此之外不改该记录一个字。**
+
+同时处置索引冲突：本分支从合并前的 main（`e937201`）拉出，PR #44 合并后 `docs/tasks/任务索引.md` 的表头区与 origin/main 冲突。处置方式为**把 origin/main 的整块原样保留、只把本任务的行置顶**，并按上述登记把 TASK-039 行改为 MERGED。核实：合并后索引共 41 行任务行 = origin/main 的 40 行 + TASK-041 一行，且 `git diff origin/main` 对该文件为 **2 增 1 删**（新增 TASK-041 行、替换 TASK-039 行），没有任何既有行被丢弃或改写。**用合并方式而非 rebase**：分支已推送且已开 PR，rebase 需强推，为 §2 明令禁止。
+
+
 
 ## 完成条件
 
@@ -53,7 +62,7 @@ checks = []
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：**`2190d90c3b7b15153f4bc1d2d8e77c4afd78d70a`**（base `e937201`，3 个文件，全部在 `allowed_paths` 内）。`check_task.py --worktree` → **CHECKS PASS**，`risk=L1`，`stages=('worker',)`，`files=3`，`product_fingerprint=85aee36ed86273b81d2390971c26a5ca9b5b86336f585fdd5d511ba330cf07d0`，`profiles=`（无代码改动，未选中任何检查组）。环境：macOS Darwin 25.5.0、`backend/.venv`。本次检查**没有再因未跟踪文件超范围而失败**——这正是完成条件 2 要的直证。
+- 候选 SHA：首轮候选 `2190d90c3b7b15153f4bc1d2d8e77c4afd78d70a`；**合并 origin/main 并处置索引冲突后形成新候选，其精确 SHA 在下一次写回时补记**（提交无法引用自身）。首轮候选的记录如下：**`2190d90c3b7b15153f4bc1d2d8e77c4afd78d70a`**（base `e937201`，3 个文件，全部在 `allowed_paths` 内）。`check_task.py --worktree` → **CHECKS PASS**，`risk=L1`，`stages=('worker',)`，`files=3`，`product_fingerprint=85aee36ed86273b81d2390971c26a5ca9b5b86336f585fdd5d511ba330cf07d0`，`profiles=`（无代码改动，未选中任何检查组）。环境：macOS Darwin 25.5.0、`backend/.venv`。本次检查**没有再因未跟踪文件超范围而失败**——这正是完成条件 2 要的直证。
 - Review：**L1，N/A**（按 `AGENTS.md` §4，L1 执行链为「1 Worker → 自动检查 + 自检 → 主 Agent 汇总」，Review 与验收明确 N/A）。本任务未派任何独立审查实例。
 - Acceptance：**L1，N/A**。
 - 最终状态/风险/用户操作：status=**ACCEPTED**。L1 执行链完整：Worker → 自动检查（CHECKS PASS）→ 主 Agent 自检；Review 与 Acceptance 按等级 **N/A，未派任何独立实例**。完成条件 5 条全部满足：①②由 `git status` 与上面那次 CHECKS PASS 直证；③**无法用 git 证明，如实说明**：文件是首次入库，历史里没有前一版可比，`git diff base..candidate` 只会显示整份新增。可依据的只有过程性论据 —— 对该文件的全部写入只有一次脚本化替换，三处各带精确匹配断言（不匹配即中止），此外没有任何写入。**这是过程论据，不是 git 级证据**；若要真证，须有该文件入库前的独立副本可比，而它此前从未被跟踪，副本并不存在。④⑤为文本内容，主 Agent 逐条比对四份任务记录后写入，无第三方复核（见已知限制 1）。**需要用户操作**：审阅后决定是否合并。它与 TASK-039 分支无路径交集，两者可各自独立合并、顺序不限。

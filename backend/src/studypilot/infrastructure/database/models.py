@@ -21,11 +21,14 @@ from sqlalchemy import (
     MetaData,
     String,
     Text,
+    UniqueConstraint,
     Uuid,
     event,
     inspect,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, Mapper, declared_attr, mapped_column
+
+from studypilot.modules.resources.assets import IMAGE_MEDIA_TYPES
 
 from .types import UTCDateTime, utc_now
 
@@ -290,6 +293,49 @@ class ContentSnapshot(Identified, Created, Versioned, Base):
     extractor: Mapped[str] = mapped_column(String(80))
     status: Mapped[str] = mapped_column(choices("status", "READY", "FAILED"), default="READY")
     failure_code: Mapped[str | None] = mapped_column(Text)
+
+
+class SnapshotAsset(Identified, Created, Base):
+    """One image belonging to a snapshot's frozen text, stored as bytes on disk.
+
+    It hangs off the snapshot rather than the resource because an image is part of
+    a particular copy of the text: replacing the text makes its images obsolete,
+    and the CASCADE says so. Neither existing table could carry it —
+    `content_snapshots.content` is Text, and `original_files` is UNIQUE per resource
+    with a media-type allowlist that has no image in it.
+
+    Not `Versioned`: an asset is written once and deleted, never edited in place.
+    Its precondition is the snapshot's version, which is what a caller can see.
+
+    The row is the only thing that keeps the bytes alive — `FileRepository.references()`
+    reads this table, and anything in the controlled directory it does not name is
+    swept as an orphan after 24 hours.
+    """
+
+    __tablename__ = "snapshot_assets"
+    __table_args__ = (
+        CheckConstraint(
+            "media_type IN ('image/png', 'image/jpeg', 'image/gif', 'image/webp')",
+            name="media_type",
+        ),
+        bounded_length("sha256", 64, 64),
+        bounded_length("source_url", 1, 2048),
+        CheckConstraint("length(storage_key) >= 1", name="storage_key_nonempty"),
+        CheckConstraint("size_bytes BETWEEN 1 AND 10485760", name="size_bounds"),
+        # One row per address per snapshot: re-uploading the same image is idempotent.
+        UniqueConstraint("snapshot_id", "source_url"),
+        {"info": {"owner": "resources"}},
+    )
+    snapshot_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("content_snapshots.id", ondelete="CASCADE"), index=True
+    )
+    # Where the image sat in the captured page. A matching key for renderers, never
+    # a fetch target: the backend makes no outbound request.
+    source_url: Mapped[str] = mapped_column(String(2048))
+    storage_key: Mapped[str] = mapped_column(Text, unique=True)
+    media_type: Mapped[str] = mapped_column(choices("media_type", *IMAGE_MEDIA_TYPES))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(String(64))
 
 
 class ResourceTag(Created, Base):

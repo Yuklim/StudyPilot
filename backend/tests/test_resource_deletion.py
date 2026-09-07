@@ -126,6 +126,7 @@ def test_preview_and_delete_cascades_resource_data_but_keeps_taxonomy(
     assert body["resource_version"] == 2
     assert body["impact"] == {
         "original_file_count": 0,
+        "snapshot_asset_count": 0,
         "note_count": 1,
         "study_record_count": 1,
         "active_review_plan_count": 1,
