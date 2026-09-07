@@ -167,4 +167,13 @@ test('collapsing the sidebar actually gives the space to the reading area', asyn
     await page.setViewportSize({ width, height: 844 })
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   }
+
+  // **窄屏不该被折叠状态压成一条窄带。** ≤760px 是另一套 `display:block` 布局，没有
+  // 网格轨道可收。我一度写了一条 `max-width:760px` 的撤销规则想关掉它——同名同特异度
+  // 而 `width:68px` 在其后，后者胜，**那条规则根本没生效**，而当时唯一的守卫是
+  // 「不横向溢出」，两种情况都绿，没有任何断言能发现这次撤销失败。这条补上。
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/resources')
+  const narrow = (await page.locator('.sidebar').boundingBox())!
+  expect(narrow.width, '窄屏折叠态下侧栏不该是 68px 的窄带').toBeGreaterThan(200)
 })
