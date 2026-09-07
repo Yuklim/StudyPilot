@@ -229,9 +229,32 @@ describe('reader toolbar', () => {
     ] as const) {
       const control = screen.getByRole(role, { name })
       expect(control.textContent).toBe('')
-      expect(control).toHaveAttribute('title')
+      // **要校验 `title` 的值，不只是它存在**：写错了照样绿。
+      expect(control.getAttribute('title')).toContain(name)
       expect(control.querySelector('svg')).not.toBeNull()
     }
+  })
+
+  it.each([
+    ['FILE', sampleFile(), '原件'],
+    ['PASTE', sample({ source_type: 'PASTE', pasted_content: '合成原文' }), '粘贴原文'],
+  ])('gives the %s original entry the same icon treatment', async (_source, item, name) => {
+    // 这两个按钮在 `OriginalEntry` 的另一段 JSX 里，上一条覆盖不到——Reviewer 指出的。
+    mount(item)
+    const control = await screen.findByRole('button', { name })
+    expect(control.textContent).toBe('')
+    expect(control.getAttribute('title')).toContain(name)
+    expect(control.querySelector('svg')).not.toBeNull()
+  })
+
+  it('does not steal focus when the resource is opened by its URL directly', async () => {
+    // **这是 `focusedForRoute` 那个状态位存在的唯一理由**：直接打开一个网址不是路由
+    // 切换，外壳不该聚焦；数据到达换掉占位标题时也不该顺手把焦点抢过去。
+    // 此前只有实现、没有守卫。
+    mount()
+    const title = await screen.findByRole('heading', { name: '合成阅读资料', level: 1 })
+    expect(title).not.toHaveFocus()
+    expect(document.body).toHaveFocus()
   })
 
   it('keeps the status badge as text, because it shows a value and not an action', async () => {

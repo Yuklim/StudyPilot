@@ -2343,7 +2343,8 @@ a.source-chip:focus-visible {
 }
 .app-shell.nav-collapsed .brand-copy,
 .app-shell.nav-collapsed .nav-label,
-.app-shell.nav-collapsed .sidebar-note {
+.app-shell.nav-collapsed .sidebar-note,
+.app-shell.nav-collapsed .sidebar-footer {
   display: none;
 }
 .app-shell.nav-collapsed .primary-nav a,

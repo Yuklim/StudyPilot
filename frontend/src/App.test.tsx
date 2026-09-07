@@ -47,6 +47,13 @@ describe('StudyPilot journal shell', () => {
       // 「没有假输入」这条守的是**主内容区**。左栏的折叠按钮是一个真控件，不该被它误伤，
       // 所以把范围收到 main 里——这比原来的全文档范围更贴近这条断言本来的意思。
       expect(within(main()).queryByRole('button')).not.toBeInTheDocument()
+      // **收窄范围会让「左栏一个按钮都没有」这条隐含保证凭空消失**，所以显式补回来：
+      // 左栏的按钮恰好是折叠导航栏那一个。
+      const sidebarButtons = within(
+        screen.getByRole('complementary', { name: '学习空间导航' }),
+      ).getAllByRole('button')
+      expect(sidebarButtons).toHaveLength(1)
+      expect(sidebarButtons[0]).toHaveAccessibleName('收起导航栏')
       expect(container.querySelector('input, textarea, select, form')).toBeNull()
       expect(fetchSpy).not.toHaveBeenCalled()
       expect(api.request).not.toHaveBeenCalled()

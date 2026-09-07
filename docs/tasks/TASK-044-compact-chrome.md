@@ -81,7 +81,7 @@ checks = []
 
 **新增 `frontend/src/shell/heading.tsx`，登记时没有预见到。** 目标 1 要求「阅读器页自己渲染 `h1`」，而 `h1` 是外壳统一管理的焦点落点——两者之间需要一条把元素交回外壳的通道。登记时我以为改 `App.tsx` 与 `ResourceDetail.tsx` 就够，实际需要一个双方都能引用的小模块，否则要么把焦点逻辑复制到每个自带标题的页面里（那正是这条无障碍契约最容易破的地方），要么在 `App.tsx` 里去 DOM 里捞 `h1`（异步内容下不可靠）。
 
-**这是一个新的实现文件，不是测试文件**，比 TASK-043 那两次修订更实质，因此单独记在这里。它只有 12 行：一个 React context 加一个 hook，不含任何业务逻辑。**是 `check_task.py` 拦下来的**——`FAIL: out of scope: frontend/src/shell/heading.tsx`，不是我自己发现的。
+**这是一个新的实现文件，不是测试文件**，比 TASK-043 那两次修订更实质，因此单独记在这里。它只有 15 行：一个 React context 加一个 hook，不含任何业务逻辑。**是 `check_task.py` 拦下来的**——`FAIL: out of scope: frontend/src/shell/heading.tsx`，不是我自己发现的。
 
 ### 依赖/前置条件
 
@@ -165,26 +165,36 @@ checks = []
   | 左栏宽 · 1440px | 228px | **68px**（折叠态） |
 
 - **命令与真实退出结果**（全部由实现者本人在本机运行，无第三方复核）：
-  - `check_task.py --worktree` → **CHECKS PASS**，`risk=L3`，`profiles=frontend`，`files=20`，`product_fingerprint=a69224db5a5102bf34ab79dc9e10fd0f2002b567638c219ae8235d00d23d65a0`。
-  - **frontend 527 passed**（23 文件），基线 **512**（22 文件），净增 **15**：新建 `shell/ShellPages.test.tsx` 10 条（横幅分页断言 5 条 + 折叠 5 条），`ResourceToolbar.test.tsx` +5（唯一 h1、读取中/读取失败各一条、图标按钮的双向断言、状态徽章仍是文字）。
-  - **e2e 47 passed**，基线 **44**，净增 3（窄屏第一屏、标题即页面标题且到达时获焦、左栏折叠确有宽度收益）。
+  - `check_task.py --worktree` → **CHECKS PASS**，`risk=L3`，`profiles=frontend`，`files=20`，`product_fingerprint=c884b2a6b59d10737ea89c364357ece086b3a91acc6ec626bd946f90e83b8324`（首个候选 `c203bd5` 为 `a69224db…`）。
+  - **frontend 534 passed**（23 文件），基线 **512**（22 文件），净增 **22**（首轮 15，处置 Review 后再补 7：非 WEB 分支的两个图标按钮、直接打开 URL 不抢焦点、其余页面的说明句 3 条、左栏按钮唯一性 1 条）：新建 `shell/ShellPages.test.tsx` 10 条（横幅分页断言 5 条 + 折叠 5 条），`ResourceToolbar.test.tsx` +5（唯一 h1、读取中/读取失败各一条、图标按钮的双向断言、状态徽章仍是文字）。
+  - **e2e 47 passed**，基线 **44**，净增 3（窄屏第一屏、标题即页面标题且到达时获焦、左栏折叠确有宽度收益）。**这一次明确把「跑了多少」与 `npx playwright test --list` 的「收集多少」对上了：47 = 47**——上一轮我正是没做这一步才把 7 条失败当成通过。
   - `npm run typecheck` / `lint` / `prettier --check` 全绿。
   - **backend 与 extension 未运行**：本任务在这两棵树下零改动、不在 `allowed_paths` 内，检查脚本据变更自动选组因而只选中 `frontend`。**这是结构性论据，不是观察到它们仍为绿。**
   - 环境：macOS Darwin 25.5.0；Node 24；Chromium（Playwright）。
 - **一次我自己读错测试结果的记录**：处置到一半时我用 `npm run test:e2e 2>&1 | tail -8` 看结果，只看到「40 passed」就当过了。**实际是 7 条失败**——失败清单 7 行加上「7 failed」正好 9 行，`tail -8` 把「7 failed」那一行切掉了。更关键的是我**没有把 40 和应有的 47 对上**：`npx playwright test --list` 显示收集 47 条，40 ≠ 47 本身就是信号。已改为把完整输出落盘再读。
-- **既有断言的改动（无删除、无弱化，逐条说明）**：
+- **既有断言的改动（逐条说明；**其中一处是范围收缩，不是收紧**）**：
+  0. **先更正一句我自己写错的总括**：初稿写「无删除、无弱化」，**R2 用两处收窄证伪**。把「没有假控件」的范围从整个文档收到 `#main-content` 之后，旧写法隐含保证的「左栏一个按钮都没有」凭空消失了，而我没有补替代断言。已在 `App.test.tsx` 与 `scaffold.spec.ts` 各补一条：左栏的按钮**恰好是折叠导航栏这一个**，并断言它的可访问名称。补上之后这两处才真的是收紧。
   1. `App.test.tsx`：横幅断言由「每页都有」改为「只有概览页有、其余页没有」（**更强**，它现在同时钉住了正反两面）；「没有假控件」那条的范围由整个文档收到 `#main-content`（左栏的折叠按钮是真控件，不该被它误伤）。
   2. `scaffold.spec.ts`：同上两处；`/resources/synthetic-id` 的 h1 由「资料详情」改为错误态的「这份资料打不开」，**并保留** `toHaveTitle('资料详情 · StudyPilot')`（标签页名字没变）。
+  6. **一处我加了又被要求撤回的弱化**：窄屏循环里我把 `getByRole('heading', { level: 1 })` 改成了 `.first()`。R2 指出这**悄悄放宽了原来由 strict mode 隐含保证的「每页恰好一个 h1」**，而且是未登记的弱化；我用 `git diff` 确认那个 `.first()` 确实是本次加的。已改回显式的 `toHaveCount(1)` + `toBeVisible()`，比原来更明确。
   3. `ResourcePages.test.tsx` / `ResourceDeletion.test.tsx` / `ResourceToolbar.test.tsx` / `taxonomy.spec.ts` / `resource-pages.spec.ts`：资料标题的 heading level 由 2 改为 1。
   4. `ResourcePages.test.tsx` 的焦点断言由「『资料详情』h1 获焦」改为「资料标题 h1 获焦」并加断言「不再存在『资料详情』这个 heading」——**更强**：同时钉住了标题是什么与焦点落在哪。
   5. `ClassificationPages.test.tsx`：认详情页的标志由「资料详情」h1 改为资料标题 h1。
+- **Review 后的处置（形成新候选）**：
+  - **R2（必须记录）**：见上文「既有断言的改动」第 0 条与第 6 条——我那句「无删除、无弱化」被两处收窄证伪，`.first()` 是未登记的弱化。两处都补了替代断言，不是改措辞了事。
+  - **R2（完成条件 5 的覆盖缺口）**：「其余页面的**说明句**保持原样」此前一条用例都没有。已补，并且**从 `pageAt()` 真值表取标题与说明句**——我第一版凭印象写了两句 caption，两句都不对，**这是本任务同一形态的第三次**（前两次：`ShellPages.test.tsx` 里把「学习记录」写成「学习历史」的死参数、以及 TASK-043 那次状态标签正则）。
+  - **R1（焦点窗口偏宽）**：交接成功后把 `focusedForRoute` 置回 false，把「焦点在 body 就接管」的窗口收敛到一次，而不是开到离开这条路由为止。
+  - **R1（图标守卫有缺口）**：反向断言原本只覆盖 WEB 分支的三个按钮，漏了 `OriginalEntry` 另一段 JSX 里的「原件」「粘贴原文」；且只断言 `title` 存在、不校验值。两处都补上。
+  - **R1（缺守卫）**：「直接打开 URL 不该抢焦点」此前只有实现没有用例——而那正是 `focusedForRoute` 这个状态位存在的唯一理由。已补。
+  - **R1（小修）**：`localStorage.setItem` 从 `setState` 的更新函数移到事件处理器（更新函数应当是纯的）；折叠态下 `.sidebar-footer` 一并收起；`ShellPages.test.tsx` 的死参数「学习历史」改为「学习记录」。
 - **已知限制/未完成项**：
   1. **正文里的 `# 标题` 本身渲染成 `h1`**，因此整页不止一个一级标题。这在本任务之前就存在（那时是「资料详情」+ 正文标题），本任务只是让页面那一个变成了资料名。要把正文标题降级得改 `snapshotMarkdown.ts`，而那是本任务明确排除的文件——留给后续任务。用例用 `pageHeadings()` 把正文区排除在外，这一点写在那个辅助函数的注释里。
   2. **图标认不认得出，测试帮不上忙**：本仓所有测试按可访问名称查控件，图标化之后照样全绿。唯一的机器守卫是那条反向断言（可见文本为空 + 名称与 `title` 都在），「好不好认」只能靠人看。
   3. **左栏折叠态下五个入口全靠图标辨认**，因此默认展开、由用户自选。
   4. **开发阶段横幅从其余页面消失**，「复习、统计尚未开放」这个预期只在概览页交代一次。
   5. **窄屏（≤640px）下左栏是另一套布局**，折叠按钮在那里的表现未专门设计，只保证不横向溢出。
-  6. 心得侧栏、窄屏浮层、心得数量角标顺延至 TASK-045。
+  6. **`EmptyPage` 兜底分支只有 `h2`**：`pages.ts` 给 `/resources/:resourceId` 置了 `ownHeading`，若哪天路由匹配与 `pageAt` 不一致而走到兜底，那一屏会是零 `h1`（当前不可达，两者用同一 pattern）。R1 指出的潜在耦合。
+  7. 心得侧栏、窄屏浮层、心得数量角标顺延至 TASK-045。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据

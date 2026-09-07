@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App'
 import { api } from '../api/client'
 import { renderWithRouter } from '../test/render'
+import { pageAt } from './pages'
 
 // TASK-044：外壳压缩后的两件事——开发阶段横幅只在概览页，左栏可折叠。
 //
@@ -32,12 +33,36 @@ describe('development-stage notice', () => {
     ['/resources', '资料库'],
     ['/classifications', '分类整理'],
     ['/notes', '我的心得'],
-    ['/study-records', '学习历史'],
+    // 这一页叫「学习记录」，不是「学习历史」——参数虽然没被用上，写错的字面量
+    // 仍然是这个仓库反复栽跟头的那个形态，改对。
+    ['/study-records', '学习记录'],
   ])('is gone from %s', (route) => {
     // 它是一句关于产品阶段的说明，属于首页。此前每一页都显示，对每天用的人没有信息量，
     // 却在阅读器上占掉 45–87px。
     renderWithRouter(<App />, route)
     expect(screen.queryByText(NOTICE)).toBeNull()
+  })
+})
+
+describe('other pages keep their heading block', () => {
+  // 完成条件 5 要求「其余页面的 h1 与**说明句**保持原样」。h1 那一半本来就有覆盖，
+  // 说明句这一半此前一条用例都没有——Reviewer 指出的缺口。
+  // **从真值表取，不写字面量。** 我第一版凭印象写了两句 caption，全都不对——
+  // 这正是本仓反复栽的那个形态（断言绑在臆想的字符串上）。
+  it.each([['/'], ['/resources'], ['/study-records']])(
+    'keeps the heading and caption on %s',
+    (route) => {
+      const page = pageAt(route)
+      renderWithRouter(<App />, route)
+      expect(screen.getByRole('heading', { name: page.title, level: 1 })).toBeVisible()
+      expect(screen.getByText(page.caption)).toBeVisible()
+    },
+  )
+
+  it('is the reader page that loses the heading block, and only it', () => {
+    renderWithRouter(<App />, '/resources/018f1f58-4eb2-4a0d-a716-fb81b1960000')
+    expect(screen.queryByText(pageAt('/resources/x').caption)).toBeNull()
+    expect(screen.queryByText('STUDYPILOT / YOUR LEARNING JOURNAL')).toBeNull()
   })
 })
 

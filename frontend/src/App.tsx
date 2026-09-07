@@ -41,19 +41,24 @@ function App() {
     // 数据到了再换成真正的资料标题；旧节点一移除，焦点就掉到 `body`，导航过来的键盘
     // 用户在数据到达的一瞬间失去落点——而这在屏幕上完全看不出来。
     // 只在「本次路由已经聚焦过、且此刻焦点无处可去」时接管，不抢用户点到别处的焦点。
-    if (focusedForRoute.current && document.activeElement === document.body) element.focus()
+    // **接管一次就收敛这个窗口**：否则它会一直开到离开这条路由为止，此后任何一次
+    // 「用户点了空白处 + h1 重挂载」都会把焦点抢回标题。
+    if (focusedForRoute.current && document.activeElement === document.body) {
+      element.focus()
+      focusedForRoute.current = false
+    }
   }, [])
 
   function toggleNav() {
-    setCollapsed((value) => {
-      const next = !value
-      try {
-        localStorage.setItem(NAV_KEY, next ? '1' : '0')
-      } catch {
-        // 存不下就只影响这一次会话，不影响本次折叠。
-      }
-      return next
-    })
+    const next = !collapsed
+    setCollapsed(next)
+    // **写在事件处理器里，不在 setState 的更新函数里**：更新函数应当是纯的，
+    // StrictMode 下会被调用两次。
+    try {
+      localStorage.setItem(NAV_KEY, next ? '1' : '0')
+    } catch {
+      // 存不下就只影响这一次会话，不影响本次折叠。
+    }
   }
 
   useEffect(() => {
