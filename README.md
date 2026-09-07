@@ -237,7 +237,9 @@ TASK-020 增加既定 `PATCH /api/v1/resources/{id}`，TASK-021 接入详情页�
 
 ### 浏览器扩展工程骨架（TASK-037）
 
-`extension/` 是仓库的第三个顶层代码目录，放浏览器扩展。**目前只有工程骨架，网页采集功能尚未实现**，弹窗会直接这么写。它是独立的 npm 工程，不与 `frontend/` 共用依赖。
+`extension/` 是仓库的第三个顶层代码目录，放浏览器扩展。它是独立的 npm 工程，不与 `frontend/` 共用依赖，**只支持 Chrome 与 Edge**（同属 Chromium），不支持 Firefox 与 Safari。
+
+用法：在想保存的网页上点扩展图标 →「保存这一页的正文」→ 浏览器打开 StudyPilot 的确认页，核对标题与正文后点「保存为资料」，资料与正文快照一起保存。**不点确认就什么都不会保存。** 图片仍指向原站，本版本不冻结图片。
 
 ```bash
 cd extension
@@ -245,9 +247,9 @@ npm ci
 npm run build
 ```
 
-构建产物在 `extension/dist/`。在 Chrome 打开 `chrome://extensions`，开启右上角「开发者模式」，点「加载已解压的扩展程序」并选择该目录即可加载。改代码后重新 `npm run build`，再在扩展页点一次刷新。**这套加载步骤尚未在真实 Chrome 中实机验证**，首次加载请确认。
+构建产物在 `extension/dist/`。Chrome：打开 `chrome://extensions` → 右上角「开发者模式」→「加载已解压的扩展程序」→ 选该目录。Edge：打开 `edge://extensions` → 左下角「开发人员模式」→「加载解压缩的扩展」→ 选该目录。改代码后重新 `npm run build`，再在扩展页点一次刷新。**加载步骤已在 Edge 实机验证；Chrome 尚未实测**（同内核，manifest 无分支专有字段）。
 
-当前 manifest **不申请任何权限**；`extension/src/manifest.test.ts` 会在有人新增权限时失败，以保证这类改动必须经过任务与独立审查。扩展将来也不会直接调用后端 API，内容一律经本机 UI 页面转交，边界与理由见 `extension/AGENTS.md`。
+manifest 只申请 `activeTab`、`scripting`、`storage`，外加一条**只匹配 `http://127.0.0.1:5173/*`（本机 UI 源）** 的内容脚本；**不申请 `host_permissions`、不申请 `<all_urls>`**。`activeTab` 只在你点击图标之后授予当前那一个标签页，用完即失效——扩展只能读到你主动指定的那一页，而且只能读到它**已经显示出来**的内容；它不发网络请求（提取库的异步抽取器已显式关闭，并有断言看守）、不读 cookie、不接触任何网站的登录态。**一处例外要说明**：提取前会对页面做两处图片属性归一化，页面内容不会被改动，但极少数情况下可能出现一次图片跳变。**另外**：你点了采集却没打开确认页时，那篇正文会暂存在扩展的本地存储里，直到下次采集覆盖它或下次打开确认页时清除。`extension/src/manifest.test.ts` 以白名单断言锁住 manifest 的顶层键集合与权限清单，任何新增都会让测试失败，以保证这类改动必须经过任务与独立审查。扩展不直接调用后端 API，内容一律经本机 UI 页面转交，边界与理由见 `extension/AGENTS.md` 与契约文档第 14 节。
 
 ## 如何停止
 

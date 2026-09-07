@@ -14,10 +14,35 @@
         color: #3d3730;
         background: #fbf7f0;
       }
+      h1 {
+        margin: 0 0 10px;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      button {
+        width: 100%;
+        padding: 8px 12px;
+        font: inherit;
+        color: #3d3730;
+        background: #f3e7d3;
+        border: 1px solid #d8c7ab;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: default;
+      }
+      #hint {
+        margin: 10px 0 0;
+        color: #6b6157;
+      }
     </style>
   </head>
   <body>
-    <p id="status">正在载入…</p>
+    <h1 id="status">正在载入…</h1>
+    <button type="button" id="capture">保存这一页的正文</button>
+    <p id="hint">读取的是你眼前这一页已经显示出来的内容，不会登录、不会读取任何网站的账号信息。</p>
     <script type="module" src="/src/popup/main.ts"></script>
   </body>
 </html>
