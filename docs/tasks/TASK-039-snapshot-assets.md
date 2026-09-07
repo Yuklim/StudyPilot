@@ -208,9 +208,29 @@ checks = []
 
 ## 实现与测试
 
-- 实现 SHA/变更摘要：待填
-- 命令、真实退出结果、product_fingerprint、环境、未运行原因：待填
-- 已知限制/未完成项：待填
+- **实现 SHA**：`e1e2b53`（base `e937201`，21 个文件，全部在 `allowed_paths` 内）。
+  - **数据层**：`models.py` 新增 `SnapshotAsset`（不继承 `Versioned` —— 资产只有新增与删除两种写）；`0005_snapshot_assets.py` 建表，`compare_metadata(context, Base.metadata) == []` 证明迁移与模型逐字段一致；`asset_store.py` 是新的只写该表的适配器，每个读都按所属资料收窄。
+  - **存储层**：`images.py` 按文件头字节识别四种位图（PNG 另核 `IHDR`、WebP 另核 RIFF 第 8 字节的 `WEBP`）；`storage.py` 新增 `inspect_image`，与 `inspect` 共用 `_bytes` 但不走文件名与容器解析。**未新增任何生产依赖**。
+  - **应用层**：`snapshot_assets.py` 的 `AssetService` 复用 `FileService` 的锁与 active 暂存集合（不自己调 `LocalFileStorage.begin`），顺序为「暂存 → 识别 → 提升 → 落行」；`snapshots.py` 的 `put`/`remove` 改为在同一事务内先清资产行、再写快照，提交后隔离字节。
+  - **接口层**：`snapshot_assets.py` 有自己的 `MESSAGES` 与 `failure`（不复用快照那份，避免把资产错误码塞进快照的表），multipart 读取器按 `file_upload.py` 同形实现但去掉文件名与声明类型两处；四个路由挂在 `/api/v1/resources/{id}/snapshot/assets` 下。
+  - **删除路径**：`resource_store.py` 的 `_deletion_snapshot` 经 `content_snapshots` join 出资产，写进 `manifest["snapshot_assets"]`、`DELETION_IMPACT_KEYS` 新增 `snapshot_asset_count`、`storage_keys` 并入资产键。
+  - **回收**：`file_store.py` 的 `references()` 增读 `snapshot_assets`，同时纳入其 `storage_key` 与 `trash_key`。
+  - **契约**：openapi 新增 4 个 schema、3 个响应组件、3 条路径共 4 个操作，并给 `DeletionImpact` 加 `snapshot_asset_count`（含两处示例）；中文契约新增 **§4.14**、4.12 关系表一行、第 9 节绑定字段清单、§10 操作表四行、§12 错误码三行与逐操作错误码四行，1.3 交付状态段补一句。**既有 `ContentSnapshot` schema 与三个快照操作的响应形状一字未改。**
+- **命令与真实退出结果**（全部由实现者本人在本机运行，无第三方复核）：
+  - `backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-039-snapshot-assets.md --worktree` → **CHECKS PASS**，`profiles=backend,contracts`，含 ruff format/lint、mypy、pytest、`uv build --offline` 与 OpenAPI 模型校验，各步 `exit=0`。
+  - `pytest` → **548 passed**，基线 **525**，净增 **23**（新文件 `tests/test_snapshot_assets.py`）。
+  - `mypy .` → `Success: no issues found in 77 source files`。`ruff check` / `ruff format --check` → 全绿。
+  - `--candidate e1e2b53 --static-only` → **STATIC PASS**，`files=21`，`product_fingerprint=64b999fff95fe4b1cd4f7c396359984d5030e9e81c6718c73e00979896e53ca2`。
+  - **未运行 `frontend` 与 `extension` 两组**：本任务在这两棵树下零改动，检查脚本据变更自动选组因而未选中它们。**这是结构性论据，不是观察到的计数相等** —— 完成条件 18 中「两组计数与基线完全一致」这一半没有实跑证据。
+  - 环境：macOS Darwin 25.5.0、`backend/.venv`（Python 3.13）、SQLite 文件库；每个用例用 `tmp_path` 独立的数据库与受控目录。
+- **既有断言无删除、无弱化**：只改了两处，且都仍是精确相等 —— `test_migrations.py`（head `0004`→`0005`、表数 `13`→`14`）与 `test_resource_deletion.py`（影响字典多一个键，仍为整字典 `==`）。
+- **已知限制/未完成项**：
+  1. **本任务没有任何调用方**。扩展抓图上传与渲染替换都在 TASK-040，所以界面上看不到变化，表与端点当前无人调用。
+  2. **删除预览的界面不显示图片张数**。后端已返回 `snapshot_asset_count`，但 `frontend/src/api/client.ts` 的 `deletionImpact()` 按固定六键解析（多余键被忽略，**不会报错**），`ResourceDeletion.tsx` 的标签表也只有六项。因此带图资料的删除预览会**少报**将被删除的图片。当前不可达（还没有调用方能产生资产），但 TASK-040 一旦让扩展开始写资产，这就变成用户可见的漏报，必须在那之前补上。
+  3. **取字节没有修复路径**。字节缺失或校验不符一律 `409 FILE_CORRUPTED`，不像 `original_files` 有 `reconcile` 的 PENDING/trash 恢复。资产没有 `status` 列，恢复语义要另设计。
+  4. **提升与落行之间中断会留下孤儿字节**，由既有 24 小时回收清除（决定 ⑦ 的取舍）。反方向不可能发生。
+  5. **跨快照不去重、不清洗 EXIF、不设张数上限** —— 均为登记时已写明的取舍，非交付后补记。
+  6. **`snapshot_asset_count` 未做上界断言**：openapi 只写 `minimum: 0`，与 `original_file_count` 的 `maximum: 1` 不同，因为按用户决定它本就无上限。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
