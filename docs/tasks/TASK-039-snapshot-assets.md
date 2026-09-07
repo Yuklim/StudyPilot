@@ -17,6 +17,8 @@ allowed_paths = [
   "backend/src/studypilot/api/snapshot_assets.py",
   "backend/src/studypilot/api/file_upload.py",
   "backend/src/studypilot/application/snapshots.py",
+  "backend/src/studypilot/application/files.py",
+  "backend/src/studypilot/infrastructure/database/file_store.py",
   "backend/src/studypilot/application/snapshot_assets.py",
   "backend/src/studypilot/infrastructure/database/models.py",
   "backend/src/studypilot/infrastructure/database/snapshot_store.py",
@@ -83,7 +85,7 @@ checks = []
 
 ## 关键设计决定
 
-以下五条是本任务的实质内容，均为在写代码前必须定死、事后无法为存量数据补做的选择。
+以下七条是本任务的实质内容，均为在写代码前必须定死、事后无法为存量数据补做的选择。
 
 ### ① 资产挂在快照上，不挂在资料上；表为 `snapshot_assets`
 
@@ -122,7 +124,20 @@ checks = []
 
 **明确不采纳**的替代方案：放宽门禁接受 `sec-fetch-dest: image`、或改用 URL 内令牌。前者削弱一道已加固的安全边界来换取渲染便利；后者会把令牌写进图片地址，从而进入浏览器历史、referrer 与前端日志。二者都是拿安全换省事。
 
-### ⑤ 三条销毁路径必须同时闭合
+### ⑤ 资产字节必须让既有的孤儿回收认识，否则第二天会被删掉
+
+`FileService.reconcile()` 每 60 秒跑一次，把受控目录里**修改时间超过 24 小时、且不在 `FileRepository.references()` 里**的文件直接 `discard()`。而 `references()` 只遍历 `original_files`（`file_store.py:87-93`）。
+
+因此若资产字节直接放进 `objects/`，它们对这套回收而言就是孤儿：**上传当天一切正常，第二天图片全部消失，且不会有任何报错** —— 数据库行还在，字节没了，表现为取字节时 409。
+
+两条可行路径，本任务选后者：
+
+- 给资产另开一个存储区（`orphans()` 只扫 `staging`/`objects`/`trash` 三个区，新区天然不被扫）。代价是资产从此没有任何回收，隔离后的字节永久堆积，等于把问题推给将来。
+- **扩展 `references()` 让它同时认识 `snapshot_assets` 的键**。一套回收、一套隔离宽限期，语义与原件完全一致：行还在 → 字节受保护；行被删、字节进 `trash/` → 24 小时后被回收。**本任务选这条。**
+
+连带的一致性要求：上传时的暂存键必须走 `FileService.begin()`（它把键登记进 `self.active`，使回收不会删掉正在写入的暂存文件），不能自己调 `LocalFileStorage.begin()` 绕过。
+
+### ⑥ 三条销毁路径必须同时闭合
 
 | 路径 | 现状 | 本任务必须做什么 |
 | --- | --- | --- |
@@ -133,6 +148,16 @@ checks = []
 第三条是**本任务发现的、必须处理的实质问题**：`content_snapshots` 与新表都靠外键 `CASCADE` 删行，但 `CASCADE` 只删数据库行，**删不掉磁盘上的字节**。若不处理，用户删除一份资料后，它的全部图片会永久滞留在受控目录里 —— 既是磁盘泄漏，也是「用户以为删干净了但没有」的数据残留。
 
 新增 `snapshot_asset_count` 会改变删除预览的公共响应形状，属公共契约变更，已计入 L3。
+
+### ⑦ 先落字节再落行；中途死掉只留可回收的孤儿字节，绝不留指向空处的行
+
+上传的写入顺序固定为：暂存 → 识别类型 → 提升到 `objects/` → 插入数据库行。**不引入 `PENDING` 状态机**（`original_files` 那套是为「先建行、后传字节」的上传流程服务的，资产的字节在建行前就已经在手上）。
+
+两个方向的中断各自的后果：
+- 提升成功、插入失败或进程死亡 → `objects/` 里多一份无人引用的字节，24 小时后被既有回收清掉（因为决定 ⑤ 让回收认识资产键，**未被任何行引用**的键仍然是孤儿）。
+- 插入成功、字节不在 → 不可能发生，因为插入在提升之后。
+
+反过来（先插行后提升）会产生「行说有图、磁盘上没有」的状态，而资产没有 `original_files` 那套 `status`/`reconcile` 修复机制，那种行会永久返回错误。
 
 ## 完成条件
 
@@ -156,6 +181,8 @@ checks = []
 16. **门禁未改**：`local_access.py` 在最终 diff 中为零改动；且有一条用例证明缺 `x-studypilot-token` 或 `sec-fetch-dest` 不为 `empty` 时，取字节端点同样被拒（即 ④ 所述行为已被机器固定，而非只写在文档里）。
 17. **契约三方一致**：openapi 新增的 schema 与操作、中文契约 §4.14、后端实际返回三者的字段集合与错误码逐项对应；既有 `ContentSnapshot` schema 与三个既有快照操作的**响应形状一字未改**（新增的是并列的资产操作，不是改造快照对象）。
 18. **测试计数只增不减**：backend pytest 数量在基线之上净增，既有断言无删除、无弱化；`frontend` 与 `extension` 两组的计数应与基线**完全一致**（本任务不碰这两处）。
+19. **资产不被孤儿回收误删**：`FileRepository.references()` 覆盖 `snapshot_assets` 的 `storage_key` 与其 `trash_key`；须有用例把资产字节的 mtime 改到 24 小时以前后跑一次 `reconcile()`，断言字节仍在、且取字节仍然成功。同一用例须证明**行被删后**的资产字节在同样条件下**会**被回收（否则隔离就成了永久堆积）。
+20. **暂存不被误删**：资产上传走 `FileService.begin()`，上传进行中的暂存键在 `self.active` 内，`reconcile()` 不会删它。
 
 ## 上下文包
 
@@ -193,5 +220,5 @@ checks = []
 - Acceptance：L3，独立只读，待填
 - 最终状态/风险/用户操作：待填
 - 非阻断遗留项（仅有真实问题时）：待填
-- 日期与决定日志：2026-09-06 用户合并 TASK-038（PR #43，merge `e937201`）后指示继续 TASK-039，并就三项范围问题作出决定：后端先行（扩展另起 TASK-040）、尽量全冻结（不设张数上限、单图 10 MiB）、确认页标签页复用并入 TASK-040。主 Agent 在登记阶段核实了四项既有事实作为设计依据：`content_snapshots.content` 为 Text 且 `UNIQUE(resource_id)`、`original_files` 为 `UNIQUE(resource_id)` 且 media-type 白名单不含图片、`LocalFileStorage` 的三区私有随机键存储可直接复用、本机访问门禁的 `FETCH` 常量要求 `sec-fetch-dest: empty` 因而 `<img src>` 必然被拒。并在核 `resource_store.py:255-403` 时发现删除资料的隔离集合只覆盖 `original_files`、影响清单六个计数不含快照与资产 —— 若不处理，`CASCADE` 删行删不掉磁盘字节，会产生已删除资料的图片永久滞留，遂将其列为完成条件 13。
+- 日期与决定日志：2026-09-06 用户合并 TASK-038（PR #43，merge `e937201`）后指示继续 TASK-039，并就三项范围问题作出决定：后端先行（扩展另起 TASK-040）、尽量全冻结（不设张数上限、单图 10 MiB）、确认页标签页复用并入 TASK-040。主 Agent 在登记阶段核实了四项既有事实作为设计依据：`content_snapshots.content` 为 Text 且 `UNIQUE(resource_id)`、`original_files` 为 `UNIQUE(resource_id)` 且 media-type 白名单不含图片、`LocalFileStorage` 的三区私有随机键存储可直接复用、本机访问门禁的 `FETCH` 常量要求 `sec-fetch-dest: empty` 因而 `<img src>` 必然被拒。并在核 `resource_store.py:255-403` 时发现删除资料的隔离集合只覆盖 `original_files`、影响清单六个计数不含快照与资产 —— 若不处理，`CASCADE` 删行删不掉磁盘字节，会产生已删除资料的图片永久滞留，遂将其列为完成条件 13。 实现开工前复核 `application/files.py` 与 `file_store.py` 时又发现第二处同类问题：`reconcile()` 的 24 小时孤儿回收只认识 `original_files`，资产字节放进 `objects/` 会在次日被静默删除（行还在、字节没了）。据此扩大 `allowed_paths` 两个文件、新增关键设计决定 ⑤ 与完成条件 19/20，并在登记阶段（尚未冻结候选、尚未进入实现）完成本次范围修订。
 <!-- EVIDENCE:END -->
