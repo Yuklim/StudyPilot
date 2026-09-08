@@ -222,7 +222,10 @@ describe('classification selection and resource integration', () => {
     change('标题', '合成资料')
     change('网页地址（必填）', 'https://example.com')
     click('保存到资料库')
-    expect(await screen.findByRole('heading', { name: '资料详情', level: 1 })).toBeInTheDocument()
+    // TASK-044 起详情页的 h1 就是资料标题，不再有「资料详情」这个页面名。
+    expect(
+      await screen.findByRole('heading', { name: '合成阅读资料', level: 1 }),
+    ).toBeInTheDocument()
     // 主题名在工具条的「资料信息」面板里（TASK-043），等资料读到工具条才在。
     await screen.findByRole('button', { name: '更多操作' })
     openFromMenu('资料信息')

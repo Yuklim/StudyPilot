@@ -7,7 +7,16 @@ test('real browser loads the honest shell and reaches the backend through the pr
 }) => {
   await page.goto('/')
   await expect(page.getByText('网页、文件与粘贴资料已开放')).toBeVisible()
-  await expect(page.getByRole('button')).toHaveCount(0)
+  // 「外壳上没有假控件」这条守的是**主内容区**。TASK-044 起左栏多了一个真控件
+  // （折叠导航栏），不该被它误伤——范围收到 main 里比原来的全页范围更贴近本意。
+  await expect(page.locator('#main-content').getByRole('button')).toHaveCount(0)
+  // **原来的全页范围隐含保证了「左栏一个按钮都没有」，收窄之后那条保证会凭空消失。**
+  // 所以把它显式补回来：左栏的按钮恰好是折叠导航栏这一个。
+  const sidebarButtons = page
+    .getByRole('complementary', { name: '学习空间导航' })
+    .getByRole('button')
+  await expect(sidebarButtons).toHaveCount(1)
+  await expect(sidebarButtons).toHaveAccessibleName('收起导航栏')
 
   // This is a real browser fetch through Vite to the real FastAPI middleware.
   // Never mock an unfinished business endpoint to make the smoke test pass.
@@ -72,7 +81,10 @@ test('navigation, history, direct links and keyboard focus use only approved res
   await page.screenshot({ path: testInfo.outputPath('desktop-add-form.png'), fullPage: true })
   await page.goto('/resources/synthetic-id')
   await page.reload()
-  await expect(page.getByRole('heading', { name: '资料详情', level: 1 })).toBeVisible()
+  // TASK-044 起这一页的 h1 是资料标题；`/resources/synthetic-id` 读不出来，因此是错误态
+  // 的那一个。**它必须在**——h1 是路由切换后的焦点落点，读不出资料时同样需要。
+  await expect(page.getByRole('heading', { name: '这份资料打不开', level: 1 })).toBeVisible()
+  // 浏览器标签页的名字仍然是页面名，这条没变。
   await expect(page).toHaveTitle('资料详情 · StudyPilot')
   await page.getByRole('link', { name: '返回资料库' }).click()
   for (const title of ['学习记录', '复习安排', '主题统计']) {
@@ -102,8 +114,13 @@ for (const width of [390, 320]) {
       '/unknown-page',
     ]) {
       await page.goto(route)
+      // **恰好一个一级标题**，不是「至少一个」。此前靠 strict mode 隐含保证，我一度
+      // 加了 `.first()` 把它放宽掉——那是没登记的弱化，Reviewer 指出后改回显式断言。
+      await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1)
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
-      await expect(page.getByText('网页、文件与粘贴资料已开放')).toBeVisible()
+      // TASK-044 起开发阶段横幅只在概览页；其余页面必须**没有**它。
+      const notice = page.getByText('网页、文件与粘贴资料已开放')
+      await expect(notice).toHaveCount(route === '/' ? 1 : 0)
       if (route === '/resources')
         await expect(page.getByRole('navigation', { name: '资料分页' })).toBeVisible()
       expect(

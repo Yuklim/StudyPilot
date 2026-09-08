@@ -71,7 +71,7 @@ describe('resource deletion page', () => {
     async (_, item) => {
       const request = mockDeletion(item, { data: { ...preview, resource_id: item.id } })
       renderWithRouter(<App />, `/resources/${item.id}`)
-      await screen.findByRole('heading', { name: resourceTitle(item), level: 2 })
+      await screen.findByRole('heading', { name: resourceTitle(item), level: 1 })
       openDeletion()
       const dialog = await screen.findByRole('dialog', { name: /确认删除/ })
       // **影响摘要的每一项都在这个对话框里查**，不在整页里查：TASK-043 之后
@@ -98,7 +98,7 @@ describe('resource deletion page', () => {
   it('shows the untitled placeholder in the detail heading and deletion confirmation', async () => {
     mockDeletion(sample({ title: null }))
     renderWithRouter(<App />, `/resources/${resourceId}`)
-    await screen.findByRole('heading', { name: '未命名资料', level: 2 })
+    await screen.findByRole('heading', { name: '未命名资料', level: 1 })
     openDeletion()
     expect(
       await screen.findByRole('dialog', { name: '确认删除“未命名资料”？' }),
@@ -116,7 +116,7 @@ describe('resource deletion page', () => {
       return { data: [] }
     })
     renderWithRouter(<App />, `/resources/${resourceId}`)
-    await screen.findByRole('heading', { name: '合成阅读资料', level: 2 })
+    await screen.findByRole('heading', { name: '合成阅读资料', level: 1 })
     openDeletion()
     fireEvent.click(await screen.findByRole('button', { name: '确认删除' }))
     expect(await screen.findByRole('heading', { name: '资料库', level: 1 })).toBeInTheDocument()
@@ -144,7 +144,7 @@ describe('resource deletion page', () => {
       return { data: [] }
     })
     renderWithRouter(<App />, `/resources/${resourceId}`)
-    await screen.findByRole('heading', { name: '合成阅读资料', level: 2 })
+    await screen.findByRole('heading', { name: '合成阅读资料', level: 1 })
     openDeletion()
     fireEvent.click(await screen.findByRole('button', { name: '确认删除' }))
     expect(await screen.findByText('删除影响已经变化，请重新预览并确认。')).toBeInTheDocument()
@@ -171,7 +171,7 @@ describe('resource deletion page', () => {
       return { data: [] }
     })
     renderWithRouter(<App />, `/resources/${resourceId}`)
-    await screen.findByRole('heading', { name: '合成阅读资料', level: 2 })
+    await screen.findByRole('heading', { name: '合成阅读资料', level: 1 })
     openDeletion()
     fireEvent.click(await screen.findByRole('button', { name: '确认删除' }))
     expect(await screen.findByText(error.message)).toBeInTheDocument()

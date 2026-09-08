@@ -2298,3 +2298,72 @@ a.source-chip:focus-visible {
     width: 100%;
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * 图标按钮与可折叠左栏（TASK-044）。
+ *
+ * 图标按钮**不含任何文字节点**，名字全靠 `aria-label`；这里只管尺寸与对齐。
+ * --------------------------------------------------------------------------- */
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  min-width: 38px;
+  padding: 0;
+}
+.icon-button .icon {
+  width: 18px;
+  height: 18px;
+}
+.nav-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-bottom: 10px;
+  padding: 0;
+  border: 1px solid #cfd6c6;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.nav-toggle .icon {
+  width: 16px;
+  height: 16px;
+}
+/* 折叠态：左栏收窄，只留图标。文字节点在 React 里就没渲染，不是靠这里藏。 */
+/* **收窄的必须是网格轨道，不只是侧栏元素自己。** 初版只给 `.sidebar` 设了宽度，
+   第一列轨道仍是 228px，于是折叠只换来一条 68px 图标栏加 160px 空白带，正文区
+   一个像素都没变宽——折叠等于白折。用户在真机上先发现，验收随后独立判为阻断项。
+
+   **整块限定在 `min-width: 761px`，不能用 `max-width: 760px` 去「撤掉」。**
+   ≤760px 是 `display:block` 的另一套布局，没有网格轨道可收，`width:68px` 只会把顶栏
+   压成一条窄带。我第一版正是写了一条 `max-width:760px` 的撤销规则——**它同名、同
+   特异度，而 `width:68px` 写在它后面，后者胜，所以根本没生效**（实测 390px 折叠态下
+   侧栏仍是 68px）。媒体查询不增加权重，这是层叠而不是覆盖。 */
+@media (min-width: 761px) {
+  .app-shell.nav-collapsed {
+    grid-template-columns: 68px minmax(0, 1fr);
+  }
+  .app-shell.nav-collapsed .sidebar {
+    width: 68px;
+    min-width: 68px;
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+}
+.app-shell.nav-collapsed .brand-copy,
+.app-shell.nav-collapsed .nav-label,
+.app-shell.nav-collapsed .sidebar-note,
+.app-shell.nav-collapsed .sidebar-footer {
+  display: none;
+}
+.app-shell.nav-collapsed .primary-nav a,
+.app-shell.nav-collapsed .add-link {
+  justify-content: center;
+  padding-left: 8px;
+  padding-right: 8px;
+}

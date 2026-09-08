@@ -104,7 +104,7 @@ test('real taxonomy client lifecycle integrates with resource pages without expo
   }, ids)
   expect(result).toEqual({ topics: 1, tags: 1, resourceIds: [ids.resource] })
   await page.goto('/resources/' + ids.resource)
-  await expect(page.getByRole('heading', { name: '分类浏览器合成资料', level: 2 })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '分类浏览器合成资料', level: 1 })).toBeVisible()
   await expect(page.getByText('分类浏览器合成标签', { exact: true })).toBeVisible()
   const removed = await page.evaluate(async (ids) => {
     const modulePath = '/src/api/client.ts'

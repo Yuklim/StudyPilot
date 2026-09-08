@@ -126,10 +126,17 @@ describe('resource form', () => {
     })
     expect(screen.getByRole('button', { name: '正在保存…' })).toBeDisabled()
     await act(async () => pending.resolve({ data: sample() }))
-    expect(
-      await screen.findByRole('heading', { name: '合成阅读资料', level: 2 }),
-    ).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: '资料详情', level: 1 })).toHaveFocus()
+    // **焦点落点仍在 h1 上，只是 TASK-044 起那个 h1 就是资料标题本身**（页头块在这一页
+    // 不再渲染）。这比原来断言「资料详情」更强：它同时钉住了「标题是这份资料的名字」
+    // 与「导航后焦点落在它上面」两件事。
+    //
+    // **它还顺带守住了一次真实的失效**：阅读器先渲染「正在打开资料」这个 h1 并拿到焦点，
+    // 数据到了再换成真正的标题——旧节点一移除，焦点就掉到 `body`，导航过来的键盘用户
+    // 在数据到达的一瞬间失去落点，而屏幕上完全看不出来。这条用例在 `App.tsx` 补上焦点
+    // 交接之前是红的。
+    const heading = await screen.findByRole('heading', { name: '合成阅读资料', level: 1 })
+    expect(heading).toHaveFocus()
+    expect(screen.queryByRole('heading', { name: '资料详情' })).toBeNull()
     expect(storage).not.toHaveBeenCalled()
   })
   it('saves a WEB link with a blank title as an untitled resource and shows the placeholder', async () => {
@@ -137,7 +144,7 @@ describe('resource form', () => {
     renderWithRouter(<App />, '/resources/new')
     change('网页地址（必填）', 'https://example.com/article')
     submit()
-    expect(await screen.findByRole('heading', { name: '未命名资料', level: 2 })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: '未命名资料', level: 1 })).toBeInTheDocument()
     expect(request.mock.calls[0]).toEqual([
       '/api/v1/resources',
       { method: 'POST', body: { source_type: 'WEB', source_url: 'https://example.com/article' } },

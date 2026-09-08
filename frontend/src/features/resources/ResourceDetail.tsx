@@ -7,6 +7,7 @@ import { ResourceError } from './ResourceState'
 import { ResourceToolbar } from './ResourceToolbar'
 import { NotesPanel } from '../notes/NotesPanel'
 import { useResourceQuery } from './useResourceQuery'
+import { useHeadingSlot } from '../../shell/heading'
 
 // TASK-043 起这一页是**阅读器**：正文占主体，动作与上下文都收在顶部工具条里。
 //
@@ -29,6 +30,10 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
   // 编辑资料…）当场关掉——而改标签本身就会触发这次刷新，于是「改一个标签，面板就没了」。
   // 旧版所有区块常驻，不存在这个问题；这是改版引入的退化，由标签用例先抓到。
   // 因此留住上一次读到的这份资料，只在换资料时丢弃。
+  // TASK-044 起这一页自己出 `h1`（页头块整个不渲染），并把它交回外壳做焦点落点。
+  // **每一种状态都必须恰好有一个 `h1`**——读取中、读取失败也要有，否则导航过来的
+  // 键盘用户没有落点，而这种失效在屏幕上完全看不出来。
+  const headingSlot = useHeadingSlot()
   const [shown, setShown] = useState<typeof item>(undefined)
   if (item && item !== shown) setShown(item)
   // **只留 id 守卫，不再额外 setShown(undefined)。** 那一行与上一行在同一次渲染里可以
@@ -42,9 +47,14 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
           资料…」那一屏一个链接都没有，用户被困在页面上。既有用例正是按可访问名称
           「返回资料库」取它的。 */}
       {!toolbarItem && (
-        <Link className="text-link" to="/resources">
-          返回资料库
-        </Link>
+        <>
+          <Link className="text-link reader-back" to="/resources">
+            <span aria-hidden="true">← </span>返回资料库
+          </Link>
+          <h1 className="reader-title" ref={headingSlot} tabIndex={-1}>
+            {result?.error === undefined ? '正在打开资料' : '这份资料打不开'}
+          </h1>
+        </>
       )}
       {!result && (
         <p role="status" className="resource-loading">
@@ -58,6 +68,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
           refreshed={retry}
           deleted={() => navigate('/resources')}
           notesTargetId={NOTES_ANCHOR}
+          headingSlot={headingSlot}
         />
       )}
       {toolbarItem && (
