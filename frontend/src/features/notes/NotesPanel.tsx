@@ -66,9 +66,14 @@ export function NotesPanel({
   useEffect(() => {
     if (selected && !deleting && !pending) input.current?.focus()
   }, [selected, deleting, pending])
-  // TASK-045：心得按钮＝开合 + 聚焦一体。每次请求递增 focusRequest；此刻确实有写作框
-  // 才聚焦——正停在删除确认那一屏（没有写作框）或正在处理中时跳过。
+  // TASK-045：心得按钮＝开合 + 聚焦一体。focusRequest 是父级每次「想聚焦写作框」就 +1 的
+  // **单调 token**：同一 token 只消费一次。若把 available/deleting/pending 的翻转也当新请求，
+  // 资源刷新（`available` 短暂翻 false 再回 true）就会在用户正操作别的面板时把焦点抢回
+  // 写作框——候选 f1e96e1 上 Reviewer 抓到的焦点回归。因此用 ref 记住已消费的 token。
+  const lastFocusRequest = useRef(0)
   useEffect(() => {
+    if (focusRequest === lastFocusRequest.current) return
+    lastFocusRequest.current = focusRequest
     if (!focusRequest) return
     if (!available || deleting || pending) return
     input.current?.focus()

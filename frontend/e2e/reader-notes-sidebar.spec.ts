@@ -103,6 +103,21 @@ test('wide screen: notes are collapsed by default and squeeze the reading column
   // 再开一次：刚才保存的那条已在列表里（写入真实后端）。
   await toggle(page).click()
   await expect(page.getByRole('list', { name: '心得列表' })).toContainText('展开时记下的一条')
+
+  // 删除刚存的那条 → 角标实时从 3 回落 2：总数随删除减少，不是只增不减。此刻写作框
+  // 是空的（保存后已重置），删除不会撞上「放弃未保存草稿」的确认。
+  const savedCard = page
+    .getByRole('list', { name: '心得列表' })
+    .getByRole('listitem')
+    .filter({ hasText: '展开时记下的一条' })
+  await savedCard.getByRole('button', { name: '删除', exact: true }).click()
+  await expect(page.getByText('删除这条心得？')).toBeVisible()
+  await page.getByRole('checkbox', { name: '我确认永久删除上方这条心得' }).check()
+  await page.getByRole('button', { name: '确认删除心得', exact: true }).click()
+  await expect(page.getByRole('status')).toContainText('这条心得已删除，资料与其他记录仍保留。')
+  await expect(toggle(page)).toContainText('2')
+  expect((await call(page, `/resources/${id}/notes`)).body.page.total_items).toBe(2)
+
   // **收起不丢未保存草稿**（条件 6）：写一句不保存，用「收起」收起再展开，草稿还在——
   // 这靠侧栏「收起时保持挂载、CSS 显隐」成立，卸载就会把草稿丢掉。
   await page.getByRole('textbox', { name: '这次想记下什么？' }).fill('这条还没保存的草稿')
@@ -116,8 +131,8 @@ test('wide screen: notes are collapsed by default and squeeze the reading column
   await expect(page.getByRole('textbox', { name: '这次想记下什么？' })).toHaveValue(
     '这条还没保存的草稿',
   )
-  // 后端也确认新增落库，不是只在本地屏幕上。
-  expect((await call(page, `/resources/${id}/notes`)).body.page.total_items).toBe(3)
+  // 后端也确认新增落库、删除同步，不是只在本地屏幕上。
+  expect((await call(page, `/resources/${id}/notes`)).body.page.total_items).toBe(2)
 })
 
 test('narrow screen: notes float over the reading area without squeezing it, and the body is inert', async ({

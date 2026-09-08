@@ -100,6 +100,16 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
     function onKeyDown(event: KeyboardEvent) {
       // 浮层/挤压都不做模态焦点陷阱（与既有 ToolbarPanel 一致）；Esc 是统一的关闭语义。
       if (event.key !== 'Escape') return
+      // **Esc 只属于此刻正被操作的那一个表面。** 焦点若在工具条里别的控件上（⋯ 菜单
+      // 开着、焦点在菜单项上），那是那个表面自己的 Esc——全局监听若照关不误，一次 Esc
+      // 会把菜单和心得侧栏一起关掉、焦点也被心得按钮抢走（R1 复审 finding 2）。只有
+      // 焦点位于心得区、心得按钮本身，或工具条之外的正文/页面别处时，才由这里收起。
+      const active = document.activeElement as HTMLElement | null
+      if (!active) return
+      const inToolbar = Boolean(active.closest('.reader-toolbar'))
+      const inNotes = Boolean(active.closest('.reader-notes'))
+      const onNotesToggle = active === notesButton.current
+      if (inToolbar && !inNotes && !onNotesToggle) return
       closeNotes()
     }
     document.addEventListener('keydown', onKeyDown)

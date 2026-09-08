@@ -153,6 +153,24 @@ describe('reader toolbar', () => {
     expect(more()).toHaveAttribute('aria-expanded', 'false')
   })
 
+  it('lets the toolbar menu own Escape while the notes sidebar is open', async () => {
+    // R1 复审 finding 2：心得侧栏开着时再开 ⋯ 菜单，焦点已进菜单。两个 Esc 监听都挂在
+    // document 上，若心得那侧的监听不看焦点在哪，一次 Esc 会把菜单**和**侧栏一起关掉，
+    // 焦点也被心得按钮抢走。Esc 只该关当前正被操作的那个表面（菜单）并回到它的触发钮。
+    mount()
+    await screen.findByRole('button', { name: '更多操作' })
+    const toggle = screen.getByRole('button', { name: '心得' })
+    fireEvent.click(toggle) // 展开侧栏：心得侧的 document Esc 监听随之上树
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-expanded', 'true'))
+    fireEvent.click(more()) // 再开菜单；菜单自己把焦点送进首个菜单项
+    expect(screen.getByRole('menuitem', { name: '编辑资料' })).toHaveFocus()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
+    // 菜单关了，侧栏还开着、焦点回到 ⋯ 触发按钮而不是被心得按钮抢走。
+    expect(more()).toHaveFocus()
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+  })
+
   it('closes the menu when the pointer goes somewhere else', async () => {
     mount()
     await screen.findByRole('button', { name: '更多操作' })
