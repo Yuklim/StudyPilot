@@ -120,6 +120,30 @@ describe('StudyPilot journal shell', () => {
     expect(screen.getByRole('heading', { name: destination, level: 1 })).toHaveFocus()
   })
 
+  it('gives the reader page the whole window and keeps the shell on the other pages', () => {
+    // 用户原话：「点开这个资料之后，显示的就是一个完整的阅读器页面…而不是阅读器镶嵌在
+    // 页面中」。左栏、面包屑、页脚在这一页整个不渲染（TASK-046）。
+    renderWithRouter(<App />, '/resources/synthetic-id')
+    expect(screen.queryByRole('complementary', { name: '学习空间导航' })).toBeNull()
+    expect(document.querySelector('.workspace-topbar')).toBeNull()
+    expect(screen.queryByText('为每一次认真学习，留一页空白。')).toBeNull()
+    // **代价与补偿要一起断言。** 这一页没有导航了，所以那条返回链接是唯一的出口，
+    // 而 `h1` 仍是路由切换后的焦点落点——两者少一个，键盘用户就困在页面上，
+    // 而这在屏幕上完全看不出来。
+    expect(screen.getByRole('link', { name: '返回资料库' })).toBeInTheDocument()
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+    expect(screen.getByRole('main')).toHaveAttribute('id', 'main-content')
+  })
+
+  it.each(['/', '/resources', '/notes'])('keeps the shell on %s', (route) => {
+    // 沉浸只属于阅读器页。**这条必须在**：`immersive` 若被误加到别的页面上，那一页的
+    // 导航会整个消失，而上面那条用例照样全绿。
+    renderWithRouter(<App />, route)
+    expect(screen.getByRole('complementary', { name: '学习空间导航' })).toBeInTheDocument()
+    expect(document.querySelector('.workspace-topbar')).not.toBeNull()
+    expect(screen.getByText('为每一次认真学习，留一页空白。')).toBeInTheDocument()
+  })
+
   it('provides a focusable main target for skipping repeated navigation', () => {
     renderWithRouter(<App />)
     expect(screen.getByRole('link', { name: '跳到主要内容' })).toHaveAttribute(

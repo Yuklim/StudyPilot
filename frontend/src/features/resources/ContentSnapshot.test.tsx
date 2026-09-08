@@ -115,9 +115,15 @@ describe('rendered snapshot', () => {
     vi.spyOn(api, 'downloadSnapshotAsset').mockResolvedValue(new Blob([new Uint8Array([1])]))
     mount()
     await screen.findByRole('heading', { name: '冻结的标题', level: 1 })
-    fireEvent.click(screen.getByRole('button', { name: '看 Markdown 源码' }))
+    // TASK-046：切换入口搬进了工具条的 `⋯` 菜单（正文页面上不再有任何按钮）。
+    fireEvent.click(screen.getByRole('button', { name: '更多操作' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '看 Markdown 源码' }))
     expect(await screen.findByText(/!\[已冻结\]/)).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: '冻结的标题', level: 1 })).toBeNull()
+    // 再点一次回到渲染视图，且菜单项文案跟着当前视图走（受控于 `ResourceDetail`）。
+    fireEvent.click(screen.getByRole('button', { name: '更多操作' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '看渲染后的正文' }))
+    expect(await screen.findByRole('heading', { name: '冻结的标题', level: 1 })).toBeInTheDocument()
   })
 
   it('releases every blob URL it created when the page goes away', async () => {

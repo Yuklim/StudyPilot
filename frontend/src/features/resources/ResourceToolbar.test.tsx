@@ -171,6 +171,62 @@ describe('reader toolbar', () => {
     expect(toggle).toHaveAttribute('aria-expanded', 'true')
   })
 
+  it('lets an open panel own Escape while the notes sidebar is open', async () => {
+    // TASK-046 把面板移出了 sticky 的 `.reader-toolbar` 盒子。心得那侧的 Esc 守卫此前只认
+    // `.reader-toolbar`，面板一搬走，焦点在面板里按 Esc 就会连侧栏一起关掉、焦点还被
+    // 心得按钮抢走——正是上一条用例修掉的形态换个位置长回来。守卫因此改认
+    // `.reader-toolbar, .reader-panel`，这条钉住新位置。
+    mount()
+    await screen.findByRole('button', { name: '更多操作' })
+    const toggle = screen.getByRole('button', { name: '心得' })
+    fireEvent.click(toggle)
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-expanded', 'true'))
+    fireEvent.click(more())
+    fireEvent.click(screen.getByRole('menuitem', { name: '资料信息' }))
+    const panel = await screen.findByRole('region', { name: '资料信息' })
+    // 面板确实在 `.reader-toolbar` 之外了；否则这条用例守的是旧结构。
+    expect(panel.closest('.reader-toolbar')).toBeNull()
+    const close = within(panel).getByRole('button', { name: '收起' })
+    close.focus()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    // 侧栏不受影响，焦点也没被抢走。
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(close).toHaveFocus()
+  })
+
+  it('returns focus to the more button after a menu action that opens nothing', async () => {
+    // 「看 Markdown 源码」不开面板、也没有会自动接住焦点的输入框：菜单一关，焦点会掉到
+    // `body`，用键盘的人得从头 Tab 一遍。所以这一支要把焦点还给 `⋯`。
+    mount()
+    await screen.findByRole('button', { name: '更多操作' })
+    fireEvent.click(more())
+    fireEvent.click(screen.getByRole('menuitem', { name: '看 Markdown 源码' }))
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
+    expect(more()).toHaveFocus()
+    // 视图真的切过去了，菜单项文案也跟着当前视图走。
+    expect(document.querySelector('pre.snapshot-body')).not.toBeNull()
+    fireEvent.click(more())
+    expect(screen.getByRole('menuitem', { name: '看渲染后的正文' })).toBeInTheDocument()
+  })
+
+  it('keeps an exit and exactly one page heading while the resource is loading or broken', async () => {
+    // 沉浸页没有左栏，返回链接是唯一的出口；`h1` 是路由切换后的焦点落点。**两者在
+    // 读取中与读取失败这两屏同样必须在**——这两屏没有工具条，链接与标题由
+    // `ResourceDetail` 自己渲染，改版最容易漏掉的正是它们。
+    vi.spyOn(api, 'request').mockImplementation(async (path: string) => {
+      if (path === detailPath) throw new ApiError('RESOURCE_NOT_FOUND', 404)
+      return samplePage([])
+    })
+    renderWithRouter(<App />, `/resources/${resourceId}`)
+    // 读取中那一屏。
+    expect(screen.getByRole('link', { name: '返回资料库' })).toBeInTheDocument()
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+    // 读取失败那一屏。
+    await screen.findByRole('heading', { name: '这份资料打不开', level: 1 })
+    expect(screen.getByRole('link', { name: '返回资料库' })).toBeInTheDocument()
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+  })
+
   it('closes the menu when the pointer goes somewhere else', async () => {
     mount()
     await screen.findByRole('button', { name: '更多操作' })
@@ -189,17 +245,26 @@ describe('reader toolbar', () => {
     const items = within(menu).getAllByRole('menuitem')
     // **删除也必须是一个真正的 menuitem。** 此前它是塞在 `role="menu"` 里的一个普通
     // 按钮，辅助技术按菜单模型只看得到三项 —— 唯独看不到那个销毁性动作。
+    // TASK-046 起正文的三个动作也在这个菜单里：两个普通动作排在「资料信息」之后，
+    // 「删除正文…」与「删除资料…」同在分隔线之下的销毁区。
     expect(items.map((item) => item.textContent)).toEqual([
       '编辑资料',
       '编辑标签',
       '资料信息',
+      '看 Markdown 源码',
+      '替换正文',
+      '删除正文…',
       '删除资料…',
     ])
-    const remove = items[3]!
+    const remove = items[6]!
     const separator = within(menu).getByRole('separator')
     // 最后一个普通动作 → 分隔线 → 删除，顺序必须是这个。
     expect(
-      items[2]!.compareDocumentPosition(separator) & Node.DOCUMENT_POSITION_FOLLOWING,
+      items[4]!.compareDocumentPosition(separator) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    // 「删除正文…」也在分隔线之下：它同样是不可撤销的销毁性动作。
+    expect(
+      separator.compareDocumentPosition(items[5]!) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
     expect(
       separator.compareDocumentPosition(remove) & Node.DOCUMENT_POSITION_FOLLOWING,
