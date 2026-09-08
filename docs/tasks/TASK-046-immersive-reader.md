@@ -1,0 +1,191 @@
+# TASK-046：沉浸式阅读页 —— 外壳隐藏、正文 740px/18px、快照元信息下线
+
+```toml
+schema_version = 2
+id = "TASK-046"
+status = "IN_PROGRESS"
+risk = "L3"
+risk_reason = "本任务改的是**应用外壳自身的渲染条件**，不只是阅读器页内部版式。实质风险：① **外壳按页隐藏是一条新的全局机制**——`App.tsx` 在 `immersive` 页面上不渲染左侧导航、面包屑与页脚，导航（除返回链接外）在这一页整个消失；若返回链接或 `h1` 焦点落点在任一状态下缺失，键盘/读屏用户会被困在没有出口的页面上（屏幕上看不出来）。TASK-044 建立的「每种状态恰有一个 `h1` 且它是路由焦点落点」契约必须原样保持。② **工具条改为 sticky**：`.reader-menu`（绝对定位）与 `.reader-panel`（在流内）此前同在 `.reader-toolbar` 盒子里，sticky 化必须把面板移出 sticky 容器，否则学习状态/编辑资料/删除面板会跟着钉在顶部；层叠上下文还要与 TASK-045 的窄屏心得浮层（z-index 5）协调，否则浮层被顶栏盖住或反之。③ **销毁性动作换位置**：`删除正文` 从正文下方的直接按钮移进 ⋯ 菜单，进菜单后必须补一步确认——菜单项误触即不可逆删除是新引入的风险，原位置至少有正文作视觉隔离。④ **`ContentSnapshot` 的三个动作被上提为受控 props**（`showSource` 由父级持有、替换/删除走请求令牌），跨 `ResourceDetail`/`ResourceToolbar`/`ContentSnapshot` 三个组件的状态编排；`ContentSnapshot` 是全仓唯一使用 `dangerouslySetInnerHTML` 的文件。⑤ 正文列宽/字号改动会同时影响 TASK-045 的挤压式侧栏数值断言与 TASK-043/044 的「正文落在第一屏」断言，需真实浏览器复测。不改后端、`/api/v1`、openapi、本机访问门禁、`extension/`；**不动 `snapshotMarkdown.ts`（渲染与安全形态一字不改）**、`ResourceDeletion.tsx`、`NotesPanel.tsx`、`NotesPage.tsx`；不改任何写入语义与接口调用。"
+risk_flags = ["business", "architecture"]
+owner = "coordinator"
+base = "f60914545ceb04f8c2f4257a047ecd07419f3fb4"
+allowed_paths = [
+  "frontend/src/App.tsx",
+  "frontend/src/App.test.tsx",
+  "frontend/src/shell/pages.ts",
+  "frontend/src/shell/ShellPages.test.tsx",
+  "frontend/src/features/resources/ResourceDetail.tsx",
+  "frontend/src/features/resources/ResourceToolbar.tsx",
+  "frontend/src/features/resources/ResourceToolbar.test.tsx",
+  "frontend/src/features/resources/ContentSnapshot.tsx",
+  "frontend/src/features/resources/ContentSnapshot.test.tsx",
+  "frontend/src/features/resources/ResourcePages.test.tsx",
+  "frontend/src/styles.css",
+  "frontend/e2e/**",
+  "docs/tasks/TASK-045-notes-sidebar.md",
+  "docs/tasks/TASK-046-immersive-reader.md",
+  "docs/tasks/任务索引.md",
+]
+checks = []
+```
+
+## 需求与范围
+
+### 用户授权
+
+用户 2026-09-08（TASK-045 合并 PR #50 之后）提出三件事，原话：
+
+> 我之前说的"阅读器上方的『正文快照 / 保存于 2026-09-07 · 共 48338 字 · 来源标识 manual · 第 1 版 / 这是保存当时的副本，不随原文更新；需要最新内容请用上方工具条的「原网页」。』"没有用，可以删掉"这个功能还没有做。我想要点开这个资料之后，显示的就是一个完整的阅读器页面，就像正常在网页中读文章一样。而不是阅读器镶嵌在页面中，这样很影响阅读。而且现在正文的字号有点小。
+
+主 Agent 就四个分歧点提问，用户逐条选定（全部选中推荐项）：
+
+1. **外壳全隐藏**：打开资料 = 独占整个窗口。左侧导航栏、顶部「我的学习空间 /」面包屑、底部页脚都不渲染，只保留一条极简顶栏（返回资料库 · 标题 · 心得 · 原网页 · ⋯）。
+2. **正文居中固定阅读宽度 ≈740px**：窗口再宽也不拉长行（中文每行约 34–38 字）。
+3. **正文字号 18px / 行高 1.8**（现为 12px）。
+4. **「保存于…第 N 版」那段删掉**；正文底下现有的三个功能按钮（看 Markdown 源码 / 替换正文 / 删除正文）**收进顶部 ⋯ 菜单**，功能一个不少。
+
+### 登记前对现状的核对（不是估算）
+
+用户描述的"镶嵌感"在代码里有四层，全部核对过：
+
+1. `App.tsx` 的外壳对每一页一视同仁：`.app-shell` 是 `228px + 1fr` 两列网格（`styles.css:69`），左侧 `.sidebar` 常驻，`main.workspace` 内先出 `.workspace-topbar`（面包屑，`margin-bottom:39px`）、末尾出 `.workspace-footer`。阅读器页只是被塞进这个 `workspace` 里的一个区块。
+2. `.resource-sheet`（`styles.css:811`）是一张卡片：`padding:28px` + 1px 边框 + `border-radius:22px` + 纸色底。阅读器 `<section className="resource-sheet reader">` 用的就是它。
+3. **正文自己还在第三层框里**：`.snapshot-body`（`styles.css:2077`）是 `max-height:420px; overflow:auto` 的独立滚动框，带边框与底色。整篇 48338 字被塞进 420px 高的小窗，页面滚动与正文滚动是两套。
+4. `.snapshot-body { font-size: 12px }`——全站最小号。而 `.snapshot-rendered :is(h1)` 是 `1.15rem`（≈18.4px，rem 是根字号相对值），**正文里的小标题比正文本身大 50%**，层级关系是坏的。
+
+元信息块在 `ContentSnapshot.tsx:186-204`：`<h3>正文快照</h3>` + 「保存于 … · 共 N 字 · 来源标识 … · 第 N 版」+ `snapshotHints[sourceType]`。TASK-043 只把句子里的方位词从「下方」改成「上方工具条」，**没有删**；用户这次是第二次提出。
+
+工具条现状（`ResourceToolbar.tsx:110-195`）：`.reader-toolbar` 一个盒子里装了两层（动作层 + 上下文层）、`.reader-menu`（`position:absolute`，相对它定位）与 `ToolbarPanel`（`.reader-panel`，**在流内**）。`.reader-panel` 在流内这一点决定了「整个工具条 sticky」是错的做法。
+
+心得侧栏（TASK-045）现状：`.reader-body` 是网格，`.reader-main` 为正文列、`.reader-notes` 为心得列；≥1280px 展开为 `minmax(0,1fr) 340px`，<1280px 展开为盖正文的绝对定位浮层（`z-index:5`），窄屏展开时 `.reader-main` 带 `inert`。既有 e2e `reader-notes-sidebar.spec.ts` 量的是 **`.reader-main` 的宽度**（让位 300–420px）。
+
+### 目标
+
+1. **`/resources/:resourceId` 变成沉浸式整页**：左侧导航栏、顶部面包屑、底部页脚在这一页不渲染；页面唯一的常驻出口是顶栏里的「返回资料库」。机制做成外壳的一个页面标志（`ShellPage.immersive`），与 `ownHeading` 同类，不为这一页写特例分支。
+2. **顶栏 sticky**：动作层（返回 · 来源徽章 · 标题 · 学习状态 · 心得 · 原网页 · ⋯）钉在窗口顶部，长文滚到任何位置都够得着「心得」与「返回」。上下文层（标签 + 收下它是因为）与面板不 sticky，随正文滚走。
+3. **正文是页面自己的滚动主体**：`.snapshot-body` 的 `max-height`/`overflow` 与框线底色去掉（渲染视图），整页只有一条滚动条。Markdown 源码视图（`<pre>`）保留自己的框，它是代码不是文章。
+4. **正文列宽 ≈740px 居中**，字号 **18px / 行高 1.8**，`.snapshot-rendered` 内的 h1/h2/h3 改用 `em` 相对正文取值，恢复「小标题大于正文、但不喧宾夺主」的层级。
+5. **删除快照元信息**：`<h3>正文快照</h3>`、「保存于…第 N 版」、`snapshotHints`（三条来源相关提示句）全部不再渲染。`emptyHints`（还没有保存正文时的空状态引导）**保留**——它是引导而不是元信息。
+6. **三个正文动作移进 ⋯ 菜单**，功能不减：「看 Markdown 源码 / 看渲染后的正文」（切换，菜单项文案随状态变）、「替换正文 / 粘贴正文」（按是否已有快照变文案）、「删除正文…」（放进菜单底部的销毁区，**新增一步确认**）。
+7. 保持 TASK-043/044/045 已建立的契约：每种状态（读取中 / 读取失败 / 正常）恰有一个 `h1` 且它是路由焦点落点；三条返回路径可用；图标按钮可见文本为空、名字由 `aria-label` 提供；心得侧栏的开合、聚焦、Esc 归还、角标、草稿存活全部不退化。
+
+### 非目标（明示不做）
+
+- **不改任何写入语义与接口调用**：快照替换/删除、心得、标签、学习状态、资料删除的请求、版本与恢复流程一字不改。
+- **不动 `snapshotMarkdown.ts`**：`html: false`、无消毒器、图片三条去向（已冻结 / 未冻结按原址 / 被拒）全部保持，本任务不进那个文件一个字符。
+- **不做字号调节控件**（用户选定固定 18px）、**不做宽/窄切换**（用户选定固定 740px 居中）、**不做滚动时自动隐藏顶栏**。
+- **不做正文批注/选中记心得**（TASK-043 起记为后续能力）。
+- **不把沉浸态扩展到别的页面**：`/capture`、资料库、心得页等外壳照旧。
+- **不改左栏折叠能力本身**：它在其余页面继续可用（`reader-layout.spec.ts` 那条折叠用例本来就跑在 `/resources`，不受影响）。
+- 不改后端、`/api/v1`、openapi、门禁、`extension/`、`docs/contracts/**`；不新增依赖。
+
+### 禁止范围
+
+所有未列入 `allowed_paths` 的路径；额外禁止：`backend/**`、`extension/**`、`docs/contracts/**`、`frontend/src/features/resources/snapshotMarkdown.ts`、`frontend/src/features/resources/ResourceDeletion.tsx`、`frontend/src/features/notes/NotesPanel.tsx`、`frontend/src/features/notes/NotesPage.tsx`、`frontend/src/api/**`、`scripts/governance/**`、`AGENTS.md`、`docs/governance/**`。
+
+### 依赖/前置条件
+
+基线 `f60914545ceb04f8c2f4257a047ecd07419f3fb4`（main，TASK-045 已合并 = 用户合并 PR #50）。无未合并依赖。
+
+### 并行
+
+否。唯一写入者 `coordinator`。
+
+### 顺带完成的状态登记
+
+TASK-045 记录与 `任务索引.md` 的该行：按根 `AGENTS.md` §5 登记用户 2026-09-08 合并 PR #50（merge commit `f609145`）这一事实，状态 ACCEPTED → **MERGED**。只允许改动 TASK-045 的 `status` 与 EVIDENCE 标记区内「状态决定」那一行及其索引行，不改目标/风险/路径/检查/实现与测试记录。（该登记已作为本分支第一个提交 `10cb689` 落地。）
+
+## 关键设计决定
+
+### ① 外壳隐藏做成页面标志，不做路由特例
+
+`ShellPage` 增加可选 `immersive?: boolean`，`/resources/:resourceId` 置为 true。`App.tsx` 据此**不渲染** `.sidebar`、`.workspace-topbar`、`.workspace-footer`，并给 `.app-shell` 加 `immersive` 类（单列网格、`max-width` 放开）。
+
+为什么不把这条路由挪到 `App` 之外单独渲染：`App` 同时持有路由切换后的**焦点权威**（`registerHeading`／`wantFocus`／`focusedForRoute`）、`ErrorBoundary` 之下的 `Screen` 分发、`document.title` 维护与 `#main-content` 跳转目标。挪出去等于把这四样各复制一份，而 TASK-044 的教训正是「焦点权威只能有一个」。**保留 `main#main-content` 与跳过导航链接**：链接在沉浸页没有导航可跳过，但它是全局的、不针对这一页，删掉会动到其余页面的无障碍行为——留着，且它仍指向真实存在的 `main`。
+
+**出口只剩一个**，所以「返回资料库」在**每一种状态**下都必须在：读取中、读取失败由 `ResourceDetail` 自己渲染（现状已如此），正常态在工具条里（现状已如此）。这条写进完成条件并由用例守。
+
+### ② sticky 只钉动作层：`.reader-toolbar` 拆成两个兄弟
+
+现状 `.reader-toolbar` 一个盒子装了动作层 + 上下文层 + 菜单 + 面板。若整盒 sticky，`.reader-panel`（在流内的学习状态/编辑资料/删除面板）会跟着钉在顶部、把半个窗口占掉。
+
+因此 `ResourceToolbar` 改为返回**片段**：
+
+- `<div className="reader-toolbar">`：只含动作层与 `.reader-menu`（菜单仍相对它绝对定位）。`position: sticky; top: 0; z-index: 6`——**必须高于心得浮层的 5**，否则窄屏展开心得时浮层会盖住顶栏，而顶栏上那个「心得」按钮正是 Esc 之外的收起入口。
+- `<div className="reader-context">`（上下文层）与 `.reader-panel` 移到 sticky 盒之外，随正文滚走。
+
+**上下文层进正文列**：标签与「收下它是因为」是这篇文章的元信息（等同署名行），放进 `.reader-main` 内、正文之上，才能与 740px 正文列左右对齐；留在外面会在心得侧栏展开时与正文错位。它由 `ResourceToolbar` 导出的 `ReaderContext` 组件渲染，`ResourceDetail` 放进 `.reader-main`。DOM 顺序变化但内容与可访问名称不变（`navigation[name=资料标签]`、「收下它是因为」文本照旧）。
+
+### ③ 740px 的帽子戴在正文块上，不戴在 `.reader-main` 上
+
+`.reader-main` 仍是网格列、仍占满可用宽度；`max-width: 740px; margin-inline: auto` 加在其内部的正文块上。两个理由：
+
+1. TASK-045 的挤压断言量的就是 `.reader-main` 的宽度（让位 300–420px）。帽子戴在 `.reader-main` 上会让它恒为 740px，那条断言变成恒 0，**既有守卫会被这次改动悄悄废掉**。
+2. 1440px 下开心得侧栏后左列仍有约 1000px > 740px，**正文一个字都不用重排**——读到一半点开心得，文字不跳，这比"挤压"本身更值钱。只有窗口窄到左列 < 740px 时正文才真正变窄（`minmax(0,1fr)` 自然处理）。
+
+### ④ 三个动作上提为受控 props，请求用单调令牌（沿用 TASK-045 的形态）
+
+`ContentSnapshot` 继续持有快照数据、版本、请求与编辑表单本体；被上提的只是**触发与状态显示**：
+
+- `showSource: boolean`（受控 prop，父级持有）——菜单项文案要随它变，状态必须在能看见菜单的那一层。组件内原 `useState` 与那个 `.text-link` 切换按钮一并移除。
+- `editRequest?: number` / `deleteRequest?: number`——单调递增令牌，同一令牌只消费一次（`lastEditRequest`/`lastDeleteRequest` ref）。这是 TASK-045 `focusRequest` 踩过坑之后的定型写法：不用布尔，否则父级任何一次重渲染都可能重放动作。
+- `onSnapshotState?: (state: { exists: boolean }) => void`——回传"这份资料有没有快照"，菜单据此在「替换正文/粘贴正文」之间取文案、并决定是否渲染「删除正文…」。
+
+**新增 props 全部可选**，`ContentSnapshot` 的其它用法（若有）不受影响。
+
+### ⑤ 「删除正文」进菜单必须补确认
+
+现状是正文下方一个直接按钮，点了就删（`run(() => deleteResourceSnapshot(...))`），没有确认。移进 ⋯ 菜单后它与「编辑资料/编辑标签/资料信息」只隔一条分隔线，**误触成本变高而视觉隔离变少**，所以补一步确认：菜单项文案带省略号（「删除正文…」，与既有「删除资料…」一致），点击后由 `ContentSnapshot` 在正文位置渲染一个确认块（说明不可撤销 + 「确认删除正文」/「取消」）。
+
+确认块渲染在 `ContentSnapshot` 内而不是菜单浮层里，是 TASK-043 已经付过学费的形态：确认 UI 嵌在浮层里时，点浮层外面一下就会把进行中的请求连同状态一起卸载掉。
+
+### ⑥ 字号层级用 `em` 而不是 `rem`
+
+`.snapshot-body` 18px 之后，`.snapshot-rendered :is(h1/h2/h3)` 改用 `em`（相对正文），使小标题恒定为正文的固定倍数。现状用 `rem` 导致 12px 正文配 18.4px 小标题——正文一变大，层级就得重算一次，这是 bug 而不是取舍。
+
+## 完成条件
+
+1. **沉浸态成立**：`/resources/:id` 上左侧导航（`complementary[name=学习空间导航]`）、面包屑「我的学习空间」、页脚「为每一次认真学习，留一页空白。」**都不在文档里**（`toHaveCount(0)`），而在 `/resources`、`/`、`/notes` 上照旧存在。单测 + 真实浏览器各一。
+2. **出口在每一种状态下都在**：读取中、读取失败、正常三态都能按可访问名称取到「返回资料库」并真的回到资料库。三态各一条断言。
+3. **焦点契约不退化**：三态各恰有一个页面级 `h1`（工具条里的资料标题 / 占位标题），路由切换后它拿到焦点；`App.test.tsx` 三条返回路径用例保持通过且不弱化。
+4. **元信息已下线**：页面上不再出现「正文快照」标题、「保存于」「来源标识」「第 1 版」、以及三条 `snapshotHints`（"这是保存当时的副本…"等）。断言按文本 `toHaveCount(0)`，且**同时断言正文本身仍在**（避免在"正文根本没渲染"的状态上空过）。空状态引导 `emptyHints` 仍在（无快照时）。
+5. **三个动作在 ⋯ 菜单里可用且真的生效**：
+   - 「看 Markdown 源码」→ 出现源码视图（`<pre>` 里是原始 Markdown），菜单项文案变为「看渲染后的正文」，再点回到渲染视图；
+   - 「替换正文/粘贴正文」→ 打开正文编辑表单（`form[name=正文快照编辑]`），文案随有无快照变化；
+   - 「删除正文…」→ 先出确认块，点「确认删除正文」才真的删（走真实后端的 e2e 验证快照确实没了），点「取消」不删。无快照时菜单里没有这一项。
+6. **正文字号与行宽**：真实浏览器实测 `.snapshot-rendered` 的 `font-size` = 18px、`line-height` ≈ 32.4px（1.8）；正文块渲染宽度 ≤ 740px（1440px 视口下取实测值记录）；正文块在可用列内水平居中（左右余量差 ≤ 2px）。
+7. **整页只有一条滚动条**：`.snapshot-body` 不再有内部滚动（实测 `scrollHeight <= clientHeight + 2`，或 `overflow` 计算值为 `visible`），长正文由页面滚动承担。1440 与 390 两档实测。
+8. **顶栏 sticky 且不被心得浮层盖住**：长正文滚动 600px 后，「心得」与「返回资料库」仍在视口内（`boundingBox().y` 在视口内且 < 顶栏高度）；窄屏（390px）展开心得浮层时，顶栏的心得按钮仍可见可点（实测 z 序）。
+9. **心得侧栏不退化**：TASK-045 的既有 e2e（宽屏挤压数值、角标 2→3→2、草稿跨收起存活、窄屏浮层不挤压 + `inert` + Esc 归还焦点）**全部保持通过**；因本任务改动而必须调整的断言逐条说明改了什么、为什么、新断言为何不弱于旧断言。
+10. **正文优先不回归**：1440×900 与 390×844 两档、默认收起态，正文首个标题 `boundingBox().y < 视口高度`（真实浏览器，显式设视口）。
+11. **不横向溢出**：320 / 390 / 768 / 1440 四档，`documentElement.scrollWidth <= innerWidth`；心得展开与收起两态都测。
+12. **既有断言只增不减**：三组测试（frontend 单测 / e2e / extension）计数只增不减，`extension` 组与基线完全一致（基线：frontend 539、e2e 49）。
+13. **不新增依赖**，`package.json` 与锁文件不变。
+14. **不动被排除的文件**：`base..candidate` 文件清单里不得出现 `snapshotMarkdown.ts`、`ResourceDeletion.tsx`、`NotesPanel.tsx`、`NotesPage.tsx`、`backend/**`、`extension/**`、`frontend/src/api/**`。以文件清单为证。
+
+## 上下文包
+
+- 规则：`AGENTS.md`、`frontend/AGENTS.md`、`docs/governance/风险分级与检查规则.md`。
+- 必读源文件：`frontend/src/App.tsx`（外壳与焦点权威）、`frontend/src/shell/pages.ts`（`ownHeading` 先例）、`frontend/src/features/resources/ResourceDetail.tsx`（容器、心得开合状态机）、`ResourceToolbar.tsx` + `.test.tsx`（两层结构、菜单、面板、图标化约束）、`ContentSnapshot.tsx` + `.test.tsx`（元信息、三个动作、快照数据与版本）、`frontend/src/styles.css`（`.app-shell`/`.workspace`/`.resource-sheet`/`.snapshot-body`/`.reader-*`/断点）、`frontend/e2e/reader-layout.spec.ts`、`reader-notes-sidebar.spec.ts`、`snapshot-rendering.spec.ts`。
+- 契约：无需改动。
+- 检查：`backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-046-immersive-reader.md --worktree`（预期只选中 `frontend` 组）。
+
+## 已知取舍（登记时即知）
+
+1. **沉浸页没有全局导航**：去别的页面必须先「返回资料库」（或用浏览器后退）。这是用户明确选定的形态；顶栏 sticky 使这个出口始终可达，是接受该取舍的前提。
+2. **顶栏常驻占用约 56px 竖直空间**：换来长文里「心得/返回」随时可点。不做"滚动时自动隐藏"（需要滚动方向状态机与动画，收益不抵本任务的复杂度）。
+3. **740px 固定不可调**：超宽屏两侧留白较多；用户选定固定宽度而非宽窄切换。
+4. **上下文层（标签/收下它是因为）现在会随正文滚走**：它不再常驻。TASK-043 曾把"不用点任何东西就看得见"作为要求——本任务下它在页面顶部初始可见，滚动后隐去；这是"读文章"形态的直接后果，登记为已知变化。
+5. **`删除正文` 多了一步确认**：比现状多一次点击。这是它从正文下方进入菜单后的必要补偿。
+6. **正文里 Markdown 自带的 `# 一级标题` 仍会渲染成 `h1`**（现状即如此，`reader-layout.spec.ts` 正是按它取元素），因此文档里可能同时存在页面 `h1` 与正文 `h1`。本任务不改这一现状（属 `snapshotMarkdown.ts` 的降级策略，在禁止范围内），完成条件 3 只约束**页面级** `h1`。登记为遗留。
+
+## 实现与测试
+
+（实现完成后写入：候选 SHA、变更摘要、检查真实结果、发现与修复、已知限制/遗留。）
+
+<!-- EVIDENCE:BEGIN -->
+## 状态与最终证据
+
+（独立 Review 与 Integration/Acceptance 报告原文、最终候选与状态决定写在这里。）
+
+<!-- EVIDENCE:END -->
