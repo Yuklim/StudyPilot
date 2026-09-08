@@ -255,6 +255,25 @@ describe('quick personal notes', () => {
     await waitFor(() => expect(screen.queryByText(/心得已保存/)).not.toBeInTheDocument())
     expect(screen.getByRole('textbox')).toHaveValue('')
   })
+  it('focuses the composer once per request and never steals it back when availability toggles', async () => {
+    // TASK-045 F1 回归：心得按钮＝开合 + 聚焦一体靠单调 focusRequest token。父级资源
+    // 刷新会让 `available` 短暂翻 false 再回 true；若把那次翻转也当新请求，焦点会被强拉回
+    // 写作框，打断用户正做着的其他操作（Reviewer R2 在候选 f1e96e1 上抓到的焦点回归）。
+    // 判别式只有一条：同一次 token 下 available 翻转后，写作框**不再**被重新聚焦。
+    // 注：NotesPanel 顶层子节点无 key，`!available` 时插入的核对提示段落会让 jsdom 按
+    // 类型逐位调和、重建下方整段子树（真浏览器同样如此），因此别把焦点锚在会被重建的
+    // 按钮上断言——那是调和假象，不是本修复的对象。
+    vi.spyOn(api, 'request').mockResolvedValue(notePage())
+    const view = renderWithRouter(<NotesPanel resourceId={resourceId} focusRequest={1} />)
+    await screen.findByText('还没有心得，写下一句话就可以开始。')
+    // 请求到达时写作框获得焦点（token 1 消费、聚焦一次）。
+    expect(screen.getByRole('textbox')).toHaveFocus()
+    // 之后用户已把焦点挪到别处（写作框失焦），随后 available 先翻 false 再回 true——
+    // 这是父级资源刷新的真实形态。修正前该翻转会重跑聚焦 effect，把焦点抢回写作框。
+    view.rerender(<NotesPanel resourceId={resourceId} focusRequest={1} available={false} />)
+    view.rerender(<NotesPanel resourceId={resourceId} focusRequest={1} available />)
+    expect(screen.getByRole('textbox')).not.toHaveFocus()
+  })
 })
 
 describe('attach/detach note binding', () => {

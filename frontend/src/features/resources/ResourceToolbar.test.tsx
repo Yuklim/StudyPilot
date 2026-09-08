@@ -26,14 +26,28 @@ const snapshot = {
   updated_at: '2026-09-06T00:00:00Z',
 }
 
-function mount(item: Resource = sample()) {
+// TASK-045：默认 mock 里这份资料没有心得（`notesTotal = 0`），于是角标不渲染、心得按钮
+// 的 `textContent` 仍为空；需要验角标总数的用例传一个 > 0 的值。
+function noteRows(count: number) {
+  // 后端 `noteAt` 校验 id 必须是 uuid、resource_id 必须等于请求 scope——假数据要过
+  // 这个校验才算真把列表读到了（否则落回错误态，角标永远不出现）。
+  return Array.from({ length: count }, (_, index) => ({
+    id: `10000000-0000-4000-8000-00000000000${index}`,
+    resource_id: resourceId,
+    content: `合成心得 ${index + 1}`,
+    created_at: '2026-09-08T00:00:00Z',
+    updated_at: '2026-09-08T00:00:00Z',
+    version: 1,
+  }))
+}
+function mount(item: Resource = sample(), notesTotal = 0) {
   vi.spyOn(api, 'request').mockImplementation(async (path: string) => {
     if (path === `${detailPath}/snapshot`) return { data: snapshot }
     if (path === `${detailPath}/snapshot/assets`) return { data: [] }
     if (path.startsWith(`${detailPath}/notes?`))
       return {
-        data: [],
-        page: { number: 1, size: 20, total_items: 0, total_pages: 0, has_more: false },
+        data: noteRows(notesTotal),
+        page: { number: 1, size: 20, total_items: notesTotal, total_pages: 0, has_more: false },
       }
     if (path === detailPath) return { data: item }
     return samplePage([])
@@ -81,7 +95,7 @@ describe('reader toolbar', () => {
     expect(screen.getByRole('link', { name: '返回资料库' })).toBeVisible()
     expect(screen.getByRole('heading', { name: '合成阅读资料', level: 1 })).toBeVisible()
     expect(statusBadge()).toBeVisible()
-    expect(screen.getByRole('link', { name: '心得' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '心得' })).toBeVisible()
     expect(screen.getByRole('link', { name: /原网页/ })).toBeVisible()
     expect(more()).toBeVisible()
     // 第二层：标签与保存原因，不需要任何点击。
@@ -137,6 +151,24 @@ describe('reader toolbar', () => {
     // **焦点必须回到触发按钮**：否则用键盘的人在菜单消失后掉到文档开头。
     expect(more()).toHaveFocus()
     expect(more()).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('lets the toolbar menu own Escape while the notes sidebar is open', async () => {
+    // R1 复审 finding 2：心得侧栏开着时再开 ⋯ 菜单，焦点已进菜单。两个 Esc 监听都挂在
+    // document 上，若心得那侧的监听不看焦点在哪，一次 Esc 会把菜单**和**侧栏一起关掉，
+    // 焦点也被心得按钮抢走。Esc 只该关当前正被操作的那个表面（菜单）并回到它的触发钮。
+    mount()
+    await screen.findByRole('button', { name: '更多操作' })
+    const toggle = screen.getByRole('button', { name: '心得' })
+    fireEvent.click(toggle) // 展开侧栏：心得侧的 document Esc 监听随之上树
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-expanded', 'true'))
+    fireEvent.click(more()) // 再开菜单；菜单自己把焦点送进首个菜单项
+    expect(screen.getByRole('menuitem', { name: '编辑资料' })).toHaveFocus()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
+    // 菜单关了，侧栏还开着、焦点回到 ⋯ 触发按钮而不是被心得按钮抢走。
+    expect(more()).toHaveFocus()
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
   })
 
   it('closes the menu when the pointer goes somewhere else', async () => {
@@ -220,10 +252,13 @@ describe('reader toolbar', () => {
     // 可访问名称查控件，所以把文字换成图标之后它们照样全绿——只断言名称是抓不到
     // 「按钮上没有可见文字了」这件事的。这里同时断言两面：可见文本为空、名称与
     // 悬停提示都在。
+    //
+    // TASK-045 起「心得」从跳转链接变成有状态的开合按钮（默认 mock 没有心得，角标
+    // 不渲染），可见文本在数量为 0 时仍为空；数量 >0 时的角标由专门的用例断言。
     mount()
     await screen.findByRole('button', { name: '更多操作' })
     for (const [role, name] of [
-      ['link', '心得'],
+      ['button', '心得'],
       ['link', '原网页'],
       ['button', '更多操作'],
     ] as const) {
@@ -317,15 +352,43 @@ describe('reader toolbar', () => {
     expect(screen.getByText('原网址无法安全打开')).toHaveAttribute('role', 'alert')
   })
 
-  it('points the notes button at the notes block that actually exists', async () => {
-    // 锚点写错就是一个点了没反应的按钮，而这类失效不会让任何断言变红——除非把
-    // href 和目标区块的 id 绑成一条。
+  it('opens the notes region and focuses the writing box; Escape closes and returns focus', async () => {
+    // TASK-045：心得入口从「跳到正文下方的心得块」变成有状态的**开合 + 聚焦**按钮。
+    // 侧栏始终挂载、由 CSS 显隐，jsdom 能断言的只有状态（aria-expanded）、焦点去向与
+    // Esc 归还；「真的看得见/看不见」交给真实浏览器（reader-notes-sidebar.spec.ts）。
     mount()
     await screen.findByRole('button', { name: '更多操作' })
-    const href = screen.getByRole('link', { name: '心得' }).getAttribute('href') ?? ''
-    expect(href.startsWith('#')).toBe(true)
-    const target = document.getElementById(href.slice(1))
-    expect(target).not.toBeNull()
-    expect(target).toHaveAttribute('aria-label', '记录与理解')
+    const toggle = screen.getByRole('button', { name: '心得' })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    // 收起态点击＝展开并聚焦写作框。
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    await waitFor(() =>
+      expect(screen.getByRole('textbox', { name: '这次想记下什么？' })).toHaveFocus(),
+    )
+    // 展开态再点＝焦点回写作框（先把焦点挪走再点，证明真是按钮带回来的）。
+    screen.getByRole('button', { name: '更多操作' }).focus()
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    await waitFor(() =>
+      expect(screen.getByRole('textbox', { name: '这次想记下什么？' })).toHaveFocus(),
+    )
+    // Esc 收起，焦点还给触发按钮。
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-expanded', 'false'))
+    expect(toggle).toHaveFocus()
+  })
+
+  it('shows the bound note count on the notes button once the mounted panel has read it', async () => {
+    // 角标数量来自侧栏挂载后的 `total_items`（数据真实，不是第二份请求、不会漂移）。
+    // 默认 0 条时不渲染角标（上面的图标化守卫因此仍成立）；这里验 >0 的形态。
+    mount(sample(), 3)
+    await screen.findByRole('button', { name: '更多操作' })
+    const toggle = screen.getByRole('button', { name: '心得' })
+    await waitFor(() => expect(toggle.textContent).toBe('3'))
+    const badge = toggle.querySelector('.notes-badge')
+    expect(badge).not.toBeNull()
+    expect(badge).toHaveAttribute('aria-hidden', 'true')
+    expect(toggle.getAttribute('title')).toContain('心得')
   })
 })

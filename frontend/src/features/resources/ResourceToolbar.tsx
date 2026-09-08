@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { Link } from 'react-router-dom'
 
 import { displayTime, safeWebUrl, sourceLabels, statusLabels, type Resource } from './api'
@@ -31,21 +31,30 @@ export function ResourceToolbar({
   resource,
   refreshed,
   deleted,
-  notesTargetId,
   headingSlot,
+  notesOpen,
+  notesCount,
+  onNotesClick,
+  notesButtonRef,
 }: {
   resource: Resource
   /** 元数据被改动后重新读取这份资料。 */
   refreshed: () => void
   /** 资料已被删除，由调用方决定去哪。 */
   deleted: () => void
-  /** 「心得」按钮要跳到的区域 id。本步心得仍在正文下方（侧栏属 TASK-045）。 */
-  notesTargetId: string
   /**
    * 把这一页的 `h1`（资料标题）交回外壳做路由焦点落点（TASK-044）。
    * 这一页的标题本来就该是资料的名字，而不是「资料详情」四个字。
    */
   headingSlot: (element: HTMLHeadingElement | null) => void
+  /** 心得区是否展开（挤压两栏还是窄屏浮层，由 `ResourceDetail` 的断点决定）。 */
+  notesOpen: boolean
+  /** 这份资料已绑定心得的总数；`null` 表示侧栏还没读到（不显示角标）。 */
+  notesCount: number | null
+  /** 点「心得」＝开合 + 聚焦一体（用户 2026-09-08 选定，见任务记录）。 */
+  onNotesClick: () => void
+  /** 心得按钮本体：`Esc` /「收起」把焦点还给它（TASK-045）。 */
+  notesButtonRef: RefObject<HTMLButtonElement | null>
 }) {
   const [panel, setPanel] = useState<PanelKey | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -124,15 +133,28 @@ export function ResourceToolbar({
           {/* **图标按钮一律不留文字节点**：`textContent` 因此为空，用例可以直接断言
               「文字确实拿掉了」；名字由 `aria-label` 提供，鼠标用户由 `title` 兜底。
               本仓所有测试都按可访问名称查控件，所以只断言名称是抓不到图标化退化的
-              ——这两条断言必须成对存在。 */}
-          <a
-            className="journal-button icon-button"
-            href={`#${notesTargetId}`}
+              ——这两条断言必须成对存在。
+
+              心得入口（TASK-045）现在是这条规则的唯一例外：它带一个**数量角标**。
+              角标显示的是值、不是动作（与学习状态徽章同类），且 `aria-hidden`——
+              可访问名称仍由 `aria-label` 提供，`textContent` 只在数量为 0（角标隐藏）
+              时为空，因此那条图标化守卫对**其余**图标按钮仍然成对成立。 */}
+          <button
+            type="button"
+            ref={notesButtonRef}
+            className="journal-button icon-button reader-notes-toggle"
+            aria-expanded={notesOpen}
             aria-label="心得"
             title="心得"
+            onClick={onNotesClick}
           >
             <Icon name="note" />
-          </a>
+            {notesCount !== null && notesCount > 0 && (
+              <span className="notes-badge" aria-hidden="true">
+                {notesCount}
+              </span>
+            )}
+          </button>
           <OriginalEntry
             resource={resource}
             link={link}

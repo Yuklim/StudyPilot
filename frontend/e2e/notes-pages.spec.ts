@@ -3,12 +3,20 @@ import { expect, test, type Page } from '@playwright/test'
 
 test.use({ timezoneId: 'Asia/Shanghai', trace: 'off' })
 
+// TASK-045 起阅读器的写作区是**默认收起的右侧心得区**：资料详情页刚打开时它不在可访问
+// 树里（CSS `display:none`，组件仍挂载）。这些流程第一步都是「心得区得可见」，所以统一
+// 从这里进：点工具条「心得」= 展开并聚焦写作框（心得按钮＝开合 + 聚焦一体）。
+async function openNotes(page: Page) {
+  await page.locator('.reader-toolbar').getByRole('button', { name: '心得', exact: true }).click()
+  await expect(page.getByRole('form', { name: '心得编辑' })).toBeVisible()
+}
 async function createResource(page: Page, title: string) {
   await page.goto('/resources/new')
   await page.getByLabel('标题').fill(title)
   await page.getByLabel('网页地址（必填）').fill('https://example.com/quick-notes')
   await page.getByRole('button', { name: '保存到资料库' }).click()
   await expect(page).toHaveURL(/\/resources\/[0-9a-f-]{36}$/)
+  await openNotes(page)
   await expect(page.getByText('还没有心得，写下一句话就可以开始。')).toBeVisible()
   return page.url().split('/').at(-1)!
 }
@@ -72,6 +80,7 @@ test('quick notes save, reopen, edit and delete without learning paperwork; resp
     await page.screenshot({ path: testInfo.outputPath(`quick-notes-${width}.png`), fullPage: true })
   }
   await page.reload()
+  await openNotes(page) // 刷新后心得区回到默认收起
   const list = page.getByRole('list', { name: '心得列表' })
   await expect(list.locator('li')).toHaveCount(1)
   await expect(list).toContainText(content)
@@ -193,6 +202,7 @@ test('real note pages keep drafts when paging, and legacy history remains reacha
     ).toBe(201)
   }
   await page.reload()
+  await openNotes(page) // 刷新后心得区回到默认收起
   const list = page.getByRole('list', { name: '心得列表' })
   await expect(list.locator('li')).toHaveCount(20)
   await page.getByRole('textbox', { name: '这次想记下什么？' }).fill('翻页也要留着的草稿')
@@ -348,6 +358,7 @@ test('standalone note attaches to a resource and detaches back through the real 
   // Open the resource detail from the notice; the note now lives under the resource.
   await openLink.click()
   await expect(page).toHaveURL(new RegExp(`/resources/${id}$`))
+  await openNotes(page) // 详情页的心得区默认收起
   const boundList = page.getByRole('list', { name: '心得列表' })
   await expect(boundList).toContainText(standaloneNote)
   expect((await call(page, `/resources/${id}/notes`)).body.page.total_items).toBe(1)

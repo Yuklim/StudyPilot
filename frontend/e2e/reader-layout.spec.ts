@@ -58,7 +58,9 @@ test('the reader puts the body first and keeps its context in view', async ({ pa
   await expect(heading).toBeVisible()
 
   // **正文在心得之前。** 断言 DOM 顺序，不是「两者都在页面上」——后者改版前也成立。
-  const notes = page.getByRole('region', { name: '记录与理解' })
+  // TASK-045 起心得区默认收起（`display:none`，组件仍挂载），不在可访问树里，所以这条
+  // 用容器选择器取它（隐藏元素也能断言 DOM 顺序）；可见性断言放在心得侧栏用例里。
+  const notes = page.locator('.reader-notes')
   expect(
     await heading.evaluate(
       (element, other) =>
