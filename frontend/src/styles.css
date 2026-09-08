@@ -2074,6 +2074,8 @@ a.source-chip:focus-visible {
   margin: 24px 0;
   min-width: 0;
 }
+/* **只剩 Markdown 源码视图用这个框**（TASK-046）。源码是代码不是文章：它保留自己的
+   边框、底色、等宽排版与 420px 的独立滚动，也不跟着正文放大。 */
 .snapshot-body {
   max-height: 420px;
   overflow: auto;
@@ -2088,39 +2090,82 @@ a.source-chip:focus-visible {
   overflow-wrap: anywhere;
 }
 
-/* 渲染后的正文。与源码视图共用 .snapshot-body 的外框，只改内部排版。 */
+/* 渲染后的正文（TASK-046 起**不再套在 .snapshot-body 的框里**）。
+ *
+ * 用户原话：「点开资料之后显示的就是一个完整的阅读器页面，就像正常在网页中读文章一样」
+ * 「正文的字号有点小」。此前这里是一个 420px 高、12px 字的内嵌滚动框：一篇 48338 字的
+ * 文章被塞进小窗，页面滚动与正文滚动还是两套。现在它就是页面本身的正文——没有框、没有
+ * 自己的滚动条，18px/1.8，行宽由 .resource-snapshot 的 740px 帽子限住。
+ *
+ * 标题层级改用 `em`（相对正文）而不是 `rem`（相对根字号）：此前 12px 正文配 1.15rem
+ * ≈18.4px 的小标题，小标题比正文大 50%，正文一改字号层级就得重算一次。 */
 .snapshot-rendered {
-  white-space: normal;
+  margin: 0;
   font-family: inherit;
-  line-height: 1.75;
+  font-size: 18px;
+  line-height: 1.8;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+/* 段落间距。全局 reset 把 `p` 的 margin 清成 0，渲染后的段落此前是连在一起的。 */
+.snapshot-rendered > * + * {
+  margin-top: 1.05em;
+}
+.snapshot-rendered :is(ul, ol) {
+  padding-left: 1.6em;
+}
+.snapshot-rendered li + li {
+  margin-top: 0.35em;
 }
 .snapshot-rendered img {
   max-width: 100%;
   height: auto;
   display: block;
-  margin: 12px 0;
+  margin: 1.2em auto;
   border-radius: 4px;
 }
 .snapshot-rendered pre {
   overflow-x: auto;
-  padding: 10px 12px;
+  padding: 12px 14px;
   background: rgba(0, 0, 0, 0.04);
   border-radius: 4px;
+  font-size: 0.82em;
+  line-height: 1.7;
+}
+.snapshot-rendered code {
+  font-size: 0.9em;
 }
 .snapshot-rendered :is(h1, h2, h3) {
-  margin: 18px 0 8px;
+  margin: 1.6em 0 0.5em;
   line-height: 1.4;
 }
 .snapshot-rendered :is(h1) {
-  font-size: 1.15rem;
+  font-size: 1.5em;
 }
-.snapshot-rendered :is(h2, h3) {
-  font-size: 1.05rem;
+.snapshot-rendered :is(h2) {
+  font-size: 1.28em;
+}
+.snapshot-rendered :is(h3) {
+  font-size: 1.12em;
 }
 .snapshot-rendered blockquote {
-  margin: 12px 0;
-  padding-left: 12px;
+  margin: 1.2em 0;
+  padding-left: 14px;
   border-left: 3px solid rgba(0, 0, 0, 0.15);
+  color: var(--muted);
+}
+/* 删除正文的确认块。渲染在正文位置（不在 `⋯` 浮层里），容器可聚焦以便读屏先听见
+   「不可撤销」，而不是一上来焦点就停在一个按回车即删的按钮上。 */
+.snapshot-confirm {
+  max-width: var(--reader-measure, 740px);
+  margin: 0 auto 20px;
+  padding: 14px 16px;
+  border: 1px solid #e0c9bf;
+  border-radius: 6px 16px 16px 16px;
+  background: #fdf5f2;
+}
+.snapshot-confirm p {
+  margin-bottom: 10px;
 }
 /* 伪协议等被渲染器拒掉的图片：留下可读的替代文本，不静默消失。 */
 .snapshot-image-refused {
@@ -2134,10 +2179,17 @@ a.source-chip:focus-visible {
  * 两层都常驻：上层是动作，下层是阅读时要看见的上下文（标签与保存原因）。
  * 全部用 flex-wrap 而不是固定列宽 —— 320px 下按钮换行，不横向溢出。
  * --------------------------------------------------------------------------- */
+/* **sticky 顶栏**（TASK-046）。沉浸式阅读页没有左栏，这条顶栏上的「返回资料库」是
+   唯一的出口，「心得」是写作入口——一篇几万字的文章滚到任何位置都必须够得着它们。
+   `z-index` 必须**高于**心得浮层的 5：窄屏展开心得时浮层盖住顶栏的话，那个用来收起
+   它的按钮就被自己盖住了。面板（`.reader-panel`）已由组件移出这个盒子——它在流内，
+   跟着钉住会占掉半个窗口。 */
 .reader-toolbar {
-  position: relative;
-  margin-bottom: 18px;
-  padding-bottom: 10px;
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  padding: 9px var(--reader-pad) 9px;
+  background: var(--paper);
   border-bottom: 1px solid #e5e5da;
 }
 .reader-toolbar-actions {
@@ -2154,8 +2206,11 @@ a.source-chip:focus-visible {
   min-width: 0;
   margin: 0;
   font-size: 1.15rem;
-  /* 长标题不许把按钮挤出屏幕：它让位，按钮不让。 */
-  overflow-wrap: anywhere;
+  /* 长标题不许把按钮挤出屏幕：它让位，按钮不让。顶栏 sticky 之后还得**限成一行**
+     ——否则一个长标题会把常驻顶栏撑高好几行，正文一直被压在下面。 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .reader-toolbar-buttons {
   display: flex;
@@ -2172,12 +2227,17 @@ a.source-chip:focus-visible {
   font-size: 1.1rem;
   line-height: 1;
 }
-.reader-toolbar-context {
+/* 上下文层（标签 + 收下它是因为）。TASK-046 起它在**正文列内**、正文之上：它是这篇
+   文章的元信息，要与 740px 的正文左右对齐，并随正文一起滚走——顶栏只装动作。 */
+.reader-context {
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
   gap: 8px 14px;
-  margin-top: 10px;
+  max-width: var(--reader-measure);
+  margin: 0 auto 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
 }
 .reader-tags {
   display: flex;
@@ -2240,7 +2300,8 @@ a.source-chip:focus-visible {
 }
 
 .reader-panel {
-  margin-top: 12px;
+  max-width: var(--reader-measure);
+  margin: 12px auto 0;
   padding: 16px 18px 18px;
   border: 1px solid #e5e5da;
   border-radius: 6px 16px 16px 16px;
@@ -2267,6 +2328,12 @@ a.source-chip:focus-visible {
   .reader-toolbar-buttons {
     margin-left: 0;
     width: 100%;
+  }
+  /* 窄屏顶栏按钮换行到第二排，标题因此可以放开一行的限制。 */
+  .reader-title {
+    white-space: normal;
+    overflow: visible;
+    overflow-wrap: anywhere;
   }
   .reader-menu {
     position: static;
@@ -2449,4 +2516,83 @@ a.source-chip:focus-visible {
   font-size: 10px;
   line-height: 16px;
   text-align: center;
+}
+
+/* ---------------------------------------------------------------------------
+ * 沉浸式阅读页（TASK-046）。
+ *
+ * 用户原话：「我想要点开这个资料之后，显示的就是一个完整的阅读器页面，就像正常在网页
+ * 中读文章一样。而不是阅读器镶嵌在页面中，这样很影响阅读。」
+ *
+ * 此前"镶嵌"有四层：左栏 + 面包屑的外壳 → `.resource-sheet` 圆角卡片 → 420px 高的
+ * `.snapshot-body` 滚动框 → 12px 字。这一节拆掉前两层（外壳由 `App.tsx` 按
+ * `ShellPage.immersive` 整个不渲染，这里只负责剩下的版面），后两层在上面的
+ * `.snapshot-rendered` 处理。
+ *
+ * **行宽的帽子戴在正文块上（`.resource-snapshot`），不戴在 `.reader-main` 上。**
+ * `.reader-main` 是心得侧栏那两列网格的第一列，TASK-045 的挤压断言量的就是它的宽度；
+ * 把它钉成 740px，那条既有守卫会变成恒等式而悄悄失效。戴在里层还有个更实在的好处：
+ * 1440px 下展开心得后左列仍有约 1000px > 740px，**正文一个字都不用重排**——读到一半点开
+ * 心得，文字不跳。
+ * ------------------------------------------------------------------------- */
+.app-shell.immersive {
+  grid-template-columns: minmax(0, 1fr);
+  background: var(--paper);
+}
+/* 横向留白交给阅读器自己（下面的 `--reader-pad`），顶栏才能通栏。
+   这条比媒体查询里的 `.workspace` 特异度高，因此各档 padding 一并让位。 */
+.app-shell.immersive .workspace {
+  padding: 0;
+}
+.resource-sheet.reader {
+  --reader-measure: 740px;
+  --reader-pad: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.reader-body {
+  padding: 22px var(--reader-pad) 96px;
+}
+/* 正文块（含空状态与编辑表单）的行宽帽子：中文每行约 34–38 字，居中。 */
+.resource-snapshot {
+  max-width: var(--reader-measure);
+  margin: 0 auto;
+}
+/* 读取中/读取失败那一屏由 `ResourceDetail` 自己渲染，没有工具条；它的返回链接与占位
+   标题也要有留白，否则贴在窗口边上。 */
+.resource-sheet.reader > .reader-back,
+.resource-sheet.reader > .reader-title,
+.resource-sheet.reader > .resource-loading,
+.resource-sheet.reader > .resource-error {
+  max-width: var(--reader-measure);
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: var(--reader-pad);
+  padding-right: var(--reader-pad);
+}
+.resource-sheet.reader > .reader-back {
+  display: inline-block;
+  margin-top: 20px;
+}
+@media (min-width: 1280px) {
+  /* 心得列钉住时要让开 sticky 顶栏，否则它的头部被压在顶栏底下。 */
+  .resource-sheet.reader.notes-open .reader-notes {
+    top: 74px;
+    max-height: calc(100vh - 88px);
+  }
+}
+@media (max-width: 760px) {
+  .resource-sheet.reader {
+    --reader-pad: 16px;
+  }
+  .reader-body {
+    padding-top: 16px;
+  }
+}
+@media (max-width: 360px) {
+  .resource-sheet.reader {
+    --reader-pad: 12px;
+  }
 }

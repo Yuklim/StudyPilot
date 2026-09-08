@@ -76,100 +76,111 @@ function App() {
   }, [page.title, pathname])
 
   return (
-    <div className={`app-shell${collapsed ? ' nav-collapsed' : ''}`}>
+    <div
+      className={`app-shell${collapsed ? ' nav-collapsed' : ''}${page.immersive ? ' immersive' : ''}`}
+    >
+      {/* 沉浸页没有导航可跳过，但这个链接是全局的、不针对某一页：留着，且它仍指向
+          真实存在的 `main`。删掉等于为了一页去动其余页面的无障碍行为。 */}
       <a className="skip-link" href="#main-content">
         跳到主要内容
       </a>
-      <aside className="sidebar" aria-label="学习空间导航">
-        <Link className="brand" to="/" aria-label="StudyPilot 学习概览">
-          <span className="brand-mark" aria-hidden="true">
-            S<span>·</span>
-          </span>
-          <span className="brand-copy">
-            <strong>StudyPilot</strong>
-            <span>个人学习手帐</span>
-          </span>
-        </Link>
-        <button
-          type="button"
-          className="nav-toggle"
-          aria-label={collapsed ? '展开导航栏' : '收起导航栏'}
-          aria-expanded={!collapsed}
-          title={collapsed ? '展开导航栏' : '收起导航栏'}
-          onClick={toggleNav}
-        >
-          <Icon name={collapsed ? 'expand' : 'collapse'} />
-        </button>
-        <Link className="add-link" to="/resources/new" aria-label="添加资料" title="添加资料">
-          <Icon name="plus" />
-          {!collapsed && <span>添加资料</span>}
-        </Link>
-        <div className="nav-section">
-          <p className="nav-label">我的学习</p>
-          <nav className="primary-nav" aria-label="主要导航">
-            {primaryNavigation.map((item) => (
-              <NavLink
-                key={item.path}
-                to={item.path}
-                end={item.path !== '/resources'}
-                aria-label={item.title}
-                title={item.title}
-              >
-                <Icon name={item.icon} />
-                {/* **折叠时不渲染这个文字节点，而不是用 CSS 藏起来。** 可见文本因此确实
-                    为空（用例能断言），可访问名称由 `aria-label` 顶上，两者不冲突。 */}
-                {!collapsed && <span>{item.title}</span>}
-                <span className="nav-dot" aria-hidden="true" />
-              </NavLink>
-            ))}
-          </nav>
-        </div>
-        {moreNavigation.length > 0 && (
-          <div className="nav-section nav-section-more">
-            <p className="nav-label">后续能力</p>
-            <nav className="primary-nav" aria-label="更多能力">
-              {moreNavigation.map((item) => (
+      {/* **沉浸页（阅读器）不渲染左栏、面包屑与页脚**（TASK-046，用户 2026-09-08 选定）。
+          代价写在 `ShellPage.immersive` 上：这一页的唯一出口是页面自己那条「返回资料库」，
+          它在读取中/读取失败/正常三态都必须在。 */}
+      {!page.immersive && (
+        <aside className="sidebar" aria-label="学习空间导航">
+          <Link className="brand" to="/" aria-label="StudyPilot 学习概览">
+            <span className="brand-mark" aria-hidden="true">
+              S<span>·</span>
+            </span>
+            <span className="brand-copy">
+              <strong>StudyPilot</strong>
+              <span>个人学习手帐</span>
+            </span>
+          </Link>
+          <button
+            type="button"
+            className="nav-toggle"
+            aria-label={collapsed ? '展开导航栏' : '收起导航栏'}
+            aria-expanded={!collapsed}
+            title={collapsed ? '展开导航栏' : '收起导航栏'}
+            onClick={toggleNav}
+          >
+            <Icon name={collapsed ? 'expand' : 'collapse'} />
+          </button>
+          <Link className="add-link" to="/resources/new" aria-label="添加资料" title="添加资料">
+            <Icon name="plus" />
+            {!collapsed && <span>添加资料</span>}
+          </Link>
+          <div className="nav-section">
+            <p className="nav-label">我的学习</p>
+            <nav className="primary-nav" aria-label="主要导航">
+              {primaryNavigation.map((item) => (
                 <NavLink
                   key={item.path}
                   to={item.path}
-                  end
+                  end={item.path !== '/resources'}
                   aria-label={item.title}
                   title={item.title}
                 >
                   <Icon name={item.icon} />
+                  {/* **折叠时不渲染这个文字节点，而不是用 CSS 藏起来。** 可见文本因此确实
+                    为空（用例能断言），可访问名称由 `aria-label` 顶上，两者不冲突。 */}
                   {!collapsed && <span>{item.title}</span>}
                   <span className="nav-dot" aria-hidden="true" />
                 </NavLink>
               ))}
             </nav>
           </div>
-        )}
-        <div className="sidebar-note" aria-hidden="true">
-          <span className="note-pin" />
-          <p>
-            慢慢积累，
-            <br />
-            也是一种前进。
-          </p>
-          <span>one page at a time</span>
-        </div>
-        <div className="sidebar-footer">
-          <span className="space-marker" />
-          本机个人空间
-        </div>
-      </aside>
+          {moreNavigation.length > 0 && (
+            <div className="nav-section nav-section-more">
+              <p className="nav-label">后续能力</p>
+              <nav className="primary-nav" aria-label="更多能力">
+                {moreNavigation.map((item) => (
+                  <NavLink
+                    key={item.path}
+                    to={item.path}
+                    end
+                    aria-label={item.title}
+                    title={item.title}
+                  >
+                    <Icon name={item.icon} />
+                    {!collapsed && <span>{item.title}</span>}
+                    <span className="nav-dot" aria-hidden="true" />
+                  </NavLink>
+                ))}
+              </nav>
+            </div>
+          )}
+          <div className="sidebar-note" aria-hidden="true">
+            <span className="note-pin" />
+            <p>
+              慢慢积累，
+              <br />
+              也是一种前进。
+            </p>
+            <span>one page at a time</span>
+          </div>
+          <div className="sidebar-footer">
+            <span className="space-marker" />
+            本机个人空间
+          </div>
+        </aside>
+      )}
 
       <main className="workspace" id="main-content" tabIndex={-1}>
-        <div className="workspace-topbar">
-          <span>
-            我的学习空间
-            <span className="breadcrumb-separator" aria-hidden="true">
-              /
+        {!page.immersive && (
+          <div className="workspace-topbar">
+            <span>
+              我的学习空间
+              <span className="breadcrumb-separator" aria-hidden="true">
+                /
+              </span>
+              {page.title}
             </span>
-            {page.title}
-          </span>
-          <span className="workspace-badge">本机学习空间</span>
-        </div>
+            <span className="workspace-badge">本机学习空间</span>
+          </div>
+        )}
         {!page.ownHeading && (
           <header className="page-heading">
             <span className="eyebrow">STUDYPILOT / YOUR LEARNING JOURNAL</span>
@@ -193,10 +204,12 @@ function App() {
         <HeadingSlot.Provider value={registerHeading}>
           <Screen page={page} />
         </HeadingSlot.Provider>
-        <footer className="workspace-footer">
-          <span>为每一次认真学习，留一页空白。</span>
-          <span>资料与学习记录可用 · 慢慢积累</span>
-        </footer>
+        {!page.immersive && (
+          <footer className="workspace-footer">
+            <span>为每一次认真学习，留一页空白。</span>
+            <span>资料与学习记录可用 · 慢慢积累</span>
+          </footer>
+        )}
       </main>
     </div>
   )

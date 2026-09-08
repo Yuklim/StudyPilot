@@ -21,8 +21,16 @@ import { Icon } from '../../shell/Icon'
  * 想起「我当初为什么收下这篇」都要点一下，而这恰是本产品的核心信息之一。代价是正文
  * 起始位置下移约 40px，已记入任务记录的已知取舍。
  *
- * 低频**动作**才进 `⋯`：编辑资料、编辑标签、资料信息，以及**单独一区、置于底部、
- * 带危险样式**的删除资料。
+ * 低频**动作**才进 `⋯`：编辑资料、编辑标签、资料信息、正文的三个动作（看源码 / 替换 /
+ * 删除），以及**单独一区、置于底部、带危险样式**的删除正文与删除资料。
+ *
+ * TASK-046 起这一页是**沉浸式整页**，本组件因此拆成三块渲染：
+ *
+ * - `.reader-toolbar`：只装动作层与 `⋯` 菜单，`position: sticky` 钉在窗口顶部。长文滚到
+ *   任何位置都够得着「心得」与「返回资料库」——沉浸页没有左栏，这条返回链接是唯一出口。
+ * - `.reader-panel`（面板）**移出 sticky 盒**：它在流内，跟着钉住会把半个窗口占掉。
+ * - 上下文层（标签 + 收下它是因为）由 `ReaderContext` 单独导出，`ResourceDetail` 把它放进
+ *   正文列内、正文之上——它是这篇文章的元信息（等同署名行），要与 740px 正文列左右对齐。
  */
 
 type PanelKey = 'learning' | 'original' | 'edit' | 'tags' | 'info' | 'delete'
@@ -36,6 +44,11 @@ export function ResourceToolbar({
   notesCount,
   onNotesClick,
   notesButtonRef,
+  snapshotExists,
+  showSource,
+  onToggleSource,
+  onEditSnapshot,
+  onDeleteSnapshot,
 }: {
   resource: Resource
   /** 元数据被改动后重新读取这份资料。 */
@@ -55,6 +68,18 @@ export function ResourceToolbar({
   onNotesClick: () => void
   /** 心得按钮本体：`Esc` /「收起」把焦点还给它（TASK-045）。 */
   notesButtonRef: RefObject<HTMLButtonElement | null>
+  /**
+   * 这份资料有没有正文快照；`null` = 还没读到。菜单据此在「替换正文/粘贴正文」之间取
+   * 文案，并决定「删除正文…」出不出现——**没有正文时不该有一个删除它的入口**。
+   */
+  snapshotExists: boolean | null
+  /** 当前是不是源码视图。受控于 `ResourceDetail`：菜单项文案要随它变。 */
+  showSource: boolean
+  onToggleSource: () => void
+  /** 打开正文编辑表单（替换/粘贴）。 */
+  onEditSnapshot: () => void
+  /** 请求删除正文；确认那一步由 `ContentSnapshot` 在正文位置渲染。 */
+  onDeleteSnapshot: () => void
 }) {
   const [panel, setPanel] = useState<PanelKey | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -71,6 +96,19 @@ export function ResourceToolbar({
   function openMenu() {
     setPanel(null)
     setMenuOpen((open) => !open)
+  }
+  /**
+   * 菜单里那些**不开面板**的动作（正文的三个）。菜单一关，焦点会掉到 `body`，而这几个
+   * 动作里只有「替换正文」会被自动聚焦的写作框接住；其余两个没有任何东西接。所以这里
+   * 把焦点还给 `⋯`——与 `Esc` 关菜单同一条归还路径。
+   *
+   * `focus()` 必须排在 `run()` 之后：删除确认块与源码视图都在本次更新里挂载，先归还再
+   * 触发的话，若被触发方随后主动聚焦（写作框的 `autoFocus`），归还会把它盖掉。
+   */
+  function runFromMenu(run: () => void, keepFocus = true) {
+    setMenuOpen(false)
+    run()
+    if (keepFocus) menuTrigger.current?.focus()
   }
 
   // Esc 关菜单并把焦点还给触发按钮；点到菜单外面也关。**焦点归还只属于 `Esc` 那一支**
@@ -107,30 +145,31 @@ export function ResourceToolbar({
 
   const progress = resource.progress
   return (
-    <div className="reader-toolbar">
-      <div className="reader-toolbar-actions">
-        <Link className="text-link reader-back" to="/resources">
-          {/* 箭头用 `aria-hidden` 的真实元素，不用 `::before`。生成内容在 Chromium 与
+    <>
+      <div className="reader-toolbar">
+        <div className="reader-toolbar-actions">
+          <Link className="text-link reader-back" to="/resources">
+            {/* 箭头用 `aria-hidden` 的真实元素，不用 `::before`。生成内容在 Chromium 与
               Firefox 里**是计入**可访问名称的，只有 jsdom 不算——用伪元素等于只在测试
               环境里成立。 */}
-          <span aria-hidden="true">← </span>返回资料库
-        </Link>
-        <span className={`source-chip ${resource.source_type.toLowerCase()}`}>
-          {sourceLabels[resource.source_type]}
-        </span>
-        <h1 className="reader-title" ref={headingSlot} tabIndex={-1}>
-          {resourceTitle(resource)}
-        </h1>
-        <div className="reader-toolbar-buttons">
-          <button
-            type="button"
-            className="journal-button reader-status"
-            aria-expanded={panel === 'learning'}
-            onClick={() => openPanel('learning')}
-          >
-            {statusLabels[progress.status]} · {progress.progress_percent}%
-          </button>
-          {/* **图标按钮一律不留文字节点**：`textContent` 因此为空，用例可以直接断言
+            <span aria-hidden="true">← </span>返回资料库
+          </Link>
+          <span className={`source-chip ${resource.source_type.toLowerCase()}`}>
+            {sourceLabels[resource.source_type]}
+          </span>
+          <h1 className="reader-title" ref={headingSlot} tabIndex={-1}>
+            {resourceTitle(resource)}
+          </h1>
+          <div className="reader-toolbar-buttons">
+            <button
+              type="button"
+              className="journal-button reader-status"
+              aria-expanded={panel === 'learning'}
+              onClick={() => openPanel('learning')}
+            >
+              {statusLabels[progress.status]} · {progress.progress_percent}%
+            </button>
+            {/* **图标按钮一律不留文字节点**：`textContent` 因此为空，用例可以直接断言
               「文字确实拿掉了」；名字由 `aria-label` 提供，鼠标用户由 `title` 兜底。
               本仓所有测试都按可访问名称查控件，所以只断言名称是抓不到图标化退化的
               ——这两条断言必须成对存在。
@@ -139,89 +178,93 @@ export function ResourceToolbar({
               角标显示的是值、不是动作（与学习状态徽章同类），且 `aria-hidden`——
               可访问名称仍由 `aria-label` 提供，`textContent` 只在数量为 0（角标隐藏）
               时为空，因此那条图标化守卫对**其余**图标按钮仍然成对成立。 */}
-          <button
-            type="button"
-            ref={notesButtonRef}
-            className="journal-button icon-button reader-notes-toggle"
-            aria-expanded={notesOpen}
-            aria-label="心得"
-            title="心得"
-            onClick={onNotesClick}
-          >
-            <Icon name="note" />
-            {notesCount !== null && notesCount > 0 && (
-              <span className="notes-badge" aria-hidden="true">
-                {notesCount}
-              </span>
-            )}
-          </button>
-          <OriginalEntry
-            resource={resource}
-            link={link}
-            open={panel === 'original'}
-            onOpen={() => openPanel('original')}
-          />
-          <button
-            type="button"
-            ref={menuTrigger}
-            className="journal-button icon-button reader-more"
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-            aria-label="更多操作"
-            title="更多操作"
-            onClick={openMenu}
-          >
-            <Icon name="more" />
-          </button>
+            <button
+              type="button"
+              ref={notesButtonRef}
+              className="journal-button icon-button reader-notes-toggle"
+              aria-expanded={notesOpen}
+              aria-label="心得"
+              title="心得"
+              onClick={onNotesClick}
+            >
+              <Icon name="note" />
+              {notesCount !== null && notesCount > 0 && (
+                <span className="notes-badge" aria-hidden="true">
+                  {notesCount}
+                </span>
+              )}
+            </button>
+            <OriginalEntry
+              resource={resource}
+              link={link}
+              open={panel === 'original'}
+              onOpen={() => openPanel('original')}
+            />
+            <button
+              type="button"
+              ref={menuTrigger}
+              className="journal-button icon-button reader-more"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              aria-label="更多操作"
+              title="更多操作"
+              onClick={openMenu}
+            >
+              <Icon name="more" />
+            </button>
+          </div>
         </div>
-      </div>
 
-      {/* 上下文层：常驻，不需要任何点击。 */}
-      <div className="reader-toolbar-context">
-        <nav className="reader-tags" aria-label="资料标签">
-          {resource.tags.length ? (
-            resource.tags.map((tag) => (
-              <Link className="source-chip" key={tag.id} to={`/resources?tag_id=${tag.id}`}>
-                {tag.name}
-              </Link>
-            ))
-          ) : (
-            <span className="resource-hint">暂无标签</span>
-          )}
-        </nav>
-        <p className="reader-save-reason">
-          <span className="note-tab">收下它是因为</span>
-          {resource.save_reason || '还没有填写保存原因。'}
-        </p>
-      </div>
-
-      {menuOpen && (
-        <div className="reader-menu" ref={menuRegion} role="menu" aria-label="更多操作">
-          <button
-            type="button"
-            role="menuitem"
-            className="reader-menu-item"
-            onClick={() => openPanel('edit')}
-          >
-            编辑资料
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className="reader-menu-item"
-            onClick={() => openPanel('tags')}
-          >
-            编辑标签
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className="reader-menu-item"
-            onClick={() => openPanel('info')}
-          >
-            资料信息
-          </button>
-          {/* **销毁性动作单独一区、置于底部**（用户 2026-09-07 选定）。分隔线不是装饰：
+        {menuOpen && (
+          <div className="reader-menu" ref={menuRegion} role="menu" aria-label="更多操作">
+            <button
+              type="button"
+              role="menuitem"
+              className="reader-menu-item"
+              onClick={() => openPanel('edit')}
+            >
+              编辑资料
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="reader-menu-item"
+              onClick={() => openPanel('tags')}
+            >
+              编辑标签
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="reader-menu-item"
+              onClick={() => openPanel('info')}
+            >
+              资料信息
+            </button>
+            {/* 正文的三个动作（TASK-046，用户 2026-09-08 选定）。它们此前在正文底下，沉浸式
+              阅读页里那是文章末尾——读到最后才看得见，而且与正文之间没有分界。收进这里
+              **功能一个不少**：文案随状态变（源码/渲染、替换/粘贴），删除进下面的销毁区。 */}
+            {/* 没有正文时不出现：切换一个不存在之物的两种视图没有意义。 */}
+            {snapshotExists && (
+              <button
+                type="button"
+                role="menuitem"
+                className="reader-menu-item"
+                onClick={() => runFromMenu(onToggleSource)}
+              >
+                {showSource ? '看渲染后的正文' : '看 Markdown 源码'}
+              </button>
+            )}
+            <button
+              type="button"
+              role="menuitem"
+              className="reader-menu-item"
+              /* 写作框带 `autoFocus`，由它接住焦点，这里不再归还给 `⋯`。 */
+              onClick={() => runFromMenu(onEditSnapshot, false)}
+            >
+              {snapshotExists ? '替换正文' : '粘贴正文'}
+            </button>
+            {/* **销毁性动作单独一区、置于底部**（用户 2026-09-07 选定）。分隔线不是装饰：
               它是「删除不与普通动作相邻」这条要求的落点，有用例断言它在。
 
               它**也是一个真正的 `menuitem`**，并且只负责打开下面那个面板 —— 删除流程
@@ -229,17 +272,32 @@ export function ResourceToolbar({
               里塞一个非 menuitem 的区块，辅助技术按菜单模型根本取不到这个销毁性动作；
               而且确认对话框嵌在浮层里，点一下菜单外面就会把已经取到的一次性令牌连同
               进行中的删除请求一起卸载掉（删除若已在途，后端删了、界面却停在原地不跳转）。 */}
-          <hr className="reader-menu-separator" role="separator" />
-          <button
-            type="button"
-            role="menuitem"
-            className="reader-menu-item danger"
-            onClick={() => openPanel('delete')}
-          >
-            删除资料…
-          </button>
-        </div>
-      )}
+            <hr className="reader-menu-separator" role="separator" />
+            {/* **没有正文时不渲染这一项**：一个删除不存在之物的入口只会制造误点。
+              省略号与「删除资料…」同义：点它先出确认，不是直接删。确认块由
+              `ContentSnapshot` 渲染在正文位置——**不放在这个浮层里**，否则点一下菜单
+              外面就会把确认连同进行中的请求一起卸载掉（TASK-043 已经付过这份学费）。 */}
+            {snapshotExists && (
+              <button
+                type="button"
+                role="menuitem"
+                className="reader-menu-item danger"
+                onClick={() => runFromMenu(onDeleteSnapshot, false)}
+              >
+                删除正文…
+              </button>
+            )}
+            <button
+              type="button"
+              role="menuitem"
+              className="reader-menu-item danger"
+              onClick={() => openPanel('delete')}
+            >
+              删除资料…
+            </button>
+          </div>
+        )}
+      </div>
 
       {panel && (
         <ToolbarPanel
@@ -271,6 +329,34 @@ export function ResourceToolbar({
           {panel === 'delete' && <ResourceDeletion resource={resource} deleted={deleted} />}
         </ToolbarPanel>
       )}
+    </>
+  )
+}
+
+/**
+ * 上下文层：标签与「收下它是因为」。**不是动作，是这篇文章的元信息**，所以不进按钮、
+ * 也不进 sticky 顶栏——它随正文一起滚动，位置与正文列对齐（由 `ResourceDetail` 放进
+ * `.reader-main`）。用户原话是「元数据、标签…收到顶部工具条的按钮里」，这两项当面作过
+ * 区分：塞进按钮意味着每次想起「我当初为什么收下这篇」都要点一下。
+ */
+export function ReaderContext({ resource }: { resource: Resource }) {
+  return (
+    <div className="reader-context">
+      <nav className="reader-tags" aria-label="资料标签">
+        {resource.tags.length ? (
+          resource.tags.map((tag) => (
+            <Link className="source-chip" key={tag.id} to={`/resources?tag_id=${tag.id}`}>
+              {tag.name}
+            </Link>
+          ))
+        ) : (
+          <span className="resource-hint">暂无标签</span>
+        )}
+      </nav>
+      <p className="reader-save-reason">
+        <span className="note-tab">收下它是因为</span>
+        {resource.save_reason || '还没有填写保存原因。'}
+      </p>
     </div>
   )
 }
