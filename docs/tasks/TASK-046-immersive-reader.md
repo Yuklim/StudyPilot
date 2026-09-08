@@ -181,7 +181,63 @@ TASK-045 记录与 `任务索引.md` 的该行：按根 `AGENTS.md` §5 登记�
 
 ## 实现与测试
 
-（实现完成后写入：候选 SHA、变更摘要、检查真实结果、发现与修复、已知限制/遗留。）
+实现 SHA：`b592a1a`（实现）+ `a244d6e`（测试）。`base..a244d6e` 共 **16 个文件**，全部落在 `allowed_paths` 内：**13 前端**（App.tsx / App.test.tsx / shell/pages.ts / ResourceDetail.tsx / ResourceToolbar.tsx + .test.tsx / ContentSnapshot.tsx + .test.tsx / ResourcePages.test.tsx / styles.css + e2e 3 件，含新增 `reader-immersive.spec.ts`）+ **3 docs/tasks**（本记录、TASK-045 合并态登记、任务索引行）。被排除的 `snapshotMarkdown.ts`、`ResourceDeletion.tsx`、`NotesPanel.tsx`、`NotesPage.tsx`、`backend/**`、`extension/**`、`frontend/src/api/**` 一个都没出现。生产构建经 check_task 内置 `npm run build` 通过。
+
+**变更摘要**
+
+- `shell/pages.ts`：`ShellPage` 增可选 `immersive`，`/resources/:resourceId` 置 true；注释把代价写进契约（置 true 的页面必须每种状态都有真实可用的返回链接）。
+- `App.tsx`：`immersive` 页不渲染 `.sidebar`、`.workspace-topbar`、`.workspace-footer`，`.app-shell` 加 `immersive` 类。**跳过导航链接与 `main#main-content` 保留**——它是全局的，为一页删掉会动到其余页面。焦点权威（`registerHeading`/`wantFocus`/`focusedForRoute`）一行未动。
+- `ResourceToolbar.tsx`：改返回片段。`.reader-toolbar` 只留动作层与 `.reader-menu`（sticky），`ToolbarPanel` 移到它之外；上下文层拆成导出的 `ReaderContext`。菜单新增三项：源码切换（受控文案）、替换/粘贴正文（文案随 `snapshotExists`）、销毁区里的「删除正文…」（无正文时与源码切换一并不渲染）。`runFromMenu` 负责关菜单并把焦点还给 `⋯`（「替换正文」除外——写作框 `autoFocus` 会接住）。
+- `ResourceDetail.tsx`：新增 `showSource`/`editRequest`/`deleteRequest`/`snapshotExists` 四个状态与四个 `useCallback`（回调必须稳定，否则 memo 过的正文子树每次工具条状态变化都重渲染）；`ReaderContext` 放进 `.reader-main` 正文之上；**Esc 守卫改认 `.reader-toolbar, .reader-panel`**（面板搬家后旧守卫会漏）。
+- `ContentSnapshot.tsx`：删除 `<h3>正文快照</h3>`、元信息行与三句 `snapshotHints`；`showSource` 改为受控 prop，内部 state 与那个 `.text-link` 切换按钮移除；正文底部的两个动作按钮移除，**空状态保留一个「粘贴正文」就地入口**；新增删除确认块（容器 `tabIndex=-1` 并在打开时聚焦，让读屏先听见「不可撤销」而不是焦点直接停在删除按钮上）；编辑表单改为**顶掉正文**而非排在其后；错误提示上移到区块顶部。两个请求令牌在**渲染期**消化（`react-hooks/set-state-in-effect` 禁止在 effect 里 setState，且这是 React 官方「props 变了顺手调整 state」的写法，`ResourceDetail` 里已有同形态先例），**令牌在真正动手之后才记为已消费**，正文还在读取途中点「替换正文」不会把请求烧掉。
+- `styles.css`：`.app-shell.immersive` 单列 + 纸色底 + `.workspace` padding 归零（特异度高于各档媒体查询里的 `.workspace`，各档一并让位）；`.resource-sheet.reader` 去掉卡片外框并定义 `--reader-measure: 740px` / `--reader-pad`（760/360 两档收窄）；`.reader-toolbar` sticky（`z-index: 6` > 心得浮层的 5）；`.reader-title` 单行省略（≤640px 放开，那一档按钮本来就换行）；`.reader-context` 与 `.resource-snapshot`、`.reader-panel` 戴 740px 帽子并居中；`.snapshot-rendered` 脱框、18px/1.8、段落与列表间距、标题层级改 `em`；`.snapshot-body` 明确只服务源码 `<pre>`；新增 `.snapshot-confirm`；宽屏心得列 sticky `top` 让开顶栏。
+
+**为什么 740px 的帽子不戴在 `.reader-main` 上**：`.reader-main` 是心得两列网格的第一列，TASK-045 的挤压断言量的正是它的宽度；钉成 740px 会让那条既有守卫变成恒等式而**悄悄失效**。戴在里层还换来一个实在好处——1440px 下展开心得后左列仍有约 1000px > 740px，**正文一个字都不用重排**。
+
+**检查真实结果**（工作区 = `a244d6e`）
+
+- `npm run format:check` → All matched files use Prettier code style!（退出 0）
+- `npm run lint` → 退出 0；`npm run typecheck`（`tsc -b`）→ 退出 0；`npm run build` → 退出 0
+- `npx vitest run` → 23 文件 **548** 用例通过（基线 539，净增 9）
+- `npx playwright test`（全量 e2e，真实后端）→ **54 通过**（基线 49，净增 5）
+- `backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-046-immersive-reader.md --worktree` → **CHECKS PASS**
+
+**实测数值**（Chromium，真实后端；见 `reader-immersive.spec.ts` 与留档截图 `reader-1440.png` / `reader-390.png`）
+
+| 项 | 改前 | 改后 |
+| --- | --- | --- |
+| 正文字号 / 行高 | 12px / 1.9 | **18px / 32.4px（1.8）** |
+| 正文行宽（1440px 视口） | 随卡片宽度（约 1300px） | **≤740px，居中，左右余量差 ≤2px** |
+| 正文滚动 | 内嵌 420px 滚动框（页面 + 正文两条） | **`overflow: visible`，`scrollHeight - clientHeight ≤ 2`，整页一条** |
+| 左栏 / 面包屑 / 页脚 | 各 1 | **各 0（资料库页仍各 1，对照组同用例内断言）** |
+| 顶栏（滚动 1500px 后） | 随正文滚走 | **`y ≤ 2`，心得按钮 `click()` 成功而非超时** |
+
+**实现中发现并修复的问题**
+
+1. **`react-hooks/set-state-in-effect` 拦下了初版的两个令牌 effect。** 初版把「替换正文/删除正文」的令牌放在 `useEffect` 里 setState，lint 直接判错。改为渲染期消化（同 `ResourceDetail` 里 `if (item && item !== shown) setShown(item)` 那一形态），顺带少一轮渲染。
+2. **`e2e/resource-pages.spec.ts` 在阅读页上点侧栏的「添加资料」——那个入口现在不存在了。** 这不是测试写错，是本次改动的**真实后果**：阅读页没有全局导航。用例改为先按阅读页唯一的出口回资料库再点，并在注释里写明这正是那条出口在真实使用里的样子。
+3. **无正文时菜单里仍有「看 Markdown 源码」。** 新写的「没有正文就没有删除入口」用例把它一起抓了出来（切换一个不存在之物的两种视图没有意义），已一并按 `snapshotExists` 隐藏。
+4. **Esc 守卫会随面板搬家而失效。** 面板从 `.reader-toolbar` 盒子里移出后，旧守卫只认 `.reader-toolbar`，焦点在「资料信息」面板里按 Esc 会连心得侧栏一起关、焦点被心得按钮抢走——正是 TASK-045 复审 R1 finding 2 修掉的形态换个位置长回来。守卫改认两者，并补了一条用例；**已把守卫改回旧写法实测该用例变红**，确是真守卫而非空过。
+
+**既有断言的改动（逐条）**
+
+| 改了什么 | 为什么 | 新断言为何不弱于旧的 |
+| --- | --- | --- |
+| `await screen.findByText(/共 12 字/)` ×4 → `findByRole('heading', {name:'冻结的标题', level:1})` | 「共 N 字」正是本次删掉的元信息 | 新信号是**渲染后的正文本身**，比元信息更接近「用户真的看到了正文」 |
+| `点击 替换正文/删除正文 按钮` → 经 `⋯` 菜单 | 三个动作按用户选定收进菜单 | 多走一层菜单，且删除**多断言一步确认**（确认前 DELETE 调用数为 0） |
+| `点击 看 Markdown 源码 按钮` ×3（含 2 处 e2e） → 经 `⋯` 菜单 | 同上 | 额外断言了菜单项文案随视图切换（旧断言只验按钮在） |
+| `points a %s resource at the original it actually has`（三句 `snapshotHints` + `assertAbove`） → `gives a %s resource its text with no metadata wrapped around it` | 被守的句子整段删掉了 —— 守卫跟着走，而不是留一条空转的断言 | 新用例**先断言正文真的渲染出来**，再逐句断言七处元信息文本不在；空状态那条用例的方位词守卫（`assertAbove`）原样保留 |
+| 菜单项清单 3 项 → 7 项、分隔线位置索引 | 菜单新增三项 | 顺序断言保留，并**新增**「删除正文…也在分隔线之下」 |
+| `e2e/resource-pages.spec.ts` 增一次「返回资料库」 | 阅读页没有侧栏入口了 | 顺带把那条出口的真实可用性也钉住了 |
+
+**已知限制/遗留**
+
+- **A｜窄屏 sticky 顶栏两排约 120px**（390×844 实测）：按钮在 ≤640px 换行到第二排，顶栏因此比宽屏高一倍。正文仍有约 720px 可读区，不阻断；若要压缩需把「返回资料库」或学习状态徽章图标化，属新的形态决定，未做。
+- **B｜正文里 Markdown 自带的 `# 一级标题` 仍渲染为 `h1`**：文档中因此可能同时存在页面 `h1` 与正文 `h1`（现状即如此，降级策略属 `snapshotMarkdown.ts`，在禁止范围内）。完成条件 3 只约束**页面级** `h1`，用例相应按名称取。
+- **C｜`.snapshot-rendered` 去掉了 `tabIndex={0}`**：它此前是可聚焦的，因为那是个可键盘滚动的框；现在正文由页面自己滚，一个可聚焦的非交互 div 只会在 Tab 序里多占一站。窄屏 `inert` 探针取的是「正文内首个可聚焦节点」，种子资料的空状态按钮仍在，用例照旧成立。
+- **D｜区块的可访问名称仍是「正文快照」**：`<h3>` 不再上屏，但 `aria-label` 留着——region 需要一个名字，而这个名字对读屏用户是有用的信息，不是屏幕上的杂物。四处既有 `getByRole('region', {name:'正文快照'})` 因此不必改。
+- **E｜上下文层（标签 / 收下它是因为）现在随正文滚走**：TASK-043 曾把「不用点任何东西就看得见」作为要求，现在它只在页面顶部初始可见。这是「读文章」形态的直接后果，登记为已知变化。
+- **F｜TASK-045 遗留两项未处理**（Esc「死键」、心得聚焦令牌在刷新窗口被提前消费）：不在本任务范围，改它们形成新候选而收益不抵成本。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
