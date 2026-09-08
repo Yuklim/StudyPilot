@@ -1,7 +1,7 @@
-import { useCallback, useState } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
-import { getResource } from './api'
+import { getResource, type Source } from './api'
 import { ContentSnapshot } from './ContentSnapshot'
 import { ResourceError } from './ResourceState'
 import { ResourceToolbar } from './ResourceToolbar'
@@ -14,17 +14,49 @@ import { useHeadingSlot } from '../../shell/heading'
 // 此前它是一条长滚动：心得与编辑框在最上面，正文夹在元数据与原件之间，学习状态在最
 // 底下。用户的原话是「从资料库点开资料之后应该直接显示的是阅读器窗口」。
 //
-// 本步**不动心得的形态**（仍在正文下方），挤压式侧栏属 TASK-044；这是用户选的两步走。
-const NOTES_ANCHOR = 'resource-notes'
+// TASK-044 压缩了页面外壳，正文拿到更多空间。
+//
+// TASK-045 把心得从「正文下方整行」挪进右侧心得区：**宽屏默认收起**（正文保持满宽，
+// 点工具条「心得」才展开为挤压两栏），窄屏展开为盖在正文上的浮层。心得区一旦资料读
+// 到就**保持挂载、用 CSS 显隐**，而不是卸载——否则收起会丢掉未保存草稿。
+const READER_BREAKPOINT = '(min-width: 1280px)'
+
+// 正文这一子树只在资料/快照自己的数据变化时才有内容变化；心得区开合、角标数量这类
+// 只影响工具条的父级状态，**不该让正文重新渲染**——否则角标到位的那一下重渲染，正好撞上
+// 快照取回落库的提交时序，会把刚提交的正文节点撕裂（ContentSnapshot 整文件用例抓到的
+// 竞态）。用 memo 把正文隔离在父级状态更新之外，props 没变就不进这个子树。
+const ReaderContent = memo(function ReaderContent({
+  resourceId,
+  sourceType,
+}: {
+  resourceId: string
+  sourceType: Source
+}) {
+  return <ContentSnapshot resourceId={resourceId} sourceType={sourceType} />
+})
+
+/** 跟随一个媒体查询。jsdom 没有 matchMedia 时用 fallback（默认当宽屏挤压态）。 */
+function useSqueezeLayout(fallback = true): boolean {
+  const [squeeze, setSqueeze] = useState(() => {
+    if (typeof window.matchMedia !== 'function') return fallback
+    return window.matchMedia(READER_BREAKPOINT).matches
+  })
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return
+    const query = window.matchMedia(READER_BREAKPOINT)
+    const update = () => setSqueeze(query.matches)
+    update()
+    query.addEventListener('change', update)
+    return () => query.removeEventListener('change', update)
+  }, [])
+  return squeeze
+}
 
 export function ResourceDetail({ resourceId }: { resourceId: string }) {
   const navigate = useNavigate()
   const load = useCallback(() => getResource(resourceId), [resourceId])
   const { result, retry } = useResourceQuery(resourceId, load)
   const item = result?.data
-  // Keep the notes panel mounted during same-resource metadata refreshes (for example, tag edits).
-  const [openedId, setOpenedId] = useState<string | null>(null)
-  if (item && openedId !== resourceId) setOpenedId(resourceId)
   // **工具条也要跨刷新活着。** `retry()` 会先把 result 清空再重新读取，那一瞬间 `item`
   // 是 undefined；若直接按 `item` 渲染，工具条整个卸载，用户正开着的面板（编辑标签、
   // 编辑资料…）当场关掉——而改标签本身就会触发这次刷新，于是「改一个标签，面板就没了」。
@@ -40,8 +72,46 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
   // 互相抵消：只要出现 `item.id !== resourceId`（后端返回的 id 与请求的不一致），两条会
   // 无限交替触发 "Too many re-renders"。守卫放在读取处就够，也不会显示上一份资料。
   const toolbarItem = shown?.id === resourceId ? shown : undefined
+
+  // --- TASK-045：心得区（右侧，默认收起）---
+  // 开合状态、对写作框的聚焦请求、Esc 的归还目标都在这一个父级里协调：心得按钮在
+  // `ResourceToolbar`、心得区在这页，两者的共同父级就是这里。**不新增路由或全局
+  // context**；页面 `h1` 与返回路径的焦点（TASK-044）完全不受影响。
+  const [notesOpen, setNotesOpen] = useState(false)
+  const [focusRequest, setFocusRequest] = useState(0)
+  const [notesCount, setNotesCount] = useState<number | null>(null)
+  const notesButton = useRef<HTMLButtonElement>(null)
+  // 宽屏（≥1280px）展开是「正文 + 心得」两列；窄屏展开是盖在正文上的浮层。
+  const squeeze = useSqueezeLayout()
+  const opening = notesOpen && !squeeze // 窄屏浮层态：正文要让位，禁止焦点进入
+  const askEditorFocus = useCallback(() => setFocusRequest((value) => value + 1), [])
+  function onNotesClick() {
+    // 开合 + 聚焦一体（用户 2026-09-08 选定）：收起态点击 = 展开并聚焦写作框；
+    // 展开态点击 = 把焦点带回写作框。收起另有心得区自带的「收起」按钮与 Esc。
+    setNotesOpen(true)
+    askEditorFocus()
+  }
+  const closeNotes = useCallback(() => {
+    setNotesOpen(false)
+    notesButton.current?.focus()
+  }, [])
+  useEffect(() => {
+    if (!notesOpen) return
+    function onKeyDown(event: KeyboardEvent) {
+      // 浮层/挤压都不做模态焦点陷阱（与既有 ToolbarPanel 一致）；Esc 是统一的关闭语义。
+      if (event.key !== 'Escape') return
+      closeNotes()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [notesOpen, closeNotes])
+  const receiveCount = useCallback((total: number) => setNotesCount(total), [])
+
   return (
-    <section className="resource-sheet reader" aria-label="资料内容">
+    <section
+      className={`resource-sheet reader${notesOpen ? ' notes-open' : ''}`}
+      aria-label="资料内容"
+    >
       {/* 工具条只在资料读到之后才渲染，而**读取中与读取失败时同样需要出口**。
           旧版这条返回链接是无条件的；改版初稿把它并进工具条，结果「正在打开这份
           资料…」那一屏一个链接都没有，用户被困在页面上。既有用例正是按可访问名称
@@ -67,33 +137,44 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
           resource={toolbarItem}
           refreshed={retry}
           deleted={() => navigate('/resources')}
-          notesTargetId={NOTES_ANCHOR}
           headingSlot={headingSlot}
+          notesOpen={notesOpen}
+          notesCount={notesCount}
+          onNotesClick={onNotesClick}
+          notesButtonRef={notesButton}
         />
       )}
       {toolbarItem && (
-        // 正文**紧接着工具条**，先于心得与元数据出现——这是本任务的全部意义。
-        // 快照的安全形态（`html: false`、无消毒器、图片三条去向）全部落在
-        // `snapshotMarkdown.ts` 里，**本任务不进那个文件一个字符**，因此那条性质是文件
-        // 清单能证明的，不靠自述。`ContentSnapshot.tsx` 只改了五条方位文案——入口搬到
-        // 上方之后旧文案变假，见 TASK-043 记录「授权范围的两次修订」。
-        <ContentSnapshot resourceId={toolbarItem.id} sourceType={toolbarItem.source_type} />
-      )}
-      {openedId === resourceId && (
-        <section
-          className="detail-block"
-          id={NOTES_ANCHOR}
-          // 跳转目标要接得住焦点，否则点「心得」只滚动、焦点还留在工具条上。
-          // 与本仓 `#main-content` 的做法一致。
-          tabIndex={-1}
-          aria-label="记录与理解"
-        >
-          <div className="detail-block-heading">
-            <span className="note-tab">记录与理解</span>
-            <span className="resource-hint">写下此刻的想法，时间自动记录。</span>
+        // 正文 + 心得区。TASK-045 起这一页是**两栏容器**：默认只有正文列（心得区
+        // `display:none`），展开才让出右侧一列（宽屏挤压 / 窄屏浮层）。
+        <div className="reader-body">
+          {/* 窄屏浮层展开时正文 `inert`：被浮层盖住的内容不该还能被 Tab 或辅助技术
+              进入。宽屏挤压态两边都可见、都可读，不 inert。 */}
+          <div className="reader-main" inert={opening}>
+            {/* 正文**紧接着工具条**、默认占满——这是「正文优先」的全部意义。
+                快照的安全形态（`html: false`、无消毒器、图片三条去向）全部落在
+                `snapshotMarkdown.ts` 里，**本任务不进那个文件一个字符**。 */}
+            <ReaderContent resourceId={toolbarItem.id} sourceType={toolbarItem.source_type} />
           </div>
-          <NotesPanel key={resourceId} resourceId={resourceId} available={!!item} />
-        </section>
+          {/* 用心得 `<section aria-label>` 而不是 `<aside>`：section + 名字 = region，
+              `getByRole('region', { name: '记录与理解' })` 照旧取得到。`<aside>` 在
+              section 祖先里会被映射成 generic，region 查询会落空。 */}
+          <section className="reader-notes" aria-label="记录与理解">
+            <div className="reader-notes-heading">
+              <span className="note-tab">记录与理解</span>
+              <button type="button" className="journal-button" onClick={closeNotes}>
+                收起
+              </button>
+            </div>
+            <NotesPanel
+              key={resourceId}
+              resourceId={resourceId}
+              available={!!item}
+              focusRequest={focusRequest}
+              onCount={receiveCount}
+            />
+          </section>
+        </div>
       )}
     </section>
   )

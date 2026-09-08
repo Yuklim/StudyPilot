@@ -22,10 +22,23 @@ import { ResourceAttachPicker } from './ResourceAttachPicker'
 export function NotesPanel({
   resourceId,
   available = true,
+  focusRequest = 0,
+  onCount,
 }: {
   /** 绑定资料的心得传资源 id；独立心得(顶层「我的心得」页)传 null 或不传。 */
   resourceId?: string | null
   available?: boolean
+  /**
+   * TASK-045：`ResourceDetail` 每次请求聚焦写作框就递增一次（心得按钮＝开合 + 聚焦
+   * 一体）。token 变化且此刻确实有写作框时把焦点放进去。可选：顶层「我的心得」页等
+   * 独立用法不传，行为完全不变。
+   */
+  focusRequest?: number
+  /**
+   * TASK-045：读到心得总数（`result.data.page.total_items`）后回传给入口按钮做角标。
+   * 只在心得区挂载、`scope` 有资料时才有意义，由 `ResourceDetail` 传入；独立用法不传。
+   */
+  onCount?: (total: number) => void
 }) {
   const scope = resourceId ?? null
   const standalone = scope === null
@@ -53,11 +66,25 @@ export function NotesPanel({
   useEffect(() => {
     if (selected && !deleting && !pending) input.current?.focus()
   }, [selected, deleting, pending])
+  // TASK-045：心得按钮＝开合 + 聚焦一体。每次请求递增 focusRequest；此刻确实有写作框
+  // 才聚焦——正停在删除确认那一屏（没有写作框）或正在处理中时跳过。
+  useEffect(() => {
+    if (!focusRequest) return
+    if (!available || deleting || pending) return
+    input.current?.focus()
+  }, [focusRequest, available, deleting, pending])
   const load = useCallback(() => listNotes(scope, page), [scope, page])
   const { result, retry } = useResourceQuery(
     (scope ?? 'standalone') + ':' + page + ':' + revision,
     load,
   )
+  // TASK-045：把这份资料已绑定心得总数报给入口按钮做角标。total_items 随新增/删除
+  // 变化，角标实时增减；值不变（例如只改内容）则不重报。
+  const totalNotes = result?.data?.page.total_items
+  useEffect(() => {
+    if (totalNotes === undefined) return
+    onCount?.(totalNotes)
+  }, [onCount, totalNotes])
   const dirty = !deleting && draft !== (selected?.content ?? '')
   function discardAllowed() {
     return !dirty || window.confirm('这份草稿尚未保存，确定放弃当前编辑吗？')

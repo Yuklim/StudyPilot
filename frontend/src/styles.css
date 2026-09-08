@@ -1372,33 +1372,8 @@ fieldset:disabled {
 .resource-detail > .text-link {
   margin: 0 0 10px;
 }
-.detail-block {
-  margin-top: 18px;
-  padding: 20px 22px 22px;
-  border: 1px solid #e5e5da;
-  border-radius: 6px 20px 20px 20px;
-  background: var(--paper);
-}
-.detail-block + .detail-block {
-  margin-top: 22px;
-}
-.detail-block-heading {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 6px;
-  padding-bottom: 10px;
-  border-bottom: 1px dashed #dfe2d6;
-}
-.detail-block-heading .note-tab {
-  letter-spacing: 2px;
-}
-.detail-block .notes-panel,
-.detail-block .resource-metadata {
-  margin-top: 4px;
-}
+/* TASK-045：正文下方的心得块 `.detail-block` 已被右侧心得区取代（见文末新增段）。
+   此处不再需要对应的盒样式。 */
 .resource-detail .resource-progress {
   max-width: 380px;
 }
@@ -2366,4 +2341,112 @@ a.source-chip:focus-visible {
   justify-content: center;
   padding-left: 8px;
   padding-right: 8px;
+}
+
+/* ---------------------------------------------------------------------------
+ * 阅读器心得侧栏（TASK-045）：挤压式侧栏（默认收起）+ 窄屏浮层 + 心得角标。
+ *
+ * 心得区在 DOM 里恒为正文后的兄弟，一旦资料读到就**保持挂载**——默认收起只是
+ * `display:none`，不是条件卸载。只有不卸载才能同时做到：① 收起不丢写作框里未保存的
+ * 草稿；② 角标数量由侧栏自己的 `total_items` 回传（零额外请求、不会漂移）；③ 重开
+ * 的瞬间不重新拉列表。`display:none` 的节点不进 Tab 序与无障碍树，jsdom 也不应用
+ * 样式，所以「收起态不可见/不可聚焦」这类断言只能放在真实浏览器（Playwright）里。
+ *
+ * 两种呈现态共用同一 DOM：`min-width: 1280px` 以上正文列放得下可读宽度（nav 展开
+ * 228px、workspace 与阅读器留白后，1280px 下正文列约 548px），展开是「正文 + 心得」
+ * 两列 grid（挤压正文）；以下正文列放不下，展开改为盖在正文上的浮层。这一档与
+ * ≤760px 左栏顶栏档是两个独立断点，并存不冲突。
+ * ------------------------------------------------------------------------- */
+.reader-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+.reader-main {
+  min-width: 0;
+}
+/* 默认收起：心得区不占空间、不进 Tab 序与无障碍树，但组件仍挂载（草稿与数据都在）。 */
+.reader-notes {
+  display: none;
+  min-width: 0;
+}
+/* 展开态先通用地放进文档流；宽窄两档随后各自决定它是第二列还是浮层。 */
+.resource-sheet.reader.notes-open .reader-notes {
+  display: block;
+  padding: 10px 14px 14px;
+  border: 1px solid #d9e0d2;
+  border-radius: 6px 20px 20px 20px;
+  background: #f8f8f0;
+}
+.reader-notes-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed #dfe2d6;
+}
+.reader-notes-heading .note-tab {
+  letter-spacing: 2px;
+}
+/* NotesPanel 本身是一张卡片；进了侧栏就脱掉外套，免得两层卡片叠在一起。 */
+.reader-notes .notes-panel {
+  margin: 0;
+  padding: 12px 2px 6px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+@media (min-width: 1280px) {
+  /* 挤压式两栏：正文让出 340px 心得列 + 24px 缝隙。 */
+  .resource-sheet.reader.notes-open .reader-body {
+    grid-template-columns: minmax(0, 1fr) 340px;
+    gap: 24px;
+  }
+  /* 心得列随正文滚动时钉在可视区内，写作框始终够得着；内容超高在列内滚。 */
+  .resource-sheet.reader.notes-open .reader-notes {
+    position: sticky;
+    top: 14px;
+    max-height: calc(100vh - 28px);
+    overflow-y: auto;
+  }
+}
+/* 窄屏浮层（<1280px）：盖在正文上、不挤压正文。正文此时由组件层 `inert`，
+   焦点进不了被盖住的正文；`Esc`/「收起」把焦点还给工具条的心得按钮。 */
+@media (max-width: 1279px) {
+  .resource-sheet.reader.notes-open .reader-body {
+    position: relative;
+  }
+  .resource-sheet.reader.notes-open .reader-notes {
+    position: absolute;
+    top: 6px;
+    left: 0;
+    right: 0;
+    z-index: 5;
+    max-height: min(78vh, 640px);
+    overflow-y: auto;
+    box-shadow: 0 20px 50px rgba(60, 55, 45, 0.28);
+  }
+}
+
+/* 心得按钮上的数量角标。它显示的是值、不是动作（与学习状态徽章同类），`aria-hidden`
+   不进可访问名称——名字仍是 `aria-label` 的「心得」。角标只在数量 >0 时渲染。 */
+.reader-notes-toggle {
+  position: relative;
+}
+.notes-badge {
+  position: absolute;
+  top: -5px;
+  right: -6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: #9a5a44;
+  color: #fff;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
 }

@@ -68,6 +68,9 @@ for (const source of ['WEB', 'PASTE', 'FILE'] as const) {
     await page.goto(path)
     await expect(page.getByRole('button', { name: '更多操作' })).toBeVisible()
     await expect(page.getByRole('form', { name: '编辑资料表单' })).toHaveCount(0)
+    // TASK-045：心得区默认收起，先点「心得」展开（开合 + 聚焦一体）。
+    await page.locator('.reader-toolbar').getByRole('button', { name: '心得', exact: true }).click()
+    await expect(page.getByRole('form', { name: '心得编辑' })).toBeVisible()
     const note = page.getByRole('form', { name: '心得编辑' }).getByRole('textbox')
     await note.fill('编辑资料时不能丢失的心得草稿')
     await openEditor(page)
