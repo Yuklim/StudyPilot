@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-045"
-status = "IN_PROGRESS"
+status = "IN_ACCEPTANCE"
 risk = "L3"
 risk_reason = "本任务改的是**阅读器页的写作交互**，触及 `features/resources` 与 `features/notes` 两个模块边界，并改动一条已确立的无障碍契约。实质风险：① **心得入口从锚点链接变成有状态的开合控件**——TASK-044 起「工具条图标按钮可见文本为空、名字由 aria-label 提供」这条测试抓不到退化；本任务再把入口升级为 `aria-expanded` 的开合 + 聚焦写作框，若聚焦/归还语义出错，键盘与读屏用户会在笔记浮层里失去落点（屏幕上看不出来）。② **窄屏浮层是新的模态式交互**：Esc/收起后焦点必须还给触发按钮，展开态正文不可被 Tab 溜进（inert）。③ **写作区从常驻正文下方变为默认收起的挂载态侧栏**——收起必须不丢未保存草稿（组件保持挂载），这决定结构是「CSS 显隐」而非「条件卸载」，与 TASK-044 左栏折叠的同类决策一致。④ 响应式两态（宽屏挤压正文 / 窄屏盖正文浮层）需要真实浏览器数值断言。不改后端、`/api/v1`、openapi、本机访问门禁、`extension/`；不动 `ContentSnapshot.tsx`、`snapshotMarkdown.ts`、`ResourceDeletion.tsx`；不改任何写入语义。"
 risk_flags = ["business"]
@@ -173,6 +173,38 @@ TASK-044 记录与 `任务索引.md` 的该行：按根 `AGENTS.md` §5 登记�
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-（待实现与独立审查后填写；此区禁止放入或变更任务授权、风险等级、允许路径、检查要求、实现或测试记录。）
+- **最终候选**：`5e44075`（基线 `5ea0398`；修订自首轮 `f1e96e1`）。
+- **独立 Review×2（最终候选）**：均 **PASS**。两位 Reviewer 首轮审 `base..f1e96e1` 全量（均 CHANGES_REQUIRED），本轮增量审 `f1e96e1..5e44075` 并继承首轮范围，结论覆盖最终候选 `5e44075`；机器检查全绿（vitest 539 / e2e 49 / check_task CHECKS PASS）。
+- **风险/状态决定**：L3 保留，进入 L3 独立 Integration/Acceptance（本区下方将追加其结果与验收结论）。两条非阻断记录项（见本区末）不涉安全底线、必要检查或已确认需求/契约缺失，不阻断；按独立复审结论 PASS 附已明确处置的非阻断问题处置。
+
+### 复审报告 R1（续审 `f1e96e1` → `5e44075`；结论 PASS，附两个非阻断记录项）
+
+结论基于只读静态核验：运行器只授 Read/Grep/Glob，无写工具，未修改任何文件；工作树即最终候选 `5e44075`（干净）。已读 `/tmp/sp-t045-revision-delta.diff`、`/tmp/sp-t045-final-5e44075.diff` 及仓库当前文件，覆盖最终候选 `5e44075`；第一轮曾审 `f1e96e1` 全量 diff，本轮复核 `f1e96e1..5e44075` 增量（仅五个文件）并继承对 `styles.css`/`ResourceToolbar.tsx`/其余 e2e 与 docs 的首轮结论。
+
+1. **Esc 双关（R1 finding 2）— 已修。** 守卫在 ResourceDetail.tsx:107-112：焦点在 `.reader-notes`（inNotes）或心得按钮本体（onNotesToggle）或工具条外（正文/页面别处）才 `closeNotes()`；菜单项等工具条内其它位置让给菜单。菜单 DOM（`.reader-menu`）确在 `.reader-toolbar` 内（ResourceToolbar.tsx:110,198），所以 menuitem 聚焦时命中 defer。新单测 ResourceToolbar.test.tsx:156-172 经 `mount()` 渲染整个 `<App>`，ResourceDetail 的真实 document 监听在树，能区分旧逻辑：旧逻辑下 notes 监听会把 `aria-expanded` 关成 false，断言 `toggle` 仍 true 会红。合理焦点位均已覆盖。残余（非阻断）：守卫对所有「工具条内非心得控件」一律 defer，即便该表面并未打开——例如菜单被 Esc 收回、焦点停在 ⋯ 触发钮后再按一次 Esc，侧栏不再被关（第一下之后 Esc 变「死键」）。影响有限、不抢焦点，建议收窄为「仅当焦点在正打开的表面（菜单/面板）内才 defer」，可记录后继续。
+2. **删除回落 e2e（F2）— 已修。** reader-notes-sidebar.spec.ts:107-119 走真实后端完整删除：保存一条→列表卡片「删除」→确认勾选→「确认删除心得」→status→角标 3→2、后端 `total_items` 2；末尾 :135 后端断言同步改 2。删除语义自洽：choose→getNote 取最新版→DELETE 带 If-Match（api.ts:153-165）。断言用 Playwright 自动重试且后端计数精确，无假阳性（删除失败/版本冲突会停在 3 而变红）。
+3. **焦点回归（F1）— 已修，含一处新盲点。** NotesPanel.tsx:73-80 单调 token + `lastFocusRequest` ref，同一 token 只消费一次。新单测 NotesPanel.test.tsx:258 确能区分旧逻辑：`available` 翻 false→true 时旧 effect 会重跑并重新聚焦新重建的 textarea（断言 not.toHaveFocus 变红）。注释所述「顶层无 key、!available 插入核对提示段导致子树重建」属实（提示段在 NotesPanel.tsx:283，位于 `<form>` 之前会致 textarea 重建），断言锚在 textarea 而非会重建的按钮，非空过。新盲点（非阻断、窄窗口）：token 在 `available/deleting/pending` 守卫**之前**就被标记消费（:75-76），若点击正好落在资源刷新 `available=false` 窗口，token 被烧掉而聚焦未发生，available 回来后不再补焦，直到下次点击。属瞬态边缘，可记录。
+4. **范围与记录 — 已修。** base..candidate 全 diff 恰 13 文件（10 前端 + 3 docs/tasks），全部在 allowed_paths，无 `ContentSnapshot.tsx`/`snapshotMarkdown.ts`/`ResourceDeletion.tsx`/`NotesPage.tsx`/`backend`/`extension`。记录 :142 已写 13 文件与 SHA `5e44075`；:25 `checks = []` 正确；:157 对误写已作说明。
+
+**增量新缺陷**：无阻断级；上述两个窄边缘为可记录后继续的可选项。**剩余风险**：Esc 归还契约在最常见的「焦点在心得区/正文/按钮」路径上均保持；复合表面链的第二下 Esc 与刷新窗口点击是仅有的偏离。**结论：PASS**（附两个非阻断记录项）。
+
+### 复审报告 R2（续审 `f1e96e1` → `5e44075`；结论 PASS，附两个非阻断记录项）
+
+增量复审完成。三份 diff 与工作树（即最终候选 `5e44075`）均已静态核验，只读能力为 Read/Grep/Glob（无写工具、无 Bash），未改动任何文件。候选 `5e44075`、基线 `5ea0398`、本轮范围 `f1e96e1..5e44075`；工作树文件与最终 diff 一致；`base..candidate` 13 个文件全部落在 allowed_paths，未出现被排除文件。
+
+- **F1 焦点回归 — 已修。** NotesPanel.tsx:73-80：`lastFocusRequest` ref 单调消费，顺序正确——相等即 return（:75），随后在 `if (!focusRequest) return`（:77）**之前**无条件把 ref 更新为当前 token（:76）。故 available/deleting/pending 翻转只会让 effect 重跑但命中等同 return，不再聚焦；原 bug 形态确被切断。新单测（NotesPanel.test.tsx:258-276）对旧逻辑必红：无 key 顶层子节点下，`!available` 插入提示段会使 form/textarea 子树按位重建、输入框失焦，新逻辑 effect 早退不再抢回，旧逻辑则 `input.current?.focus()` 抢回——判别有效，非空过，也非调和假象误报。
+- **R1 finding 2 Esc 双关 — 已修。** ResourceDetail.tsx:107-112 守卫在 focus 位于 `.reader-toolbar` 内且非心得区、非心得按钮时 return。已核实 `.reader-menu`/`.reader-panel` 均在 ResourceToolbar.tsx:110 的 `.reader-toolbar` 根内，故菜单项命中 return、交给菜单自己的 Esc；新单测（ResourceToolbar.test.tsx:156-172）经 `mount()` 渲染完整 `App`，Notes 侧 document 监听先注册先执行，去掉守卫会因 `closeNotes` 抢焦点/关侧栏而红，是真守卫。
+- **F2 角标回落 — 已修。** 宽屏 e2e 走真实删除确认，断言角标 3→2、后端 `total_items` 2（reader-notes-sidebar.spec.ts）。
+- **范围与记录 — 已修。** TASK-045 记录 `checks=[]` 已还原、SHA/13 文件数与 diff 一致。
+- **新问题/剩余风险（非阻断）**：① F1 设计为「token 一旦到达即消费，无论是否真正聚焦」：若点击恰落在 `available=false` 的刷新窗口，该次聚焦请求会被永久丢弃（侧栏开但焦点停按钮）。触发面窄、降级轻微，属一次性的有意取舍。② Esc 守卫使「焦点停在工具条普通控件（无打开的面板）时按 Esc」不再收起侧栏（修复前会关）。语义自洽且主要关闭路径（心得区/心得按钮/正文）不受影响。
+
+**结论：PASS**。继承第一轮 `base..f1e96e1` 全量审查范围，本轮对四个修订项及受影响上下文做了增量核验，结论覆盖最终候选 `5e44075`。无新增阻断缺陷。
+
+### 非阻断记录项（两 Reviewer 一致，已明确处置，不阻断）
+
+1. Esc「死键」：菜单收回、焦点停工具条普通控件后再按 Esc 不再关侧栏（守卫让给表面自身）；两方建议可后续收窄为「仅当焦点在正打开的表面（菜单/面板）内才 defer」。影响有限、不抢焦点。
+2. F1 token 提前消费：token 在 available/deleting/pending 守卫**前**即标记消费，点击若恰落在刷新 `available=false` 窗口则本次聚焦被烧掉、available 回来后不补焦直到下次点击。瞬态窄窗口。
+
+（本区 Integration/Acceptance 结果将追加于下。）
 
 <!-- EVIDENCE:END -->
