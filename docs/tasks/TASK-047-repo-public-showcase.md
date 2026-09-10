@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-047"
-status = "IN_PROGRESS"
+status = "ACCEPTED"
 risk = "L2"
 risk_reason = "不触碰产品代码、契约、门禁与数据；但新增 .github/workflows（CI 门禁配置）与 LICENSE（对外授权声明），属普通级别中的工具与对外声明变更，命中 documentation + tooling，取较高级别。"
 risk_flags = ["documentation", "tooling"]
@@ -85,10 +85,41 @@ checks = ["governance"]
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：
-- Review：
-- Acceptance：L2 N/A
+- 候选 SHA：`dfd86fa4fd28f1392a3d0645ec19e3c8dce6a780`
+  （本任务提交序列 `d19446a` → `0374bed` → `fdfb8af` → `dfd86fa`；`fdfb8af` 为首轮冻结候选，`dfd86fa` 为修正后最终候选）
+- 差异范围（base `f609145`..候选）：12 个文件，+775/−381；**无任何 `backend/` `frontend/` `extension/` 产品代码改动**，无 track 文件删除。
+  交付物：`README.md`（重写）、`LICENSE`、`.github/workflows/ci.yml`、`docs/开发与运行.md`、`docs/images/` 6 张 PNG、本记录与任务索引。
+- Review（L2 独立只读，独立于实现者）：
+  - Reviewer：`reviewer` 角色 Agent，运行器层仅注册 Read/Grep/Glob（无 Bash、无写工具），全程未改动文件。
+  - 首轮（候选 `fdfb8af`）：**FAIL（退回）**，3 项 findings，其中 1 项阻断：
+    ①【阻断】README 徽章 `TypeScript-5.x` 与代码不符 —— 两边 `package.json` 均锁 `typescript: "6.0.3"`；
+    ②【非阻断】「不点确认就什么都不存」过宽 —— `bridge.ts` 的 `stash()` 会先写入 `chrome.storage.local`；
+    ③【非阻断】「59 份任务记录（TASK-000 ~ TASK-047）」 —— 本分支无 TASK-046 记录，区间表述不成立。
+    三项均由主 Agent独立复核属实后修复（提交 `dfd86fa`）。
+  - 复审（同一 Reviewer，增量 `fdfb8af..dfd86fa`）：**PASS，No findings**；确认三处措辞与实现相符且未引入新的不准确，
+    根 README 权限串仍满足 `extension/src/boundaries.test.ts` 断言。
+  - 提交范围的硬证据（Reviewer 无 git 工具、无法自证，此处补足）：`git diff --stat fdfb8af..dfd86fa` = `README.md | 6 +++---`，仅 1 个文件 3 增 3 删，未波及产品代码。
+- 验收：L2 独立 Acceptance N/A（按 AGENTS.md 第四节）。
+- 二进制文件人工核验：治理检查器对任意二进制按设计返回 FAIL（`docs/governance/风险分级与检查规则.md`），
+  本任务**不修改该规则**，改为由主 Agent逐张目视核验并记录于「实现与测试」段：
+  5 张 1440×900 + 1 张 292×250（与 manifest popup 尺寸一致），`file` 均识别为有效 PNG；画面确为本应用真实界面，
+  数据为合成演示内容，未见姓名、邮箱、令牌、本机路径、真实文章或私人笔记。
 - 最终状态/风险/用户操作：
-- 非阻断遗留项（仅有真实问题时）：
-- 日期与决定日志：2026-09-10 用户授权并选定四项范围；登记 L2。
+  - 状态 **ACCEPTED**（L2 链路：实现 → 自动检查 → 独立只读 Review PASS → 主 Agent汇总；无独立 Acceptance）。
+  - **仅用户可合并**。分支 `agent/coordinator/TASK-047-repo-public-showcase`（尚未推送），需用户推送并开 PR。
+  - 仓库可见性未改动（仍为 private），description 与 18 个 topics 已通过 `gh repo edit` 设置；是否公开由用户决定。
+- 非阻断遗留项：
+  1. `03-reader.png` 基于 main（`f609145`）。TASK-046 合入后正文宽度与元信息会变，需重截；
+  2. CI 从未在 GitHub 真实运行，首次 push 才是首次执行（本地已按 workflow 内命令逐条实跑为绿）；
+  3. 本分支与本地分支 `task-status-t045-merging` 在 `docs/tasks/任务索引.md` 必然冲突（1 行，机械性）：
+     两者改动相邻行（本任务在 TASK-045 上方插入新行，对方把该行状态 ACCEPTED→MERGED）。
+     内容不冲突，两行都保留即可；建议先合并 `task-status-t045-merging` 再 rebase 本分支。main 上 TASK-045 仍为 ACCEPTED 系陈旧登记；
+  4. README 中的硬编码计数（「50 余份」）长期仍需随任务推进更新。
+- 越界记录（本任务未处置，需另行开任务授权，属 `allowed_paths` 之外）：全仓库 track 文件中有 16 个文件、
+  39 处出现本机用户名与绝对路径 `/Users/yuklimching`（`docs/StudyPilot-主Agent交接说明.md` 及 15 份早期任务记录）。
+  非密钥泄露，但仓库公开后会暴露本机用户名与目录结构。本任务未修改这些文件，未扩大范围。
+- 日期与决定日志：
+  - 2026-09-10 用户授权并选定四项范围（门面优先／过程材料保留并说明／删已合并远程分支／README 中文为主+英文摘要）；登记 L2。
+  - 2026-09-10 用户确认截图入库并同意「二进制人工核验写入任务记录、不改治理规则」。
+  - 2026-09-10 首轮 Review FAIL → 修复 → 同 Reviewer 复审 PASS；状态置 ACCEPTED。
 <!-- EVIDENCE:END -->
