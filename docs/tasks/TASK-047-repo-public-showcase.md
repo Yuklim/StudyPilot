@@ -51,14 +51,36 @@ checks = ["governance"]
 
 ## 实现与测试
 
-- 实现 SHA/变更摘要：见下方 EVIDENCE 段的候选 SHA。
-- 命令、真实退出结果、product_fingerprint、环境、未运行原因：
-  - 截图：`cd frontend && npx playwright test showcase-capture`（临时 spec，截图后删除），真实通过；
-  - 扩展 popup：`extension/npm run build` + Playwright 持久化上下文加载 `extension/dist`，真实通过；
-  - 三套测试与 CI 命令的实跑结果记录于 EVIDENCE 段。
+- 实现 SHA：`d19446a`（门面主体：README 重写、README 详情迁出至 `docs/开发与运行.md`、LICENSE、CI workflow、6 张截图、删除 2 个误建空文件）。
+  后续 `0374bed` 为同任务修订（README 补回扩展权限清单，修复下述回归），二者同属本任务最终候选。
+- 变更摘要：README 由 447 行实现日志改写为门面（定位/英文摘要/徽章/截图/技术栈/架构/快速开始/测试数字/流程/边界/文档索引）；
+  原详细内容迁入 `docs/开发与运行.md` 并修正 2 处相对链接与 5 处过期「尚未开放」表述（已核对 `ResourceToolbar.tsx:260,269` 与 TASK-021/022/023 状态）；
+  新增 MIT LICENSE、`.github/workflows/ci.yml`（5 job：governance/backend/frontend/extension/e2e）。
+
+- 命令、真实退出结果、环境：
+  - `backend: uv run pytest` → **550 passed**（13.68s，Ruff/mypy 同步通过）；
+  - `frontend: npm run test -- --run` → **539 passed / 23 files**；
+  - `extension: npm run test -- --run` → **145 passed / 8 files**（候选 `0374bed` 实跑，见下「回归」）；
+  - `frontend: npm run test:e2e` → **49 passed**（33.6s，真实浏览器）；
+  - `scripts/governance/check_task.py --candidate 0374bed` → `FAIL: binary file needs explicit manual validation: docs/images/01-overview.png`。
+- 截图证据（临时脚本，未入库）：
+  - 页面 5 张：`cd frontend && npx playwright test showcase-capture`，spec 为一次性文件，截图后已删除；
+  - 扩展 popup：`extension/npm run build` 后用 Playwright 持久化上下文加载 `extension/dist` 截图；
+  - 数据来源：e2e 隔离沙盒（临时目录 + 端口 18000/15173），**未读取也未改动 `backend/var/studypilot.db`**（生成时该库正被用户运行的实例占用，全程未触碰）。
+- 二进制文件人工核验（治理检查器按设计对二进制返回 FAIL，此处逐张人工确认）：
+  - `01/02/03/04/05` 均为 1440×900、`06` 为 292×250（与 manifest popup 尺寸一致），`file` 均识别为有效 PNG，无零字节、无截断；
+  - 逐张目视核对：确为本应用真实运行的界面（非占位图、非设计稿），数据为合成演示内容，未含个人真实数据、令牌或本机路径。
 - 已知限制/未完成项：
-  - 截图基于 main（`f609145`）。TASK-046「沉浸式阅读页」尚未合并，其合入后 `03-reader.png` 会与线上不符，需要重截；
-  - 截图脚本为一次性临时文件，未入库；重截步骤见 EVIDENCE 段说明。
+  - 截图基于 main（`f609145`）。TASK-046「沉浸式阅读页」尚未合并，其合入后 `03-reader.png` 的正文宽度/元信息会与线上不符，需重截；
+  - 截图脚本为一次性临时文件，未入库；重截需按上述命令临时重建 spec 并删除；
+  - CI 从未在 GitHub 上真实运行过，首次 push 才是首次真实执行；本地已按 workflow 内命令逐条实跑为绿。
+- 过程回归（真实发生并已修复，记录以备审查）：
+  - README 改写时压掉了 manifest 权限清单段落，`extension/src/boundaries.test.ts` 的
+    `keeps the docs naming every reach the manifest actually asks for` 立即变红（1 failed / 144 passed）。
+  - 该门闩检查的是**根 README** 是否列全 manifest 实际申请的权限串。已补回「### 扩展申请了哪些权限」一节，
+    并将 `activeTab` / `scripting` / `storage` / `http://127.0.0.1:5173/*` / `optional_host_permissions: ["<all_urls>"]` 全部写明；
+    修复后 extension 恢复 145 passed（`0374bed`）。
+  - 这属于既有测试拦住的真实回归，未降低任何断言。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
