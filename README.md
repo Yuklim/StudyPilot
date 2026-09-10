@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/Yuklim/StudyPilot/actions/workflows/ci.yml/badge.svg)](https://github.com/Yuklim/StudyPilot/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-6.x-3178C6?logo=typescript&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.116+-009688?logo=fastapi&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
@@ -21,7 +21,7 @@
 
 一条完整链路：
 
-1. **采集** —— 在网页上点扩展图标，读当前页正文并转成 Markdown。页面有图片时会先问一次是否连图片一并保存，**不点确认就什么都不存**。
+1. **采集** —— 在网页上点扩展图标，读当前页正文并转成 Markdown。页面有图片时会先问一次是否连图片一并保存。**不点确认就不会存进资料库**：抽取结果只是暂存在扩展自己的本地存储里等待转交（`storage` 权限的用途，见下），不会写入数据库。
 2. **确认** —— 打开 StudyPilot 确认页，核对标题与正文后保存为资料。保存下来的正文是一份**冻结快照**，之后原文改版、删除、失效都不影响阅读。
 3. **阅读** —— 资料详情页是一个阅读器：正文居中、两层工具条（常用动作在常驻层，低频动作收进 `⋯`），右侧可展开心得侧栏。
 4. **记录** —— 在资料旁写下理解、疑问和结论；也可以先随手写独立心得，之后再贴到某份资料上。
@@ -155,7 +155,7 @@ scripts/       仓库治理检查工具
 - **规则不能靠自觉**，能在系统层兜底的都写了权限拒绝（见 `.claude/settings.json`），例如禁止直接推送/合并 `main`、禁止 `reset --hard`；
 - **[`scripts/governance/check_task.py`](scripts/governance/check_task.py)** 按变更路径自动选出该跑哪些检查组，缺少工具、测试失败或未执行都不会被当成通过。
 
-`docs/tasks/` 保留了 **59 份任务记录**（TASK-000 ~ TASK-047，早期任务另附 HANDOFF / REVIEW / ACCEPTANCE），记录每个任务的需求、实现、真实检查输出与审查结论，包括失败与返工。想了解这套流程怎么运转，可以从 [`docs/governance/多Agent开发制度使用指南.md`](docs/governance/多Agent开发制度使用指南.md) 和任务索引 [`docs/tasks/任务索引.md`](docs/tasks/任务索引.md) 读起。
+`docs/tasks/` 保留了 **50 余份任务记录**（从 TASK-000 起，早期任务另附 HANDOFF / REVIEW / ACCEPTANCE），记录每个任务的需求、实现、真实检查输出与审查结论，包括失败与返工。想了解这套流程怎么运转，可以从 [`docs/governance/多Agent开发制度使用指南.md`](docs/governance/多Agent开发制度使用指南.md) 和任务索引 [`docs/tasks/任务索引.md`](docs/tasks/任务索引.md) 读起。
 
 > 这些是开发过程材料，不是使用本项目所需的前置阅读。只想用或只想读代码的话，忽略 `docs/tasks/` 即可。
 
