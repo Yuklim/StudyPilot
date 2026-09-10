@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-047"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L2"
 risk_reason = "不触碰产品代码、契约、门禁与数据；但新增 .github/workflows（CI 门禁配置）与 LICENSE（对外授权声明），属普通级别中的工具与对外声明变更，命中 documentation + tooling，取较高级别。"
 risk_flags = ["documentation", "tooling"]
@@ -105,8 +105,8 @@ checks = ["governance"]
   5 张 1440×900 + 1 张 292×250（与 manifest popup 尺寸一致），`file` 均识别为有效 PNG；画面确为本应用真实界面，
   数据为合成演示内容，未见姓名、邮箱、令牌、本机路径、真实文章或私人笔记。
 - 最终状态/风险/用户操作：
-  - 状态 **ACCEPTED**（L2 链路：实现 → 自动检查 → 独立只读 Review PASS → 主 Agent汇总；无独立 Acceptance）。
-  - **仅用户可合并**。分支 `agent/coordinator/TASK-047-repo-public-showcase`（尚未推送），需用户推送并开 PR。
+  - 状态 **MERGED**：L2 链路（实现 → 自动检查 → 独立只读 Review PASS → 主 Agent汇总；无独立 Acceptance），
+    随后由**用户本人**合并 PR #51，merge commit `3099292`（2026-09-10，分支 tip `d493113` 为其第二父）。已核实 `d493113` 是 `origin/main` 祖先。
   - 仓库可见性未改动（仍为 private），description 与 18 个 topics 已通过 `gh repo edit` 设置；是否公开由用户决定。
 - 非阻断遗留项：
   1. `03-reader.png` 基于 main（`f609145`）。TASK-046 合入后正文宽度与元信息会变，需重截；
