@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-045"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "本任务改的是**阅读器页的写作交互**，触及 `features/resources` 与 `features/notes` 两个模块边界，并改动一条已确立的无障碍契约。实质风险：① **心得入口从锚点链接变成有状态的开合控件**——TASK-044 起「工具条图标按钮可见文本为空、名字由 aria-label 提供」这条测试抓不到退化；本任务再把入口升级为 `aria-expanded` 的开合 + 聚焦写作框，若聚焦/归还语义出错，键盘与读屏用户会在笔记浮层里失去落点（屏幕上看不出来）。② **窄屏浮层是新的模态式交互**：Esc/收起后焦点必须还给触发按钮，展开态正文不可被 Tab 溜进（inert）。③ **写作区从常驻正文下方变为默认收起的挂载态侧栏**——收起必须不丢未保存草稿（组件保持挂载），这决定结构是「CSS 显隐」而非「条件卸载」，与 TASK-044 左栏折叠的同类决策一致。④ 响应式两态（宽屏挤压正文 / 窄屏盖正文浮层）需要真实浏览器数值断言。不改后端、`/api/v1`、openapi、本机访问门禁、`extension/`；不动 `ContentSnapshot.tsx`、`snapshotMarkdown.ts`、`ResourceDeletion.tsx`；不改任何写入语义。"
 risk_flags = ["business"]
@@ -209,6 +209,6 @@ TASK-044 记录与 `任务索引.md` 的该行：按根 `AGENTS.md` §5 登记�
 
 只读证明：该 Agent 仅被授予 Read/Grep/Glob，无写工具、无 Bash，未修改任何文件。完成条件逐条判定（依据=代码结构+单测/e2e 断言，非记录自述）：① 宽屏默认收起（aria-expanded=false、`.reader-notes` hidden、宽度回落 ±2）；② 展开挤压（正文让位 300–420 数值断言、无横向溢出）；③ 按钮=开合+聚焦一体（单测双向 + Esc 归还 + 图标化双断言保留）；④ 窄屏浮层 320/390 两档、正文不挤压 ≤2px、`inert` + 真 focus() 偷不走正文、Esc 归还并移除 inert；⑤ 角标真实后端 seed 2→新增 3→真实删除 2、后端 `total_items` 2；⑥ 草稿跨收起存活；⑦ 正文优先（reader-layout 390/844 与 1440/900 默认收起态 y<viewport）；⑧ 焦点契约（App.test.tsx 三条返回路径未改动、各态唯一 h1）；⑨ standalone（NotesPage 不传新 props、新 props 全可选）；⑩ 断言只增不减（link→button、region→容器、openNotes 前置逐条注原因）；⑪ 无新依赖（diff 无 package.json/锁文件）；⑫ 被排除文件未动（diff 恰 13 文件全在 allowed_paths）。运行证据可信度：playwright 确启真实后端 + 真实 seed/读库断言；记录机器输出无内部矛盾（vitest 539/e2e 49 因无 Bash 未复算，记录内部一致）。工作树 doc 领先于 diff 中 doc（状态 IN_ACCEPTANCE、EVIDENCE 已写回）属审查后正常状态/EVIDENCE 更新，未发现越权改写目标/路径/检查。剩余风险（均已在上述非阻断记录项处置，不涉安全/契约底线）：Esc「死键」、F1 刷新窗 token 提前消费两窄窗口；条件 1 基线宽度为软性表述。**结论：PASS。**
 
-**状态决定**：独立 Review×2 PASS + 独立 Integration/Acceptance PASS，三份独立报告原文均写回本区；完成条件 1–12 逐条有代码与测试/真实后端 e2e 证据；机器门禁全绿（vitest 539 / e2e 49 / check_task CHECKS PASS）；两条非阻断记录项已登记处置。任务转 **ACCEPTED**，等待用户最终合并（仅用户本人可执行合并 → MERGED）。
+**状态决定**：独立 Review×2 PASS + 独立 Integration/Acceptance PASS，三份独立报告原文均写回本区；完成条件 1–12 逐条有代码与测试/真实后端 e2e 证据；机器门禁全绿（vitest 539 / e2e 49 / check_task CHECKS PASS）；两条非阻断记录项已登记处置。任务已由用户合并：status=**MERGED**（2026-09-08 用户合并 PR #50，merge commit `f609145`；交付时为 **ACCEPTED**，仅用户本人执行合并）。
 
 <!-- EVIDENCE:END -->
