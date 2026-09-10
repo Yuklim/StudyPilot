@@ -626,7 +626,7 @@ PASS 附带两项已明确处置的非阻断项（WEB 不安全 URL 分支、S1 
 
 - 基线 `32c3750` → **验收候选 `1e335ac`**（工作树 HEAD）。
 - 已读：完整 diff patch（1406 行）、未覆盖增量 patch（307 行）、任务记录全文（647 行）、`check_task.py`/`test_check_task.py`/`validate_governance.py` 相关段、`extension/` 的 `AGENTS.md`/`package.json`/`manifest.test.ts`/`popup.test.ts`/`dist/manifest.json`、两处 README、`ContentSnapshot.tsx`、`ResourcePages.test.tsx:563-629`、`风险分级与检查规则.md:20-46`、任务索引。
-- **一项超出预期的证据**：实现者会话的原始检查日志仍在本地 `/private/tmp/claude-501/-Users-yuklimching/54422e89-4ae6-4e67-99f8-a56f4378ba42/scratchpad/check-037-r2.log`（155 行），我**只读实读**了它。这不是独立执行（日志由实现者产生，理论上可伪造），但已把 A/B 当初只能按 NOT_RUN 处理的部分升级为「有原始输出可比对」。
+- **一项超出预期的证据**：实现者会话的原始检查日志仍在本地 `/private/tmp/claude-501/…/scratchpad/check-037-r2.log`（155 行），我**只读实读**了它。这不是独立执行（日志由实现者产生，理论上可伪造），但已把 A/B 当初只能按 NOT_RUN 处理的部分升级为「有原始输出可比对」。
 
 ## 2. 13 条完成条件逐条核对
 

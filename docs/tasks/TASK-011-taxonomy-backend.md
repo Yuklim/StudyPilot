@@ -66,7 +66,7 @@ checks = ["backend", "frontend", "governance", "contracts"]
 `base=706c32732c4b3312acf26694302b43a8800ca2ea`
 `candidate=4981e9274969c6cf1119c6a904bcb6d6c323c121`
 
-真实只读权限证据：运行时约束为 `read-only / approval never`；在 `/Users/yuklimching/Desktop/StudyPilot` 执行 `test -w .` 结果为 `not_writable`。未做任何试写。
+真实只读权限证据：运行时约束为 `read-only / approval never`；在 `<repo>` 执行 `test -w .` 结果为 `not_writable`。未做任何试写。
 
 **Findings**
 
@@ -97,7 +97,7 @@ No findings。
 2. SQLite 持久化、并发重名/旧版本保护、事务回滚：任务记录写明真实 SQLite 临时库、重启持久化、两线程重名创建、ORM 版本竞争、`before_commit` 失败回滚均已验证；Reviewer 未提出新缺口。
 3. 引用中删除保护与幂等关联/解除：任务记录与 Chromium `12 PASS` 都覆盖“建分类→创建引用分类的资料→关联/解除→旧版本/使用中删除拒绝→刷新读取”；行为与完成条件一致。
 4. 安全拒绝、故障受控、既有接口/页面回归：任务记录明确未授权请求在读 body/连库前拒绝、未建库/数据库故障受控、现有资料接口和页面未破坏；对应证据已包含在后端/前端/治理通过结果与 Reviewer 结论中。
-5. 集成链路、契约稳定、最终候选覆盖：后端 `226 PASS`、前端 `70 PASS`、治理 `23 PASS`、Chromium `12 PASS` 全部绑定输入指纹 `fa99765c2fc37ce98db7ddb6be9bef2208bd637019907a3bf4a6d1dff142b546`；OpenAPI 标准内容与 `base` 的 Node 深比较已 PASS，仅交付元数据更新。冻结后我额外执行 `check_task.py --candidate ... --static-only`，结果 `STATIC PASS`。`candidate..HEAD` 仅变更 [docs/tasks/TASK-011-taxonomy-backend.md](/Users/yuklimching/Desktop/StudyPilot/docs/tasks/TASK-011-taxonomy-backend.md) 和 [任务索引.md](/Users/yuklimching/Desktop/StudyPilot/docs/tasks/任务索引.md)，内容仅为 Review 证据与状态回写，无实现漂移。
+5. 集成链路、契约稳定、最终候选覆盖：后端 `226 PASS`、前端 `70 PASS`、治理 `23 PASS`、Chromium `12 PASS` 全部绑定输入指纹 `fa99765c2fc37ce98db7ddb6be9bef2208bd637019907a3bf4a6d1dff142b546`；OpenAPI 标准内容与 `base` 的 Node 深比较已 PASS，仅交付元数据更新。冻结后我额外执行 `check_task.py --candidate ... --static-only`，结果 `STATIC PASS`。`candidate..HEAD` 仅变更 [docs/tasks/TASK-011-taxonomy-backend.md](<repo>/docs/tasks/TASK-011-taxonomy-backend.md) 和 [任务索引.md](<repo>/docs/tasks/任务索引.md)，内容仅为 Review 证据与状态回写，无实现漂移。
 
 剩余风险：仍以任务已披露边界为准，仅承诺本机个人、少量 SQLite 写入场景；分类页面尚未接入；不扩展到更高并发、资料删除、主题重分配或更宽部署承诺。`check_task.py` 原完整运行不是全绿，唯一失败是 `uv build --offline` 缓存权限问题；该项已按同一输入单独重跑并 `exit=0`，所以不构成当前阻断。
 

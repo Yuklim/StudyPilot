@@ -472,7 +472,7 @@ F1 修复后需重新冻结候选；F1 属实现改动，我可按 `previous_can
 
 **我没有 Bash。** 本 Agent 的工具白名单只有 `Read` / `Grep` / `Glob`（这也是我的只读权限证明——无 `Write`/`Edit`/`Bash`）。派单里交给我的五件"核心职责"（`git diff --name-only`、逐个核对文件集、`git diff` 看 `ContentSnapshot.tsx`、复算测试计数、验基线取法）**有三件无法用 git 直接执行**。我没有假装执行，改用可核验的替代论据，并逐项标注哪些是"已闭合"、哪些是"未复算"。
 
-已确认 `HEAD = 77fdf1a6c8bf498bf8dfa22aa9c02dc735859564`（`/Users/yuklimching/Desktop/StudyPilot/.git/refs/heads/agent/coordinator/TASK-043-reader-layout`），与冻结候选一致。
+已确认 `HEAD = 77fdf1a6c8bf498bf8dfa22aa9c02dc735859564`（`<repo>/.git/refs/heads/agent/coordinator/TASK-043-reader-layout`），与冻结候选一致。
 
 ## 结论：**PASS，无阻断项**
 
