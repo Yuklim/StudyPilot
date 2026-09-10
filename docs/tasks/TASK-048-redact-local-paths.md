@@ -5,7 +5,7 @@ schema_version = 2
 id = "TASK-048"
 status = "IN_PROGRESS"
 risk = "L2"
-risk_reason = "改动全部落在文档，不含产品代码、契约、门禁与数据，本质是文本脱敏（documentation 命中 low_risk）；但改动对象是 17 份**历史任务记录**，其中含 V1 保全的 TASK-003 证据与治理相关的 TASK-004，属证据载体。若改错会篡改历史结论，影响面跨越十余个已完成任务，故按「不确定升一级」路由为 L2，需独立只读 Review 确认无任何结论被改动。"
+risk_reason = "改动全部落在文档，不含产品代码、契约、门禁与数据，本质是文本脱敏（documentation 命中 low_risk）；但改动对象是 17 份**既有历史文档**（16 份任务/交接记录 + TASK-047 记录自身），其中含 V1 保全的 TASK-003 证据与治理相关的 TASK-004，属证据载体。若改错会篡改历史结论，影响面跨越十余个已完成任务，故按「不确定升一级」路由为 L2，需独立只读 Review 确认无任何结论被改动。"
 risk_flags = ["documentation", "uncertain"]
 owner = "coordinator"
 base = "a4a244f1a141b8fa47a909f296aabc3c4ae216cf"
@@ -97,8 +97,13 @@ git grep -nE '/Users/[^<]'
 
 - 实现 SHA/变更摘要：见 EVIDENCE 段候选 SHA。
 - 命令、真实退出结果、环境：
-  - 改动前：17 个文件 / 39 行命中（`git grep -n` 统计，见 TASK-047 证据段「越界记录」）；
-  - 改动后：`git grep -nIE 'yuklim[a-z]*ching'` → **0 行**（全部 39 处已清除）；
+  - 改动前（base `a4a244f`，`git grep -nIE` 实测）：**17 个文件 / 40 行**命中本机用户名。
+    两个口径必须分开说，混写会得到自相矛盾的数字：
+    - **16 个文件 / 39 行**属既有历史文档，与 TASK-047 证据段「越界记录」所载「16 个文件、39 处」**完全吻合**；
+    - 第 17 个文件是 TASK-047 记录**自身**，其唯一 1 行即「记录这个发现」的那句话（`:122`），
+      属**引用/描述**该串的行，而非泄露源。
+    本轮修订前本节曾把两个口径混写为「17 个文件 / 39 行」（由 Review 指出），此处按实测更正。
+  - 改动后：`git grep -nIE 'yuklim[a-z]*ching'` → **0 行**（上述 40 处已全部清除）；
   - `scripts/governance/validate_governance.py` 与 governance 单测通过。
 - **实现中真实发生的失误与其处置（如实记录）**：
   - 首版替换脚本对「记录**引用**该字符串」的行做了机械替换，产生废句：TASK-047 证据段
