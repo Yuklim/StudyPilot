@@ -110,7 +110,10 @@ checks = ["governance"]
   - 仓库可见性未改动（仍为 private），description 与 18 个 topics 已通过 `gh repo edit` 设置；是否公开由用户决定。
 - 非阻断遗留项：
   1. `03-reader.png` 基于 main（`f609145`）。TASK-046 合入后正文宽度与元信息会变，需重截；
-  2. CI 从未在 GitHub 真实运行，首次 push 才是首次执行（本地已按 workflow 内命令逐条实跑为绿）；
+  2. ~~CI 从未在 GitHub 真实运行~~ —— **已消除**：分支推送后 workflow 首次真实执行，
+     run `34445922898`（push，`agent/coordinator/TASK-047-repo-public-showcase`）**conclusion = success**，
+     5 个 job（仓库治理检查／后端检查／前端检查／端到端（真实浏览器）／浏览器扩展检查）全部 success。
+     注：该 run 结论针对推送时的提交，之后仅追加了本条证据写回，不改动实现；
   3. 本分支与本地分支 `task-status-t045-merging` 在 `docs/tasks/任务索引.md` 必然冲突（1 行，机械性）：
      两者改动相邻行（本任务在 TASK-045 上方插入新行，对方把该行状态 ACCEPTED→MERGED）。
      内容不冲突，两行都保留即可；建议先合并 `task-status-t045-merging` 再 rebase 本分支。main 上 TASK-045 仍为 ACCEPTED 系陈旧登记；
@@ -122,4 +125,5 @@ checks = ["governance"]
   - 2026-09-10 用户授权并选定四项范围（门面优先／过程材料保留并说明／删已合并远程分支／README 中文为主+英文摘要）；登记 L2。
   - 2026-09-10 用户确认截图入库并同意「二进制人工核验写入任务记录、不改治理规则」。
   - 2026-09-10 首轮 Review FAIL → 修复 → 同 Reviewer 复审 PASS；状态置 ACCEPTED。
+  - 2026-09-10 分支推送至 origin；`.github/workflows/ci.yml` 首次真实执行并 5 job 全绿（run `34445922898`）。
 <!-- EVIDENCE:END -->
