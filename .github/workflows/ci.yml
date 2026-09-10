@@ -1,0 +1,151 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  governance:
+    name: 仓库治理检查
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.13'
+      - name: Install backend environment
+        working-directory: backend
+        run: uv sync --locked
+      - name: Check whitespace errors
+        run: git diff --check
+      - name: Validate governance configuration
+        run: PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python scripts/governance/validate_governance.py
+      - name: Run governance unit tests
+        run: PYTHONDONTWRITEBYTECODE=1 backend/.venv/bin/python -m unittest discover -s scripts/governance -p 'test_*.py'
+
+  backend:
+    name: 后端检查
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.13'
+      - name: uv sync --locked
+        working-directory: backend
+        run: uv sync --locked
+      - name: ruff format --check
+        working-directory: backend
+        run: uv run ruff format --check .
+      - name: ruff check
+        working-directory: backend
+        run: uv run ruff check .
+      - name: mypy
+        working-directory: backend
+        run: uv run mypy src tests
+      - name: pytest
+        working-directory: backend
+        run: uv run pytest
+      - name: uv build
+        working-directory: backend
+        run: uv build
+
+  frontend:
+    name: 前端检查
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: npm ci
+        working-directory: frontend
+        run: npm ci
+      - name: prettier
+        working-directory: frontend
+        run: npm run format:check
+      - name: eslint
+        working-directory: frontend
+        run: npm run lint
+      - name: tsc
+        working-directory: frontend
+        run: npm run typecheck
+      - name: vitest
+        working-directory: frontend
+        run: npm run test -- --run
+      - name: vite build
+        working-directory: frontend
+        run: npm run build
+
+  extension:
+    name: 浏览器扩展检查
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+      - name: npm ci
+        working-directory: extension
+        run: npm ci
+      - name: prettier
+        working-directory: extension
+        run: npm run format:check
+      - name: eslint
+        working-directory: extension
+        run: npm run lint
+      - name: tsc
+        working-directory: extension
+        run: npm run typecheck
+      - name: vitest
+        working-directory: extension
+        run: npm run test -- --run
+      - name: vite build
+        working-directory: extension
+        run: npm run build
+
+  e2e:
+    name: 端到端（真实浏览器）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.13'
+      - name: Install backend environment
+        working-directory: backend
+        run: uv sync --locked
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Install Playwright browser
+        working-directory: frontend
+        # --with-deps 装上 Linux 上 Chromium 缺的系统库；本机 macOS 用 test:e2e:install 即可。
+        run: npx playwright install --with-deps chromium
+      - name: Run end-to-end suite
+        working-directory: frontend
+        run: npm run test:e2e
+      - name: Upload failure screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-results
+          path: frontend/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
