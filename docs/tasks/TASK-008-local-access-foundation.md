@@ -66,7 +66,7 @@ PASS
 
 只读证明：运行器为 `sandbox: read-only`、`approval: never`；实际执行 `test -w .` 退出码 `1`，`stat -f '%Sp %N' .` 为 `drwxr-xr-x .`；读取 Git 时还出现 `/tmp/... Operation not permitted`，可确认未具写权限。
 
-覆盖：已完整读取 `.agents/skills/studypilot-review-change/SKILL.md`、根/`backend`/`frontend` `AGENTS.md`、`docs/tasks/TASK-008-local-access-foundation.md`、`docs/governance/风险分级与检查规则.md`、契约 `38-104` 与 `367-404` 行；已完成 19 文件 `base..candidate` diff 首次完整审查，并补查 [backend/src/studypilot/infrastructure/security/local_access.py](/Users/yuklimching/Desktop/StudyPilot/backend/src/studypilot/infrastructure/security/local_access.py:1)、[backend/src/studypilot/main.py](/Users/yuklimching/Desktop/StudyPilot/backend/src/studypilot/main.py:14)、[frontend/src/api/client.ts](/Users/yuklimching/Desktop/StudyPilot/frontend/src/api/client.ts:1)、[frontend/vite.config.ts](/Users/yuklimching/Desktop/StudyPilot/frontend/vite.config.ts:1) 等必要调用链。
+覆盖：已完整读取 `.agents/skills/studypilot-review-change/SKILL.md`、根/`backend`/`frontend` `AGENTS.md`、`docs/tasks/TASK-008-local-access-foundation.md`、`docs/governance/风险分级与检查规则.md`、契约 `38-104` 与 `367-404` 行；已完成 19 文件 `base..candidate` diff 首次完整审查，并补查 [backend/src/studypilot/infrastructure/security/local_access.py](<repo>/backend/src/studypilot/infrastructure/security/local_access.py:1)、[backend/src/studypilot/main.py](<repo>/backend/src/studypilot/main.py:14)、[frontend/src/api/client.ts](<repo>/frontend/src/api/client.ts:1)、[frontend/vite.config.ts](<repo>/frontend/vite.config.ts:1) 等必要调用链。
 
 Findings：No findings。启动令牌生命周期、Host/Origin/Fetch Metadata 前置判定、OPTIONS/CORS、Vite Host 重写前校验、bootstrap 不泄漏、共享客户端内存保存且不自动重放写请求、业务路由仍未开放，和任务/契约一致。
 
@@ -84,7 +84,7 @@ PASS
 
 实际只读证明：本会话运行器约束为 `sandbox read-only`、`approval never`；实测 `test -w .` 退出码 `1`。读取 Git 时还出现 `/tmp/... Operation not permitted`，与只读沙箱一致，独立性可确认。
 
-`base=9e59355fee2aabe741b171e33197b8f96ee6f27a`，已审 `candidate=260d9fc6c42716aea1bebfb75a74c38e38c642f0`，当前证据 `HEAD=9f2d7a8c2f52616b1a97fe0d36b880e19e303e0e`。我核对了 `candidate..HEAD`，仅变更 [docs/tasks/TASK-008-local-access-foundation.md](/Users/yuklimching/Desktop/StudyPilot/docs/tasks/TASK-008-local-access-foundation.md) 的 `status/EVIDENCE` 与 [docs/tasks/任务索引.md](/Users/yuklimching/Desktop/StudyPilot/docs/tasks/任务索引.md) 对应索引行，无产品输入变化；Review PASS 仍覆盖冻结候选。
+`base=9e59355fee2aabe741b171e33197b8f96ee6f27a`，已审 `candidate=260d9fc6c42716aea1bebfb75a74c38e38c642f0`，当前证据 `HEAD=9f2d7a8c2f52616b1a97fe0d36b880e19e303e0e`。我核对了 `candidate..HEAD`，仅变更 [docs/tasks/TASK-008-local-access-foundation.md](<repo>/docs/tasks/TASK-008-local-access-foundation.md) 的 `status/EVIDENCE` 与 [docs/tasks/任务索引.md](<repo>/docs/tasks/任务索引.md) 对应索引行，无产品输入变化；Review PASS 仍覆盖冻结候选。
 
 条件 1：任务证据已绑定 `test_local_session.py` 生命周期/no-store/健康检查/旧 token/无持久化与无前置副作用哨兵。
 

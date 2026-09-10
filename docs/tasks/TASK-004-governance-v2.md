@@ -103,9 +103,9 @@ acceptance_exception = "V2_USER_REQUEST_2026-09-03"
 ### 候选与继承覆盖
 - 比对范围：`3b911834f2e44edd5bd25500b60275640e34a676 → ecd3f3d5c82a12752a991f6b8d1a2f1e0fc77e54`
 - 本次新增增量文件（仅 3 个）：
-  - [scripts/governance/check_task.py](/Users/yuklimching/Desktop/StudyPilot/scripts/governance/check_task.py)
-  - [scripts/governance/test_check_task.py](/Users/yuklimching/Desktop/StudyPilot/scripts/governance/test_check_task.py)
-  - [docs/tasks/TASK-004-governance-v2.md](/Users/yuklimching/Desktop/StudyPilot/docs/tasks/TASK-004-governance-v2.md)
+  - [scripts/governance/check_task.py](<repo>/scripts/governance/check_task.py)
+  - [scripts/governance/test_check_task.py](<repo>/scripts/governance/test_check_task.py)
+  - [docs/tasks/TASK-004-governance-v2.md](<repo>/docs/tasks/TASK-004-governance-v2.md)
 - 继承上轮审查覆盖：保留上一轮已检查范围（风险路由、TASK-003 保全、fail-closed、权限/契约一致性）不变；无新增治理/配置/产品契约文件变化需复查。
 
 ### 上轮问题关闭情况
@@ -136,7 +136,7 @@ acceptance_exception = "V2_USER_REQUEST_2026-09-03"
 
 ### 关键变更与一致性核查
 - 变更文件均为治理文案/技能模板，未改 `scripts/governance/check_task.py` 等实现逻辑、未改风险机器路由、未改 TASK-003 保全内容或产品契约。
-- 已同步的增量规则（`AGENTS.md`、[risk guide](/Users/yuklimching/Desktop/StudyPilot/docs/governance/风险分级与检查规则.md)、[review/acceptance skill](/Users/yuklimching/Desktop/StudyPilot/.agents/skills/studypilot-review-change/SKILL.md)、[模板](/Users/yuklimching/Desktop/StudyPilot/docs/governance/templates/REVIEW_TEMPLATE.md)）与既有 Review/Acceptance 流程不冲突：  
+- 已同步的增量规则（`AGENTS.md`、[risk guide](<repo>/docs/governance/风险分级与检查规则.md)、[review/acceptance skill](<repo>/.agents/skills/studypilot-review-change/SKILL.md)、[模板](<repo>/docs/governance/templates/REVIEW_TEMPLATE.md)）与既有 Review/Acceptance 流程不冲突：  
   - 仍保留 `TASK-004` 的一次性例外（主 Agent代验收），未泛化。  
   - 明确要求 PASS 可含已处置的非阻断问题，阻断问题仍必须拦截；允许记录而非阻断的边界场景有明示依据。  
   - 明确禁止覆盖独立阻断结论。  

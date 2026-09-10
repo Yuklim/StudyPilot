@@ -322,7 +322,7 @@ blob URL 指向一堆解不开的字节，本候选的所有测试仍会通过�
 ## 只读证明与范围
 
 - 运行器只授予 Read/Grep/Glob，无 Write/Edit/Bash；未修改、未提交任何文件。
-- 候选：`/Users/yuklimching/Desktop/StudyPilot/.git/refs/heads/agent/coordinator/TASK-042-snapshot-rendering` = `1f1fbc0d1830dfc97879ac85bd7b8f71a04999f8`，`.git/HEAD` 指向该分支，工作树即候选。无 Bash 故未跑 `git diff`，改为按你给的 11 文件清单逐个读最终态并与首轮记忆比对。
+- 候选：`<repo>/.git/refs/heads/agent/coordinator/TASK-042-snapshot-rendering` = `1f1fbc0d1830dfc97879ac85bd7b8f71a04999f8`，`.git/HEAD` 指向该分支，工作树即候选。无 Bash 故未跑 `git diff`，改为按你给的 11 文件清单逐个读最终态并与首轮记忆比对。
 - 继承首轮（99a545d）覆盖：渲染器配置/转义/协议三组守卫、blob 回收、写请求为零、e2e 主干、契约 §4.13 未删既有句子。本轮复审 F2/F3/F5/F6 处置点及其受影响上下文（client.ts 全文、ContentSnapshot.tsx、snapshotMarkdown.ts、四个测试文件、契约 §4.13、package.json/lock）。
 
 ## 1. 处置是否成立（看实现，不看自述）

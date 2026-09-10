@@ -74,7 +74,7 @@ Reviewer session `01a06570-7368-7482-83de-88f3080584c2`，Codex CLI 0.145.0/GPT-
 
 base `910e85b3164704e02664f1420eee65e509467e63` → candidate `e33f989c4bb7c376cae9cb199e3165fff74e00ab`。实际权限证明：`test -w .` 返回 `exit=1`，当前运行时为只读；未写文件、未提交、未委派。
 
-- [backend/src/studypilot/api/resources.py](/Users/yuklimching/Desktop/StudyPilot/backend/src/studypilot/api/resources.py:61) 把 `POST /api/v1/resources` 的所有非 `application/json` 请求一律返回 `415`。触发条件：按已批准 `createResource` schema 发送 `multipart/form-data` 的 FILE 创建。影响：与当前已批准契约/operation schema 冲突，[docs/contracts/API与数据契约基线.md](/Users/yuklimching/Desktop/StudyPilot/docs/contracts/API与数据契约基线.md:321) 第 5 节和 [docs/contracts/openapi-v1.json](/Users/yuklimching/Desktop/StudyPilot/docs/contracts/openapi-v1.json:22) 都声明该操作接受 FILE multipart；现实现会让契约客户端稳定失败。最小修正：要么在本任务内补齐已批准的 FILE 分支，要么先经授权单独冻结并收窄契约/OpenAPI，再审新候选。
+- [backend/src/studypilot/api/resources.py](<repo>/backend/src/studypilot/api/resources.py:61) 把 `POST /api/v1/resources` 的所有非 `application/json` 请求一律返回 `415`。触发条件：按已批准 `createResource` schema 发送 `multipart/form-data` 的 FILE 创建。影响：与当前已批准契约/operation schema 冲突，[docs/contracts/API与数据契约基线.md](<repo>/docs/contracts/API与数据契约基线.md:321) 第 5 节和 [docs/contracts/openapi-v1.json](<repo>/docs/contracts/openapi-v1.json:22) 都声明该操作接受 FILE multipart；现实现会让契约客户端稳定失败。最小修正：要么在本任务内补齐已批准的 FILE 分支，要么先经授权单独冻结并收窄契约/OpenAPI，再审新候选。
 
 覆盖：已完成首次完整审查 16 文件 `base..candidate` diff，核对了根/`backend`/`frontend` AGENTS、TASK-009、风险规则、三项 operation schema、`resources` API/应用层/store/安全接线，以及后端 `test_resources.py` 与前端 8 项 Chromium 用例。测试执行未默认重跑，复用已绑定证据：backend 187、frontend 46、governance 23、Chromium 8，静态指纹 `78025e1025ce2c353b04078751e0b9ccc88187ed6e3245bbd3c67805e45dc9ee`；其余未见新的阻断点。剩余风险：除上述契约偏差外，Unicode 内存搜索的规模边界已被任务明确披露，按当前个人/低流量场景可接受。
 
@@ -86,7 +86,7 @@ base `910e85b3164704e02664f1420eee65e509467e63` → candidate `e33f989c4bb7c376c
 
 候选未变：`e33f989c4bb7c376cae9cb199e3165fff74e00ab`。只读证明继承首轮：`test -w .` 为 `exit=1`；本次未重读全量源码/治理/契约，未重跑测试，完整继承我首轮对 16 文件 `base..candidate` 的覆盖结论。
 
-重新评估后，唯一 finding 仍为阻断。依据不是“必须一次做完整资料管理”，也不是要求扩大到文件实现；而是当前候选已经在公开已冻结的同一操作 `POST /api/v1/resources` 上提供了与已批准契约相冲突的现网行为。[docs/contracts/API与数据契约基线.md](/Users/yuklimching/Desktop/StudyPilot/docs/contracts/API与数据契约基线.md:321) 第 5 节与 [docs/contracts/openapi-v1.json](/Users/yuklimching/Desktop/StudyPilot/docs/contracts/openapi-v1.json:22) 都把 `createResource` 定义为同一路径同一操作，接受 `application/json` 的 WEB/PASTE 和 `multipart/form-data` 的 FILE；而 [backend/src/studypilot/api/resources.py](/Users/yuklimching/Desktop/StudyPilot/backend/src/studypilot/api/resources.py:61) 对所有 multipart 固定返回 `415 CONTENT_TYPE_UNSUPPORTED`。这不是单纯“后续阶段未做”，而是已暴露操作对一类已批准输入给出相反结果。当前可达损害是：任何按已冻结 schema/OpenAPI 生成或手写的 FILE 客户端请求都会稳定失败，且失败语义与契约不一致。
+重新评估后，唯一 finding 仍为阻断。依据不是“必须一次做完整资料管理”，也不是要求扩大到文件实现；而是当前候选已经在公开已冻结的同一操作 `POST /api/v1/resources` 上提供了与已批准契约相冲突的现网行为。[docs/contracts/API与数据契约基线.md](<repo>/docs/contracts/API与数据契约基线.md:321) 第 5 节与 [docs/contracts/openapi-v1.json](<repo>/docs/contracts/openapi-v1.json:22) 都把 `createResource` 定义为同一路径同一操作，接受 `application/json` 的 WEB/PASTE 和 `multipart/form-data` 的 FILE；而 [backend/src/studypilot/api/resources.py](<repo>/backend/src/studypilot/api/resources.py:61) 对所有 multipart 固定返回 `415 CONTENT_TYPE_UNSUPPORTED`。这不是单纯“后续阶段未做”，而是已暴露操作对一类已批准输入给出相反结果。当前可达损害是：任何按已冻结 schema/OpenAPI 生成或手写的 FILE 客户端请求都会稳定失败，且失败语义与契约不一致。
 
 因此我不能把它降为非阻断未完成范围。若要放行，需要新的授权路径消解这处冲突：要么补齐 FILE 分支，要么先冻结一个明确允许该操作分阶段未实现的新契约/兼容方案，再基于新候选复核。其余首轮结论不变，未新增 findings。
 
@@ -125,7 +125,7 @@ Integration Owner session `01a0657f-772a-77b3-8a72-7eb5945c1f40`，不同于实�
 
 PASS。独立只读 Integration/Acceptance，独立于实现者与 Reviewer session `01a06570-7368-7482-83de-88f3080584c2`；实际权限已重验，`test -w .` 为 `exit=1`，未写文件、未委派、未提交。验收候选为 `56c6941f325b3ae2a0dde5859e55c3b3ed5091d0`，当前证据 HEAD 为 `39bfdf82a42d74cab1d5e4ecc55bb32edb5060cd`。
 
-6 项完成条件与证据可绑定：1/2/3 由既有 backend `187`、新增资源相关 `72`、安全/health `115` 与事务/校验证据覆盖；4/5 由 `check_task.py` 全量通过、frontend `46`、Chromium `8/8`、README 说明和冻结候选/Review 记录覆盖；6 由契约 1.3、OpenAPI `x-delivery-profile`、Node 语义断言、治理 `23` 项及同一 Reviewer 对新候选 PASS 覆盖。`56c6941..39bfdf8` 仅变更 [docs/tasks/TASK-009-resource-backend.md](/Users/yuklimching/Desktop/StudyPilot/docs/tasks/TASK-009-resource-backend.md) 与 [docs/tasks/任务索引.md](/Users/yuklimching/Desktop/StudyPilot/docs/tasks/任务索引.md)，`backend/frontend/.env.example` diff 为 0，属窄证据写回，无需重开业务测试。
+6 项完成条件与证据可绑定：1/2/3 由既有 backend `187`、新增资源相关 `72`、安全/health `115` 与事务/校验证据覆盖；4/5 由 `check_task.py` 全量通过、frontend `46`、Chromium `8/8`、README 说明和冻结候选/Review 记录覆盖；6 由契约 1.3、OpenAPI `x-delivery-profile`、Node 语义断言、治理 `23` 项及同一 Reviewer 对新候选 PASS 覆盖。`56c6941..39bfdf8` 仅变更 [docs/tasks/TASK-009-resource-backend.md](<repo>/docs/tasks/TASK-009-resource-backend.md) 与 [docs/tasks/任务索引.md](<repo>/docs/tasks/任务索引.md)，`backend/frontend/.env.example` diff 为 0，属窄证据写回，无需重开业务测试。
 
 无完成条件缺口。接受的非阻断风险仍是：调用方必须遵守阶段清单，不能把完整 OpenAPI 直接当作当前 FILE 上传能力；后续接入上传入口、自动生成客户端或单独文件任务时必须复核并同步契约。
 
