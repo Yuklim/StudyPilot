@@ -271,5 +271,6 @@ TASK-046 的独立 Integration/Acceptance 把 H 列为「合并前须向用户�
 | 2026-09-12 | 独立只读 Review 第一轮 → **PASS**，F1/F2/F3 |
 | 2026-09-12 | 处置 F1 → 新候选 `fa7e0c9`；同一 Reviewer 增量确认 → **PASS**（覆盖 base..fa7e0c9） |
 | 2026-09-12 | 主 Agent 写回并置 `ACCEPTED`；待用户合并 |
+| 2026-09-12 | 用户合并 PR #57 时索引冲突（main 已并入 PR #56 把 TASK-046/048 置 MERGED，与本分支新增的 TASK-049 行相邻）；并入 `origin/main`（`8ce79b2`）为 merge `0c569c2`，仅解 `任务索引.md` 冲突（保留 main 的 046/048 MERGED 行 + 本分支 049 行）；`git diff 700f2ef 0c569c2` 只含 main 带来的三份文档状态改动，前端三文件与候选 `fa7e0c9` 逐字节一致，Review 结论继续覆盖；待用户合并 |
 
 <!-- EVIDENCE:END -->
