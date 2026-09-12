@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-049"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L2"
 risk_reason = "改的是阅读页窄屏档**一处定位方式**，目的是修掉一个已登记的用户可见缺陷（TASK-046 遗留 H：滚到文章中部再展开心得，阅读位置被拽回文章开头）。影响面按实际判断：① 不改任何公共契约、接口调用、写入语义、数据含义与门禁；② 无障碍机器契约（三态唯一 `h1` 与路由焦点落点、`Esc` 归还焦点、窄屏展开时正文 `inert`、收起后焦点还给心得按钮）**全部不动**，且由既有的、本轮不改的 e2e 断言继续守着；③ 涉及真实浏览器的版式数值（`position`/`top`/`max-height`、滚动位置），jsdom 量不到，必须走 Playwright。④ 唯一的结构性新增是「实测顶栏高度写进 CSS 变量」，因为它决定浮层是否被不透明的 sticky 顶栏压住（顶栏 z-index 6 > 浮层 5），是本任务的功能前提而不是装饰。按规定 L2：1 Worker → 自动检查 → 1 名独立只读 Reviewer 检查最终 diff；独立 Acceptance N/A。不升 L3 的理由：无契约/接口/迁移/认证/关键数据模型改动，不跨模块（改动落在 `frontend/src/features/resources/ResourceDetail.tsx`、`frontend/src/styles.css` 与 e2e），也不是治理或门禁权限变更。"
 risk_flags = ["business"]
@@ -121,14 +121,72 @@ TASK-046 的独立 Integration/Acceptance 把 H 列为「合并前须向用户�
 
 ## 实现与测试
 
-（待写：实现 SHA、测试 SHA、改动清单、实测数值、未执行项与原因。）
+实现 SHA `2a4c44f`（`fix(frontend):`）+ 测试 SHA `8298d6b`（`test(frontend):`）。改动 **3 个文件**：
+
+| 文件 | 改动 | 做了什么 |
+| --- | --- | --- |
+| `frontend/src/styles.css` | +22/−8 | 窄屏档 `.reader-notes`：`position: absolute; top: 6px` → `position: fixed; top: var(--reader-toolbar-h, 74px)`；删掉窄屏里已无消费者的 `.reader-body { position: relative }`；写明全宽外壳这个前提 |
+| `frontend/src/features/resources/ResourceDetail.tsx` | +30/−1 | 浮层加 `ref`；展开时 `useLayoutEffect` 实测 `.reader-toolbar` 高度写进 `--reader-toolbar-h`，`resize` 时重测；不 setState |
+| `frontend/e2e/reader-immersive.spec.ts` | +69/−21 | 新增 1 条阅读位置守卫；改写既有窄屏层叠用例的断言 |
+
+### 实测数值（真实浏览器，逐档打印在测试输出里）
+
+| 视口 | 顶栏高度 | 浮层 top | 让开的空白 | 浮层底边 |
+| --- | --- | --- | --- | --- |
+| 320×844 | **123px** | 123px | 0px | 视口内 |
+| 390×844 | **123px** | 123px | 0px | 视口内 |
+| 768×1024 | **75px** | 75px | 0px | 视口内 |
+
+**≤640px 与 641–1279px 两档的顶栏高度确实不同（123 vs 75，差 48px）**，所以完成条件 5 那条「跟随实测」是被真正行使到的：写死 `74px` 会在 ≤640px 那一档把浮层顶边落到顶栏内部 49px 处（不透明顶栏会盖住「记录与理解 / 收起」）。`74px` 只作为变量写入前的兜底值。
+
+### 检查（在候选内容上、干净工作区）
+
+- `check_task.py --task … --worktree` → **CHECKS PASS**；`STATIC PASS base=1924717994632118e1c7af21b540742335ad9393`；`files=5`；`product_fingerprint=f29732e64bfc400de37097568bc68622d553b5a9d00abf2a0744f2262e5369d0`；`profiles=frontend`；5 项（format:check / lint / typecheck / test --run / build）**全部 exit=0**。
+- `npx vitest run` → 23 文件 **548 通过**（与 TASK-046 合并后的基线相同，未增未减——本任务未加单测，样式与几何断言归真实浏览器）。
+- `npm run test:e2e`（真实后端 + 真实浏览器）→ **55 passed**（基线 54，净增 1）。
+
+### 判别性实验（证明新断言真的抓得住 H）
+
+把窄屏浮层临时改回 `absolute; top: 6px`（**不**恢复 `.reader-body { position: relative }`，即锚点只可能更靠文档顶部，不会让失败更容易），仅跑 `reader-immersive.spec.ts`：
+
+- 新增的阅读位置守卫**红**：`320px 下展开心得没有把阅读位置拽走`，`Expected <= 2, Received 6979`——**旧实现下阅读位置被拽走 6979px**，正是遗留 H 的实际后果。
+- 改写的窄屏层叠用例**红**：`320px 下浮层顶边不高于顶栏底边`，`Expected >= 122, Received 6`（该用例同时打印 `[320px] 顶栏高 123px，浮层 top 6px`）。
+- 同文件其余 4 条**绿**——失败不是整页崩掉，而是精准落在这两条判据上。
+- 实验后从备份还原，`md5` 与实验前一致（`6432b911547be2561e87cf68242b2f8e`），随后重跑全量 e2e 得 55 passed。
+
+### 既有断言的改动（逐条说明）
+
+只动了 `frontend/e2e/reader-immersive.spec.ts` 的窄屏用例；`frontend/e2e/reader-notes-sidebar.spec.ts` 一字未改（它的窄屏断言只看宽度、`inert`、焦点，与定位方式无关，实测仍全绿）。
+
+| 原断言 | 现在 | 为什么 |
+| --- | --- | --- |
+| 先按浮层的**文档位置**滚到它上沿 +100px | 删 | 视口定位后浮层的文档位置不再是「它出现在哪里」的量纲；且这条滚动本身就是为了让浮层与顶栏重叠 |
+| 前提断言「浮层与顶栏按钮确有重叠」 | 换成「浮层顶边 ≥ 顶栏底边 − 1 且 ≤ 底边 + 8」 | 旧前提描述的正是被修掉的缺陷几何（浮层与顶栏重叠）；新断言直接表达目标不变量，**判别性更强**：改回旧 CSS 即红（见上，6 vs 122） |
+| — | 新增「浮层四边都在视口内」 | 「视口定位」的字面含义，旧断言没有覆盖 | 
+| 顶栏「心得」按钮 `elementFromPoint` 为 toolbar；按钮可点（`aria-expanded` 变 true） | 保留 | 这是「用户屏幕上还有收起入口」的守卫，与定位方式无关，方向不弱化 |
+| 窄屏 `overflowY=visible`、`scrollHeight-clientHeight ≤ 2`、18px、不横向溢出 | 保留 | 与本任务无关，未动 |
+
+### 未执行
+
+- `backend` 与 `extension` 检查组未跑：`base..candidate` 清单零 `backend/**`、零 `extension/**`、零 `package.json`/锁文件改动，按 §6「被测内容无变化不重复执行」。
+- 真实读屏软件未实测（与 TASK-046 遗留 G 同类边界）。本任务未改任何 ARIA 语义或焦点归属，故未新增该项。
 
 ## 遗留与非阻断
 
-（待写：本任务产生的非阻断项与剩余风险。）
+1. **浮层打开期间顶栏若因 ⋯ 菜单展开而变高，实测值不会跟着更新**（只在展开时与 window `resize` 时重测），菜单会盖住浮层头部。该菜单变高属 TASK-046 验收登记的 **F7**（≤640px 菜单 `position: static` 且顶栏可高至 `min(70vh,560px)`），**本任务未修，也不假装修了**。重评触发条件：F7 被立项修复时，一并把测量改为 `ResizeObserver` 观察顶栏。
+2. **`fixed` 依赖「阅读页是全宽外壳」**：已在 `styles.css` 注释里写明。若日后给阅读页加外壳留白，`left/right: 0` 会相对视口而不是正文列，需要改回按容器定位。属前提记录，非缺陷。
+3. **未在真实读屏软件下验证**（承接 TASK-046 遗留 G，本任务未改语义故未新增证据）。
 
 <!-- EVIDENCE:BEGIN -->
 
-（待写：候选链条、检查证据、独立 Review 原文、状态决定。）
+## 状态与最终证据
+
+**当前状态**：`IN_REVIEW`（L2 执行链：1 Worker → 自动检查 → 1 名独立只读 Reviewer 检查最终 diff → 主 Agent汇总；独立 Acceptance N/A）
+
+- **冻结候选 = 本记录所在的提交。** §6 要求候选必须是「包含需求、实现与测试证据的已提交 SHA」，因此候选的 SHA 不能写在候选自己的正文里（自引用）。主 Agent 在派发 Review 时以精确 SHA 指名该提交；本节在拿到 Review 原文后把该 SHA 补记于此。
+- 需求/实现/测试证据见上一节：实现 SHA `2a4c44f`、测试 SHA `8298d6b`，含 `CHECKS PASS`、`product_fingerprint=f29732e6…`、vitest 548、e2e 55 passed、判别性实验及其口径说明。
+- 候选之后只允许更新本标记区与 `status`（§6）；写回提交与冻结候选的树差异**仅本记录文件一处**，实现与测试文件逐字节相同。
+
+**独立 Review**：（待写回原文）
 
 <!-- EVIDENCE:END -->
