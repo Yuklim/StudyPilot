@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-050"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L1"
 risk_reason = "只替换 `docs/images/03-reader.png` 一张公开门面截图，使其与 main 上已合并的 TASK-046（沉浸式阅读页）/ TASK-049（窄屏浮层）形态一致。不改任何代码、接口、数据、契约、门禁与治理规则；README 只引用该图，文件名不变故 README 零改动。截图数据来自隔离 e2e 沙盒（临时目录 + 18000/15173 端口），不触碰本机 `backend/var/studypilot.db`。二进制文件由主 Agent 目视核验并记录于本记录，与 TASK-047 处置方式相同。不判 L2 的理由：`docs/images/**` 不在 risk-policy 高风险路径内，且无任何行为影响。"
 risk_flags = ["documentation"]
@@ -73,7 +73,7 @@ checks = []
 - 二进制人工核验（主 Agent 目视，完成条件 1/3）：`file` 识别为 `PNG image data, 1440 x 900, 8-bit/color RGB`，156,299 字节，sha256 `9e069941…3b13db`。图中可见：顶栏左「← 返回资料库」+「网页」徽章 + 标题 h1，右「未开始 · 0%」+ 心得按钮（角标 1）+ 原网页 + ⋯；下方标签「待复习」「精读」与「收下它是因为 …」；正文 740px 居中、18px、从 `# React 状态管理的取舍` 起顺读到「服务端状态不该手写」列表；**无左栏、无面包屑、无页脚、无「正文快照」元信息、无内嵌滚动框、无底部动作按钮**。无个人真实数据、令牌或本机路径。
 - 完成条件逐条：1 ✅（上）；2 ✅（db mtime 不变）；3 ✅（本条）；4 ✅（除二进制预期 FAIL 外 CHECKS PASS，files 全在范围内）；5 ✅（TASK-049 记录 status/最终状态/日志 + 索引行均为 MERGED `40de899`，与 `gh pr view 57` 一致）。
 - Review：**L1，N/A**（`AGENTS.md` §4）。Acceptance：**L1，N/A**。
-- 最终状态/风险/用户操作：status=**ACCEPTED**。L1 执行链：主 Agent 充当 Worker → 自动检查 → 自检。待用户合并 PR；合并后 README 线上截图即与产品一致。
+- 最终状态/风险/用户操作：status=**MERGED**（2026-09-12 用户合并 PR #58，merge commit `adb0304`，已用 `gh pr view 58` 与 `git log origin/main` 双向核实；本行状态登记按根 `AGENTS.md` §5 并入 TASK-051 的控制面提交）。交付时为 **ACCEPTED**。L1 执行链：主 Agent 充当 Worker → 自动检查 → 自检。合并后用户反馈「预览图没变」，核实为浏览器缓存（raw 地址 `cache-control: max-age=300`，服务端字节 sha 已是新图），强制刷新即可，未再改仓库。
 - 非阻断遗留项：无。
 - 日期与决定日志：2026-09-12 用户在四项遗留候选中选定本项；主 Agent 沿用 TASK-047 的临时 spec 方式重截并删除 spec。
 <!-- EVIDENCE:END -->

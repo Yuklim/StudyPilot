@@ -263,13 +263,38 @@ describe('quick personal notes', () => {
     // 注：NotesPanel 顶层子节点无 key，`!available` 时插入的核对提示段落会让 jsdom 按
     // 类型逐位调和、重建下方整段子树（真浏览器同样如此），因此别把焦点锚在会被重建的
     // 按钮上断言——那是调和假象，不是本修复的对象。
+    // TASK-051：改用 `render`。此前首轮 `renderWithRouter`、之后 `rerender` 不带 Router，
+    // 根元素类型一变整棵重挂、ref 归零——旧逻辑靠「重挂后在 available=false 时把 token
+    // 烧掉」通过，而不是靠「同一 token 只消费一次」。保持一棵树，断言不变。
     vi.spyOn(api, 'request').mockResolvedValue(notePage())
-    const view = renderWithRouter(<NotesPanel resourceId={resourceId} focusRequest={1} />)
+    const view = render(<NotesPanel resourceId={resourceId} focusRequest={1} />)
     await screen.findByText('还没有心得，写下一句话就可以开始。')
     // 请求到达时写作框获得焦点（token 1 消费、聚焦一次）。
     expect(screen.getByRole('textbox')).toHaveFocus()
     // 之后用户已把焦点挪到别处（写作框失焦），随后 available 先翻 false 再回 true——
     // 这是父级资源刷新的真实形态。修正前该翻转会重跑聚焦 effect，把焦点抢回写作框。
+    // 「挪到别处」要真的做：同一棵树里写作框跨越这次翻转不会重建，焦点不会自己掉。
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    view.rerender(<NotesPanel resourceId={resourceId} focusRequest={1} available={false} />)
+    view.rerender(<NotesPanel resourceId={resourceId} focusRequest={1} available />)
+    expect(screen.getByRole('textbox')).not.toHaveFocus()
+  })
+  it('holds a focus request that lands while the resource is being re-read, then honours it once', async () => {
+    // TASK-045 复审 R2 第 3 条「新盲点」：令牌在 `available` 守卫**之前**就被记为已消费。
+    // 点击若恰好落在父级刷新的 `available=false` 窗口，令牌烧掉、聚焦没发生，`available`
+    // 回来也不补——用户得再点一次。资料刷新不是用户的动作，不该吞掉用户的动作。
+    // **全程用 `render`/`rerender` 同一棵树**：若首轮用 `renderWithRouter`、之后 rerender
+    // 不带 Router，根元素类型变了会整棵重挂，ref 归零，旧逻辑也会「通过」——那是假绿。
+    vi.spyOn(api, 'request').mockResolvedValue(notePage())
+    const view = render(<NotesPanel resourceId={resourceId} focusRequest={1} available={false} />)
+    await screen.findByText('还没有心得，写下一句话就可以开始。')
+    // 刷新窗口里不聚焦：那一刻写作框是禁用态。
+    expect(screen.getByRole('textbox')).not.toHaveFocus()
+    view.rerender(<NotesPanel resourceId={resourceId} focusRequest={1} available />)
+    // 资料回来了，欠着的那次聚焦补上。
+    expect(screen.getByRole('textbox')).toHaveFocus()
+    // 仍然只消费一次：再来一轮刷新不会把焦点抢回来（上一条用例守的形态不能退）。
+    ;(document.activeElement as HTMLElement | null)?.blur()
     view.rerender(<NotesPanel resourceId={resourceId} focusRequest={1} available={false} />)
     view.rerender(<NotesPanel resourceId={resourceId} focusRequest={1} available />)
     expect(screen.getByRole('textbox')).not.toHaveFocus()

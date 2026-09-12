@@ -65,6 +65,12 @@ const emptyHints: Record<Source, string> = {
 // 文本，**不引入消毒器**（用户 2026-09-07 在两条路线中选甲）。已冻结的图片显示本机
 // 那一份；没冻上的按原址自动加载（用户在知情三条隐私代价后决定），只加
 // `referrerpolicy="no-referrer"` 作缓解。详见 docs/tasks/TASK-042。
+/**
+ * 回给菜单的「正文现在是什么状态」。TASK-051 起**读不出来也要报**：此前失败态什么都不
+ * 回传，父级停在「还没读到」，菜单照样给出「粘贴正文」这个入口。
+ */
+export type SnapshotState = { unreadable: true } | { unreadable: false; exists: boolean }
+
 export function ContentSnapshot({
   resourceId,
   sourceType,
@@ -86,7 +92,7 @@ export function ContentSnapshot({
   /** 删除正文的请求（先出确认块，不直接删）：同上。 */
   deleteRequest?: number
   /** 回传「这份资料有没有正文」，供菜单取文案并决定「删除正文…」出不出现。 */
-  onSnapshotState?: (state: { exists: boolean }) => void
+  onSnapshotState?: (state: SnapshotState) => void
 }) {
   const [revision, setRevision] = useState(0)
   const load = useCallback(() => getResourceSnapshot(resourceId), [resourceId])
@@ -202,10 +208,12 @@ export function ContentSnapshot({
   const unreadable = result?.error !== undefined
   const exists = Boolean(snapshot)
 
-  // 「有没有正文」回传给菜单。**读不出来时什么都不回传**：那时我们并不知道有没有，
-  // 而父级的保守默认（当作没有）至少不会给出一个删除不存在之物的入口。
+  // 「有没有正文」回传给菜单。**读不出来时也回传**：那时我们并不知道有没有，菜单据此把
+  // 替换/粘贴、看源码、删除四个入口一并收起——对一个读不到的东西，没有一个动作站得住
+  // （TASK-046 遗留 I：此前失败态不回传，父级停在 null，「粘贴正文」照样在，点了没反应）。
   useEffect(() => {
-    if (result && !unreadable) onSnapshotState?.({ exists })
+    if (!result) return
+    onSnapshotState?.(unreadable ? { unreadable: true } : { unreadable: false, exists })
   }, [result, unreadable, exists, onSnapshotState])
 
   // 菜单里的两个请求在**渲染期**消化，不放进 effect。这是 React 官方的「props 变了就
@@ -216,12 +224,17 @@ export function ContentSnapshot({
   // **令牌在真正动手之后才记为已消费**：正文还在读取途中就点了「替换正文」的话，请求
   // 留着，等读到了再打开表单。TASK-045 的 focusRequest 是反过来写的（守卫之前就烧掉
   // 令牌），复审记下的那个窄窗口正是这么来的。
-  if (editRequest !== undefined && editRequest !== seenEdit && result && !unreadable) {
+  //
+  // **但读取失败就作废**（TASK-051）：失败提示与「重新读取正文」已经把情况说清；若把令牌
+  // 继续留着，用户重试成功的那一刻编辑表单会自己弹出来——那是几步之前的一次点击迟到重放。
+  if (editRequest !== undefined && editRequest !== seenEdit && result) {
     setSeenEdit(editRequest)
-    setError('')
-    setConfirming(false)
-    setDraft(snapshot?.content ?? '')
-    setEditing(true)
+    if (!unreadable) {
+      setError('')
+      setConfirming(false)
+      setDraft(snapshot?.content ?? '')
+      setEditing(true)
+    }
   }
   // 「删除正文…」只开确认块，不删。没有正文时不消费令牌（菜单里本来也不会有这一项）。
   if (deleteRequest !== undefined && deleteRequest !== seenDelete && snapshot) {

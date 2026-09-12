@@ -620,6 +620,61 @@ describe('content snapshot', () => {
     expect(screen.queryByRole('menuitem', { name: '看 Markdown 源码' })).toBeNull()
     expect(screen.getByRole('menuitem', { name: '粘贴正文' })).toBeInTheDocument()
   })
+
+  it('offers none of the body actions while the body cannot be read', async () => {
+    // TASK-046 遗留 I：读取失败时 `snapshotExists` 停在 null，菜单却照样渲染「粘贴正文」，
+    // 点它什么都不发生（令牌只在读到之后才消费）。**读不到就不该有任何对它动手的入口**：
+    // 有没有正文都不知道，「替换」「粘贴」「看源码」「删除」四个动作没有一个站得住。
+    vi.spyOn(api, 'request').mockImplementation(async (path) => {
+      if (path === snapshotPath) throw new ApiError('NETWORK_ERROR')
+      return detail(path) ?? samplePage([])
+    })
+    renderWithRouter(<App />, `/resources/${resourceId}`)
+    await screen.findByText(/正文没有读到/)
+    fireEvent.click(screen.getByRole('button', { name: '更多操作' }))
+    expect(screen.queryByRole('menuitem', { name: '粘贴正文' })).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: '替换正文' })).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: '看 Markdown 源码' })).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: '删除正文…' })).toBeNull()
+    // 对照：与正文无关的动作还在，菜单本身没坏。
+    expect(screen.getByRole('menuitem', { name: '编辑资料' })).toBeInTheDocument()
+  })
+
+  it('drops a replace request that was pending when the read fails, instead of replaying it later', async () => {
+    // TASK-046 遗留 I 的另一半：读取途中点了「替换正文」，请求会留到读到为止（这是刻意的，
+    // 见 ContentSnapshot 的注释）；但若这次读取**失败**了，旧逻辑把请求继续留着——用户点了
+    // 「重新读取正文」成功之后，编辑表单突然自己弹出来，而那已经是几步之前的一次点击。
+    // 失败就作废：读取失败的提示与重试按钮已经把情况说清，不欠一次迟到的动作。
+    let reads = 0
+    let release: (() => void) | undefined
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    vi.spyOn(api, 'request').mockImplementation(async (path) => {
+      if (path === snapshotPath) {
+        reads += 1
+        if (reads === 1) {
+          await gate
+          throw new ApiError('NETWORK_ERROR')
+        }
+        return { data: frozen }
+      }
+      return detail(path) ?? samplePage([])
+    })
+    renderWithRouter(<App />, `/resources/${resourceId}`)
+    await screen.findByRole('button', { name: '更多操作' })
+    expect(screen.getByText('正在读取正文…')).toBeInTheDocument()
+    // 读取还挂着：菜单此刻只知道「还没读到」，点下「替换正文」的令牌进入等待。
+    fromMenu('粘贴正文')
+    release!()
+    await screen.findByText(/正文没有读到/)
+    expect(screen.queryByRole('form', { name: '正文快照编辑' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '重新读取正文' }))
+    await waitFor(() => expect(screen.queryByText(/正文没有读到/)).toBeNull())
+    // 读到了，但那次点击已经作废：表单不会自己打开（旧逻辑这里会弹出表单、正文被它顶掉）。
+    expect(screen.queryByRole('form', { name: '正文快照编辑' })).toBeNull()
+    await bodyShown()
+  })
   // TASK-036 shipped WEB-only wording for all three source types and the existing
   // assertions could not catch it: they checked that a sentence was on screen, not
   // that it was true. These pin the sentence each source type should get, and the

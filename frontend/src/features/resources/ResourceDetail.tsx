@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 
 import { Link, useNavigate } from 'react-router-dom'
 
 import { getResource, type Source } from './api'
-import { ContentSnapshot } from './ContentSnapshot'
+import { ContentSnapshot, type SnapshotState } from './ContentSnapshot'
 import { ResourceError } from './ResourceState'
 import { ReaderContext, ResourceToolbar } from './ResourceToolbar'
 import { NotesPanel } from '../notes/NotesPanel'
@@ -38,7 +38,7 @@ const ReaderContent = memo(function ReaderContent({
   showSource: boolean
   editRequest: number
   deleteRequest: number
-  onSnapshotState: (state: { exists: boolean }) => void
+  onSnapshotState: (state: SnapshotState) => void
 }) {
   return (
     <ContentSnapshot
@@ -97,16 +97,17 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
   const [showSource, setShowSource] = useState(false)
   const [editRequest, setEditRequest] = useState(0)
   const [deleteRequest, setDeleteRequest] = useState(0)
-  const [snapshotExists, setSnapshotExists] = useState<boolean | null>(null)
+  // `null` = 还不知道有没有正文（读取中，或读取失败）。读取失败单独记一位（TASK-051 起
+  // 失败态也回传）：菜单据此把「替换/粘贴正文」也收起，而读取中的一瞬照旧给入口。
+  const [snapshotState, setSnapshotState] = useState<SnapshotState | null>(null)
+  const snapshotExists = snapshotState && !snapshotState.unreadable ? snapshotState.exists : null
+  const snapshotUnreadable = snapshotState?.unreadable ?? false
   const toggleSource = useCallback(() => setShowSource((shown) => !shown), [])
   const askEdit = useCallback(() => setEditRequest((value) => value + 1), [])
   const askDelete = useCallback(() => setDeleteRequest((value) => value + 1), [])
   // **必须 useCallback**：它是 memo 过的正文子树的 prop，每次新建函数等于让工具条的
   // 任何状态变化（开合心得、角标到位）都重新渲染整篇正文。
-  const receiveSnapshotState = useCallback(
-    ({ exists }: { exists: boolean }) => setSnapshotExists(exists),
-    [],
-  )
+  const receiveSnapshotState = useCallback((state: SnapshotState) => setSnapshotState(state), [])
 
   // --- TASK-045：心得区（右侧，默认收起）---
   // 开合状态、对写作框的聚焦请求、Esc 的归还目标都在这一个父级里协调：心得按钮在
@@ -142,14 +143,19 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
       // 焦点位于心得区、心得按钮本身，或工具条之外的正文/页面别处时，才由这里收起。
       const active = document.activeElement as HTMLElement | null
       if (!active) return
-      // **`.reader-panel` 要一起算进来。** TASK-046 把面板移出了 sticky 的 `.reader-toolbar`
-      // 盒子（面板在流内，跟着钉住会占掉半个窗口）；只认 `.reader-toolbar` 的话，焦点在
-      // 「编辑资料」面板里按 Esc 会连心得侧栏一起关掉、焦点还被心得按钮抢走——正是
-      // TASK-045 复审 R1 finding 2 修掉的那个形态，换个位置又长回来。
-      const inToolbar = Boolean(active.closest('.reader-toolbar, .reader-panel'))
-      const inNotes = Boolean(active.closest('.reader-notes'))
-      const onNotesToggle = active === notesButton.current
-      if (inToolbar && !inNotes && !onNotesToggle) return
+      // **只让给正打开的表面**（TASK-051）：焦点在 `⋯` 菜单项上、在面板（`.reader-panel`，
+      // TASK-046 起它在 sticky 盒子之外）里，或停在一个 `aria-expanded="true"` 的触发钮上。
+      // 此前是「工具条里任何非心得控件一律让」，于是菜单被 Esc 收回、焦点回到 `⋯` 之后，
+      // 那里已经没有表面在开，再按 Esc 却什么都不发生——侧栏只能用鼠标点「收起」
+      // （TASK-045 遗留 1「死键」）。心得按钮自己也是 `aria-expanded` 的，排在前面放行。
+      if (active === notesButton.current || active.closest('.reader-notes')) {
+        closeNotes()
+        return
+      }
+      const inOpenSurface =
+        active.closest('.reader-menu, .reader-panel') ||
+        active.getAttribute('aria-expanded') === 'true'
+      if (inOpenSurface) return
       closeNotes()
     }
     document.addEventListener('keydown', onKeyDown)
@@ -218,6 +224,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
           onNotesClick={onNotesClick}
           notesButtonRef={notesButton}
           snapshotExists={snapshotExists}
+          snapshotUnreadable={snapshotUnreadable}
           showSource={showSource}
           onToggleSource={toggleSource}
           onEditSnapshot={askEdit}
