@@ -156,6 +156,40 @@ test('the top bar stays within reach in the middle of a long article', async ({ 
   await expect(notes).toHaveAttribute('aria-expanded', 'true')
 })
 
+test('opening the notes overlay mid-article does not throw the reading position away', async ({
+  page,
+}) => {
+  // TASK-046 的遗留 H：浮层原先钉在**文档**里（相对 `.reader-body` 的 `absolute;
+  // top:6px`），而「心得」按钮自 TASK-046 把顶栏 sticky 化之后在任意滚动位置都够得着。
+  // 于是滚到文章中部点它，浮层整块出现在视口上方，`NotesPanel` 写作框的 `focus()`
+  // 把页面滚回文章开头——读到哪里就丢了。这条守的就是那件事。
+  const { id } = await seed(page, '阅读位置 F')
+  for (const [width, height] of [
+    [320, 844],
+    [390, 844],
+    [768, 1024],
+  ] as const) {
+    await page.setViewportSize({ width, height })
+    await page.goto(`/resources/${id}`)
+    await expect(article(page)).toBeVisible()
+    await page.evaluate(() =>
+      window.scrollTo(0, Math.round(document.documentElement.scrollHeight / 2)),
+    )
+    const before = await page.evaluate(() => window.scrollY)
+    expect(before, `${width}px 下确实滚离了顶部（否则本用例验不到东西）`).toBeGreaterThan(800)
+
+    await page.locator('.reader-toolbar').getByRole('button', { name: '心得', exact: true }).click()
+    await expect(page.locator('.reader-notes')).toBeVisible()
+    // **写作框必须真的拿到焦点**：只断言「页面没滚」的话，将来聚焦失效（按钮变成纯
+    // 开合、不再聚焦）会让这条在"什么都没发生"的状态下照样通过。
+    await expect(page.getByRole('textbox', { name: '这次想记下什么？' })).toBeFocused()
+    const after = await page.evaluate(() => window.scrollY)
+    expect(Math.abs(after - before), `${width}px 下展开心得没有把阅读位置拽走`).toBeLessThanOrEqual(
+      2,
+    )
+  }
+})
+
 test('the notes overlay never covers the button that closes it, and nothing overflows sideways', async ({
   page,
 }) => {
@@ -184,35 +218,49 @@ test('the notes overlay never covers the button that closes it, and nothing over
     expect(narrow.overflow, `${width}px 下正文不内滚`).toBe('visible')
     expect(narrow.inner, `${width}px 下正文不内滚`).toBeLessThanOrEqual(2)
 
+    // 展开前先滚到文章中部。**站位在滚动位置 0 量不出这个缺陷**：浮层原先钉在文档里
+    // （相对 `.reader-body` 的 `absolute; top:6px`），只有滚过它才会跑到视口上方。
+    await page.evaluate(() =>
+      window.scrollTo(0, Math.round(document.documentElement.scrollHeight / 2)),
+    )
+    const scrolled = await page.evaluate(() => window.scrollY)
+    expect(scrolled, `${width}px 下确实滚离了顶部（否则本用例验不到浮层定位）`).toBeGreaterThan(800)
+    const pinned = (await page.locator('.reader-toolbar').boundingBox())!
+    expect(pinned.y, `${width}px 下顶栏已钉住`).toBeLessThanOrEqual(2)
+
     const notes = page.locator('.reader-toolbar').getByRole('button', { name: '心得', exact: true })
     await notes.click()
-    await expect(page.locator('.reader-notes')).toBeVisible()
+    const overlay = page.locator('.reader-notes')
+    await expect(overlay).toBeVisible()
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
       `${width}px 下不横向溢出（展开态）`,
     ).toBe(true)
 
-    // **心得浮层的层级必须低于顶栏**：否则它会盖住那个用来收起它自己的按钮。
-    //
-    // 但浮层是相对 `.reader-body` 绝对定位的（`top:6px`），**在滚动位置 0 它整个落在
-    // 顶栏下方，与顶栏根本不重叠** —— 站在那里点按钮，z 序就算错了也照样点得中，上面
-    // 那几条会全部通过。要真验到层叠，得先滚到浮层上沿跑到视口上方，顶栏（sticky）
-    // 才与它在按钮所在的这一片真正重叠。滚动量按浮层的**文档位置**算，不是猜一个数。
-    const overlayDocTop = await page
-      .locator('.reader-notes')
-      .evaluate((el) => el.getBoundingClientRect().top + window.scrollY)
-    await page.evaluate((y) => window.scrollTo(0, y), Math.ceil(overlayDocTop) + 100)
-    const pinned = (await page.locator('.reader-toolbar').boundingBox())!
-    expect(pinned.y, `${width}px 下顶栏已钉住`).toBeLessThanOrEqual(2)
-    const notesBox = (await notes.boundingBox())!
-    const overlayBox = (await page.locator('.reader-notes').boundingBox())!
-    // 前提断言：此刻两者确实重叠。几何一变（浮层改回视口内定位、或不再是绝对定位），
-    // 这一条先红，而不是让下面那条判据悄悄退化成恒真。
+    // **浮层必须出现在视口里、且在顶栏之下**（TASK-049）。它原先钉在文档里：此刻
+    // 展开会整块落在视口上方（`y` 是几千米的负数），下面每条断言都会红。
+    const overlayBox = (await overlay.boundingBox())!
+    console.log(`[${width}px] 顶栏高 ${pinned.height}px，浮层 top ${overlayBox.y}px`)
+    // 让开的距离**恰好**是顶栏高度：太小会被不透明的顶栏压住头部，太大是白扔一截屏幕。
+    // 顶栏高度在 ≤640px 会因按钮换行而变（styles.css 的 `@media (max-width: 640px)`），
+    // 所以这里量的是「跟随实测」而不是某个常量。
     expect(
-      overlayBox.y < notesBox.y + notesBox.height && notesBox.y < overlayBox.y + overlayBox.height,
-      `${width}px 下浮层与顶栏按钮确有重叠（否则本用例验不到层叠）`,
-    ).toBe(true)
-    // 真正的判据：按钮中心这一点上，最顶的元素必须属于顶栏而不是浮层。
+      overlayBox.y,
+      `${width}px 下浮层顶边不高于顶栏底边（没被顶栏压住）`,
+    ).toBeGreaterThanOrEqual(pinned.y + pinned.height - 1)
+    expect(
+      overlayBox.y - (pinned.y + pinned.height),
+      `${width}px 下没有多让出空白`,
+    ).toBeLessThanOrEqual(8)
+    // 整块在视口内——「视口定位」的全部意义（`height` 是本档视口高）。
+    expect(overlayBox.y, `${width}px 下浮层上沿在视口内`).toBeGreaterThanOrEqual(-1)
+    expect(overlayBox.y + overlayBox.height, `${width}px 下浮层下沿在视口内`).toBeLessThanOrEqual(
+      height + 1,
+    )
+
+    // 顶栏那个用来收起浮层的按钮必须仍是**最顶**的元素：浮层盖住它的话，用户就没有
+    // 屏幕上的收起入口了（Esc 与浮层内的「收起」按钮还在，但那是另一回事）。
+    const notesBox = (await notes.boundingBox())!
     const topmost = await page.evaluate(
       ([x, y]) => {
         const el = document.elementFromPoint(x, y)
