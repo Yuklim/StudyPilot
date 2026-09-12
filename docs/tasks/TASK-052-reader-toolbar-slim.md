@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-052"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L2"
 risk_reason = "阅读页（/resources/:id）一处布局重排：资料标题与来源徽章从 sticky 顶栏移入正文列顶部（所有宽度统一），窄屏 ⋯ 菜单由「塞进顶栏的普通块」改回浮动。不改后端、契约、数据含义、门禁；不新增依赖。判 L2：页面 `h1` 是路由焦点落点（TASK-044 契约：各态恰好一个 h1、导航到达时聚焦它），本任务**保持该契约不变**但改变了它在 DOM 里的位置，改错了屏幕上看不出来，需独立 Reviewer 核对最终 diff 与测试是否真守住。不到 L3：无架构/公共 API/迁移/认证变更，单页面单模块。"
 risk_flags = ["business"]
@@ -142,7 +142,7 @@ checks = ["frontend"]
 | F4 | **记录，措辞修正**：TASK-049 遗留 1 应表述为「顶栏不再因菜单撑高而压住浮层头部」；菜单与浮层同开时菜单仍在浮层之上（与宽屏一致，Esc 可关）。登记段「自然消解」按此理解。 | 叙述精度 |
 
 - Acceptance：L2，N/A。
-- 最终状态/风险/用户操作：status=**ACCEPTED**（L2：1 Worker → 自动检查 → 1 名独立只读 Reviewer（两轮）→ 主 Agent 汇总）。**未 MERGED**——是否合并由用户本人决定，Agent 不合并、不推送 main。
+- 最终状态/风险/用户操作：status=**MERGED**（2026-09-12 用户合并 PR #60，merge commit `e694697`，已用 `gh pr view 60` 与 `git log origin/main` 双向核实；本行状态登记按根 `AGENTS.md` §5 并入 TASK-053 的控制面提交）。交付时为 **ACCEPTED**（L2：1 Worker → 自动检查 → 1 名独立只读 Reviewer（两轮）→ 主 Agent 汇总）。
 - 非阻断遗留项：
   1. **页面 `h1` 与正文 Markdown 自带 `# 一级标题` 相邻重复**（TASK-046 遗留 B，本任务使其更显眼）。修法二选一：`snapshotMarkdown.ts` 降级策略（禁止范围）或渲染层「正文首个 h1 与资料标题相同则不重复渲染」。**属产品决定，待用户。**
   2. （F3）浮层展开时页面 h1 处于 `inert` 子树内，无实际路径触发路由聚焦。
