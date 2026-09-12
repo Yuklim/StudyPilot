@@ -8,7 +8,7 @@ risk = "L2"
 risk_reason = "改的是快照渲染管线 `snapshotMarkdown.ts`——本项目唯一 `dangerouslySetInnerHTML` 的内容来源，其安全性质（`html:false`、链接/图片仅收 validateLink 放行地址）由配置与测试钉住。本任务只在 markdown-it 的 core 阶段加一条**删 token** 的规则（首个块若是 h1 且文本与资料标题相同则移除三枚 token），不触碰 `RENDERER_OPTIONS`、image/link 规则与转义路径；正文数据一字不动，只影响显示。仍判 L2 而非 L1：进了安全敏感文件，且「删掉一个标题」若判断写错会静默吞掉用户内容，需独立 Reviewer 核对判据与测试。不到 L3：无契约/接口/数据变更。"
 risk_flags = ["business"]
 owner = "coordinator"
-base = "5c6cd9be6b01bc5d7511f68abde2da402e64b615"
+base = "e694697e8e68f3e659cda083292904bf673e19d8"
 allowed_paths = [
   "frontend/src/features/resources/snapshotMarkdown.ts",
   "frontend/src/features/resources/snapshotMarkdown.test.ts",
@@ -59,7 +59,7 @@ TASK-052 把资料标题移入正文列后，它与正文 Markdown 自带的 `# 
 
 ### 依赖
 
-与 TASK-052（PR #60，登记时尚未合并）**代码上无依赖**——去重逻辑与标题位置无关；视觉动机来自 TASK-052。本分支从 main `5c6cd9b` 拉出；若 PR #60 先合并，索引冲突按既定方式处置。
+与 TASK-052（PR #60，登记时尚未合并）**代码上无依赖**——去重逻辑与标题位置无关；视觉动机来自 TASK-052。本分支从 main `5c6cd9b` 拉出；用户 2026-09-12 合并 PR #60（`e694697`）后已把 origin/main 并回本分支（merge `5a3b094`，只解 `任务索引.md` 表头相邻行冲突，`ResourceDetail.tsx` 自动合并），**基线前移为 `e694697`**——否则检查脚本会把 TASK-052 的 5 个文件当成本任务的超范围改动。两任务无路径交集这一点不变（`ResourceDetail.tsx` 两边改的是不同行）。
 
 ### 顺带完成的状态登记
 
