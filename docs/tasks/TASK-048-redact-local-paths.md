@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-048"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L2"
 risk_reason = "改动全部落在文档，不含产品代码、契约、门禁与数据，本质是文本脱敏（documentation 命中 low_risk）；但改动对象是 17 份**既有历史文档**（16 份任务/交接记录 + TASK-047 记录自身），其中含 V1 保全的 TASK-003 证据与治理相关的 TASK-004，属证据载体。若改错会篡改历史结论，影响面跨越十余个已完成任务，故按「不确定升一级」路由为 L2，需独立只读 Review 确认无任何结论被改动。"
 risk_flags = ["documentation", "uncertain"]
@@ -165,8 +165,9 @@ git grep -nE '/Users/[^<]'
     只保留可验证事实，而非继续逐句软化。
 - 验收：L2 独立 Acceptance N/A（按 AGENTS.md 第四节）。
 - 最终状态/风险/用户操作：
-  - 状态 **ACCEPTED**：L2 链路（实现 → 自动检查 PASS → 独立只读 Review 三轮 PASS → 主 Agent汇总；无独立 Acceptance）。
-  - **未推送、未合并**。按 AGENTS.md 第 2 节，**只有用户本人可决定并执行最终合并**；本任务不自行推送 main 或合并。
+  - 状态 **MERGED**：L2 链路（实现 → 自动检查 PASS → 独立只读 Review 三轮 PASS → 主 Agent汇总；无独立 Acceptance），
+    随后由**用户本人**合并 PR #53，merge commit `194d77b`（2026-09-10，分支 tip `59e17be` 已核实是 `origin/main` 祖先）。
+  - 交付时为 **ACCEPTED**；按 AGENTS.md 第 2 节，**只有用户本人可决定并执行最终合并**，本任务未自行推送 main 或合并。
 - 非阻断遗留项：
   1. 已知限制 (a) 句仍偏宽（第 3 轮 findings ①，原文见上）。**本证据段为准**：这些链接指向本机绝对路径，
      **是否可点取决于具体预览器**，且多数链接带 `:行号` 后缀、目标文件名实际不存在，故**不能断言原本可点**。
@@ -178,4 +179,5 @@ git grep -nE '/Users/[^<]'
 - 日期与决定日志：
   - 2026-09-10 用户指示「清一下」；该问题由 TASK-047 附带发现并记入其证据段「越界记录」；定级 L2。
   - 2026-09-10 实现 → 自动检查 → 独立只读 Review 三轮 PASS；状态置 ACCEPTED。等待用户决定合并。
+  - 2026-09-10 用户合并 PR #53（merge `194d77b`）；状态置 MERGED（本状态分支登记）。
 <!-- EVIDENCE:END -->
