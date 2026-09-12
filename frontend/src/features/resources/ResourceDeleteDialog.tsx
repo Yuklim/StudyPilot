@@ -41,7 +41,7 @@ export function ResourceDeleteDialog({
   targets: DeleteTarget[]
   /** 用户取消，或全部删除成功后关闭。 */
   onClose: () => void
-  /** 每成功删除一份就回报一次；调用方据此刷新列表或离开页面。 */
+  /** 每一批确认结束时回报本批成功删除的 id 列表；调用方据此刷新列表或离开页面。 */
   onDeleted: (ids: string[]) => void
 }) {
   const [rows, setRows] = useState<Row[]>(() =>
@@ -50,6 +50,10 @@ export function ResourceDeleteDialog({
   const [error, setError] = useState<string | null>(null)
   // 影响变化：重新预览之后要用户再点一次「删除」；这一位只为那句提示存在。
   const [reconfirm, setReconfirm] = useState(false)
+  // 「删除进行中」用 state 而不是从 rows 派生：多选批次里某份撞上 409 会先回到
+  // previewing 再重预览，那一瞬 rows 里没有 deleting 项，派生态会放开关闭守卫——用户
+  // 取消后循环却还会对下一份发 DELETE（独立 Review F1）。这一位覆盖 confirm() 全程。
+  const [running, setRunning] = useState(false)
   const busy = useRef(false)
   const alive = useRef(true)
   const dialog = useRef<HTMLDivElement>(null)
@@ -82,7 +86,7 @@ export function ResourceDeleteDialog({
     }
   }, [])
 
-  const deleting = rows.some((r) => r.phase === 'deleting')
+  const deleting = running
   function close() {
     if (deleting) return
     onClose()
@@ -172,11 +176,14 @@ export function ResourceDeleteDialog({
     const pending = rows.filter((r): r is Extract<Row, { phase: 'ready' }> => r.phase === 'ready')
     if (pending.length === 0) return
     busy.current = true
+    setRunning(true)
     setError(null)
     setReconfirm(false)
     const done: string[] = []
     let changed = false
     for (const row of pending) {
+      // 安全网：弹窗已卸载（不该发生，守卫在上面）就不再对任何一份动手。
+      if (!alive.current) return
       setRows((current) =>
         current.map((r) => (r.id === row.id ? { ...row, phase: 'deleting' } : r)),
       )
@@ -220,6 +227,7 @@ export function ResourceDeleteDialog({
     busy.current = false
     if (done.length > 0) onDeleted(done)
     if (!alive.current) return
+    setRunning(false)
     if (changed) setReconfirm(true)
     // 全部删完才自动关；有失败或待再确认的就留在弹窗里，让用户看见并决定。
     const left = rows.filter((r) => r.phase !== 'deleted' && !done.includes(r.id))

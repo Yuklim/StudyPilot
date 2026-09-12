@@ -78,7 +78,8 @@ checks = ["frontend"]
 
 ## 实现与测试
 
-- **实现 SHA**：`2e40f49`（实现 + 测试同一提交；`git diff --numstat 23c9dc5..2e40f49` 11 个前端文件 +720/−405）。
+- **实现 SHA**：`2e40f49`（实现 + 测试同一提交）；独立 Review F1 修复见下一条。行数口径（Review F5 指出首轮写错）：`git diff --numstat 23c9dc5..HEAD -- frontend/` 合计 **+1111/−405**（含 F1 修复与新增测试）。
+- **F1 修复**：「删除进行中」由 rows 派生改为 `running` state，覆盖 `confirm()` 全程（含 409 后重预览窗口）；循环每次迭代前 `if (!alive.current) return` 作安全网；新增用例「cannot be closed while a deletion is in flight, including the re-preview window after a 409」（两个挂起 Promise 钉住两个窗口：DELETE 在途与重预览在途都不能 Esc/遮罩/取消；改回派生态即红）。另补 F3 覆盖：卡片视图控件、全选本页、清除选择。JSDoc 按 F4 改为「每批回报」。
 - **变更摘要**：
   - 新 `ResourceDeleteDialog.tsx`（+319）：`createPortal` 到 `document.body`；打开时把 body 其余直接子节点设 `inert`、焦点落「取消」、关闭时还给打开时的活动元素；Esc/遮罩/取消关闭（删除进行中禁止）；Tab 在弹窗内首尾相接（其余子树 inert 后 Tab 会掉进浏览器界面，沙盒 Shift+Tab 实测）。打开即对每份 `previewResourceDeletion` 串行取令牌（`started` ref 挡 StrictMode 双跑：**并发预览同一份资料后端回 500**，沙盒实测，见遗留）。确认后串行 `deleteResource`；`DELETION_IMPACT_CHANGED` → 该份回到 previewing、重新预览、`reconfirm` 提示「内容有变化，请再确认一次」、不自动再删；其他错误 → 该份 `failed` 带 `failureText`，弹窗留着列出「已删除 x 份 / “标题”未删除：原因」+「重试」/「重试未删除的」只重预览失败的；全部删完才自动关闭。令牌只在内存 Row 里。
   - `ResourceToolbar.tsx`：`deleted` prop 改为 `onDeleteResource`；「删除资料…」→ `runFromMenu(onDeleteResource)`（**先把焦点还给 ⋯ 再开弹窗**，否则弹窗记到的开启者是 body）；`'delete'` panel 与 `panelLabels.delete` 移除。
@@ -89,9 +90,9 @@ checks = ["frontend"]
 - **测试**：
   - 单测新文件 `ResourceDeleteDialog.test.tsx`（15 条）：详情页三种来源静默预览/只报心得数/取消不发 DELETE/令牌不进 DOM；无心得不出该行；未命名占位；两次点击删除并回库、DELETE 携带令牌；模态（inert/焦点落取消/外点不关/Esc 关/焦点还给 ⋯）；影响变化重预览+再确认+不自动再删（预览 2 次、DELETE 恰 1 次后再 1 次）；三种令牌错误受控恢复 + 重试按钮 + 不离开页面；资料库单个删除刷新列表；多选合并确认（心得数求和、预览 2 次、DELETE 0 次直到确认）；部分失败列出并只重试失败份；查询变化清空选择。
   - 既有 `ResourceDeletion.test.tsx` 9 条按新交互重写进上述文件，契约断言逐条保留；`ResourceToolbar.test.tsx`「runs the deletion flow outside the popup」改为断言弹窗在菜单外、外点不关。
-  - e2e `resource-pages.spec.ts` 新增 2 条（真实后端）：库内单个 + 多选删除（心得数求和、模态 Shift+Tab 不出弹窗、后端三份 404）；详情页两次点击回库、旧「删除这份资料」步骤不存在。既有 4 处 `getByLabel('标题')` 改 `{ exact: true }`：库内新控件的可访问名称含资料标题，子串匹配在页面切换瞬间会撞到（断言未减）。
+  - e2e `resource-pages.spec.ts` 新增 2 条（真实后端）：库内单个 + 多选删除（心得数求和、模态 Shift+Tab 不出弹窗、后端三份 404）；详情页两次点击回库、旧「删除这份资料」步骤不存在。既有 7 处 `getByLabel('标题')` 调用（4 个用例）改 `{ exact: true }`：库内新控件的可访问名称含资料标题，子串匹配在页面切换瞬间会撞到（断言未减）。
   - 判别性：本任务把旧组件整个删了，新用例对旧实现天然红；另按完成条件 2 定向验证四处（见 EVIDENCE）。
-- **检查**：`check_task.py --candidate 2e40f49` → `STATIC PASS`，`files=12`，`product_fingerprint=ca632966…`，frontend 五项 exit 0，**568 passed**（基线 562 − 9 + 15）→ **CHECKS PASS**；`npm run test:e2e` **59 passed**（基线 57 + 2）；`git diff --check` exit 0。
+- **检查**：首轮候选 `check_task.py --candidate 2e40f49` → CHECKS PASS（568）；F1 修复后见 EVIDENCE（570 passed = 基线 562 − 9 + 17；e2e 59 passed = 57 + 2）。
 - **发现的既有问题（不在本任务范围，上报）**：
   1. **后端并发预览同一份资料回 500**：两个 `POST /deletion-preview` 同时到达，一个 `UNKNOWN_ERROR/500`（串行两次则都 200）。本任务用 `started` ref 与串行预览避开；根因在后端（疑似确认记录唯一约束/事务），应另立任务修成 409 或幂等。
   2. **≤760px 顶栏两组导航重叠**（「我的学习」四项与「后续能力」三项文字互相盖住）：`main` 上即存在，与本任务无关。

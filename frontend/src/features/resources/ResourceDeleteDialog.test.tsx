@@ -162,6 +162,67 @@ describe('deleting from the reader page', () => {
     expect(more).toHaveFocus()
   })
 
+  it('cannot be closed while a deletion is in flight, including the re-preview window after a 409', async () => {
+    // 独立 Review F1：多选批次里某份撞上 409 会先回到 previewing 再重预览，那一瞬 rows 里
+    // 没有 deleting 项；若「进行中」从 rows 派生，Esc/取消/遮罩会在那个窗口把弹窗关掉，
+    // 而循环随后仍会对下一份发 DELETE。这里用挂起的 Promise 把两个窗口都钉住。
+    let releaseDelete: (() => void) | undefined
+    let releasePreview: (() => void) | undefined
+    let previews = 0
+    mock((path, options) => {
+      if (path === `/api/v1/resources/${resourceId}` && options?.method === 'DELETE') {
+        return new Promise<never>((_, reject) => {
+          releaseDelete = () =>
+            reject(
+              new ApiError('DELETION_IMPACT_CHANGED', 409, undefined, {
+                current_impact: {
+                  resource_id: resourceId,
+                  resource_version: 2,
+                  impact_revision: 'b'.repeat(64),
+                  impact,
+                },
+              }),
+            )
+        })
+      }
+      if (path === `/api/v1/resources/${resourceId}`) return { data: sample() }
+      if (path === `/api/v1/resources/${resourceId}/deletion-preview`) {
+        previews += 1
+        if (previews === 1) return preview()
+        return new Promise((resolve) => {
+          releasePreview = () => resolve(preview(resourceId, { note_count: 3 }))
+        })
+      }
+      if (path.startsWith(`/api/v1/resources/${resourceId}/notes?`)) return notesPage
+      return samplePage([])
+    })
+    renderWithRouter(<App />, `/resources/${resourceId}`)
+    await screen.findByRole('heading', { name: '合成阅读资料', level: 1 })
+    openFromMenu()
+    const box = await dialog()
+    await waitFor(() => expect(deleteButton(box)).toBeEnabled())
+    fireEvent.click(deleteButton(box))
+    // 窗口一：DELETE 在途。
+    expect(await within(box).findByRole('button', { name: '正在删除…' })).toBeDisabled()
+    expect(within(box).getByRole('button', { name: '取消' })).toBeDisabled()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    fireEvent.mouseDown(box.parentElement!)
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    // 窗口二：409 之后重预览在途。
+    releaseDelete!()
+    await waitFor(() => expect(previews).toBe(2))
+    fireEvent.keyDown(document, { key: 'Escape' })
+    fireEvent.mouseDown(box.parentElement!)
+    fireEvent.click(within(box).getByRole('button', { name: '取消' }))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    // 重预览回来：解除锁定，要求再确认。
+    releasePreview!()
+    expect(await within(box).findByText('内容有变化，请再确认一次。')).toBeInTheDocument()
+    expect(within(box).getByRole('button', { name: '取消' })).toBeEnabled()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  })
+
   it('re-previews and asks to confirm again when the impact changed, without replaying the old token', async () => {
     let deletes = 0
     const request = mock((path, options) => {
@@ -314,6 +375,28 @@ describe('deleting from the library', () => {
       `/api/v1/resources/${c.id}/deletion-preview`,
     )
     expect(deleted()).toEqual([a.id])
+  })
+
+  it('offers the same controls in the cards view, and select-all / clear work on the page', async () => {
+    const { deleted } = libraryMock()
+    renderWithRouter(<App />, '/resources')
+    await screen.findByRole('link', { name: '资料甲' })
+    fireEvent.click(screen.getByRole('button', { name: '卡片' }))
+    expect(screen.getByRole('button', { name: '删除 资料甲' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('checkbox', { name: '全选本页' }))
+    expect(screen.getByText('已选 3 份')).toBeInTheDocument()
+    for (const name of ['资料甲', '资料乙', '资料丙'])
+      expect(screen.getByRole('checkbox', { name: `选择 ${name}` })).toBeChecked()
+    fireEvent.click(screen.getByRole('button', { name: '清除选择' }))
+    expect(screen.queryByText(/已选 \d+ 份/)).toBeNull()
+    expect(screen.getByRole('checkbox', { name: '全选本页' })).not.toBeChecked()
+    // 卡片视图的单个删除走同一个弹窗。
+    fireEvent.click(screen.getByRole('button', { name: '删除 资料甲' }))
+    const box = await dialog()
+    expect(box).toHaveAccessibleName('删除“资料甲”？')
+    await waitFor(() => expect(deleteButton(box)).toBeEnabled())
+    fireEvent.click(deleteButton(box))
+    await waitFor(() => expect(deleted()).toEqual([a.id]))
   })
 
   it('clears the selection when the query changes', async () => {
