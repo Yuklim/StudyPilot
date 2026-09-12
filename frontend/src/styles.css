@@ -2199,11 +2199,14 @@ a.source-chip:focus-visible {
   gap: 10px;
 }
 .reader-back {
-  /* `.text-link` 通用样式带 44px 最小高与 12px 上边距——那是正文里的链接用的。顶栏里
-     它要与 38px 的按钮同高，否则单独把顶栏撑到 75px（TASK-052 实测）。 */
+  white-space: nowrap;
+}
+/* `.text-link` 通用样式带 44px 最小高与 12px 上边距——那是正文里的链接用的。顶栏里
+   它要与 38px 的按钮同高，否则单独把顶栏撑到 75px（TASK-052 实测）。**只限顶栏里那一
+   个**：读取中/失败态的占位返回链接不在顶栏里，保留 44px 触控高。 */
+.reader-toolbar .reader-back {
   min-height: 38px;
   margin-top: 0;
-  white-space: nowrap;
 }
 /* 读取中/失败态的占位标题（仍在顶栏位置外、由 `ResourceDetail` 渲染）。 */
 .reader-title {

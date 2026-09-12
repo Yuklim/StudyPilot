@@ -86,7 +86,7 @@ checks = ["frontend"]
 - **变更摘要**（`git diff --numstat 5c6cd9b..917e6c1`，5 个前端文件 +190/−38，另 1 张 PNG）：
   - `ResourceToolbar.tsx`（+32/−14）：顶栏 `.reader-toolbar-actions` 只剩返回链接 + `.reader-toolbar-buttons`；`h1` 与来源徽章移入新导出的 `ReaderHeader({resource, headingSlot})`（`<header class="reader-header">`）；`ResourceToolbar` 去掉 `headingSlot` prop；返回链接文字包进 `.reader-back-text`（箭头 span 内容 `'← '` 未动，既有「箭头不进可访问名称」断言原样通过）。
   - `ResourceDetail.tsx`（+4/−2）：`.reader-main` 内在 `ReaderContext` 之前挂 `ReaderHeader`，`headingSlot` 改传给它；读取中/失败态的占位 `h1` 不变。
-  - `styles.css`（+39/−22）：新增 `.reader-header`（`max-width: var(--reader-measure)`、居中、标题 1.7rem/1.3、可换行；≤640px 1.45rem）；`.reader-back` 覆盖 `.text-link` 的 `min-height:44px; margin-top:12px`（**这一项单独把顶栏撑到 75px**，改前宽屏顶栏实际就是 75px，不是登记时估的 56px）；删除 ≤640px 档的三条旧规则（按钮整行换行、标题放开换行、`.reader-menu { position: static }`），改为 `.reader-back-text` 视觉隐藏（等价 `.sr-only`）；宽屏心得列 `top: 74px → 56px`、`max-height: calc(100vh - 88px) → calc(100vh - 70px)`；浮层兜底 `--reader-toolbar-h` 默认 `74px → 56px`。
+  - `styles.css`（+39/−22；F1 修复后 +42/−22）：新增 `.reader-header`（`max-width: var(--reader-measure)`、居中、标题 1.7rem/1.3、可换行；≤640px 1.45rem）；`.reader-toolbar .reader-back` 覆盖 `.text-link` 的 `min-height:44px; margin-top:12px`（首轮候选写成 `.reader-back`，连读取中/失败态的占位返回链接一起命中，独立 Review F1 指出后收窄到顶栏内；**这一项单独把顶栏撑到 75px**，改前宽屏顶栏实际就是 75px，不是登记时估的 56px）；删除 ≤640px 档的三条旧规则（按钮整行换行、标题放开换行、`.reader-menu { position: static }`），改为 `.reader-back-text` 视觉隐藏（等价 `.sr-only`）；宽屏心得列 `top: 74px → 56px`、`max-height: calc(100vh - 88px) → calc(100vh - 70px)`；浮层兜底 `--reader-toolbar-h` 默认 `74px → 56px`。
   - 测试见下。
 - **实测（真实浏览器，e2e 输出）**：常态顶栏 **320px / 390px / 1440px 均 57px**（改前 123px / 123px / 75px）；⋯ 菜单展开后顶栏仍 57px、`.reader-body` 顶边不动（改前 472px、正文整体被推下）；心得浮层 `top` 跟随实测 57px。
 - **新增用例（2 条）与判别性验证**：

@@ -348,7 +348,7 @@ test('the toolbar is one row of actions on a phone, and the more menu floats ins
     await expect(menu).toHaveCount(0)
   }
 
-  // 宽屏对照：顶栏不比改前高（改前单行 ≈56px），标题同样在正文列。
+  // 宽屏对照：顶栏不比改前高（改前单行实测 75px，返回链接的 44px 最小高把它撑起来的），标题同样在正文列。
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto(`/resources/${id}`)
   await expect(article(page)).toBeVisible()
