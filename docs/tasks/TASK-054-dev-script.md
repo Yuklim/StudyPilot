@@ -59,7 +59,7 @@ checks = []
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：实现、登记与证据同一提交，精确 SHA 在下一次写回时补记（提交无法引用自身）。
+- 候选 SHA：`5787cbc`（实现、登记与证据同一提交；本行为其后的补记）。
 - 检查：`check_task.py --task … --worktree` → `risk=L1 stages=('worker',)`，`files=5`，`product_fingerprint=1db34227…`，`profiles=`（`checks = []`，不触发前后端套件）→ **CHECKS PASS**。前后端测试 **NOT_RUN**（本任务不改任何代码；不是 PASS）。
 - 完成条件逐条：1 ✅（实跑记录见实现段）；2 ✅；3 ✅；4 ✅；5 ✅；6 ✅。
 - Review：**L1，N/A**。Acceptance：**L1，N/A**。
