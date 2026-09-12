@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 
 import { getResource, type Source } from './api'
 import { ContentSnapshot, type SnapshotState } from './ContentSnapshot'
+import { ResourceDeleteDialog } from './ResourceDeleteDialog'
 import { ResourceError } from './ResourceState'
 import { ReaderContext, ReaderHeader, ResourceToolbar } from './ResourceToolbar'
 import { NotesPanel } from '../notes/NotesPanel'
@@ -167,6 +168,12 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
   }, [notesOpen, closeNotes])
   const receiveCount = useCallback((total: number) => setNotesCount(total), [])
 
+  // --- TASK-056：删除资料的确认是模态弹窗，挂在菜单与面板之外 ---
+  const [deleting, setDeleting] = useState(false)
+  const askDeleteResource = useCallback(() => setDeleting(true), [])
+  const closeDeletion = useCallback(() => setDeleting(false), [])
+  const afterDeletion = useCallback(() => navigate('/resources'), [navigate])
+
   // --- TASK-049：窄屏浮层要让开 sticky 顶栏，而顶栏高度不是常数 ---
   // 浮层改用视口定位后，它的 `top` 必须是顶栏的**实际**高度：≤640px 顶栏会因按钮换行
   // 变高（styles.css 的 `@media (max-width: 640px)`），写死一个常量会在那一档把浮层的
@@ -221,7 +228,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
         <ResourceToolbar
           resource={toolbarItem}
           refreshed={retry}
-          deleted={() => navigate('/resources')}
+          onDeleteResource={askDeleteResource}
           notesOpen={notesOpen}
           notesCount={notesCount}
           onNotesClick={onNotesClick}
@@ -280,6 +287,13 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
             />
           </section>
         </div>
+      )}
+      {deleting && toolbarItem && (
+        <ResourceDeleteDialog
+          targets={[{ id: toolbarItem.id, title: resourceTitle(toolbarItem) }]}
+          onClose={closeDeletion}
+          onDeleted={afterDeletion}
+        />
       )}
     </section>
   )

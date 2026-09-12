@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom'
 
 import { displayTime, safeWebUrl, sourceLabels, statusLabels, type Resource } from './api'
 import { resourceTitle } from './resourceTitle'
-import { ResourceDeletion } from './ResourceDeletion'
 import { ResourceEditor } from './ResourceEditor'
 import { FileOriginal } from './FileOriginal'
 import { LearningPanel } from '../learning/LearningPanel'
@@ -33,12 +32,12 @@ import { Icon } from '../../shell/Icon'
  *   正文列内、正文之上——它是这篇文章的元信息（等同署名行），要与 740px 正文列左右对齐。
  */
 
-type PanelKey = 'learning' | 'original' | 'edit' | 'tags' | 'info' | 'delete'
+type PanelKey = 'learning' | 'original' | 'edit' | 'tags' | 'info'
 
 export function ResourceToolbar({
   resource,
   refreshed,
-  deleted,
+  onDeleteResource,
   notesOpen,
   notesCount,
   onNotesClick,
@@ -53,8 +52,11 @@ export function ResourceToolbar({
   resource: Resource
   /** 元数据被改动后重新读取这份资料。 */
   refreshed: () => void
-  /** 资料已被删除，由调用方决定去哪。 */
-  deleted: () => void
+  /**
+   * 请求删除这份资料（TASK-056）：打开模态确认弹窗的是 `ResourceDetail`，弹窗渲染在菜单
+   * 与面板之外——点别处关掉菜单不会把已取到的一次性令牌连同请求一起卸载掉。
+   */
+  onDeleteResource: () => void
   /** 心得区是否展开（挤压两栏还是窄屏浮层，由 `ResourceDetail` 的断点决定）。 */
   notesOpen: boolean
   /** 这份资料已绑定心得的总数；`null` 表示侧栏还没读到（不显示角标）。 */
@@ -291,11 +293,14 @@ export function ResourceToolbar({
                 删除正文…
               </button>
             )}
+            {/* 省略号：点它开确认弹窗（TASK-056 起是模态弹窗，不再是页面内面板），不直接删。
+              **先把焦点还给 `⋯` 再开弹窗**：弹窗记下打开时的活动元素、关闭时还回去；
+              菜单项随菜单一起卸载，不先归还的话它记到的会是 `body`。 */}
             <button
               type="button"
               role="menuitem"
               className="reader-menu-item danger"
-              onClick={() => openPanel('delete')}
+              onClick={() => runFromMenu(onDeleteResource)}
             >
               删除资料…
             </button>
@@ -328,9 +333,6 @@ export function ResourceToolbar({
           {panel === 'tags' && <ResourceTagEditor resource={resource} refreshed={refreshed} />}
           {panel === 'info' && <ResourceInfo resource={resource} />}
           {panel === 'original' && <OriginalPanel resource={resource} />}
-          {/* `ResourceDeletion` 一个字未改 —— 预览影响 → 一次性令牌 → 确认，三步照旧；
-              这里只决定它挂在哪。挂在面板里而不是菜单里，点别处不会把令牌丢掉。 */}
-          {panel === 'delete' && <ResourceDeletion resource={resource} deleted={deleted} />}
         </ToolbarPanel>
       )}
     </>
@@ -397,7 +399,6 @@ const panelLabels: Record<PanelKey, string> = {
   edit: '编辑资料',
   tags: '编辑标签',
   info: '资料信息',
-  delete: '放下这一页',
 }
 
 /** PASTE 的面板不能叫「原件」——那份资料没有原件，只有粘贴进来的原文。 */
