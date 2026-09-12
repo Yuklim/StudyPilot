@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-052"
-status = "IN_REVIEW"
+status = "ACCEPTED"
 risk = "L2"
 risk_reason = "阅读页（/resources/:id）一处布局重排：资料标题与来源徽章从 sticky 顶栏移入正文列顶部（所有宽度统一），窄屏 ⋯ 菜单由「塞进顶栏的普通块」改回浮动。不改后端、契约、数据含义、门禁；不新增依赖。判 L2：页面 `h1` 是路由焦点落点（TASK-044 契约：各态恰好一个 h1、导航到达时聚焦它），本任务**保持该契约不变**但改变了它在 DOM 里的位置，改错了屏幕上看不出来，需独立 Reviewer 核对最终 diff 与测试是否真守住。不到 L3：无架构/公共 API/迁移/认证变更，单页面单模块。"
 risk_flags = ["business"]
@@ -105,9 +105,50 @@ checks = ["frontend"]
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：本提交之后的 HEAD 即候选，精确 SHA 在 Review 写回时补记。
-- 二进制人工核验（`03-reader.png`，主 Agent 目视）：`PNG image data, 1440 x 900, 8-bit/color RGB`；图中顶栏单行「← 返回资料库 ……… 未开始 · 0% / 心得(1) / 原网页 / ⋯」，正文列顶部「网页」徽章 + 标题 h1 + 标签「待复习 / 精读」+ 保存原因 + 分隔线，其下正文；无左栏/面包屑/页脚/元信息。无个人真实数据、令牌或本机路径。390px 三态（常态 / 菜单展开 / 心得浮层）另行目视：顶栏单行、菜单浮动不推正文、浮层紧贴顶栏。
-- Review：待派独立只读 Reviewer。
+- 候选 SHA：首轮候选 **`ff583b3`**（base `5c6cd9b`；实现 `917e6c1` + 证据写回）；处置 F1/F2 后最终候选 **`eba3527`**（`ff583b3..eba3527` 3 文件 48 行：`styles.css` 选择器收窄、e2e 注释、记录一行）。全部在 `allowed_paths` 内。
+- 检查绑定最终候选：PNG 临时恢复为改前版本后 `check_task.py --worktree`（工作区 = `eba3527`）→ `STATIC PASS`，`files=8`，`product_fingerprint=84a19faf…`，frontend 五项 exit 0，`553 passed` → **CHECKS PASS**；`reader-immersive` + `reader-layout` e2e 11 passed（F1 只改 CSS 特异度，其余 e2e 沿用 `917e6c1` 上的 56 passed，未受影响的证据不重复执行）。
+- 二进制人工核验（`03-reader.png`，主 Agent 目视）：`PNG image data, 1440 x 900, 8-bit/color RGB`，sha256 `56a02515…`；图中顶栏单行「← 返回资料库 ……… 未开始 · 0% / 心得(1) / 原网页 / ⋯」，正文列顶部「网页」徽章 + 标题 h1 + 标签「待复习 / 精读」+ 保存原因 + 分隔线，其下正文；无左栏/面包屑/页脚/元信息。无个人真实数据、令牌或本机路径。390px 三态（常态 / 菜单展开 / 心得浮层）另行目视：顶栏单行、菜单浮动不推正文、浮层紧贴顶栏。
+- Review（L2，独立只读 Reviewer，`.claude/agents/reviewer.md`，仅 Read/Grep/Glob）：首轮对 `5c6cd9b..ff583b3` **PASS**（F1 可记录后继续、F2–F4 可选）；同一 Reviewer 增量复审 `ff583b3..eba3527` **PASS，No findings**，声明继承首轮六项核对。报告原文：
+
+> **首轮**
+> - 基线 `5c6cd9b` → 候选 `ff583b3`（工作区 HEAD，clean）。本 Agent 仅有 Read/Grep/Glob，无写工具、无 Bash，未改任何文件。审了导出的两份 diff 全文，并核对了 `ResourceDetail.tsx`、`ResourceToolbar.tsx`、`styles.css`、`heading.tsx`、`App.tsx` 的 `registerHeading`、既有单测/e2e、TASK-051 状态与索引两行。
+> 1. 焦点契约保持：`headingSlot` 只挂两处且互斥——读取中/失败态占位 `h1`（`ResourceDetail.tsx:205`）与 `ReaderHeader` 的 `h1`（`ResourceToolbar.tsx:359`），`toolbarItem` 真假各渲染一个；`App.tsx:31-50` 的 `registerHeading` 只依赖 ref 回调，不依赖 DOM 位置。`pageHeadings()` 与 e2e `h1:not(.snapshot-rendered h1)` 均排除正文 h1，恰好一个的断言仍真。
+> 2. 箭头 span 仍 `aria-hidden` 且内容 `'← '`；既有「back arrow」用例断言的是同一结构，未削弱。可访问名称由 320/390 真浏览器 `getByRole('link',{name:'返回资料库'})` + 宽度 <48 双向证明。
+> 3. `.reader-menu` 是 `.reader-toolbar` 直接子元素，sticky 是定位元素、建立包含块；`right:0` 相对通栏顶栏，320px 宽 288px → x=32 ≥ 0；`--reader-toolbar-h` 仍取 `closest('.reader-toolbar')`，绝对定位菜单不影响其高度。
+> 4. 顶栏 57px；宽屏 `top:56px`、`max-height: calc(100vh-70px)`、兜底 56px 三处自洽。`.reader-back` 选择器不只命中顶栏链接，见 F1。
+> 5. 两条新用例断言的是 DOM 归属与真实布局数值，stash 实现即红的说明可信；≤64/<48/±1/±2/≥底边−9 都比实测紧或恰好守住「不盖动作行」；1440 断言 ≤64 比完成条件的「≤ 现状 75」更严。既有用例零改动。
+> 6. 全部改动在 `allowed_paths` 内；+190/−38、553/552、56/55、57/123/75/472 与 diff 及记录一致；已知限制 1 如实上报。
+> - F1（可记录后继续）`styles.css:2201-2207` `.reader-back { min-height:38px; margin-top:0 }` 同时命中读取中/失败态的占位返回链接：最小高由 44 降为 38。影响仅过渡态。可改为 `.reader-toolbar .reader-back`。
+> - F2（可选）`reader-immersive.spec.ts:357` 注释「改前单行 ≈56px」与记录已更正的「改前 75px」不一致，仅注释。
+> - F3（可选，记录即可）页面 `h1` 现位于 `.reader-main`，窄屏心得浮层展开时随之 `inert`；展开必经心得按钮，焦点已在按钮/写作框，无实际焦点丢失路径。
+> - F4（可选）记录称 TASK-049 遗留 1「自然消解」：准确的是「顶栏不再撑高压住浮层头部」；两者同开时浮动菜单仍会盖在浮层头部之上（z6 > z5，与宽屏一致，可 Esc 关闭）。建议措辞上区分。
+> - **结论：PASS**（F1 记录后继续，F2-F4 可选）。
+>
+> **增量复审（`ff583b3` → `eba3527`）**
+> - 只读证明同前。增量范围：3 文件 48 行，全部在 `allowed_paths` 内，只处置 F1/F2，无产品行为新增。
+> 1. `styles.css:2207` `.reader-toolbar .reader-back` 特异度 (0,2,0) > `.text-link` (0,1,0)，顶栏内链接仍 38px、顶栏仍 57px；占位态链接不在 `.reader-toolbar` 内，恢复 44px；`margin-top` 由 `:2604` 的 20px 决定，与基线相同。F1 关闭。
+> 2. e2e 注释改为「改前实测 75px」，断言未动。F2 关闭。
+> 3. 记录 `styles.css` 一行补记位于标记区外的实现段，属对已审实现的如实修订。
+> - **继承范围声明**：首次审查六项核对全部继承；增量未触及 TSX、测试断言或 ≤640px 档规则。
+> - **Findings**：No findings（增量）。**结论：PASS**（覆盖最终候选 `eba3527`）。
+
+- findings 处置：
+
+| # | 处置 | 依据 |
+| --- | --- | --- |
+| F1 | **已改，出新候选 `eba3527`**：选择器收窄为 `.reader-toolbar .reader-back`；同一 Reviewer 增量确认 PASS。 | 一行修正，避免过渡态触控高退化 |
+| F2 | **已改**（同一提交，注释）。 | 同上 |
+| F3 | **记录，不改**：浮层展开时页面 h1 随正文 `inert`，属遮罩语义的自然结果，无实际焦点丢失路径。 | §6「不为理论完备阻断」 |
+| F4 | **记录，措辞修正**：TASK-049 遗留 1 应表述为「顶栏不再因菜单撑高而压住浮层头部」；菜单与浮层同开时菜单仍在浮层之上（与宽屏一致，Esc 可关）。登记段「自然消解」按此理解。 | 叙述精度 |
+
 - Acceptance：L2，N/A。
-- 最终状态：status=**IN_REVIEW**。
+- 最终状态/风险/用户操作：status=**ACCEPTED**（L2：1 Worker → 自动检查 → 1 名独立只读 Reviewer（两轮）→ 主 Agent 汇总）。**未 MERGED**——是否合并由用户本人决定，Agent 不合并、不推送 main。
+- 非阻断遗留项：
+  1. **页面 `h1` 与正文 Markdown 自带 `# 一级标题` 相邻重复**（TASK-046 遗留 B，本任务使其更显眼）。修法二选一：`snapshotMarkdown.ts` 降级策略（禁止范围）或渲染层「正文首个 h1 与资料标题相同则不重复渲染」。**属产品决定，待用户。**
+  2. （F3）浮层展开时页面 h1 处于 `inert` 子树内，无实际路径触发路由聚焦。
+  3. （F4）菜单与心得浮层同开时菜单盖在浮层头部之上，与宽屏一致。
+- 日期与决定日志：
+  - 2026-09-12 用户合并 PR #59 后指示做窄屏顶栏瘦身并要求「形态选项清晰」；主 Agent 实测 390px 截图 + 两个独立决定；用户选定 A3 + 全宽统一 + B1。
+  - 2026-09-12 实现 `917e6c1`（2 条新用例 stash 实现变红验证；发现宽屏顶栏实为 75px 而非估的 56px，根因 `.text-link` 的 44px/12px）；`ff583b3` 冻结首轮候选并登记 TASK-051 MERGED。
+  - 2026-09-12 独立 Review 首轮 PASS（F1–F4）→ 处置 F1/F2 → `eba3527` → 同一 Reviewer 增量 PASS → 主 Agent 写回并置 `ACCEPTED`；待用户合并。
 <!-- EVIDENCE:END -->
