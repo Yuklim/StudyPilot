@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { getResource, type Source } from './api'
 import { ContentSnapshot, type SnapshotState } from './ContentSnapshot'
 import { ResourceError } from './ResourceState'
-import { ReaderContext, ResourceToolbar } from './ResourceToolbar'
+import { ReaderContext, ReaderHeader, ResourceToolbar } from './ResourceToolbar'
 import { NotesPanel } from '../notes/NotesPanel'
 import { resourceTitle } from './resourceTitle'
 import { useResourceQuery } from './useResourceQuery'
@@ -222,7 +222,6 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
           resource={toolbarItem}
           refreshed={retry}
           deleted={() => navigate('/resources')}
-          headingSlot={headingSlot}
           notesOpen={notesOpen}
           notesCount={notesCount}
           onNotesClick={onNotesClick}
@@ -242,6 +241,9 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
           {/* 窄屏浮层展开时正文 `inert`：被浮层盖住的内容不该还能被 Tab 或辅助技术
               进入。宽屏挤压态两边都可见、都可读，不 inert。 */}
           <div className="reader-main" inert={opening}>
+            {/* 标题进正文列（TASK-052）：页面 `h1` 就是文章的标题，位置与正文列对齐、
+                随正文滚走；路由焦点仍落在它上（`headingSlot`）。 */}
+            <ReaderHeader resource={toolbarItem} headingSlot={headingSlot} />
             {/* 标签与「收下它是因为」进正文列（TASK-046）：它们是这篇文章的元信息，
                 位置要与正文列对齐，并随正文一起滚走——sticky 顶栏只装动作。 */}
             <ReaderContext resource={toolbarItem} />

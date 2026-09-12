@@ -277,3 +277,89 @@ test('the notes overlay never covers the button that closes it, and nothing over
     await expect(notes).toHaveAttribute('aria-expanded', 'true')
   }
 })
+
+test('the toolbar is one row of actions on a phone, and the more menu floats instead of growing it', async ({
+  page,
+}) => {
+  // TASK-052（用户 2026-09-12 选定「A3 标题移出顶栏 + 全部宽度统一」与「B1 菜单浮动」）。
+  // 改前实测 390px：常态顶栏 123px（「← 返回资料库 · 网页 · 标题」+ 四个按钮排两行），
+  // ⋯ 菜单展开后 472px（菜单是塞进 sticky 盒子里的普通块，把顶栏撑高、正文整体被推下
+  // ——TASK-046 验收 F7）。**数值必须在真实浏览器里量**：jsdom 没有布局。
+  const { id } = await seed(page, '顶栏 G')
+  for (const [width, height] of [
+    [320, 844],
+    [390, 844],
+  ] as const) {
+    await page.setViewportSize({ width, height })
+    await page.goto(`/resources/${id}`)
+    await expect(article(page)).toBeVisible()
+    const toolbar = page.locator('.reader-toolbar')
+    const closed = (await toolbar.boundingBox())!
+    console.log(`[${width}px] 常态顶栏高 ${closed.height}px`)
+    // 一行：按钮 38px + 上下留白 9px×2 + 1px 底边 = 57px；给圆整与字体差留余量。
+    expect(closed.height, `${width}px 下顶栏只有一行动作`).toBeLessThanOrEqual(64)
+    // 标题不在顶栏里，在正文列里、上下文层之前，且仍是页面唯一的 h1（正文 Markdown 自带的
+    // `# 沉浸阅读` 在 `.snapshot-rendered` 内，属 TASK-046 遗留 B，排除）。
+    const pageHeadings = page.locator('h1:not(.snapshot-rendered h1)')
+    await expect(pageHeadings).toHaveCount(1)
+    expect(await pageHeadings.evaluate((el) => Boolean(el.closest('.reader-toolbar')))).toBe(false)
+    expect(await pageHeadings.evaluate((el) => Boolean(el.closest('.reader-main')))).toBe(true)
+    // 返回链接在窄屏只露箭头，但名字还在（读屏与用例都靠它）。
+    const back = page.getByRole('link', { name: '返回资料库' })
+    await expect(back).toBeVisible()
+    expect((await back.boundingBox())!.width, `${width}px 下返回链接收成图标宽`).toBeLessThan(48)
+
+    // 展开 ⋯ 菜单：顶栏不变高，正文不被推下，菜单整块在视口内。
+    const bodyBefore = (await page.locator('.reader-body').boundingBox())!.y
+    await page.getByRole('button', { name: '更多操作' }).click()
+    const menu = page.getByRole('menu', { name: '更多操作' })
+    await expect(menu).toBeVisible()
+    const opened = (await toolbar.boundingBox())!
+    expect(opened.height, `${width}px 下展开菜单没把顶栏撑高`).toBeLessThanOrEqual(
+      closed.height + 1,
+    )
+    const bodyAfter = (await page.locator('.reader-body').boundingBox())!.y
+    expect(Math.abs(bodyAfter - bodyBefore), `${width}px 下正文没被菜单推下去`).toBeLessThanOrEqual(
+      1,
+    )
+    const menuBox = (await menu.boundingBox())!
+    expect(menuBox.x, `${width}px 下菜单左沿在视口内`).toBeGreaterThanOrEqual(0)
+    expect(menuBox.x + menuBox.width, `${width}px 下菜单右沿在视口内`).toBeLessThanOrEqual(
+      width + 1,
+    )
+    // 菜单挂在动作行下方（静态位置 + 6px），落在顶栏 9px 的底部留白里——与宽屏一致；
+    // 它不能盖住动作行本身。
+    expect(menuBox.y, `${width}px 下菜单在动作行之下`).toBeGreaterThanOrEqual(
+      closed.y + closed.height - 9,
+    )
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+      `${width}px 下不横向溢出（菜单展开态）`,
+    ).toBe(true)
+    // 菜单浮在正文之上：菜单项中心点取到的最顶元素是菜单自己。
+    const item = page.getByRole('menuitem', { name: '编辑资料' })
+    const itemBox = (await item.boundingBox())!
+    const topmost = await page.evaluate(
+      ([x, y]) => Boolean(document.elementFromPoint(x, y)?.closest('.reader-menu')),
+      [itemBox.x + itemBox.width / 2, itemBox.y + itemBox.height / 2] as const,
+    )
+    expect(topmost, `${width}px 下菜单浮在最上层`).toBe(true)
+    await page.keyboard.press('Escape')
+    await expect(menu).toHaveCount(0)
+  }
+
+  // 宽屏对照：顶栏不比改前高（改前单行实测 75px，返回链接的 44px 最小高把它撑起来的），标题同样在正文列。
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(`/resources/${id}`)
+  await expect(article(page)).toBeVisible()
+  const wide = (await page.locator('.reader-toolbar').boundingBox())!
+  console.log(`[1440px] 常态顶栏高 ${wide.height}px`)
+  expect(wide.height).toBeLessThanOrEqual(64)
+  const title = page.locator('h1:not(.snapshot-rendered h1)')
+  await expect(title).toHaveCount(1)
+  expect(await title.evaluate((el) => Boolean(el.closest('.reader-main')))).toBe(true)
+  // 标题与正文列左对齐（差 ≤2px）：它是文章的一部分，不是另一块。
+  const titleBox = (await title.boundingBox())!
+  const column = (await measured(page).boundingBox())!
+  expect(Math.abs(titleBox.x - column.x)).toBeLessThanOrEqual(2)
+})

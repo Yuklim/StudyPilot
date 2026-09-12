@@ -39,7 +39,6 @@ export function ResourceToolbar({
   resource,
   refreshed,
   deleted,
-  headingSlot,
   notesOpen,
   notesCount,
   onNotesClick,
@@ -56,11 +55,6 @@ export function ResourceToolbar({
   refreshed: () => void
   /** 资料已被删除，由调用方决定去哪。 */
   deleted: () => void
-  /**
-   * 把这一页的 `h1`（资料标题）交回外壳做路由焦点落点（TASK-044）。
-   * 这一页的标题本来就该是资料的名字，而不是「资料详情」四个字。
-   */
-  headingSlot: (element: HTMLHeadingElement | null) => void
   /** 心得区是否展开（挤压两栏还是窄屏浮层，由 `ResourceDetail` 的断点决定）。 */
   notesOpen: boolean
   /** 这份资料已绑定心得的总数；`null` 表示侧栏还没读到（不显示角标）。 */
@@ -153,20 +147,18 @@ export function ResourceToolbar({
   const progress = resource.progress
   return (
     <>
+      {/* TASK-052 起顶栏**只装动作**（用户 2026-09-12 选定「A3 标题移出顶栏」+「全部宽度
+          统一」）：标题与来源徽章移到正文列顶部（`ReaderHeader`），随文章滚走。此前窄屏
+          「← 返回资料库 · 网页 · 标题」+ 四个按钮要排两行，顶栏实测 123px（390px 视口）。 */}
       <div className="reader-toolbar">
         <div className="reader-toolbar-actions">
           <Link className="text-link reader-back" to="/resources">
             {/* 箭头用 `aria-hidden` 的真实元素，不用 `::before`。生成内容在 Chromium 与
               Firefox 里**是计入**可访问名称的，只有 jsdom 不算——用伪元素等于只在测试
-              环境里成立。 */}
-            <span aria-hidden="true">← </span>返回资料库
+              环境里成立。文字在 ≤640px 视觉隐藏（`.sr-only`），可访问名称不变。 */}
+            <span aria-hidden="true">← </span>
+            <span className="reader-back-text">返回资料库</span>
           </Link>
-          <span className={`source-chip ${resource.source_type.toLowerCase()}`}>
-            {sourceLabels[resource.source_type]}
-          </span>
-          <h1 className="reader-title" ref={headingSlot} tabIndex={-1}>
-            {resourceTitle(resource)}
-          </h1>
           <div className="reader-toolbar-buttons">
             <button
               type="button"
@@ -342,6 +334,32 @@ export function ResourceToolbar({
         </ToolbarPanel>
       )}
     </>
+  )
+}
+
+/**
+ * 文章头：资料标题（页面 `h1`）与来源徽章。TASK-052 起它在**正文列顶部**而不在 sticky
+ * 顶栏里：顶栏只装动作，标题跟文章走——手机上顶栏因此从两行 123px 回到一行。
+ *
+ * `h1` 仍由 `headingSlot` 交回外壳做路由焦点落点（TASK-044）：**位置变了，契约没变**——
+ * 各态恰好一个 h1、导航到达时焦点落在它上。
+ */
+export function ReaderHeader({
+  resource,
+  headingSlot,
+}: {
+  resource: Resource
+  headingSlot: (element: HTMLHeadingElement | null) => void
+}) {
+  return (
+    <header className="reader-header">
+      <span className={`source-chip ${resource.source_type.toLowerCase()}`}>
+        {sourceLabels[resource.source_type]}
+      </span>
+      <h1 className="reader-title" ref={headingSlot} tabIndex={-1}>
+        {resourceTitle(resource)}
+      </h1>
+    </header>
   )
 }
 
