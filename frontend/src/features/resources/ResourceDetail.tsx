@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import { getResource, type Source } from './api'
@@ -116,6 +116,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
   const [focusRequest, setFocusRequest] = useState(0)
   const [notesCount, setNotesCount] = useState<number | null>(null)
   const notesButton = useRef<HTMLButtonElement>(null)
+  const notesOverlay = useRef<HTMLElement>(null)
   // 宽屏（≥1280px）展开是「正文 + 心得」两列；窄屏展开是盖在正文上的浮层。
   const squeeze = useSqueezeLayout()
   const opening = notesOpen && !squeeze // 窄屏浮层态：正文要让位，禁止焦点进入
@@ -155,6 +156,31 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [notesOpen, closeNotes])
   const receiveCount = useCallback((total: number) => setNotesCount(total), [])
+
+  // --- TASK-049：窄屏浮层要让开 sticky 顶栏，而顶栏高度不是常数 ---
+  // 浮层改用视口定位后，它的 `top` 必须是顶栏的**实际**高度：≤640px 顶栏会因按钮换行
+  // 变高（styles.css 的 `@media (max-width: 640px)`），写死一个常量会在那一档把浮层的
+  // 头部（「记录与理解 / 收起」）压到不透明的顶栏底下——那正是本任务要避免的可见缺陷。
+  // 顶栏与浮层是兄弟，CSS 里互相拿不到高度，只能实测；窗口尺寸变化会改变顶栏高度，
+  // 所以展开期间挂着 resize 重测，收起即卸掉。
+  //
+  // 只写样式不 setState：这是布局度量，不参与渲染，进 state 会让每次 resize 重渲染
+  // 整棵正文子树（它是 memo 过的，恰恰是成本最高的部分）。用 useLayoutEffect 是为了
+  // **在首帧之前**就把值写进去，否则浮层会先落在兜底值上再跳一下。
+  useLayoutEffect(() => {
+    if (!opening) return
+    const overlay = notesOverlay.current
+    if (!overlay) return
+    function measure() {
+      // 顶栏只在资料读出来之后才渲染（读取中/失败态没有工具条），此时它必然在。
+      const toolbar = notesButton.current?.closest('.reader-toolbar')
+      if (!toolbar || !overlay) return
+      overlay.style.setProperty('--reader-toolbar-h', `${toolbar.getBoundingClientRect().height}px`)
+    }
+    measure()
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [opening])
 
   return (
     <section
@@ -223,7 +249,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
           {/* 用心得 `<section aria-label>` 而不是 `<aside>`：section + 名字 = region，
               `getByRole('region', { name: '记录与理解' })` 照旧取得到。`<aside>` 在
               section 祖先里会被映射成 generic，region 查询会落空。 */}
-          <section className="reader-notes" aria-label="记录与理解">
+          <section className="reader-notes" aria-label="记录与理解" ref={notesOverlay}>
             <div className="reader-notes-heading">
               <span className="note-tab">记录与理解</span>
               <button type="button" className="journal-button" onClick={closeNotes}>

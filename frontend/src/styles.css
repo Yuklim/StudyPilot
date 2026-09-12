@@ -2481,14 +2481,24 @@ a.source-chip:focus-visible {
   }
 }
 /* 窄屏浮层（<1280px）：盖在正文上、不挤压正文。正文此时由组件层 `inert`，
-   焦点进不了被盖住的正文；`Esc`/「收起」把焦点还给工具条的心得按钮。 */
+   焦点进不了被盖住的正文；`Esc`/「收起」把焦点还给工具条的心得按钮。
+ *
+ * **`position: fixed` 而不是 `absolute`（TASK-049）。** 原先它相对 `.reader-body`
+ * 绝对定位，等于把钉子打在**文档**里：顶栏 TASK-046 起是 sticky，滚到文章中部再点
+ * 「心得」时浮层整块落在视口上方，`NotesPanel` 写作框的 `focus()` 会把页面滚回那里
+ * ——阅读位置就丢了（TASK-046 验收登记的遗留 H，触发条件正是 sticky 顶栏让这个入口
+ * 在任意滚动位置都够得着）。改用视口定位后，无论滚到哪里展开，浮层都出现在眼前，
+ * 聚焦不引发滚动；`top` 让开顶栏高度（下面 `--reader-toolbar-h` 的来源见
+ * `ResourceDetail.tsx`：≤640px 顶栏会因按钮换行变高，写死常量会在那一档把浮层头部
+ * 压到不透明的顶栏底下）。
+ *
+ * 前提：阅读页是全宽外壳（`immersive` 下无左栏、`.workspace` 无内边距），所以
+ * `left/right: 0` 相对视口与原先相对 `.reader-body` 的"阅读区整宽"数值一致。
+ * 日后若给阅读页加外壳留白，这里要改回按容器定位（或用 `inset-inline` 对齐正文列）。 */
 @media (max-width: 1279px) {
-  .resource-sheet.reader.notes-open .reader-body {
-    position: relative;
-  }
   .resource-sheet.reader.notes-open .reader-notes {
-    position: absolute;
-    top: 6px;
+    position: fixed;
+    top: var(--reader-toolbar-h, 74px);
     left: 0;
     right: 0;
     z-index: 5;
