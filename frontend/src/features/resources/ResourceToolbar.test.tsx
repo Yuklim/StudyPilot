@@ -321,6 +321,35 @@ describe('reader toolbar', () => {
     expect(more()).not.toHaveFocus()
   })
 
+  it('keeps the title and source chip in the article column, not in the sticky toolbar', async () => {
+    // TASK-052（用户 2026-09-12 选定「标题移出顶栏、全部宽度统一」）：顶栏只装动作。
+    // 页面 `h1` 仍恰好一个、仍是资料标题（路由焦点契约不变），只是它现在在正文列里、
+    // 上下文层之前；来源徽章跟着它走。**断言的是 DOM 归属**，不是「标题在页面上」——
+    // 后者改前也成立。
+    mount()
+    await screen.findByRole('button', { name: '更多操作' })
+    // 页面级 h1 恰好一个（正文 Markdown 自带的 `# 一级标题` 是 TASK-046 遗留 B，与它无关）。
+    const headings = pageHeadings()
+    expect(headings).toHaveLength(1)
+    const [title] = headings
+    expect(title.closest('.reader-toolbar')).toBeNull()
+    expect(title.closest('.reader-main')).not.toBeNull()
+    // 标题在标签/保存原因之前，在正文快照之前。
+    const context = screen.getByRole('navigation', { name: '资料标签' })
+    const body = screen.getByRole('region', { name: '正文快照' })
+    expect(title.compareDocumentPosition(context) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(title.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // 来源徽章：顶栏里没有，文章头里有。
+    const toolbar = document.querySelector('.reader-toolbar')!
+    expect(toolbar.querySelector('.source-chip')).toBeNull()
+    expect(title.closest('.reader-header')?.querySelector('.source-chip')).toHaveTextContent('网页')
+    // 顶栏里剩下的：返回链接与动作，没有任何标题。
+    expect(
+      within(toolbar as HTMLElement).getByRole('link', { name: '返回资料库' }),
+    ).toBeInTheDocument()
+    expect(within(toolbar as HTMLElement).queryByRole('heading')).toBeNull()
+  })
+
   it('keeps the back arrow out of the accessible name', async () => {
     // `::before`/`::after` 的生成内容在 Chromium 与 Firefox 里**是计入**可访问名称的，
     // 只有 jsdom 不算——所以箭头必须是 `aria-hidden` 的真实元素，否则「箭头不进名称」
