@@ -15,7 +15,7 @@ allowed_paths = [
   "frontend/src/features/resources/ContentSnapshot.tsx",
   "frontend/src/features/notes/NotesPanel.tsx",
   "frontend/src/features/resources/ResourceToolbar.test.tsx",
-  "frontend/src/features/resources/ContentSnapshot.test.tsx",
+  "frontend/src/features/resources/ResourcePages.test.tsx",
   "frontend/src/features/notes/NotesPanel.test.tsx",
   "docs/tasks/TASK-050-reader-screenshot.md",
   "docs/tasks/TASK-051-reader-edge-fixes.md",
@@ -57,7 +57,7 @@ checks = ["frontend"]
 
 ## 完成条件
 
-1. 目标 1：`ContentSnapshot.test.tsx` 新增用例——快照读取失败时菜单无「替换正文/粘贴正文/看 Markdown 源码/删除正文…」；读取中点「替换正文」后读取失败、再重试成功，编辑表单**不**自动打开。
+1. 目标 1：`ResourcePages.test.tsx`（正文快照的既有用例都在这里，登记时误写为 `ContentSnapshot.test.tsx`，实现前修正 `allowed_paths`）新增用例——快照读取失败时菜单无「替换正文/粘贴正文/看 Markdown 源码/删除正文…」；读取中点「替换正文」后读取失败、再重试成功，编辑表单**不**自动打开。
 2. 目标 2：`ResourceToolbar.test.tsx` 新增用例——侧栏 + 菜单叠开，两下 Esc 后侧栏 `aria-expanded=false` 且焦点在「心得」按钮；既有「菜单 own Esc」「面板 own Esc」两条不改且通过。
 3. 目标 3：`NotesPanel.test.tsx` 新增用例——`focusRequest=1` 与 `available=false` 同时到达，写作框未聚焦；`available` 翻 true 后写作框聚焦；再翻 false→true 不再重新聚焦。
 4. 每条新用例对旧逻辑变红（记录验证过程）。

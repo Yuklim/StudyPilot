@@ -70,12 +70,18 @@ export function NotesPanel({
   // **单调 token**：同一 token 只消费一次。若把 available/deleting/pending 的翻转也当新请求，
   // 资源刷新（`available` 短暂翻 false 再回 true）就会在用户正操作别的面板时把焦点抢回
   // 写作框——候选 f1e96e1 上 Reviewer 抓到的焦点回归。因此用 ref 记住已消费的 token。
+  //
+  // TASK-051：`available=false` 期间到达的 token **留着不烧**。那是父级刷新造成的瞬态，不是
+  // 用户的动作；此前守卫之前就记为已消费，点击若落在这个窗口，聚焦永远不会发生（TASK-045
+  // 复审记下的窄窗口）。`deleting`/`pending` 则照旧立即作废：用户正在删一条或等一次保存，
+  // 完事之后再把焦点拽回写作框，正是上面那条回归修掉的形态。
   const lastFocusRequest = useRef(0)
   useEffect(() => {
     if (focusRequest === lastFocusRequest.current) return
+    if (!available) return
     lastFocusRequest.current = focusRequest
     if (!focusRequest) return
-    if (!available || deleting || pending) return
+    if (deleting || pending) return
     input.current?.focus()
   }, [focusRequest, available, deleting, pending])
   const load = useCallback(() => listNotes(scope, page), [scope, page])

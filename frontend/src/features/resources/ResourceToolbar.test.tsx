@@ -171,6 +171,27 @@ describe('reader toolbar', () => {
     expect(toggle).toHaveAttribute('aria-expanded', 'true')
   })
 
+  it('closes the notes sidebar on the second Escape once the menu is gone', async () => {
+    // TASK-045 遗留 1「死键」：上一条用例的守卫把「焦点在工具条内的任何非心得控件」一律
+    // 让给表面自身，可菜单一关、焦点回到 ⋯ 触发钮之后，那里**已经没有表面在开**——再按
+    // Esc 什么都不发生，侧栏只能用鼠标点「收起」。Esc 只该让给**正打开的**表面。
+    mount()
+    await screen.findByRole('button', { name: '更多操作' })
+    const toggle = screen.getByRole('button', { name: '心得' })
+    fireEvent.click(toggle)
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-expanded', 'true'))
+    fireEvent.click(more())
+    expect(screen.getByRole('menuitem', { name: '编辑资料' })).toHaveFocus()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
+    expect(more()).toHaveFocus()
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    // 第二下：菜单已关、焦点停在 ⋯ 上，这一下属于侧栏。
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-expanded', 'false'))
+    expect(toggle).toHaveFocus()
+  })
+
   it('lets an open panel own Escape while the notes sidebar is open', async () => {
     // TASK-046 把面板移出了 sticky 的 `.reader-toolbar` 盒子。心得那侧的 Esc 守卫此前只认
     // `.reader-toolbar`，面板一搬走，焦点在面板里按 Esc 就会连侧栏一起关掉、焦点还被

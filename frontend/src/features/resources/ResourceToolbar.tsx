@@ -45,6 +45,7 @@ export function ResourceToolbar({
   onNotesClick,
   notesButtonRef,
   snapshotExists,
+  snapshotUnreadable = false,
   showSource,
   onToggleSource,
   onEditSnapshot,
@@ -73,6 +74,12 @@ export function ResourceToolbar({
    * 文案，并决定「删除正文…」出不出现——**没有正文时不该有一个删除它的入口**。
    */
   snapshotExists: boolean | null
+  /**
+   * 正文读取失败（TASK-051）。此时 `snapshotExists` 也是 `null`，但与「还在读」不同：
+   * 「替换/粘贴正文」要一并收起——读取中点它会等读到再开表单，失败了则什么都不会发生。
+   * 可选，默认 false；既有用法不传。
+   */
+  snapshotUnreadable?: boolean
   /** 当前是不是源码视图。受控于 `ResourceDetail`：菜单项文案要随它变。 */
   showSource: boolean
   onToggleSource: () => void
@@ -255,15 +262,20 @@ export function ResourceToolbar({
                 {showSource ? '看渲染后的正文' : '看 Markdown 源码'}
               </button>
             )}
-            <button
-              type="button"
-              role="menuitem"
-              className="reader-menu-item"
-              /* 写作框带 `autoFocus`，由它接住焦点，这里不再归还给 `⋯`。 */
-              onClick={() => runFromMenu(onEditSnapshot, false)}
-            >
-              {snapshotExists ? '替换正文' : '粘贴正文'}
-            </button>
+            {/* **读取失败时不出现**（TASK-051）：此前失败态这一项照样在，点了什么都不发生
+              ——令牌只在读到之后才消费。读取中的一瞬**照旧给**：那时点下去会等读到再开表单，
+              是刻意保留的行为（见 ContentSnapshot）。 */}
+            {!snapshotUnreadable && (
+              <button
+                type="button"
+                role="menuitem"
+                className="reader-menu-item"
+                /* 写作框带 `autoFocus`，由它接住焦点，这里不再归还给 `⋯`。 */
+                onClick={() => runFromMenu(onEditSnapshot, false)}
+              >
+                {snapshotExists ? '替换正文' : '粘贴正文'}
+              </button>
+            )}
             {/* **销毁性动作单独一区、置于底部**（用户 2026-09-07 选定）。分隔线不是装饰：
               它是「删除不与普通动作相邻」这条要求的落点，有用例断言它在。
 
