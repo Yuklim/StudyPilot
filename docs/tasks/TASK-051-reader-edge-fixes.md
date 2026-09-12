@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-051"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L2"
 risk_reason = "修三个已由独立 Review/验收登记为「非阻断、可后续修」的阅读页缺陷，全部是同一页面（/resources/:id）的交互边缘：① 正文读取失败时菜单仍有「替换/粘贴正文」且点击令牌悬置迟到重放（TASK-046 遗留 I）；② 心得侧栏 + ⋯ 菜单叠开时第二下 Esc 不关侧栏（TASK-045 遗留 1「死键」）；③ 心得聚焦令牌在资料刷新窗口被烧掉而未聚焦（TASK-045 复审 R2 finding 3）。不改公共 API、后端、契约、数据含义与门禁；不引入依赖。判 L2 而非 L1：② ③ 触及已确立的无障碍焦点契约（Esc 归还、聚焦一次不抢焦点），改错了屏幕上看不出来，需要独立 Reviewer 看最终 diff 与测试是否真守得住。不到 L3：无架构/契约/迁移/认证变更。"
 risk_flags = ["business"]
@@ -127,7 +127,7 @@ checks = ["frontend"]
 | F3 | **记录后继续，不改**。测试注释措辞不准确，断言不受影响；改注释同样形成新候选。登记为遗留 2，下次触碰该文件时顺手修正。 | 同上 |
 
 - Acceptance：L2，N/A。
-- 最终状态/风险/用户操作：status=**ACCEPTED**（L2：1 Worker → 自动检查 → 1 名独立只读 Reviewer → 主 Agent 汇总）。**未 MERGED**——是否合并由用户本人决定，Agent 不合并、不推送 main。
+- 最终状态/风险/用户操作：status=**MERGED**（2026-09-12 用户合并 PR #59，merge commit `5c6cd9b`，已用 `gh pr view 59` 与 `git log origin/main` 双向核实；本行状态登记按根 `AGENTS.md` §5 并入 TASK-052 的控制面提交）。交付时为 **ACCEPTED**（L2：1 Worker → 自动检查 → 1 名独立只读 Reviewer → 主 Agent 汇总）。
 - 非阻断遗留项：
   1. （F2）Esc 守卫的 `aria-expanded="true"` 判据未限定在 `.reader-toolbar` 内；当前阅读页无外壳，无可触发控件。**重评触发条件**：阅读页重新渲染外壳或任何工具条外出现 `aria-expanded` 控件时，加 `closest('.reader-toolbar')` 收窄。
   2. （F3）`NotesPanel.test.tsx` 新用例注释「禁用态」应为「暂不能保存」。
