@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-049"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L2"
 risk_reason = "改的是阅读页窄屏档**一处定位方式**，目的是修掉一个已登记的用户可见缺陷（TASK-046 遗留 H：滚到文章中部再展开心得，阅读位置被拽回文章开头）。影响面按实际判断：① 不改任何公共契约、接口调用、写入语义、数据含义与门禁；② 无障碍机器契约（三态唯一 `h1` 与路由焦点落点、`Esc` 归还焦点、窄屏展开时正文 `inert`、收起后焦点还给心得按钮）**全部不动**，且由既有的、本轮不改的 e2e 断言继续守着；③ 涉及真实浏览器的版式数值（`position`/`top`/`max-height`、滚动位置），jsdom 量不到，必须走 Playwright。④ 唯一的结构性新增是「实测顶栏高度写进 CSS 变量」，因为它决定浮层是否被不透明的 sticky 顶栏压住（顶栏 z-index 6 > 浮层 5），是本任务的功能前提而不是装饰。按规定 L2：1 Worker → 自动检查 → 1 名独立只读 Reviewer 检查最终 diff；独立 Acceptance N/A。不升 L3 的理由：无契约/接口/迁移/认证/关键数据模型改动，不跨模块（改动落在 `frontend/src/features/resources/ResourceDetail.tsx`、`frontend/src/styles.css` 与 e2e），也不是治理或门禁权限变更。"
 risk_flags = ["business"]
@@ -259,7 +259,7 @@ TASK-046 的独立 Integration/Acceptance 把 H 列为「合并前须向用户�
 >
 > **继承范围**：`698218d` 上对 `styles.css` / `ResourceDetail.tsx` / 两个 e2e 的全文审查（含包含块前提、实测逻辑、e2e 断言方向、无未声明行为变化）与全部剩余风险声明（F2/F3、读屏未测、F7）继续有效。
 
-**最终状态**：`ACCEPTED`（L2：1 Worker → 自动检查 → 1 名独立只读 Reviewer → 主 Agent 汇总；独立 Acceptance N/A）。**未 MERGED**——是否合并由用户本人决定，Agent 不合并、不推送 main。
+**最终状态**：`MERGED`（2026-09-12 用户合并 PR #57，merge commit `40de899`，已用 `gh pr view 57` 与 `git log origin/main` 双向核实；本行状态登记按根 `AGENTS.md` §5 并入下一个已授权任务 TASK-050 的控制面提交）。交付时为 `ACCEPTED`（L2：1 Worker → 自动检查 → 1 名独立只读 Reviewer → 主 Agent 汇总；独立 Acceptance N/A）。
 
 **日期与决定日志**
 
@@ -272,5 +272,6 @@ TASK-046 的独立 Integration/Acceptance 把 H 列为「合并前须向用户�
 | 2026-09-12 | 处置 F1 → 新候选 `fa7e0c9`；同一 Reviewer 增量确认 → **PASS**（覆盖 base..fa7e0c9） |
 | 2026-09-12 | 主 Agent 写回并置 `ACCEPTED`；待用户合并 |
 | 2026-09-12 | 用户合并 PR #57 时索引冲突（main 已并入 PR #56 把 TASK-046/048 置 MERGED，与本分支新增的 TASK-049 行相邻）；并入 `origin/main`（`8ce79b2`）为 merge `0c569c2`，仅解 `任务索引.md` 冲突（保留 main 的 046/048 MERGED 行 + 本分支 049 行）；`git diff 700f2ef 0c569c2` 只含 main 带来的三份文档状态改动，前端三文件与候选 `fa7e0c9` 逐字节一致，Review 结论继续覆盖；待用户合并 |
+| 2026-09-12 | 用户合并 PR #57，merge `40de899`；状态登记为 `MERGED`（由 TASK-050 控制面提交并入） |
 
 <!-- EVIDENCE:END -->
