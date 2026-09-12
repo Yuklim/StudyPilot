@@ -8,7 +8,7 @@ risk = "L3"
 risk_reason = "本任务改的是**应用外壳自身的渲染条件**，不只是阅读器页内部版式。实质风险：① **外壳按页隐藏是一条新的全局机制**——`App.tsx` 在 `immersive` 页面上不渲染左侧导航、面包屑与页脚，导航（除返回链接外）在这一页整个消失；若返回链接或 `h1` 焦点落点在任一状态下缺失，键盘/读屏用户会被困在没有出口的页面上（屏幕上看不出来）。TASK-044 建立的「每种状态恰有一个 `h1` 且它是路由焦点落点」契约必须原样保持。② **工具条改为 sticky**：`.reader-menu`（绝对定位）与 `.reader-panel`（在流内）此前同在 `.reader-toolbar` 盒子里，sticky 化必须把面板移出 sticky 容器，否则学习状态/编辑资料/删除面板会跟着钉在顶部；层叠上下文还要与 TASK-045 的窄屏心得浮层（z-index 5）协调，否则浮层被顶栏盖住或反之。③ **销毁性动作换位置**：`删除正文` 从正文下方的直接按钮移进 ⋯ 菜单，进菜单后必须补一步确认——菜单项误触即不可逆删除是新引入的风险，原位置至少有正文作视觉隔离。④ **`ContentSnapshot` 的三个动作被上提为受控 props**（`showSource` 由父级持有、替换/删除走请求令牌），跨 `ResourceDetail`/`ResourceToolbar`/`ContentSnapshot` 三个组件的状态编排；`ContentSnapshot` 是全仓唯一使用 `dangerouslySetInnerHTML` 的文件。⑤ 正文列宽/字号改动会同时影响 TASK-045 的挤压式侧栏数值断言与 TASK-043/044 的「正文落在第一屏」断言，需真实浏览器复测。不改后端、`/api/v1`、openapi、本机访问门禁、`extension/`；**不动 `snapshotMarkdown.ts`（渲染与安全形态一字不改）**、`ResourceDeletion.tsx`、`NotesPanel.tsx`、`NotesPage.tsx`；不改任何写入语义与接口调用。"
 risk_flags = ["business", "architecture"]
 owner = "coordinator"
-base = "f60914545ceb04f8c2f4257a047ecd07419f3fb4"
+base = "194d77b8543ae67d05b3bcf396763d561dcb92ff"
 allowed_paths = [
   "frontend/src/App.tsx",
   "frontend/src/App.test.tsx",
@@ -85,7 +85,9 @@ checks = []
 
 ### 依赖/前置条件
 
-基线 `f60914545ceb04f8c2f4257a047ecd07419f3fb4`（main，TASK-045 已合并 = 用户合并 PR #50）。无未合并依赖。
+基线 `194d77b8543ae67d05b3bcf396763d561dcb92ff`（main，TASK-048 已合并 = 用户合并 PR #53）。
+
+**基线变更记录**：登记时基线为 `f60914545ceb04f8c2f4257a047ecd07419f3fb4`（TASK-045 合并点）。该分支在实现与自检完成后、独立 Review 开始前落后 main 两个任务，于 `79a615c` 把 main（含 TASK-047 仓库公开门面、TASK-048 文档脱敏）并入本分支，base 随之更新为并入后的 main。更新 base 是**为了如实反映任务自身差异**：合并后 main 是 HEAD 的祖先，`base..HEAD` 正好等于本任务的 15 个文件；沿用旧基线会让 TASK-047/048 的文档改动混进本任务范围（`check_task.py` 会据此判 out of scope，见下方检查记录）。`allowed_paths` 未改。无未合并依赖。
 
 ### 并行
 
@@ -201,6 +203,17 @@ TASK-045 记录与 `任务索引.md` 的该行：按根 `AGENTS.md` §5 登记�
 - `npx vitest run` → 23 文件 **548** 用例通过（基线 539，净增 9）
 - `npx playwright test`（全量 e2e，真实后端）→ **54 通过**（基线 49，净增 5）
 - `backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-046-immersive-reader.md --worktree` → **CHECKS PASS**
+
+**基线同步后的复核**（工作区 = `79a615c` 提交后的树，base 已更新为 `194d77b`）
+
+上表数值跑在工作区 `a244d6e`（旧基线）上。合并 main 后候选 SHA 改变，按 §6「检查以被测内容为准」在合并后的树上重跑：
+
+- `backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-046-immersive-reader.md --worktree` → **CHECKS PASS**；`STATIC PASS base=194d77b… input=WORKTREE`，`files=15`，`product_fingerprint=908a0fd8e080d42a805ade54633e0de9a8eb9d36b085eceb626b82aff3fd9426`；选中 5 项检查 `format:check` / `lint` / `typecheck` / `test -- --run` / `build` **全部 exit=0**
+- `npx vitest run` → 23 文件 **548** 用例通过（与 `a244d6e` 一致）
+- `npm run test:e2e`（全量 e2e，真实后端与真实浏览器）→ **54 passed**
+- **未重跑 `extension` 组**，原因是 `base..HEAD` 的 15 个文件里零个 `extension/**`（`check_task.py` 据此也只选中 frontend 组），无变化证据不重复执行。完成条件 12 的「extension 组与基线一致」由该文件清单成立，不由一次执行成立。
+
+main 自 `f609145` 以来只改了 `README.md`、`LICENSE`、`.github/workflows/ci.yml`、`docs/**` 与 6 张截图，**无前端源码、无 `package.json`/锁文件、无后端代码**，这也是重跑结果与 `a244d6e` 逐项一致的原因。
 
 **实测数值**（Chromium，真实后端；见 `reader-immersive.spec.ts` 与留档截图 `reader-1440.png` / `reader-390.png`）
 
