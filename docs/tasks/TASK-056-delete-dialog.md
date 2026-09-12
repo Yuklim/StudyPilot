@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-056"
-status = "IN_REVIEW"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "重做「删除资料」这条**销毁性**用户路径的前端交互：入口从详情页 ⋯ 菜单扩展到资料库列表（单个 + 多选），确认由页面内嵌面板改为模态弹窗，确认文案由 7 格影响摘要精简为「不可恢复 + 心得会一起删除」。后端契约（预览取一次性令牌 → 持令牌删除 → 影响变化 409 须重新确认）**一字不改**，但前端要在多份资料上串行走这条契约、并把令牌过期/重放/影响变化的受控恢复都做进弹窗；命中 risk-policy 的 `deletion` 高风险标记，且改错了会静默多删或少删用户数据。因此 L3：独立只读 Review + 独立 Integration/Acceptance。"
 risk_flags = ["deletion", "business"]
@@ -101,8 +101,63 @@ checks = ["frontend"]
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：本提交之后的 HEAD 即候选（`2e40f49` + 本证据写回），精确 SHA 在 Review 写回时补记。
-- 判别性定向验证（完成条件 2，均在 `2e40f49` 上临时改动实现后实跑 `ResourceDeleteDialog.test.tsx`、随后 `git checkout` 恢复）：① 注释掉打开时的静默预览 → **12/15 红**；② 影响变化 (409) 后自动再预览并继续删、不要求再确认 → 「re-previews and asks to confirm again…」红；③ 删除失败也计入 `done` → 三条令牌错误用例红（弹窗关掉、页面离开）；④ 关闭时不归还焦点 → 「is modal…」红。
-- Review / Integration：待派。
-- 最终状态：status=**IN_REVIEW**。
+- 候选 SHA：首轮候选 **`53ad056`**（实现 `2e40f49` + 证据写回 + 索引）→ 处置 Review F1/F3/F4/F5 后最终候选 **`7b01175`**（`53ad056..7b01175` 3 文件 183 行：组件 `running` state + alive 安全网、2 条新用例、记录口径）。
+- 检查绑定最终候选：`check_task.py --candidate 7b01175` → `STATIC PASS`，`files=13`，`product_fingerprint=408fd929…`，frontend 五项 exit 0，**570 passed**（= 基线 562 − 9 + 17）→ **CHECKS PASS**（全文落盘供 Integration 核对）；`npm run test:e2e` **59 passed**（= 57 + 2）；`git diff --check` exit 0。
+- 判别性定向验证（完成条件 2，均临时改动实现后实跑 `ResourceDeleteDialog.test.tsx`、随后 `git checkout` 恢复）：① 注释掉打开时的静默预览 → **12/15 红**；② 409 后自动再预览并继续删、不要求再确认 → 「re-previews and asks to confirm again…」红；③ 删除失败也计入 `done` → 三条令牌错误用例红；④ 关闭时不归还焦点 → 「is modal…」红；⑤（F1 修复后）`deleting` 改回 rows 派生 → 「cannot be closed while a deletion is in flight…」红。
+- **Review**（L3，独立只读 Reviewer，`.claude/agents/reviewer.md`，仅 Read/Grep/Glob）：首轮对 `23c9dc5..53ad056` **CHANGES_REQUIRED**（F1 必须修复；F3 可记录；F4/F6 可选；F5 记录口径）→ 同一 Reviewer 增量复审 `53ad056..7b01175` **PASS，No new findings**，声明继承首轮范围。报告原文：
+
+> **首轮**
+> 候选 `53ad056`，基线 `23c9dc5`。本 Agent 仅有 Read/Grep/Glob，未写任何文件。审查 `base..candidate` 全部 11 个前端文件 + 记录 diff，并读了 `api.ts`、`client.ts`、`useResourceQuery.ts`、`ResourceToolbar.runFromMenu` 调用链。
+> 1. 不多删/不少删：`confirm()` 的 `pending` 在点击时快照 + `busy` 同步守卫，同一 DELETE 不会重放；409 后该份回 `previewing` 并丢弃旧令牌，重预览后需再点「删除」；`left` 用闭包 `rows` 无误；`busy` 不会卡死。**但 409 重预览窗口内 `deleting` 派生态为 false，关闭守卫失效，见 F1。**
+> 2. 令牌只在内存 `Row`，未渲染、未打日志。`onDeleted` 每批一次，与 JSDoc「每成功删除一份就回报一次」不一致（F4）。
+> 3. `inert` 只对施加时无 `inert` 的节点撤销，对称；portal 宿主创建/移除正确；`runFromMenu` 同步先 `focus()` 再由 React 批量提交挂弹窗，顺序可靠。Tab 环选择器足够。
+> 4. 选择与 `key`（含 page/筛选）绑定正确，`retry()` 不变 key；刷新期间 `data` 为空则选择条/列表暂隐。可访问名称正确。
+> 5. 15 条单测覆盖目标 2/3/6 各分支；旧 9 条契约断言逐条保留；四处定向变红可信；e2e `exact:true` 未减断言；Toolbar 测试改动等价。覆盖缺口见 F3。
+> 6. 全在 allowed_paths；两条既有问题如实上报、未冒称修复。行数口径可疑（F5）。
+> - **F1（必须修复）** `ResourceDeleteDialog.tsx` confirm 循环 409 分支：重预览网络往返期间 `rows` 无 `deleting` 项 → `deleting=false` → 「取消」/Esc/遮罩可关闭；用户取消后弹窗卸载，循环 `continue` 到下一份仍执行 `await deleteResource(...)`，**取消后仍发 DELETE**，随后 `!alive` 返回导致 `onDeleted` 不回报。最小修正：每次迭代前 `if (!alive.current) return`；把「运行中」改为 state 参与 `close`/Esc/遮罩/取消 disabled 判断。建议补一条 deferred promise 单测。
+> - **F3（可记录后继续）** 覆盖缺口：「删除进行中不可关闭」、卡片视图控件、「全选本页」「清除选择」无直证。
+> - **F4（可选）** JSDoc「每成功删除一份就回报一次」应改为「每批结束回报一次」。
+> - **F5（可记录后继续）** 记录 `+720/−405` 与 diff 不符；`exact:true` 实为 7 处调用（4 个用例）。
+> - **F6（可选）** 资料库中删除成功后 opener 已随刷新卸载，焦点归还落到 body。
+> - **结论：CHANGES_REQUIRED（FAIL）** — 仅因 F1。
+>
+> **增量复审（`53ad056` → `7b01175`）**
+> 只读证明同前。审查增量 diff 3 个文件，并复核 `confirm()`/`preview()`/`retry()` 及两处调用方。**首轮范围全部继承。**
+> - F1 修复：`running` 在 `confirm()` 开头置 true、循环结束且 `alive` 时置 false；`deleting = running` 统一驱动 close/Esc/遮罩/取消 disabled/「正在删除…」及「重试」隐藏。409 重预览窗口内守卫不再放开。卡死分析：`preview()` 内部 catch 不抛出；`!alive` 早退只在卸载时发生；`onDeleted` 先于 `setRunning(false)` 无害（同帧批处理）。未发现卡在 true 的可达路径。迭代前 `alive` 检查为安全网。
+> - 新用例：两个挂起 Promise 分别钉住 DELETE 在途与 409 后重预览在途；`mouseDown(box.parentElement)` 命中遮罩分支；改回派生态时窗口二的 Esc 会关闭 → 红。卡片/全选/清除用例覆盖 F3。
+> - 记录：`+1111/−405`、7 处/4 用例、F4、F6 均已处置；570 = 568 + 2。
+> - **Findings：No new findings。结论（覆盖 7b01175）：PASS。**
+
+- **Integration/Acceptance**（L3，独立于实现者与 Reviewer，只读）：**PASS**。报告原文：
+
+> 候选 `7b01175`（分支 ref 一致，工作区 clean）；基线 `23c9dc5`。仅 Read/Grep/Glob。
+> **完成条件 1 ✅**：目标 1 → 「is modal…」+「cannot be closed while…」+ e2e Shift+Tab（缺口：遮罩点击正向关闭无直证）；目标 2 → 「previews %s silently…」×3、「omits the note line…」、「deletes with the token in two clicks…」、多选求和、e2e 两条；目标 3 → 「re-previews and asks…」、「controlled recovery」×3、部分失败重试；目标 4 → 两次点击 + e2e 断言旧步骤不存在、旧组件已删；目标 5 → 列表/卡片/全选/清除/查询变化清空；目标 6 → 多选一次确认、部分失败只重试失败份。
+> **完成条件 2 ✅**：①去掉静默预览仅 3 条不依赖预览，12/15 红一致；②③④⑤按逻辑可信。
+> **完成条件 3 ✅**：旧 9 条契约断言逐条对应；Toolbar 测试仅改允许一处且不减；e2e 7 处 `exact:true` 为收紧；check_task 日志 `input=7b01175`、`files=13`、570 passed；e2e 日志无 SHA，但新用例行号与候选文件一致、工作区 clean，接受为间接绑定。
+> **跨模块 ✅**：check_task 越界即报错，PASS 即证明后端/契约零改动；调用序列符合 §9（preview → DELETE 专用头 → 409 回 previewing 重预览、`reconfirm`、不自动再删 → 410/409/403 转 failed + 重试）；令牌仅在内存。
+> **用户三点 + 单个/多选 ✅。既有问题 ✅** 如实上报、未冒称修复。
+> Findings：可记录后继续——Review 原文/F6/候选 SHA 写回 EVIDENCE 后再置 ACCEPTED；e2e 日志建议附 SHA。可选——遮罩点击关闭正向用例；部分失败按钮文案「重试」（仅混合态才是「重试未删除的」）与目标 6 措辞略异。
+> **结论：PASS**
+
+- findings 处置：
+
+| # | 处置 | 依据 |
+| --- | --- | --- |
+| Review F1 | **已改，出新候选 `7b01175`**，增量复审 PASS。 | 销毁路径，必须修复 |
+| Review F3 | **已补用例**（同一候选）。 | 覆盖缺口 |
+| Review F4/F5 | **已改**（JSDoc、记录口径）。 | 叙述精度 |
+| Review F6 | **记录，不改**：库内删除后 opener 随列表刷新卸载，焦点落 body；可改为聚焦「共 N 份资料」。登记遗留 1。 | §6 可选 |
+| Acceptance 1 | **本区写回即处置**（Review 原文、F6、候选 SHA 均在本区）。 | — |
+| Acceptance 2（e2e 日志附 SHA） | **记录**：本次 e2e 日志由主 Agent 在 `7b01175` 干净工作区实跑，Integration 已以行号间接核对；后续任务可在日志头加 `git rev-parse HEAD`。 | 可记录后继续 |
+| Acceptance 3（遮罩正向关闭用例、按钮文案） | **记录**：遮罩正向关闭无单测（e2e/单测均只有负向）；部分失败全失败态按钮文案「重试」、混合态「重试未删除的」，目标 6 的措辞按实现理解。登记遗留 2/3。 | 可选 |
+
+- 最终状态/风险/用户操作：status=**ACCEPTED**（L3：1 Worker → 自动检查 → 独立只读 Review（两轮）→ 独立 Integration/Acceptance → 主 Agent 汇总）。**未 MERGED**——是否合并由用户本人决定，Agent 不合并、不推送 main。
+- 非阻断遗留项：
+  1. （Review F6）资料库内删除成功后焦点落 body（opener 已卸载）。重评触发条件：键盘用户反馈或下次触碰 `ResourceLibrary` 时顺手聚焦「共 N 份资料」。
+  2. （Acceptance）遮罩点击正向关闭无直证用例。
+  3. （Acceptance）部分失败态按钮文案：全失败「重试」、混合「重试未删除的」。
+  4. **既有问题（不在本任务范围，建议另立）**：① 后端对同一份资料并发 `deletion-preview` 回 500；② ≤760px 顶栏两组导航文字重叠（`main` 即存在）。
+- 日期与决定日志：
+  - 2026-09-12 用户提出三点 + 选定「资料库就能删除，单个与多选」；主 Agent 登记 L3（`deletion` 高风险标记）。
+  - 2026-09-12 实现 `2e40f49`（15 条新用例，4 处定向变红）；冻结 `53ad056`；独立 Review 首轮 CHANGES_REQUIRED（F1）→ 修复 `7b01175`（新增 2 条用例，第 5 处定向变红）→ 增量复审 PASS → 独立 Integration/Acceptance PASS → 主 Agent 写回并置 `ACCEPTED`；待用户合并。
 <!-- EVIDENCE:END -->
