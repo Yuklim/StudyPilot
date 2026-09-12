@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-053"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L2"
 risk_reason = "改的是快照渲染管线 `snapshotMarkdown.ts`——本项目唯一 `dangerouslySetInnerHTML` 的内容来源，其安全性质（`html:false`、链接/图片仅收 validateLink 放行地址）由配置与测试钉住。本任务只在 markdown-it 的 core 阶段加一条**删 token** 的规则（首个块若是 h1 且文本与资料标题相同则移除三枚 token），不触碰 `RENDERER_OPTIONS`、image/link 规则与转义路径；正文数据一字不动，只影响显示。仍判 L2 而非 L1：进了安全敏感文件，且「删掉一个标题」若判断写错会静默吞掉用户内容，需独立 Reviewer 核对判据与测试。不到 L3：无契约/接口/数据变更。"
 risk_flags = ["business"]
@@ -82,10 +82,27 @@ TASK-052 把资料标题移入正文列后，它与正文 Markdown 自带的 `# 
 
 ## 实现与测试
 
-（实施后填写）
+- **实现 SHA**：`aa7f65d`（实现 + 测试同一提交；6 个前端文件 +179/−2）。
+- **变更摘要**：
+  - `snapshotMarkdown.ts`（+38/−0）：`renderSnapshot` 加第 4 个可选参数 `options: RenderOptions = {}`（`{ pageTitle?: string | null }`）；给出非空 `pageTitle` 时向 `md.core.ruler` 追加规则 `omit_duplicate_title`：`state.tokens` 前三枚为 `heading_open(h1)`/`inline`/`heading_close` 且 `renderInlineAsText(inline.children)` 经 `comparable()`（NFC → 连续空白折叠 → trim → 小写）后与标题相同 → `splice(0, 3)`。**未触碰** `RENDERER_OPTIONS`、image/link 规则、`createRenderer` 签名。
+  - `ContentSnapshot.tsx`（+11/−2）：新增可选 prop `pageTitle`，进 `useMemo` 依赖并传给 `renderSnapshot`；源码视图（`<pre>{snapshot.content}</pre>`）不经渲染器，原文不变。
+  - `ResourceDetail.tsx`（+6/−0）：`ReaderContent`（memo）加 `pageTitle: string`，由 `resourceTitle(toolbarItem)` 提供——与页面 `h1` 显示的是同一个字符串。
+- **新增用例（9 条）与判别性验证**（把 `if (options.pageTitle) omitDuplicateTitle(...)` 注释掉后实跑，标 ★ 者变红；随后恢复）：
+  - `snapshotMarkdown.test.ts`（6 条）：★ 相同→删且其余段落/h2 照旧；★ 规范化比较（多空白、大小写、`**粗**` 行内格式）；不同/带站点后缀/更短→保留；★ 非首块保留 + 后面的同名 h1 保留（该条含「两处同名只删首个」）；`##` 永不删；不传/空 `pageTitle` 输出与不传逐字节相同且含 `<h1>`。
+  - `ResourcePages.test.tsx`（2 条）：★ 资料标题 = 「冻结的标题」时页面上该一级标题恰好一个、不在 `.snapshot-rendered` 内、段落照常、源码视图仍含 `# 冻结的标题`；对照：标题「冻结的标题 - 某站」时正文 h1 保留。
+  - `reader-layout.spec.ts`（1 条，真实浏览器）：种子标题 = 正文首行 `# …` → 页面级 h1 恰好一个、`.snapshot-rendered h1` 为 0、`h2` 照常、源码视图含原文。既有四条种子标题「阅读器改版 · 数组基础 X」≠ 正文 h1「数组基础」，行为不变，继续以 `getByRole('heading',{name:'数组基础'})` 取正文标题。
+  - 保留边的用例在旧代码上本就绿，它们钉的是「不误删」，不是判别性。
+- **既有用例改动**：无。`snapshotMarkdown.test.ts` 既有 31 条（含 `RENDERER_OPTIONS` 三值）零改动。
+- **检查（候选 `aa7f65d`，干净工作区）**：`check_task.py --candidate aa7f65d` → `STATIC PASS`，`files=7`，`product_fingerprint=7470c467…`，`profiles=frontend`：format/lint/typecheck/build exit 0，`test --run` **560 passed / 23 files**（基线 552 + 8）→ **CHECKS PASS**；`npm run test:e2e` → **56 passed (35.4s)**（基线 55 + 1）；`git diff --check` exit 0。
+- **`03-reader.png`**：尚未重截——本分支从 main `5c6cd9b` 拉出，main 上的截图仍是顶栏带标题的旧形态，此刻重截会与 PR #60 的截图冲突。**待 PR #60 合并后把 main 并回本分支再截**，届时形成新候选、同一 Reviewer 增量确认。
+- **已知限制**：
+  1. 只认「完全相同」（规范化后）。资料标题带站点后缀（「xxx - 知乎」）而正文 h1 是「xxx」时不去重。扩展抓取的标题来自 Defuddle `parsed.title`（一般已是干净的文章标题），手工粘贴时用户通常把两者写成一样，故常见形态已覆盖；后缀形态待用户确认后另立任务放宽。
+  2. 首块之前若有空行/HTML 注释以外的任何块（哪怕一张图），h1 就不是首块、不删——刻意如此。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-（实施后填写）
+- 候选 SHA：本提交之后的 HEAD 即代码候选（`aa7f65d` + 本证据写回）；`03-reader.png` 重截后另出候选并增量确认。
+- Review：待派独立只读 Reviewer。Acceptance：L2，N/A。
+- 最终状态：status=**IN_REVIEW**。
 <!-- EVIDENCE:END -->
