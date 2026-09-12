@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-055"
-status = "IN_PROGRESS"
+status = "ACCEPTED"
 risk = "L1"
 risk_reason = "只改左栏两处 CSS（折叠按钮不被压扁、收起态导航项去掉占位的圆点并归零间距），加一条真实浏览器几何断言。不改任何 DOM、可访问名称、路由、契约、门禁；无行为变化。可证明低风险：改前改后均有实测数值。"
 risk_flags = ["visual"]
@@ -40,7 +40,10 @@ checks = ["frontend"]
 
 ## 实现与测试
 
-（实施后填写）
+- **变更**：`styles.css` 两处——`.nav-toggle { flex-shrink: 0 }`；`.app-shell.nav-collapsed .primary-nav a, .add-link { gap: 0 }` + `.app-shell.nav-collapsed .nav-dot { display: none }`。`reader-layout.spec.ts` 新增用例「the sidebar toggle keeps its size and collapsed icons sit centered」：两态 `.nav-toggle` 均 32×32（±0.5）、收起态五个入口图标中心与入口中心差 ≤1px。
+- **判别性**：先写用例后改 CSS，改前实跑 → 红（`展开态按钮高：Expected 32, Received 18`）；改后 reader-layout + scaffold 10 passed。
+- **目视**：两态截图核对——按钮同尺寸方形；收起态四个图标与「+」均居中。
+- **检查**：见 EVIDENCE。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
