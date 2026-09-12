@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-046"
-status = "IN_PROGRESS"
+status = "IN_ACCEPTANCE"
 risk = "L3"
 risk_reason = "本任务改的是**应用外壳自身的渲染条件**，不只是阅读器页内部版式。实质风险：① **外壳按页隐藏是一条新的全局机制**——`App.tsx` 在 `immersive` 页面上不渲染左侧导航、面包屑与页脚，导航（除返回链接外）在这一页整个消失；若返回链接或 `h1` 焦点落点在任一状态下缺失，键盘/读屏用户会被困在没有出口的页面上（屏幕上看不出来）。TASK-044 建立的「每种状态恰有一个 `h1` 且它是路由焦点落点」契约必须原样保持。② **工具条改为 sticky**：`.reader-menu`（绝对定位）与 `.reader-panel`（在流内）此前同在 `.reader-toolbar` 盒子里，sticky 化必须把面板移出 sticky 容器，否则学习状态/编辑资料/删除面板会跟着钉在顶部；层叠上下文还要与 TASK-045 的窄屏心得浮层（z-index 5）协调，否则浮层被顶栏盖住或反之。③ **销毁性动作换位置**：`删除正文` 从正文下方的直接按钮移进 ⋯ 菜单，进菜单后必须补一步确认——菜单项误触即不可逆删除是新引入的风险，原位置至少有正文作视觉隔离。④ **`ContentSnapshot` 的三个动作被上提为受控 props**（`showSource` 由父级持有、替换/删除走请求令牌），跨 `ResourceDetail`/`ResourceToolbar`/`ContentSnapshot` 三个组件的状态编排；`ContentSnapshot` 是全仓唯一使用 `dangerouslySetInnerHTML` 的文件。⑤ 正文列宽/字号改动会同时影响 TASK-045 的挤压式侧栏数值断言与 TASK-043/044 的「正文落在第一屏」断言，需真实浏览器复测。不改后端、`/api/v1`、openapi、本机访问门禁、`extension/`；**不动 `snapshotMarkdown.ts`（渲染与安全形态一字不改）**、`ResourceDeletion.tsx`、`NotesPanel.tsx`、`NotesPage.tsx`；不改任何写入语义与接口调用。"
 risk_flags = ["business", "architecture"]
@@ -262,6 +262,113 @@ main 自 `f609145` 以来只改了 `README.md`、`LICENSE`、`.github/workflows/
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-（独立 Review 与 Integration/Acceptance 报告原文、最终候选与状态决定写在这里。）
+### 候选链条
+
+- 登记时基线 `f609145`（TASK-045 合并点）；实现 `b592a1a` + 测试 `a244d6e`，工作区自检跑在 `a244d6e` 上。
+- 同步 main：合并提交 `79a615c`（并入 TASK-047 `3099292`、TASK-048 `194d77b`），`base` 前移为 `194d77b`，理由见「依赖/前置条件」的基线变更记录。合并后重跑：CHECKS PASS（指纹 `908a0fd8…`）、vitest 548、e2e 54。
+- 首轮冻结候选 **`83cc3e4`**。
+- **最终候选 `a2b19b9`**（改动后重跑：CHECKS PASS，`files=15`，指纹 `45a1e2a4aea16c13c352ee6b2583c876dd4719acee1e109e65d0f95a97e0ed6d`；vitest 548；真实后端全量 e2e 54 passed）。`base..candidate` 15 文件全部落在 `allowed_paths` 内。
+- 实现段 `:186` 以「冻结候选 `83cc3e4`」锚定 15 文件数：该句写于首轮修订时、当时成立；两轮候选的文件清单与范围逐项相同，**最终 SHA 以本区为准**。两位 Reviewer 均建议不要改实现段的这句话（属 §6 禁止的「借证据写回变更实现记录」），故原文保留、在此说明。
+
+### 独立 Review（L3：两位，均独立于实现者，运行器层只读）
+
+R1 与 R2 各两轮：首轮审 `194d77b..83cc3e4` 完整最终 diff，第二轮增量复核 `83cc3e4..a2b19b9` 并声明继承范围。**两轮结论均为 PASS，0 阻断。**
+
+| finding | 提出者 | 处置 |
+| --- | --- | --- |
+| 记录写「16 文件 / 3 docs」在 base 前移后失真 | R1-1 | 已更正为 15 / 2 并写明 `TASK-045` 登记随 main 并入（`1fb95b3` 之后的记录提交） |
+| 窄屏层叠断言在滚动位置 0 点击、与顶栏不重叠 → z 序错了也全绿 | R1-2 | 已改为「按浮层文档位置滚到真实重叠 + 前提断言 + `elementFromPoint`」；反向实验（z-index 6→1）新用例在 320px 档变红、其余 4 条仍绿 |
+| 完成条件 7 声称 1440/390 两档，实际只有 1440 断言不内滚 | R1-3 | 三档循环补齐 `overflowY === 'visible'` 与 `scrollHeight - clientHeight ≤ 2` |
+| 实测表「改前 1.9」不准（应为 1.75） | R1-4 | 已改为 1.75 并注明覆盖原因 |
+| 删除确认的可访问名称表述比实现强 | R2-3 | 按实改写；未验证部分登记为遗留 G |
+| 索引行仍写基线 `f609145`，与记录的 `base` 冲突 | R2-4 | 索引行补记基线前移 |
+| 窄屏滚动后开浮层会把阅读位置拽回开头 | R2-1 | **未改实现**，登记遗留 H 并上报用户（浮层定位是 TASK-045 既定形态，属用户可见的形态决定） |
+| 读取失败时「替换正文」令牌悬置、之后迟到重放 | R2-2 = R1-5 | 登记遗留 I |
+| 候选侧未留 product 指纹（证据绑定缺口） | R2 缺口① | 补 `79a615c..a2b19b9` stat；新指纹由 `--worktree` 在干净候选上产生 |
+
+#### R1 首轮（`194d77b..83cc3e4`）
+
+> 只读证明：本轮 Review 运行器仅授予 `Read`/`Grep`/`Glob`，无 `Bash`、无 `Write`/`Edit`。我未创建、修改、提交或推送任何文件，也未尝试探测权限。
+>
+> **base 改动成立，未掩盖越界。** manifest 给出 `merge-base(base,candidate)=base=194d77b`，`base..candidate` 15 个文件逐一对照 `allowed_paths` 全部在范围内；被排除文件（`snapshotMarkdown.ts`/`ResourceDeletion.tsx`/`NotesPanel.tsx`/`NotesPage.tsx`/`backend/**`/`extension/**`/`frontend/src/api/**`）零出现。把 base 前移到并入后的 main 只剔除了 main 带来的 TASK-047/048 文档改动，属如实反映任务自身差异。
+>
+> **`extension` 组未重跑的取舍可接受。** 文件清单零 `extension/**`，`package.json`/锁文件零改动，无变化不重复执行符合 §6。
+>
+> findings（全部非阻断）：
+> 1. `docs/tasks/TASK-046-immersive-reader.md:186`（另见 `:90`）— 记录写 16 个文件 / 3 docs，与候选的 15 文件 / 2 docs 不符；且新 base 不是 `a244d6e` 的祖先，「base..a244d6e」已非有效范围。仅叙述精度，不掩盖越界。**可记录后继续。**
+> 2. `frontend/e2e/reader-immersive.spec.ts:159-188` 与记录 `:160`（完成条件 8「实测 z 序」）— 该用例在滚动位置 0 点「心得」，此时浮层与 sticky 顶栏并不重叠；把 `.reader-toolbar` 的 `z-index:6` 去掉这条仍会通过。CSS 本身经静态核验是对的（6 > 浮层的 5，两者之间无中间层叠上下文）。建议展开后先 `window.scrollBy` 再点，或用 `elementFromPoint` 断言按钮位于浮层之上。**可记录后继续（P3，低成本可补）。**
+> 3. `frontend/e2e/reader-immersive.spec.ts:168-186` 与记录 `:159` — 只有 1440 档断言了 `.snapshot-rendered` 的 `overflowY`/`scrollHeight-clientHeight`；390 档只断言横向不溢出与字号 18px。**可记录后继续。**
+> 4. `docs/tasks/TASK-046-immersive-reader.md:222` — 实测表「改前 12px / **1.9**」不准确：渲染视图当时同时带 `snapshot-body snapshot-rendered`，后者的 `line-height:1.75` 覆盖了 `.snapshot-body` 的 1.9。建议改为 1.75。
+> 5. `ContentSnapshot.tsx:219-232` + `ResourceToolbar.tsx:258-266` — 快照读取失败（`unreadable`）时 `snapshotExists` 停在 `null`，`⋯` 菜单仍渲染「粘贴正文」，点击不消费令牌，要等一次成功的「重新读取正文」后才突然打开编辑表单。影响轻微且可绕过。建议记一行遗留，或读取失败时不显示该菜单项。
+>
+> 其余（无需处理）：`styles.css:2559` 的 `margin` 改动经核无跨页影响；`CapturePage.tsx:76` 注释里的行号引用因本次改动失效（该文件不在 `allowed_paths`）。
+>
+> 覆盖：`base..candidate` 完整 diff（2276 行）与工作区实际文件逐一交叉核对，两处一致，无 diff/工作区不符。焦点 1：出口在四态均成立；`h1` 焦点权威（`App.tsx:31-50,64-76`）一行未动，`reader-layout.spec.ts:129-136` 的真实浏览器「标题接住焦点」用例未改仍通过；跳过链接与 `main#main-content` 保留且目标真实存在。焦点 2：z-index 关系静态成立；740px 帽子确实不该戴在 `.reader-main` 上——`reader-notes-sidebar.spec.ts:63,77,84-86` 量的正是 `.reader-main` 宽度，钉成 740 会让 `closedWidth-openWidth` 变 0 使 `toBeGreaterThan(300)` 直接失败（记录 `:131,197` 的措辞「悄悄失效」不准确，机制上是变红，但结论方向正确）。焦点 3/4：数值断言逐条核过，除 finding 2/3 外都有反空过设计；记录的实测表与 e2e 断言逐项一致（除 finding 4），`548/54` 与 diff 的 +9 单测 / +5 e2e 算术自洽。
+>
+> 未覆盖：无 Bash，未重跑 vitest/playwright/check_task（复用绑定到 `product_fingerprint` 的机械证据）；未审 `docs/tasks/任务索引.md` 措辞、未审与本任务无关的既有 spec 全文。
+>
+> **结论：PASS**（4 项可记录后继续 + 1 项 P3 建议，均不影响安全底线、必要检查与已确认需求/契约）。
+
+#### R2 首轮（`194d77b..83cc3e4`）
+
+> 只读证明：本 Agent 运行器仅授予 `Read`/`Grep`/`Glob`，无 Bash、无 `Write`/`Edit`，未执行任何 git/写操作；工作区签出在 `83cc3e4`，我用「diff hunk ↔ 工作区文件内容」逐文件交叉核对，**未发现 diff 与工作区不一致**。manifest 的 SHA、merge-base、15 文件清单、工作区干净均自洽。
+>
+> 逐项核对（R2 五个焦点）：
+> 1. **受控 props / 令牌编排：正确。** 令牌在渲染期消化且**确实在真正动手之后才记 `seenEdit`/`seenDelete`**（`ContentSnapshot.tsx:219-232`），渲染期 setState 有 `!== seenEdit` 守卫，收敛（不会无限渲染）；`receiveSnapshotState` 是稳定 `useCallback`，`ReaderContent` 为 memo；`onSnapshotState` effect 只在 `result && !unreadable` 时回传，父级布尔相同时 React bail-out，无重复请求。三组件间未见状态不同步或竞态。
+> 2. **删除进菜单 + 确认：成立。** `snapshotExists &&` 同时守卫源码切换与 `删除正文…`（`ResourceToolbar.tsx:248,280`）；确认块在正文位置，`确认删除正文` 才发 DELETE。守卫力真实：`ResourcePages.test.tsx:602-606` 断言「确认前 DELETE 调用数为 0」且「取消后正文仍在」，e2e 走真实后端删掉后落回空状态；`runFromMenu` 的焦点归还有单测钉住（`ResourceToolbar.test.tsx:203-208`）。
+> 3. **Esc 守卫：已覆盖全部面板。** 面板都由 `ToolbarPanel` 渲染为 `.reader-panel`（`ResourceToolbar.tsx:388`），守卫改认 `.reader-toolbar, .reader-panel`（`ResourceDetail.tsx:148`），全仓无其它按 `.reader-toolbar` 判断焦点的位置；新增用例先断言 `panel.closest('.reader-toolbar') === null` 再按 Esc，回退旧写法必红，非空过。
+> 4. **测试守备力：新增断言不弱于旧断言。** 记录里那张表逐条与 diff 相符；元信息「不在」的断言均先断言正文真的渲染出来；「无正文菜单项」用例有正向对照不恒真；单测净增 9 例、e2e 净增 5 例与 diff 新增用例数逐一对上，无删除任何用例。
+> 5. **范围与契约：遵守。** 15 文件全在 `allowed_paths` 内；排除文件零出现；`package.json`/锁文件不在清单中。`aria-label="正文快照"` 保留不会造成名称与内容不符。
+>
+> base 改动**成立、不掩盖越界**（若分支在合并时改动过 main 已有文件，那些改动必然出现在 `base..candidate`，而清单里没有任何 main 文件）；extension 未重跑可接受。
+>
+> findings（均非阻断，建议记录后继续）：
+> 1. `styles.css:2489-2498` + `:2187-2193`：≤1279px 下滚过约 670px 再点「心得」，`.reader-notes` 仍是 `position:absolute; top:6px`，整块落在视口上方；`NotesPanel` 的 `input.focus()` 会把页面拽回文章开头。修法：窄屏档改 `position:fixed`（或按视口定位）；至少补一条「滚动后再开浮层」的 e2e。
+> 2. `ContentSnapshot.tsx:219-232`：令牌只在 `result && !unreadable` 时消费，读取失败时菜单项点击无反馈、令牌悬置，之后成功重读会让编辑表单**自动弹出**。修法：失败态加提示或不渲染该项。
+> 3. `ContentSnapshot.tsx:234-235` 与记录：焦点落在 `role="group"` + `aria-label` + `tabIndex=-1` 的容器上，读屏可靠播报的是**组名**，容器内段落不保证读出；防误删本身成立，只是这句陈述比实现强。低成本修正：`aria-describedby`。
+> 4. `docs/tasks/任务索引.md:26`：TASK-046 行仍写「基线 `f609145`」，与记录的 `194d77b` 冲突。
+>
+> 未覆盖：机械证据无法独立复跑（无 Bash）；候选 SHA 的 product 指纹未在 manifest 中留证（建议补一行或说明其后的提交全部为 docs）；真实读屏软件下的删正确认播报；「从菜单选替换正文后焦点是否真的落在写作框」没有断言。
+>
+> **结论：PASS** —— 未发现必须修复的缺陷；上述 4 项为可记录后继续的非阻断项，2 条缺口属本轮不可验证范围。
+
+#### R1 增量（`83cc3e4..a2b19b9`）
+
+> **只读证明**：本 Agent 仅挂载 Read/Grep/Glob，无 Bash、无 Write/Edit，本轮只读取 delta diff、manifest 与工作区文件，未写任何文件。
+>
+> **继承的覆盖（上一轮已审、本轮未变）**：`83cc3e4` 的完整 `base..candidate` 最终 diff（`immersive` 机制、出口与 h1 焦点契约、styles.css 的 z-index/sticky/740px 帽子/断点、token 受控 props、既有断言的增删口径、base 前移的正当性、`extension` 组跳过的可接受性）。这些 hunk 在本轮 delta 中零改动，结论直接继承。增量只动 1 个 e2e 测试文件（断言只增不减）与 2 个 docs。
+>
+> 逐条核对结果：
+> 1. **记录口径更正**：现写「13 前端 + 2 docs/tasks = 15 文件」，与 manifest 清单逐项一致；`TASK-045-notes-sidebar.md` 确不在差异内。**通过**。
+> 2. **z 序判据**：按浮层**文档位置**滚动，先断言顶栏 `y ≤ 2`，再断言浮层与按钮 y 区间确有重叠（前提守卫），最后 `elementFromPoint` 要求最顶元素归属 `.reader-toolbar`。320px 反向实验（z-index 6→1）变红，证明判据非恒真；几何一旦不再重叠，前提断言先红而非静默退化——这是正确的守卫而非误红。**通过**。
+> 3. **窄屏内滚**：三档循环补断言。**通过**（残余：判据是元素级，若日后在祖先包裹层加回内滚不会被它捕获，非阻断）。
+> 4. **行高「改前」值**：改为 1.75 且有表下说明，已核对 diff 佐证（`snapshot-rendered` 的 1.75 覆盖 `.snapshot-body` 的 1.9）。**更正准确**。
+> 5. **遗留 G/H/I**：H 确由本任务 sticky 顶栏新致触发，属用户可见的形态决定，登记并上报用户而未自行改，处置正确；I 即我的 finding 5，如实登记；G 为弱化未验证措辞。三者均可记录后继续。
+>
+> 非阻断备注：记录 `:186` 仍以「冻结候选 `83cc3e4`」锚定 15 文件数，而最终候选已是 `a2b19b9`（文件清单两轮相同、无事实错误），最终 SHA 应落在 EVIDENCE 区；清单 `判定候选与指纹树之间只差什么` 给出 +69/−6，与协调者口述的 +54/−4 不一致（清单自身自洽），属叙述数字噪声。
+>
+> 证据绑定：我无 Bash 无法重算指纹，采信 manifest 中「worktree HEAD = `a2b19b9`、0 未提交」与 `files=15` 把新指纹 `45a1e2a4…` 绑定到 `a2b19b9`。
+>
+> **结论：PASS**（覆盖新最终候选 `a2b19b9`）。剩余风险仅 H（用户待决定的形态回归）与 I/G 两项已登记遗留，均无数据损失、不阻断。
+
+#### R2 增量（`83cc3e4..a2b19b9`）
+
+> **只读证明**：运行器仍仅授予 `Read`/`Grep`/`Glob`，本轮未执行任何写操作。工作区已在新候选 `a2b19b9` 上（manifest 更新段：未提交改动 = 0）；「delta diff ↔ 工作区实际文件」交叉核对，**3 个文件全部一致**。
+>
+> 继承自上一轮（本轮未变，结论继续有效）：`base..candidate` 15 文件清单未变，五个焦点域的完整审查、base 前移的正当性、extension 未重跑的取舍、上一轮 4 条 findings 与 2 条缺口，原样继承，未重做。
+>
+> 本轮增量覆盖：
+> - **finding 4（索引与记录互相打脸）→ 已闭合。** `任务索引.md:26` 改为「基线 `f609145`（登记时；独立 Review 前并入 main 后前移为 `194d77b`）」，不再冲突。
+> - **finding 3（读屏措辞比实现强）→ 已按实闭合**，陈述不再宽于证据。
+> - **finding 1（窄屏滚动后开浮层跳位）→ 未改实现，遗留 H。** 不接受改实现是**正确的范围处置**：浮层定位是 TASK-045 既定形态，`position:fixed`/整屏面板是用户可见的形态决定；记录如实写明触发条件由本任务造成、影响、修法并上报用户，而不是自行扩大授权。
+> - **finding 2 → 遗留 I**，复现路径与两种修法具体，无数据损坏这一点表述准确。
+> - **缺口①（候选侧无 product 指纹）→ 已闭合。** manifest 给出 `79a615c..a2b19b9` 的差异，说明指纹树与候选之间不再夹杂其它产品文件；新指纹由 `check_task --worktree` 在工作区（= 候选、干净）上产生，绑定成立。残留的只是「Reviewer 无执行能力」这一固有边界，不再是证据缺口。
+> - **R1 的两条断言缺口我独立核过，是真守备不是补字**：窄屏补的 `overflowY`/`scrollHeight` 是完成条件 7 缺的那一档；`:195-224` 把层叠判据改成「先按浮层文档位置滚到真实重叠 → 前提断言 → `elementFromPoint`」，前提断言把「几何一变就退化成恒真」挡住，**这是本轮质量最高的一处修正**；`scrollTo` 为即时滚动（`scroll-behavior: auto` 只在 reduced-motion 档），无动画竞态。
+>
+> 本轮新增的三条非阻断项（均为记录/清单精度）：① 记录 `:186` 现写「冻结候选 `83cc3e4`」，而最终候选已是 `a2b19b9`——建议在 EVIDENCE 里写清候选链条，**不要去改实现段**（否则构成借证据写回改实现记录）；② manifest 表头残留旧候选（不影响判断，建议下一份清单重写表头）；③ 「替换正文」走 `runFromMenu(..., keepFocus=false)`，靠写作框 `autoFocus` 接住焦点，**没有任何用例断言焦点真的落在写作框上**（可选补强，非阻断）。
+>
+> 剩余风险：遗留 G 在只读审查里本质不可验证（已如实登记）；遗留 H 是一条真实体验退化，实现未改，属待用户决定的事项，合并前应向用户披露；遗留 I 轻微、无数据损坏。
+>
+> **结论：PASS** —— 新候选 `a2b19b9` 无阻断问题；安全底线、必要检查与已确认需求/契约均未被让渡。
 
 <!-- EVIDENCE:END -->
