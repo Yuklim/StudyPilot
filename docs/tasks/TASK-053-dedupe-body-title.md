@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-053"
-status = "IN_REVIEW"
+status = "ACCEPTED"
 risk = "L2"
 risk_reason = "改的是快照渲染管线 `snapshotMarkdown.ts`——本项目唯一 `dangerouslySetInnerHTML` 的内容来源，其安全性质（`html:false`、链接/图片仅收 validateLink 放行地址）由配置与测试钉住。本任务只在 markdown-it 的 core 阶段加一条**删 token** 的规则（首个块若是 h1 且文本与资料标题相同则移除三枚 token），不触碰 `RENDERER_OPTIONS`、image/link 规则与转义路径；正文数据一字不动，只影响显示。仍判 L2 而非 L1：进了安全敏感文件，且「删掉一个标题」若判断写错会静默吞掉用户内容，需独立 Reviewer 核对判据与测试。不到 L3：无契约/接口/数据变更。"
 risk_flags = ["business"]
@@ -104,7 +104,49 @@ TASK-052 把资料标题移入正文列后，它与正文 Markdown 自带的 `# 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：本提交之后的 HEAD 即代码候选（`aa7f65d` + 本证据写回）；`03-reader.png` 重截后另出候选并增量确认。
-- Review：待派独立只读 Reviewer。Acceptance：L2，N/A。
-- 最终状态：status=**IN_REVIEW**。
+- 候选 SHA：首轮代码候选 **`acec71a`**（base `5c6cd9b`，实现 `aa7f65d`）→ 处置 F1–F3 为 `24df3ae` → 用户合并 PR #60 后并入 origin/main（merge `5a3b094`）→ 重截 PNG + TASK-052 登记 MERGED（`2be6e7c`）→ 基线前移（`af5ac27`）= **最终候选 `af5ac27`**（base **`e694697`**）。实现段第 96-97 行「`03-reader.png` 尚未重截」与「候选 `aa7f65d`/560/56」的表述已被本区取代（Review F4）：截图已在 `2be6e7c` 重截。
+- 检查绑定最终候选（工作区 = `af5ac27`，PNG 临时恢复为 main 版本）：`check_task.py --worktree` → `STATIC PASS base=e694697`，`files=9`，`product_fingerprint=97f4b2d2…`，frontend 五项 exit 0，**562 passed**（= 并入后基线 553 + 9）→ **CHECKS PASS**；`npm run test:e2e` **57 passed**（= 56 + 1）；`git diff --check` exit 0。
+- 二进制人工核验（`03-reader.png`，主 Agent 目视）：`PNG image data, 1440 x 900, 8-bit/color RGB`；顶栏单行只装动作（TASK-052），正文列顶部「网页」徽章 + 标题「React 状态管理的取舍」+ 标签 + 保存原因，其下正文直接从第一段开始——**标题只出现一次**（改前正文里紧接着再出现一次同名 h1）。无个人真实数据、令牌或本机路径。
+- Review（L2，独立只读 Reviewer，`.claude/agents/reviewer.md`，仅 Read/Grep/Glob）：首轮对 `5c6cd9b..acec71a` **PASS**（F1 可记录后继续、F2/F3 可选）；同一 Reviewer 增量复审 `acec71a..af5ac27` **PASS**（F4 记录），声明继承首轮范围。报告原文：
+
+> **首轮**
+> - 基线 `5c6cd9b` → 候选 `acec71a`；本 Agent 仅有 Read/Grep/Glob，无写工具/Bash，真实只读。审阅了两份导出 diff、`snapshotMarkdown.ts`、`resourceTitle.ts`、`ResourceDetail.tsx`/`ResourceToolbar.tsx` 的标题来源、`ContentSnapshot.tsx` 源码视图路径、`node_modules/markdown-it` 的 `renderInlineAsText` 实现。
+> 1. 安全性质原样：`RENDERER_OPTIONS`、image/link 规则、`createRenderer` 零改动；新规则只 `splice` token，`renderInlineAsText` 结果仅用于比较、不进输出。
+> 2. 判据：front-matter（`---`→hr）、HTML 块/注释（`html:false` 下成段落）、列表在前时 tokens[0] 不是 heading→保留；setext `===` 的 h1 也按 `tag` 命中，合理；`children ?? []` 兜底。`comparable` 用 NFC 而非 NFKC，全角/半角不折叠，方向是保守的。
+> 3. 页面 h1 与 `pageTitle` 同源；string prop 按值比较，工具条状态变化不会触发正文重渲染；改标题后 `shown` 更新→`useMemo` 重算。
+> 4. 测试：★ 标记的 4 条在无规则时确实变红；「保留」边的用例能抓住前缀匹配、跨块、降级放宽。既有 31 条只在文件末尾追加。e2e 四条种子 `阅读器改版 · 数组基础 X` ≠ `# 数组基础` 属实。
+> 5. 范围/数字：6 文件全在 allowed_paths；+179/−2、560=552+8、56=55+1 一致；「站点后缀不去重」陈述与实现一致。
+> - F1（可记录后继续）`snapshotMarkdown.ts:134`：markdown-it 的 `renderInlineAsText` **跳过 `code_inline`**。正文 `# React Hooks \`v18\`` 与标题「React Hooks」比较时文本为 `React Hooks ` → 折叠后相同 → 该 h1 被删，与「宁可漏删也不误删」有一处偏差。建议自写提取器把 `code_inline.content` 计入。
+> - F2（可选）记录「已知限制 2」HTML 注释陈述方向反了；目标 2 写 prop 名 `title`，实际为 `pageTitle`。
+> - F3（可选）资料 title 为空时占位「未命名资料」参与比较，正文首行恰为 `# 未命名资料` 会被删；页面顶部仍显示同名，语义一致，可接受，建议记录。
+> - **结论：PASS**（F1–F3 非阻断）。
+>
+> **增量复审（`acec71a` → `af5ac27`）**
+> - 只读证明同首轮。核实分支 ref = `af5ac27`，`origin/main` = `e694697`，与记录 `base` 及前移说明一致。**继承首轮范围**：`5c6cd9b..acec71a` 六项结论继承；本轮只审增量与受影响上下文。
+> 1. F1 修复 `plainText`：`text`/`code_inline` 取 content；`softbreak`/`hardbreak` 折空格；其余仅在有 `children` 时递归（`image` 的 alt 走 children，`link_open`/`strong_open` 等 children 为 null 直接跳过）。`html:false` 下无 `html_inline`；`text_special` 在 core `text_join` 后已合并为 `text`，本规则 `push` 排在其后，不会漏。类型导入不进产物。新用例判别性属实。
+> 2. 合并后 `ResourceDetail.tsx`：TASK-052 与本任务改动互不重叠；页面 h1 由 `ReaderHeader` 渲染 `resourceTitle(resource)`，与 `pageTitle` 仍同源。
+> 3. 最终 diff（相对 `e694697`）6 文件 = 首轮 + F1；`RENDERER_OPTIONS`/既有 31 条断言零改动。
+> 4. `03-reader.png`：标题只在正文列顶部出现一次，正文无重复 h1，与目标 6 一致。
+> 5. 记录 F2/F3 措辞已修正，已知限制 3/4 补齐。
+> - F4（可记录后继续）记录第 96-97、107 行仍写「尚未重截」及 `aa7f65d`/560/56，相对 `af5ac27` 已过时；按 §6 只在 EVIDENCE 区写回新候选与新检查即可。
+> - **结论：PASS**（覆盖 `af5ac27`，F4 非阻断）。
+
+- findings 处置：
+
+| # | 处置 | 依据 |
+| --- | --- | --- |
+| F1 | **已改，出新候选**（`24df3ae`）：自写 `plainText` 计入行内代码 + 新用例；增量复审确认。 | 真实边缘误删，一处小改 |
+| F2 | **已改**（记录措辞与 prop 名）。 | 叙述精度 |
+| F3 | **记录**：见已知限制 3。 | 语义一致，可接受 |
+| F4 | **本区写回取代**（上文首条已注明第 96-97 行被 `2be6e7c` 取代），标记区外正文不改。 | §6 证据写回规则 |
+
+- Acceptance：L2，N/A。
+- 最终状态/风险/用户操作：status=**ACCEPTED**（L2：1 Worker → 自动检查 → 1 名独立只读 Reviewer（两轮）→ 主 Agent 汇总）。**未 MERGED**——是否合并由用户本人决定，Agent 不合并、不推送 main。
+- 非阻断遗留项：
+  1. 站点后缀形态（资料标题「xxx - 某站」、正文 h1「xxx」）不去重（刻意保守）。**重评触发条件**：用户在真实资料上遇到该形态并要求放宽。
+  2. 占位标题「未命名资料」参与比较（F3）。
+- 日期与决定日志：
+  - 2026-09-12 用户：「标题在页面最上面已经有了，在正文里就不用再出现了吧」→ 渲染层去重，主 Agent 取最保守判据（首块 h1、规范化后完全相同）并登记为假设。
+  - 2026-09-12 实现 `aa7f65d`（9 条新用例，4 条经注释掉规则变红验证）；首轮 Review PASS → F1 修复 `24df3ae`（自写 `plainText`，换回旧函数即红）。
+  - 2026-09-12 用户合并 PR #60 → 并入 main `5a3b094` → 重截 PNG、TASK-052 登记 MERGED `2be6e7c` → 基线前移 `af5ac27` → 增量复审 PASS → 主 Agent 写回并置 `ACCEPTED`；待用户合并。
 <!-- EVIDENCE:END -->
