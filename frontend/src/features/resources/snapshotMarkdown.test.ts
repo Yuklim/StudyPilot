@@ -227,3 +227,59 @@ describe('ordinary Markdown still renders', () => {
     expect(host.querySelector('int')).toBeNull()
   })
 })
+
+describe('a leading h1 identical to the page title is not rendered twice', () => {
+  // TASK-053（用户 2026-09-12：「标题在页面最上面已经有了，在正文里就不用再出现了吧」）。
+  // 判据取最保守的一种：**只看第一个块、只在纯文本与资料标题相同时**才不渲染它。
+  // 一条会静默吞掉内容的规则，宁可漏删也不误删——下面每一边都有一条用例钉着。
+  const body = '# 冻结的标题\n\n正文一段。\n\n## 小节\n\n再一段。\n'
+  const render = (markdown: string, pageTitle?: string | null) => {
+    const host = document.createElement('div')
+    host.innerHTML = renderSnapshot(markdown, noFrozen, null, { pageTitle })
+    return host
+  }
+
+  it('drops the leading h1 when it equals the page title, and nothing else', () => {
+    const host = render(body, '冻结的标题')
+    expect(host.querySelector('h1')).toBeNull()
+    expect(host.querySelector('p')?.textContent).toBe('正文一段。')
+    expect(host.querySelector('h2')?.textContent).toBe('小节')
+    expect(host.querySelectorAll('p')).toHaveLength(2)
+  })
+
+  it('compares as plain text after trimming, whitespace folding and case folding', () => {
+    expect(render('#   冻结的  标题 \n\n正文。\n', '冻结的 标题').querySelector('h1')).toBeNull()
+    expect(render('# React State\n\n正文。\n', 'react state').querySelector('h1')).toBeNull()
+    // 行内格式不算：`**冻结的标题**` 的纯文本仍是「冻结的标题」。
+    expect(render('# **冻结的**标题\n\n正文。\n', '冻结的标题').querySelector('h1')).toBeNull()
+  })
+
+  it('keeps the h1 when the title differs, including a site-suffixed title', () => {
+    expect(render(body, '另一个标题').querySelector('h1')?.textContent).toBe('冻结的标题')
+    // 站点后缀不算相同（保守：不做前缀匹配，避免误删）。
+    expect(render(body, '冻结的标题 - 某站').querySelector('h1')?.textContent).toBe('冻结的标题')
+    expect(render(body, '冻结').querySelector('h1')?.textContent).toBe('冻结的标题')
+  })
+
+  it('keeps an h1 that is not the first block, and any later h1', () => {
+    const host = render('开头一段。\n\n# 冻结的标题\n\n正文。\n', '冻结的标题')
+    expect(host.querySelector('h1')?.textContent).toBe('冻结的标题')
+    const twice = render('# 冻结的标题\n\n正文。\n\n# 冻结的标题\n', '冻结的标题')
+    expect(twice.querySelectorAll('h1')).toHaveLength(1)
+    expect(twice.querySelector('h1')?.textContent).toBe('冻结的标题')
+  })
+
+  it('only ever touches an h1, never h2 or below', () => {
+    expect(render('## 冻结的标题\n\n正文。\n', '冻结的标题').querySelector('h2')?.textContent).toBe(
+      '冻结的标题',
+    )
+  })
+
+  it('changes nothing when no page title is given', () => {
+    const plain = renderSnapshot(body, noFrozen)
+    expect(renderSnapshot(body, noFrozen, null, {})).toBe(plain)
+    expect(renderSnapshot(body, noFrozen, null, { pageTitle: null })).toBe(plain)
+    expect(renderSnapshot(body, noFrozen, null, { pageTitle: '' })).toBe(plain)
+    expect(plain).toContain('<h1>冻结的标题</h1>')
+  })
+})

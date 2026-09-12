@@ -187,3 +187,39 @@ test('collapsing the sidebar actually gives the space to the reading area', asyn
   const narrow = (await page.locator('.sidebar').boundingBox())!
   expect(narrow.width, '窄屏折叠态下侧栏不该是 68px 的窄带').toBeGreaterThan(200)
 })
+
+test('a body that opens with the resource title itself shows that title only once', async ({
+  page,
+}) => {
+  // TASK-053：资料标题与正文开头的 `# 一级标题` 相同时，页面上只出现页面自己那一个；
+  // 正文里的不渲染（源码视图仍是原文）。标题不同的形态由上面几条既有用例守着：
+  // 它们的种子标题「阅读器改版 · 数组基础 X」≠ 正文 h1「数组基础」，正文 h1 照常渲染。
+  await page.goto('/resources')
+  const title = '双指针 · 去重标题 D'
+  const created = await call(page, '/resources', 'POST', {
+    source_type: 'WEB',
+    title,
+    source_url: 'https://example.test/reader-layout-dedupe',
+    save_reason: '同名标题只留一个',
+  })
+  expect(created.status).toBe(201)
+  const id = created.data.id as string
+  expect(
+    (
+      await call(page, `/resources/${id}/snapshot`, 'PUT', {
+        content: `# ${title}\n\n第一段正文。\n\n## 小节\n\n第二段。\n`,
+      })
+    ).status,
+  ).toBe(201)
+  await page.goto(`/resources/${id}`)
+  await expect(page.getByText('第一段正文。')).toBeVisible()
+  const headings = page.getByRole('heading', { name: title, exact: true, level: 1 })
+  await expect(headings).toHaveCount(1)
+  expect(await headings.evaluate((el) => Boolean(el.closest('.snapshot-rendered')))).toBe(false)
+  await expect(page.locator('.snapshot-rendered h1')).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '小节', level: 2 })).toBeVisible()
+  // 源码视图：原文一字不动。
+  await page.getByRole('button', { name: '更多操作' }).click()
+  await page.getByRole('menuitem', { name: '看 Markdown 源码' }).click()
+  await expect(page.locator('.snapshot-body')).toContainText(`# ${title}`)
+})

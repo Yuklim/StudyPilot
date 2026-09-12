@@ -6,6 +6,7 @@ import { ContentSnapshot, type SnapshotState } from './ContentSnapshot'
 import { ResourceError } from './ResourceState'
 import { ReaderContext, ResourceToolbar } from './ResourceToolbar'
 import { NotesPanel } from '../notes/NotesPanel'
+import { resourceTitle } from './resourceTitle'
 import { useResourceQuery } from './useResourceQuery'
 import { useHeadingSlot } from '../../shell/heading'
 
@@ -28,6 +29,7 @@ const READER_BREAKPOINT = '(min-width: 1280px)'
 const ReaderContent = memo(function ReaderContent({
   resourceId,
   sourceType,
+  pageTitle,
   showSource,
   editRequest,
   deleteRequest,
@@ -35,6 +37,7 @@ const ReaderContent = memo(function ReaderContent({
 }: {
   resourceId: string
   sourceType: Source
+  pageTitle: string
   showSource: boolean
   editRequest: number
   deleteRequest: number
@@ -44,6 +47,7 @@ const ReaderContent = memo(function ReaderContent({
     <ContentSnapshot
       resourceId={resourceId}
       sourceType={sourceType}
+      pageTitle={pageTitle}
       showSource={showSource}
       editRequest={editRequest}
       deleteRequest={deleteRequest}
@@ -247,6 +251,8 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
             <ReaderContent
               resourceId={toolbarItem.id}
               sourceType={toolbarItem.source_type}
+              // 页面 h1 显示的就是这个字符串（TASK-053：正文开头同名 h1 不再重复渲染）。
+              pageTitle={resourceTitle(toolbarItem)}
               showSource={showSource}
               editRequest={editRequest}
               deleteRequest={deleteRequest}

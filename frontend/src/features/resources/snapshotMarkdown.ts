@@ -80,6 +80,7 @@ export function renderSnapshot(
   markdown: string,
   frozen: ReadonlyMap<string, string>,
   base?: string | null,
+  options: RenderOptions = {},
 ): string {
   const md = createRenderer((src) => {
     if (!src) return null
@@ -96,7 +97,44 @@ export function renderSnapshot(
     // 再挡一次协议：只有 http(s) 才值得去请求。
     return /^https?:\/\//i.test(absolute) ? { kind: 'origin', url: absolute } : null
   })
+  if (options.pageTitle) omitDuplicateTitle(md, options.pageTitle)
   return md.render(markdown)
+}
+
+export type RenderOptions = {
+  /**
+   * 页面上已经显示的资料标题（TASK-053）。给出时，正文**第一个块**若是 `h1` 且纯文本与它
+   * 相同，就不再渲染那个标题——用户原话：「标题在页面最上面已经有了，在正文里就不用
+   * 再出现了吧」。不给或为空则输出与以往逐字节相同。
+   */
+  pageTitle?: string | null
+}
+
+/** 比较用的规范形式：NFC、去首尾空白、连续空白折叠、大小写折叠。 */
+function comparable(text: string): string {
+  return text.normalize('NFC').replace(/\s+/g, ' ').trim().toLowerCase()
+}
+
+/**
+ * 在 core 阶段删掉与页面标题重复的开头 `h1`（三枚 token：`heading_open`/`inline`/
+ * `heading_close`）。**判据取最保守的一种**：只看第一个块、只认 h1、纯文本相同才删。
+ * 一条会静默吞掉内容的规则，宁可漏删也不误删——「标题 + 站点后缀」这类形态因此
+ * 保留，不做前缀或模糊匹配。正文数据一字不动，只影响这一次渲染。
+ *
+ * 只删 token、不碰任何渲染规则：`html:false`、image/link 的地址校验与转义路径全部照旧。
+ */
+function omitDuplicateTitle(md: MarkdownIt, pageTitle: string): void {
+  const wanted = comparable(pageTitle)
+  if (!wanted) return
+  md.core.ruler.push('omit_duplicate_title', (state) => {
+    const [open, inline, close] = state.tokens
+    if (!open || open.type !== 'heading_open' || open.tag !== 'h1') return
+    if (!inline || inline.type !== 'inline' || !close || close.type !== 'heading_close') return
+    // 按**纯文本**比较：`# **冻结的**标题` 的标题仍是「冻结的标题」。
+    const text = md.renderer.renderInlineAsText(inline.children ?? [], md.options, state.env)
+    if (comparable(text) !== wanted) return
+    state.tokens.splice(0, 3)
+  })
 }
 
 /**
