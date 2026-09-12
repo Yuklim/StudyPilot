@@ -174,6 +174,16 @@ test('the notes overlay never covers the button that closes it, and nothing over
     ).toBe(true)
     // 正文在窄屏也是 18px，且不超出可用宽度。
     expect(await article(page).evaluate((el) => getComputedStyle(el).fontSize)).toBe('18px')
+    // 完成条件 7 写的是「1440 与 390 两档实测」，而此前只有 1440 档断言了「整页一条
+    // 滚动条」——窄屏这一档补上，否则日后某档媒体查询给正文加回 max-height/overflow
+    // 也不会有任何用例变红。
+    const narrow = await article(page).evaluate((el) => ({
+      overflow: getComputedStyle(el).overflowY,
+      inner: el.scrollHeight - el.clientHeight,
+    }))
+    expect(narrow.overflow, `${width}px 下正文不内滚`).toBe('visible')
+    expect(narrow.inner, `${width}px 下正文不内滚`).toBeLessThanOrEqual(2)
+
     const notes = page.locator('.reader-toolbar').getByRole('button', { name: '心得', exact: true })
     await notes.click()
     await expect(page.locator('.reader-notes')).toBeVisible()
@@ -181,7 +191,40 @@ test('the notes overlay never covers the button that closes it, and nothing over
       await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
       `${width}px 下不横向溢出（展开态）`,
     ).toBe(true)
+
     // **心得浮层的层级必须低于顶栏**：否则它会盖住那个用来收起它自己的按钮。
+    //
+    // 但浮层是相对 `.reader-body` 绝对定位的（`top:6px`），**在滚动位置 0 它整个落在
+    // 顶栏下方，与顶栏根本不重叠** —— 站在那里点按钮，z 序就算错了也照样点得中，上面
+    // 那几条会全部通过。要真验到层叠，得先滚到浮层上沿跑到视口上方，顶栏（sticky）
+    // 才与它在按钮所在的这一片真正重叠。滚动量按浮层的**文档位置**算，不是猜一个数。
+    const overlayDocTop = await page
+      .locator('.reader-notes')
+      .evaluate((el) => el.getBoundingClientRect().top + window.scrollY)
+    await page.evaluate((y) => window.scrollTo(0, y), Math.ceil(overlayDocTop) + 100)
+    const pinned = (await page.locator('.reader-toolbar').boundingBox())!
+    expect(pinned.y, `${width}px 下顶栏已钉住`).toBeLessThanOrEqual(2)
+    const notesBox = (await notes.boundingBox())!
+    const overlayBox = (await page.locator('.reader-notes').boundingBox())!
+    // 前提断言：此刻两者确实重叠。几何一变（浮层改回视口内定位、或不再是绝对定位），
+    // 这一条先红，而不是让下面那条判据悄悄退化成恒真。
+    expect(
+      overlayBox.y < notesBox.y + notesBox.height && notesBox.y < overlayBox.y + overlayBox.height,
+      `${width}px 下浮层与顶栏按钮确有重叠（否则本用例验不到层叠）`,
+    ).toBe(true)
+    // 真正的判据：按钮中心这一点上，最顶的元素必须属于顶栏而不是浮层。
+    const topmost = await page.evaluate(
+      ([x, y]) => {
+        const el = document.elementFromPoint(x, y)
+        if (!el) return 'none'
+        if (el.closest('.reader-toolbar')) return 'toolbar'
+        if (el.closest('.reader-notes')) return 'notes'
+        return 'other'
+      },
+      [notesBox.x + notesBox.width / 2, notesBox.y + notesBox.height / 2] as const,
+    )
+    expect(topmost, `${width}px 下按钮未被浮层盖住`).toBe('toolbar')
+    // 而且**真的点得到**：被盖住的话这一下会超时而不是静默通过。
     await notes.click({ timeout: 3000 })
     await expect(notes).toHaveAttribute('aria-expanded', 'true')
   }
