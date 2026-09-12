@@ -16,6 +16,7 @@ export type IconName =
   | 'more'
   | 'collapse'
   | 'expand'
+  | 'trash'
 
 const paths: Record<IconName, string> = {
   overview: 'M3 10 12 3l9 7M5 9v11h5v-6h4v6h5V9',
@@ -33,6 +34,7 @@ const paths: Record<IconName, string> = {
   more: 'M6 12h.01M12 12h.01M18 12h.01',
   collapse: 'M15 6l-6 6 6 6',
   expand: 'M9 6l6 6-6 6',
+  trash: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
 }
 
 export function Icon({ name }: { name: IconName }) {

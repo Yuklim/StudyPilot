@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
-import { BookSketch } from '../../shell/Icon'
+import { BookSketch, Icon } from '../../shell/Icon'
 import { displayTime, listResources, sourceLabels, statusLabels } from './api'
+import { ResourceDeleteDialog, type DeleteTarget } from './ResourceDeleteDialog'
 import { resourceTitle } from './resourceTitle'
 import { ResourceError, ResourceProgress } from './ResourceState'
 import { useResourceQuery } from './useResourceQuery'
 import { ClassificationPicker, type Selection } from '../taxonomy/ClassificationPicker'
 import { getClassification, type Kind } from '../taxonomy/api'
+
+const EMPTY_SELECTION: ReadonlySet<string> = new Set()
 
 const DEFAULT_SORT = '-created_at'
 const UNASSIGNED = 'unassigned'
@@ -180,6 +183,51 @@ export function ResourceLibrary() {
   )
   const page = applied.page
   const data = result?.data
+
+  // --- TASK-056：库内删除——单个（每份一个删除按钮）与多选（复选框 + 选择条）---
+  // 选择只对当前这一页有意义：把它和查询键绑在一起，翻页/筛选变化（`key` 变）就自然
+  // 作废，不用 effect 去清——避免带着看不见的选中项去点「删除所选」。
+  const [selection, setSelection] = useState<{ key: string; ids: Set<string> }>({
+    key,
+    ids: new Set(),
+  })
+  const selected = selection.key === key ? selection.ids : EMPTY_SELECTION
+  const setSelected = useCallback(
+    (update: (current: Set<string>) => Set<string>) =>
+      setSelection((current) => ({
+        key,
+        ids: update(current.key === key ? current.ids : new Set()),
+      })),
+    [key],
+  )
+  const [deleteTargets, setDeleteTargets] = useState<DeleteTarget[] | null>(null)
+  const rows = data?.data ?? []
+  const target = (item: (typeof rows)[number]): DeleteTarget => ({
+    id: item.id,
+    title: resourceTitle(item),
+  })
+  function toggleSelected(id: string, on: boolean) {
+    setSelected((current) => {
+      const next = new Set(current)
+      if (on) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }
+  const allOnPage = rows.length > 0 && rows.every((item) => selected.has(item.id))
+  const selectedTargets = rows.filter((item) => selected.has(item.id)).map(target)
+  const closeDeletion = useCallback(() => setDeleteTargets(null), [])
+  const afterDeletion = useCallback(
+    (ids: string[]) => {
+      setSelected((current) => {
+        const next = new Set(current)
+        ids.forEach((id) => next.delete(id))
+        return next
+      })
+      retry()
+    },
+    [retry, setSelected],
+  )
 
   // Derived, not stored: the warning stands exactly as long as an unreadable id is
   // still filtering, so paging or re-applying cannot quietly drop it.
@@ -371,10 +419,55 @@ export function ResourceLibrary() {
         </div>
       )}
       {data && data.data.length > 0 && (
+        <div className="resource-selection" role="group" aria-label="批量操作">
+          <label className="resource-select-all">
+            <input
+              type="checkbox"
+              checked={allOnPage}
+              onChange={(e) =>
+                setSelected(() =>
+                  e.target.checked ? new Set(rows.map((item) => item.id)) : new Set(),
+                )
+              }
+            />
+            全选本页
+          </label>
+          {selected.size > 0 && (
+            <>
+              <span aria-live="polite">已选 {selected.size} 份</span>
+              <button
+                type="button"
+                className="journal-button"
+                onClick={() => setSelected(() => new Set())}
+              >
+                清除选择
+              </button>
+              <button
+                type="button"
+                className="journal-button danger"
+                onClick={() => setDeleteTargets(selectedTargets)}
+              >
+                删除所选
+              </button>
+            </>
+          )}
+        </div>
+      )}
+      {data && data.data.length > 0 && (
         <ul className={`resource-collection ${view}`} aria-label="资料结果">
           {data.data.map((item) =>
             view === 'list' ? (
-              <li key={item.id} className="resource-row">
+              <li
+                key={item.id}
+                className={`resource-row${selected.has(item.id) ? ' selected' : ''}`}
+              >
+                <input
+                  type="checkbox"
+                  className="resource-select"
+                  aria-label={`选择 ${resourceTitle(item)}`}
+                  checked={selected.has(item.id)}
+                  onChange={(e) => toggleSelected(item.id, e.target.checked)}
+                />
                 <div className="resource-row-main">
                   <span className={`source-chip ${item.source_type.toLowerCase()}`}>
                     {sourceLabels[item.source_type]}
@@ -404,14 +497,42 @@ export function ResourceLibrary() {
                   </span>
                   <time dateTime={item.created_at}>{displayTime(item.created_at)}</time>
                 </div>
+                <button
+                  type="button"
+                  className="journal-button icon-button resource-delete"
+                  aria-label={`删除 ${resourceTitle(item)}`}
+                  title="删除"
+                  onClick={() => setDeleteTargets([target(item)])}
+                >
+                  <Icon name="trash" />
+                </button>
               </li>
             ) : (
-              <li key={item.id} className="resource-card">
+              <li
+                key={item.id}
+                className={`resource-card${selected.has(item.id) ? ' selected' : ''}`}
+              >
                 <div className="resource-card-heading">
+                  <input
+                    type="checkbox"
+                    className="resource-select"
+                    aria-label={`选择 ${resourceTitle(item)}`}
+                    checked={selected.has(item.id)}
+                    onChange={(e) => toggleSelected(item.id, e.target.checked)}
+                  />
                   <span className={`source-chip ${item.source_type.toLowerCase()}`}>
                     {sourceLabels[item.source_type]}
                   </span>
                   <span>{item.source_name || '未填写来源名称'}</span>
+                  <button
+                    type="button"
+                    className="journal-button icon-button resource-delete"
+                    aria-label={`删除 ${resourceTitle(item)}`}
+                    title="删除"
+                    onClick={() => setDeleteTargets([target(item)])}
+                  >
+                    <Icon name="trash" />
+                  </button>
                 </div>
                 <h2>
                   <Link to={`/resources/${item.id}`}>{resourceTitle(item)}</Link>
@@ -463,6 +584,13 @@ export function ResourceLibrary() {
       <Link className="text-link" to="/">
         返回学习概览
       </Link>
+      {deleteTargets && deleteTargets.length > 0 && (
+        <ResourceDeleteDialog
+          targets={deleteTargets}
+          onClose={closeDeletion}
+          onDeleted={afterDeletion}
+        />
+      )}
     </section>
   )
 }
