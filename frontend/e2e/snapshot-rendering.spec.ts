@@ -91,7 +91,9 @@ test('a rendered snapshot shows the local copy of a frozen image', async ({ page
   await expect(images.nth(1)).toHaveAttribute('referrerpolicy', 'no-referrer')
 
   // 源码视图仍在：加了渲染不该让用户失去看源码的能力。
-  await section.getByRole('button', { name: '看 Markdown 源码' }).click()
+  // TASK-046：切换入口在工具条的 `⋯` 菜单里。
+  await page.getByRole('button', { name: '更多操作' }).click()
+  await page.getByRole('menuitem', { name: '看 Markdown 源码' }).click()
   await expect(section.locator('pre.snapshot-body')).toContainText(`![冻结过](${FROZEN})`)
 
   // 本页向外部发出的请求**只可能来自那张未冻结的图片**——不得有别的（字体、

@@ -59,6 +59,11 @@ test('real UI saves WEB and PASTE, refreshes details, searches and safely reads 
   await expect(externalLink).toHaveAttribute('rel', 'noopener noreferrer')
   await expect(externalLink).toHaveAttribute('target', '_blank')
   await expect(externalLink).toHaveAttribute('referrerpolicy', 'no-referrer')
+  // **阅读页没有左栏**（TASK-046：打开一份资料就是一整页文章），所以「添加资料」这个
+  // 侧栏入口在这一屏够不着——先按阅读页唯一的出口回资料库。这不是绕路，正是那条出口
+  // 在真实使用里的样子。
+  await page.getByRole('link', { name: '返回资料库' }).click()
+  await expect(page).toHaveURL(/\/resources$/)
   await page.getByRole('link', { name: '添加资料', exact: true }).click()
   await page.getByRole('radio', { name: /粘贴内容/ }).check()
   await page.getByLabel('标题').fill('页面合成 · 写在页边的小记')
@@ -244,14 +249,20 @@ test('a web resource can keep a pasted snapshot of its text alongside the link',
   await section.getByRole('button', { name: '粘贴正文' }).click()
   await page.getByLabel('正文（Markdown）').fill(body)
   await section.getByRole('button', { name: '保存正文' }).click()
-  await expect(section).toContainText(`共 ${Array.from(body).length} 字`)
-  // TASK-042 起默认展示的是**渲染后**的正文，不再是 `<pre>` 源码。断言相应加强：
-  // 渲染视图里要看得见这段文字，切到源码视图后 `<pre>` 里也要看得见原始 Markdown。
+  // TASK-046 删掉了「保存于… · 共 N 字 · 来源标识 … · 第 N 版」那行元信息（用户两次指出
+  // 它没有用），所以「写进去了」的信号改为**渲染后的正文里看得见这段文字**。
   await expect(section.locator('.snapshot-rendered')).toContainText('冻结正文 ' + suffix)
-  await section.getByRole('button', { name: '看 Markdown 源码' }).click()
-  await expect(section.getByRole('button', { name: '看渲染后的正文' })).toBeVisible()
+  await expect(section).not.toContainText('来源标识')
+  await expect(section).not.toContainText('这是保存当时的副本')
+  // TASK-042 起默认展示的是**渲染后**的正文，不再是 `<pre>` 源码；TASK-046 起切换入口
+  // 在工具条的 `⋯` 菜单里（正文页面上不再有任何按钮）。
+  const fromMenu = async (name: string) => {
+    await page.getByRole('button', { name: '更多操作' }).click()
+    await page.getByRole('menuitem', { name }).click()
+  }
+  await fromMenu('看 Markdown 源码')
   await expect(section.locator('pre.snapshot-body')).toContainText('冻结正文 ' + suffix)
-  await section.getByRole('button', { name: '看渲染后的正文' }).click()
+  await fromMenu('看渲染后的正文')
   await expect(section.locator('.snapshot-rendered')).toBeVisible()
 
   // The whole point of the shape: frozen text and the original link coexist.
@@ -264,7 +275,10 @@ test('a web resource can keep a pasted snapshot of its text alongside the link',
   // 这一行守的是「刷新后正文还在」，所以断言渲染视图即可。
   await expect(section.locator('.snapshot-rendered')).toContainText('冻结正文 ' + suffix)
 
-  await section.getByRole('button', { name: '删除正文' }).click()
+  // 删除正文现在先确认再删（它从正文下方搬进了 `⋯` 菜单，与普通动作只隔一条分隔线）。
+  await fromMenu('删除正文…')
+  await expect(section.getByRole('button', { name: '确认删除正文' })).toBeVisible()
+  await section.getByRole('button', { name: '确认删除正文' }).click()
   await expect(section).toContainText('还没有保存正文')
   // Dropping the snapshot leaves the resource itself untouched.
   await expect(page.getByRole('heading', { name: '带快照的资料 ' + suffix })).toBeVisible()

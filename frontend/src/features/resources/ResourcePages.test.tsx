@@ -513,6 +513,15 @@ describe('content snapshot', () => {
     created_at: '2026-09-06T00:00:00Z',
     updated_at: '2026-09-06T00:00:00Z',
   }
+  // TASK-046：正文的三个动作都在工具条的 `⋯` 菜单里，正文页面上不再有它们的按钮。
+  const fromMenu = (name: string) => {
+    fireEvent.click(screen.getByRole('button', { name: '更多操作' }))
+    fireEvent.click(screen.getByRole('menuitem', { name }))
+  }
+  // 正文读到了的信号。**此前用的是「共 12 字」那行元信息**——它正是本次删掉的东西，
+  // 所以改用正文自己渲染出来的标题：它比元信息更接近「用户真的看到了正文」。
+  const bodyShown = () => screen.findByRole('heading', { name: '冻结的标题', level: 1 })
+
   const detail = (path: string) =>
     path.startsWith(`${detailPath}/notes?`)
       ? { data: [], page: { number: 1, size: 20, total_items: 0, total_pages: 0, has_more: false } }
@@ -540,14 +549,13 @@ describe('content snapshot', () => {
       target: { value: '# 冻结的标题\n\n正文。\n' },
     })
     fireEvent.click(screen.getByRole('button', { name: '保存正文' }))
-    // Wait for the stored metadata, not the text: the draft textarea holds the same
-    // characters, so matching on the body would pass before the write finished.
-    await screen.findByText(/共 12 字/)
+    // 等**渲染后的正文**出现，而不是等草稿里的字符：编辑框里握着同样的字，按正文文本
+    // 等会在写入完成之前就通过。保存成功后表单收起、正文顶上来，标题只可能来自它。
+    await bodyShown()
     // First write carries no expected_version: there is nothing to replace yet.
     expect(request.mock.calls.find(([, o]) => o?.method === 'PUT')?.[1]?.body).toEqual({
       content: '# 冻结的标题\n\n正文。\n',
     })
-    expect(screen.getByRole('region', { name: '正文快照' })).toHaveTextContent('不随原文更新')
   })
   it('replaces an existing snapshot with its version and can delete it', async () => {
     const request = vi.spyOn(api, 'request').mockImplementation(async (path, options) => {
@@ -558,9 +566,10 @@ describe('content snapshot', () => {
       return detail(path) ?? samplePage([])
     })
     renderWithRouter(<App />, `/resources/${resourceId}`)
-    await screen.findByText(/共 12 字/)
-    fireEvent.click(screen.getByRole('button', { name: '替换正文' }))
+    await bodyShown()
+    fromMenu('替换正文')
     fireEvent.change(screen.getByLabelText('正文（Markdown）'), { target: { value: '# 换过了\n' } })
+    // 表单里的提交按钮同样叫「替换正文」；菜单此刻已经关掉，取到的只可能是它。
     fireEvent.click(screen.getByRole('button', { name: '替换正文' }))
     await waitFor(() =>
       expect(request.mock.calls.find(([, o]) => o?.method === 'PUT')?.[1]?.body).toEqual({
@@ -568,7 +577,12 @@ describe('content snapshot', () => {
         expected_version: 1,
       }),
     )
-    fireEvent.click(await screen.findByRole('button', { name: '删除正文' }))
+    // **删除正文现在要先确认**（TASK-046）：它从正文下方的直接按钮搬进了 `⋯` 菜单，
+    // 与「编辑资料」只隔一条分隔线，误触一下就不可逆。确认块渲染在正文位置。
+    await bodyShown()
+    fromMenu('删除正文…')
+    expect(request.mock.calls.filter(([, o]) => o?.method === 'DELETE')).toHaveLength(0)
+    fireEvent.click(await screen.findByRole('button', { name: '确认删除正文' }))
     await waitFor(() =>
       expect(request.mock.calls.find(([, o]) => o?.method === 'DELETE')?.[1]).toEqual({
         method: 'DELETE',
@@ -576,23 +590,57 @@ describe('content snapshot', () => {
       }),
     )
   })
+
+  it('lets the confirmation be called off without deleting anything', async () => {
+    // 确认这一步不是摆设：点「取消」不能把正文删掉，也不能把正文藏起来。
+    const request = vi.spyOn(api, 'request').mockImplementation(async (path) => {
+      if (path === snapshotPath) return { data: frozen }
+      return detail(path) ?? samplePage([])
+    })
+    renderWithRouter(<App />, `/resources/${resourceId}`)
+    await bodyShown()
+    fromMenu('删除正文…')
+    fireEvent.click(await screen.findByRole('button', { name: '取消' }))
+    await waitFor(() => expect(screen.queryByRole('button', { name: '确认删除正文' })).toBeNull())
+    expect(request.mock.calls.filter(([, o]) => o?.method === 'DELETE')).toHaveLength(0)
+    expect(await bodyShown()).toBeInTheDocument()
+  })
+
+  it('offers no way to delete a body that is not there', async () => {
+    // 没有正文时菜单里不该有「删除正文…」——一个删除不存在之物的入口只会制造误点；
+    // 而「替换正文」要改口叫「粘贴正文」。
+    vi.spyOn(api, 'request').mockImplementation(async (path) => {
+      if (path === snapshotPath) throw new ApiError('SNAPSHOT_NOT_FOUND', 404)
+      return detail(path) ?? samplePage([])
+    })
+    renderWithRouter(<App />, `/resources/${resourceId}`)
+    await screen.findByText(/还没有保存正文/)
+    fireEvent.click(screen.getByRole('button', { name: '更多操作' }))
+    expect(screen.queryByRole('menuitem', { name: '删除正文…' })).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: '看 Markdown 源码' })).toBeNull()
+    expect(screen.getByRole('menuitem', { name: '粘贴正文' })).toBeInTheDocument()
+  })
   // TASK-036 shipped WEB-only wording for all three source types and the existing
   // assertions could not catch it: they checked that a sentence was on screen, not
   // that it was true. These pin the sentence each source type should get, and the
   // WEB-only ones it must not get.
   // TASK-043 把原文/原件的入口搬到了上方工具条，因此这里的方位词由「下方」改为
   // 「上方工具条」，锚点也由「下方的区块」改为「工具条上的那个控件」。
+  //
+  // **TASK-046：有快照时的那三句（`snapshotHints`）连同上面那行元信息一起删掉了**，
+  // 用户两次指出它没有用。因此本表只剩空状态那一列还带方位词，`assertAbove` 也只用在
+  // 空状态那条用例上——被守的句子没有了，守卫跟着走，而不是留一条断言空转。
+  // 有快照时改由下面那条用例守「元信息确实不在、正文确实在」。
   const sources = [
-    ['WEB', sample(), '上方工具条的「原网页」', '只存链接的话', 'link', '原网页'],
+    ['WEB', sample(), '只存链接的话', 'link', '原网页'],
     [
       'PASTE',
       sample({ source_type: 'PASTE', pasted_content: '合成原文' }),
-      '上方工具条里的「粘贴原文」',
       '粘贴的原文在上方工具条里',
       'button',
       '粘贴原文',
     ],
-    ['FILE', sampleFile(), '上方工具条里的原件', '原件在上方工具条里', 'button', '原件'],
+    ['FILE', sampleFile(), '原件在上方工具条里', 'button', '原件'],
   ] as const
 
   // 「上方」是一句关于版面的陈述，不是一句文案。只断言字符串的话，把被指向的控件
@@ -622,22 +670,34 @@ describe('content snapshot', () => {
   }
 
   it.each(sources)(
-    'points a %s resource at the original it actually has',
-    async (source, item, hint, _empty, role, controlName) => {
+    'gives a %s resource its text with no metadata wrapped around it',
+    async (_source, item) => {
+      // 用户原话：「『正文快照 / 保存于… · 共 48338 字 · 来源标识 manual · 第 1 版 /
+      // 这是保存当时的副本…』没有用，可以删掉」。三种来源都不该再有这一段。
       mount(item, frozen)
-      await screen.findByText(/共 12 字/)
+      // **先等正文真的渲染出来。** 区块本身在读取中也在（它从不整块消失），所以直接取
+      // 区块会在「正在读取正文…」那一屏就通过，下面每一条「不在」都成了空过——本仓已经
+      // 出过好几次「断言在非目标状态上通过」。
+      const heading = await screen.findByRole('heading', { name: '冻结的标题', level: 1 })
       const region = screen.getByRole('region', { name: '正文快照' })
-      expect(region).toHaveTextContent(hint)
-      // The link only exists for WEB, and it sits above this block, never below.
-      if (source !== 'WEB') expect(region).not.toHaveTextContent('原网页')
-      expect(region).not.toHaveTextContent('下方')
-      assertAbove(region, role, controlName)
+      expect(region).toContainElement(heading)
+      expect(screen.queryByRole('heading', { name: '正文快照' })).toBeNull()
+      for (const gone of [
+        '保存于',
+        '来源标识',
+        '共 12 字',
+        '第 1 版',
+        '这是保存当时的副本',
+        '各自独立保存',
+        '不随上方工具条里的原件变化',
+      ])
+        expect(region).not.toHaveTextContent(gone)
     },
   )
 
   it.each(sources)(
     'tells a %s resource with no snapshot what it is missing',
-    async (source, item, _hint, empty, role, controlName) => {
+    async (source, item, empty, role, controlName) => {
       mount(item, undefined)
       const region = await screen.findByRole('region', { name: '正文快照' })
       await waitFor(() => expect(region).toHaveTextContent(empty))
@@ -657,8 +717,8 @@ describe('content snapshot', () => {
       return detail(path) ?? samplePage([])
     })
     renderWithRouter(<App />, `/resources/${resourceId}`)
-    await screen.findByText(/共 12 字/)
-    fireEvent.click(screen.getByRole('button', { name: '替换正文' }))
+    await bodyShown()
+    fromMenu('替换正文')
     fireEvent.change(screen.getByLabelText('正文（Markdown）'), { target: { value: '新的' } })
     fireEvent.click(screen.getByRole('button', { name: '替换正文' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('没有自动重试')

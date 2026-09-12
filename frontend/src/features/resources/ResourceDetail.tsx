@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { getResource, type Source } from './api'
 import { ContentSnapshot } from './ContentSnapshot'
 import { ResourceError } from './ResourceState'
-import { ResourceToolbar } from './ResourceToolbar'
+import { ReaderContext, ResourceToolbar } from './ResourceToolbar'
 import { NotesPanel } from '../notes/NotesPanel'
 import { useResourceQuery } from './useResourceQuery'
 import { useHeadingSlot } from '../../shell/heading'
@@ -28,11 +28,28 @@ const READER_BREAKPOINT = '(min-width: 1280px)'
 const ReaderContent = memo(function ReaderContent({
   resourceId,
   sourceType,
+  showSource,
+  editRequest,
+  deleteRequest,
+  onSnapshotState,
 }: {
   resourceId: string
   sourceType: Source
+  showSource: boolean
+  editRequest: number
+  deleteRequest: number
+  onSnapshotState: (state: { exists: boolean }) => void
 }) {
-  return <ContentSnapshot resourceId={resourceId} sourceType={sourceType} />
+  return (
+    <ContentSnapshot
+      resourceId={resourceId}
+      sourceType={sourceType}
+      showSource={showSource}
+      editRequest={editRequest}
+      deleteRequest={deleteRequest}
+      onSnapshotState={onSnapshotState}
+    />
+  )
 })
 
 /** 跟随一个媒体查询。jsdom 没有 matchMedia 时用 fallback（默认当宽屏挤压态）。 */
@@ -73,6 +90,24 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
   // 无限交替触发 "Too many re-renders"。守卫放在读取处就够，也不会显示上一份资料。
   const toolbarItem = shown?.id === resourceId ? shown : undefined
 
+  // --- TASK-046：正文的三个动作搬进工具条的 `⋯` 菜单 ---
+  // 菜单在工具条里、正文在下面，共同父级还是这里。**只上提触发与用于取文案的状态**：
+  // 快照数据、版本与请求本体仍归 `ContentSnapshot`。替换/删除用单调递增的令牌而不是
+  // 布尔，否则父级任何一次重渲染都可能把动作重放一遍。
+  const [showSource, setShowSource] = useState(false)
+  const [editRequest, setEditRequest] = useState(0)
+  const [deleteRequest, setDeleteRequest] = useState(0)
+  const [snapshotExists, setSnapshotExists] = useState<boolean | null>(null)
+  const toggleSource = useCallback(() => setShowSource((shown) => !shown), [])
+  const askEdit = useCallback(() => setEditRequest((value) => value + 1), [])
+  const askDelete = useCallback(() => setDeleteRequest((value) => value + 1), [])
+  // **必须 useCallback**：它是 memo 过的正文子树的 prop，每次新建函数等于让工具条的
+  // 任何状态变化（开合心得、角标到位）都重新渲染整篇正文。
+  const receiveSnapshotState = useCallback(
+    ({ exists }: { exists: boolean }) => setSnapshotExists(exists),
+    [],
+  )
+
   // --- TASK-045：心得区（右侧，默认收起）---
   // 开合状态、对写作框的聚焦请求、Esc 的归还目标都在这一个父级里协调：心得按钮在
   // `ResourceToolbar`、心得区在这页，两者的共同父级就是这里。**不新增路由或全局
@@ -106,7 +141,11 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
       // 焦点位于心得区、心得按钮本身，或工具条之外的正文/页面别处时，才由这里收起。
       const active = document.activeElement as HTMLElement | null
       if (!active) return
-      const inToolbar = Boolean(active.closest('.reader-toolbar'))
+      // **`.reader-panel` 要一起算进来。** TASK-046 把面板移出了 sticky 的 `.reader-toolbar`
+      // 盒子（面板在流内，跟着钉住会占掉半个窗口）；只认 `.reader-toolbar` 的话，焦点在
+      // 「编辑资料」面板里按 Esc 会连心得侧栏一起关掉、焦点还被心得按钮抢走——正是
+      // TASK-045 复审 R1 finding 2 修掉的那个形态，换个位置又长回来。
+      const inToolbar = Boolean(active.closest('.reader-toolbar, .reader-panel'))
       const inNotes = Boolean(active.closest('.reader-notes'))
       const onNotesToggle = active === notesButton.current
       if (inToolbar && !inNotes && !onNotesToggle) return
@@ -152,6 +191,11 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
           notesCount={notesCount}
           onNotesClick={onNotesClick}
           notesButtonRef={notesButton}
+          snapshotExists={snapshotExists}
+          showSource={showSource}
+          onToggleSource={toggleSource}
+          onEditSnapshot={askEdit}
+          onDeleteSnapshot={askDelete}
         />
       )}
       {toolbarItem && (
@@ -161,10 +205,20 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
           {/* 窄屏浮层展开时正文 `inert`：被浮层盖住的内容不该还能被 Tab 或辅助技术
               进入。宽屏挤压态两边都可见、都可读，不 inert。 */}
           <div className="reader-main" inert={opening}>
-            {/* 正文**紧接着工具条**、默认占满——这是「正文优先」的全部意义。
+            {/* 标签与「收下它是因为」进正文列（TASK-046）：它们是这篇文章的元信息，
+                位置要与正文列对齐，并随正文一起滚走——sticky 顶栏只装动作。 */}
+            <ReaderContext resource={toolbarItem} />
+            {/* 正文**紧接着上下文层**、默认占满——这是「正文优先」的全部意义。
                 快照的安全形态（`html: false`、无消毒器、图片三条去向）全部落在
                 `snapshotMarkdown.ts` 里，**本任务不进那个文件一个字符**。 */}
-            <ReaderContent resourceId={toolbarItem.id} sourceType={toolbarItem.source_type} />
+            <ReaderContent
+              resourceId={toolbarItem.id}
+              sourceType={toolbarItem.source_type}
+              showSource={showSource}
+              editRequest={editRequest}
+              deleteRequest={deleteRequest}
+              onSnapshotState={receiveSnapshotState}
+            />
           </div>
           {/* 用心得 `<section aria-label>` 而不是 `<aside>`：section + 名字 = region，
               `getByRole('region', { name: '记录与理解' })` 照旧取得到。`<aside>` 在

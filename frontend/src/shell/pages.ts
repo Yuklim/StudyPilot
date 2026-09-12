@@ -18,6 +18,16 @@ export interface ShellPage {
    * 渲染一个 `h1`**（含读取中与读取失败），否则导航过去的键盘用户会失去落点。
    */
   ownHeading?: boolean
+  /**
+   * 这一页独占整个窗口（TASK-046）：外壳的左侧导航、顶部面包屑与页脚都不渲染。
+   *
+   * 阅读器页用它变成「一整页文章」。**代价是这一页没有全局导航**——除浏览器后退外，
+   * 唯一的出口是页面自己渲染的「返回资料库」。因此置为 true 的页面**必须在每一种状态
+   * 下都渲染一个真实可用的返回链接**（含读取中与读取失败），否则键盘/读屏用户会被困在
+   * 页面上，而这在屏幕上完全看不出来。与 `ownHeading` 同一类约束：标志换来版面，
+   * 页面用契约还债。
+   */
+  immersive?: boolean
   emptyTitle: string
   description: string
 }
@@ -67,6 +77,8 @@ export const pages: ShellPage[] = [
     // 页头块在这一页整个不渲染，标题由 `ResourceDetail` 自己出（见 `ownHeading`）。
     // `title` 仍然在用：它是浏览器标签页的名字。
     ownHeading: true,
+    // 打开一份资料 = 一整页文章（用户 2026-09-08 选定）：外壳全部让位（见 `immersive`）。
+    immersive: true,
     emptyTitle: '打开收藏的这一页',
     description: '查看原始资料，随手写下心得，再回来继续补充。',
   },

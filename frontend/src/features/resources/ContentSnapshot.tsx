@@ -45,20 +45,14 @@ async function loadFrozenImages(resourceId: string): Promise<{
   }
 }
 
-// The wording depends on what else the detail page shows below this block, so the
-// component has to know the source type: a WEB resource has an "open the original
-// page" link, a PASTE resource has its pasted text, a FILE resource has its file.
-// Writing WEB-only wording for all three told PASTE and FILE users something untrue.
-// **方位词是一句关于版面的陈述，不是一句文案。** TASK-043 把原文/原件的入口从正文
-// 下方搬到了上方工具条，这几句里的「下方」当场变假，因此一并改为「上方工具条」。
-// TASK-036 栽的就是「只断言句子在屏幕上、不断言它为真」这一跤，`ResourcePages.test.tsx`
-// 里那条把方位词与 DOM 顺序绑在一起的守卫正是为此而写，本次它先红了才有这次修改。
-const snapshotHints: Record<Source, string> = {
-  WEB: '这是保存当时的副本，不随原文更新；需要最新内容请用上方工具条的「原网页」。',
-  PASTE: '这是另存的一份正文副本，与上方工具条里的「粘贴原文」各自独立保存。',
-  FILE: '这是另存的一份纯文本正文，不随上方工具条里的原件变化。',
-}
-
+// **空状态**的引导语依来源而异：WEB 丢了链接就找不回来，PASTE 与 FILE 手里还留着自己的
+// 原件，说辞不能一样（TASK-036 栽的就是「三种来源共用 WEB 文案」这一跤）。句子里的
+// 「上方工具条」是一句关于版面的**陈述**，不是文案——原件入口确实在上面那条工具条里，
+// `ResourcePages.test.tsx` 有一条把方位词与 DOM 顺序绑在一起的守卫盯着它。
+//
+// TASK-046 删掉了**有快照时**的那三句 `snapshotHints`（「这是保存当时的副本…」）与它们
+// 上面的元信息行：用户两次指出那段没有用。空状态这三句留着——它们是引导而不是元信息，
+// 是一页空白上唯一告诉你能做什么的东西。
 const emptyHints: Record<Source, string> = {
   WEB: '还没有保存正文。只存链接的话，原文改版或消失后这份资料就找不回来了；可以把正文粘贴进来存一份。',
   PASTE: '还没有另存正文。粘贴的原文在上方工具条里；如果想再留一份整理过的正文，可以粘贴进来。',
@@ -74,9 +68,25 @@ const emptyHints: Record<Source, string> = {
 export function ContentSnapshot({
   resourceId,
   sourceType,
+  showSource = false,
+  editRequest,
+  deleteRequest,
+  onSnapshotState,
 }: {
   resourceId: string
   sourceType: Source
+  /**
+   * 是否显示 Markdown 源码。**受控于父级**（TASK-046）：切换入口搬进了工具条的 `⋯`
+   * 菜单，而菜单项的文案要随当前视图变（「看源码」/「看渲染后的正文」），所以状态必须
+   * 待在看得见菜单的那一层。
+   */
+  showSource?: boolean
+  /** 打开正文编辑表单的请求：单调递增，同一个值只消费一次。 */
+  editRequest?: number
+  /** 删除正文的请求（先出确认块，不直接删）：同上。 */
+  deleteRequest?: number
+  /** 回传「这份资料有没有正文」，供菜单取文案并决定「删除正文…」出不出现。 */
+  onSnapshotState?: (state: { exists: boolean }) => void
 }) {
   const [revision, setRevision] = useState(0)
   const load = useCallback(() => getResourceSnapshot(resourceId), [resourceId])
@@ -90,7 +100,14 @@ export function ContentSnapshot({
     failed: number
     listFailed: boolean
   } | null>(null)
-  const [showSource, setShowSource] = useState(false)
+  // 删除正文的确认块：**渲染在正文位置，不放在 `⋯` 浮层里**。确认 UI 嵌在浮层里时，
+  // 点浮层外面一下就会把它连同进行中的请求一起卸载掉（TASK-043 已经付过这份学费）。
+  const [confirming, setConfirming] = useState(false)
+  const confirmBox = useRef<HTMLDivElement>(null)
+  // 请求令牌只消费一次。**不用布尔**：布尔会让父级任何一次重渲染都可能重放这个动作
+  // （TASK-045 的 focusRequest 正是在这里翻过车）。
+  const [seenEdit, setSeenEdit] = useState(0)
+  const [seenDelete, setSeenDelete] = useState(0)
 
   // 图片随快照一起取。**回收放在 effect 的清理里**：切换资料或离开页面时，
   // 每个创建过的 blob URL 都要 revoke，否则看得越多留在内存里的字节越多。
@@ -159,6 +176,7 @@ export function ContentSnapshot({
     try {
       await work()
       setEditing(false)
+      setConfirming(false)
       setDraft('')
       setRevision((value) => value + 1)
     } catch (cause) {
@@ -182,139 +200,199 @@ export function ContentSnapshot({
   // The section itself never disappears: a reload after saving must not make the whole
   // block flash away, only the part that is actually being re-read.
   const unreadable = result?.error !== undefined
+  const exists = Boolean(snapshot)
+
+  // 「有没有正文」回传给菜单。**读不出来时什么都不回传**：那时我们并不知道有没有，
+  // 而父级的保守默认（当作没有）至少不会给出一个删除不存在之物的入口。
+  useEffect(() => {
+    if (result && !unreadable) onSnapshotState?.({ exists })
+  }, [result, unreadable, exists, onSnapshotState])
+
+  // 菜单里的两个请求在**渲染期**消化，不放进 effect。这是 React 官方的「props 变了就
+  // 顺手调整 state」写法，本文件的邻居 `ResourceDetail` 里那句 `if (item && item !== shown)
+  // setShown(item)` 就是同一形态；写成 effect 会多渲染一轮，仓库的 lint
+  // （`react-hooks/set-state-in-effect`）也直接判错。
+  //
+  // **令牌在真正动手之后才记为已消费**：正文还在读取途中就点了「替换正文」的话，请求
+  // 留着，等读到了再打开表单。TASK-045 的 focusRequest 是反过来写的（守卫之前就烧掉
+  // 令牌），复审记下的那个窄窗口正是这么来的。
+  if (editRequest !== undefined && editRequest !== seenEdit && result && !unreadable) {
+    setSeenEdit(editRequest)
+    setError('')
+    setConfirming(false)
+    setDraft(snapshot?.content ?? '')
+    setEditing(true)
+  }
+  // 「删除正文…」只开确认块，不删。没有正文时不消费令牌（菜单里本来也不会有这一项）。
+  if (deleteRequest !== undefined && deleteRequest !== seenDelete && snapshot) {
+    setSeenDelete(deleteRequest)
+    setError('')
+    setEditing(false)
+    setConfirming(true)
+  }
+
+  // 确认块拿到焦点。**落在容器上而不是「确认删除」按钮上**：让读屏用户先听见这是什么、
+  // 不可撤销，而不是一上来焦点就停在一个按回车即删的按钮上。
+  useEffect(() => {
+    if (confirming) confirmBox.current?.focus()
+  }, [confirming])
+
   return (
     <section className="resource-snapshot" aria-label="正文快照">
-      <h3>正文快照</h3>
-      {!result ? (
-        <p role="status">正在读取正文…</p>
-      ) : unreadable ? (
-        // A failed read of an optional section is reported politely: the loud
-        // role="alert" is reserved for writes the user just asked for.
-        <div className="resource-error">
-          <p role="status">{failureText(result.error)} 正文没有读到，资料本身不受影响。</p>
-          <button type="button" className="journal-button" onClick={retry}>
-            重新读取正文
-          </button>
-        </div>
-      ) : snapshot ? (
-        <>
-          <p className="resource-hint">
-            保存于 {snapshot.captured_at.slice(0, 10)} · 共 {snapshot.char_count} 字 · 来源标识{' '}
-            {snapshot.extractor} · 第 {snapshot.version} 版
-          </p>
-          <p className="resource-hint">{snapshotHints[sourceType]}</p>
-          <button
-            type="button"
-            className="text-link"
-            onClick={() => setShowSource((shown) => !shown)}
-          >
-            {showSource ? '看渲染后的正文' : '看 Markdown 源码'}
-          </button>
-          {showSource ? (
-            // 源码视图保留：TASK-042 之前用户只能看到源码，不该因为加了渲染就失去它。
-            <pre className="snapshot-body" tabIndex={0}>
-              {snapshot.content}
-            </pre>
-          ) : frozen?.key === `${resourceId}:${revision}` ? (
-            <>
-              {frozen.listFailed ? (
-                <p className="resource-hint" role="alert">
-                  已冻结图片的清单没有读出来。正文里若有图片，这一次会一律按原网站的地址显示 ——
-                  也就是说会向原网站发请求。刷新页面可以再试一次。
-                </p>
-              ) : (
-                frozen.failed > 0 && (
-                  <p className="resource-hint" role="alert">
-                    有 {frozen.failed} 张已冻结的图片，本机那一份读不出来。它们若出现在正文里，
-                    会改用原网站的地址显示 —— 也就是会向原网站发请求，且原网站删图或改版后失效。
-                  </p>
-                )
-              )}
-              <div
-                className="snapshot-body snapshot-rendered"
-                tabIndex={0}
-                // 内容来自 `renderSnapshot`，它以 `html: false` 渲染：正文里的原始 HTML
-                // 已被转义成字面文本，进不了 DOM。这一处是本项目唯一的
-                // dangerouslySetInnerHTML，其安全性完全依赖那个配置，
-                // 而那个配置由 `snapshotMarkdown.test.ts` 直接断言。
-                dangerouslySetInnerHTML={{ __html: rendered }}
-              />
-            </>
-          ) : (
-            <p className="resource-hint" role="status">
-              正在取回已冻结的图片…
-            </p>
-          )}
-        </>
-      ) : (
-        <p className="resource-hint">{emptyHints[sourceType]}</p>
-      )}
-      {result &&
-        !unreadable &&
-        (editing ? (
-          <form onSubmit={save} aria-label="正文快照编辑" noValidate>
-            <fieldset disabled={pending}>
-              <legend className="sr-only">粘贴正文</legend>
-              <label className="resource-field">
-                正文（Markdown）
-                <textarea
-                  autoFocus
-                  rows={12}
-                  className="paste-input"
-                  value={draft}
-                  onChange={(event) => setDraft(event.target.value)}
-                  placeholder="把文章正文粘贴到这里，最多 100 万字"
-                />
-              </label>
-              <div className="resource-actions">
-                <button type="submit" className="journal-button primary" disabled={!draft.trim()}>
-                  {pending ? '正在保存…' : snapshot ? '替换正文' : '保存正文'}
-                </button>
-                <button
-                  type="button"
-                  className="journal-button"
-                  onClick={() => {
-                    setEditing(false)
-                    setDraft('')
-                    setError('')
-                  }}
-                >
-                  取消
-                </button>
-              </div>
-            </fieldset>
-          </form>
-        ) : (
-          <div className="resource-actions">
-            <button
-              type="button"
-              className="journal-button"
-              disabled={pending}
-              onClick={() => {
-                setError('')
-                setDraft(snapshot?.content ?? '')
-                setEditing(true)
-              }}
-            >
-              {snapshot ? '替换正文' : '粘贴正文'}
-            </button>
-            {snapshot && (
-              <button
-                type="button"
-                className="journal-button danger"
-                disabled={pending}
-                onClick={() => void run(() => deleteResourceSnapshot(resourceId, snapshot.version))}
-              >
-                删除正文
-              </button>
-            )}
-          </div>
-        ))}
+      {/* **错误提示放在最上面。** 沉浸式阅读页里正文可以有几万字，提示留在下面等于
+          写给没人看的地方。 */}
       {error && (
         <div role="alert" className="resource-error">
           <p>{error}</p>
           <p>没有自动重试。请重新读取这份资料后再决定。</p>
         </div>
+      )}
+      {editing ? (
+        // 编辑时**顶掉正文**而不是排在正文下面：正文几万字时，「排在下面」意味着表单在
+        // 屏幕之外几十屏的地方（`autoFocus` 会把页面猛地拽过去）。
+        <form onSubmit={save} aria-label="正文快照编辑" noValidate>
+          <fieldset disabled={pending}>
+            <legend className="sr-only">粘贴正文</legend>
+            <label className="resource-field">
+              正文（Markdown）
+              <textarea
+                autoFocus
+                rows={12}
+                className="paste-input"
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                placeholder="把文章正文粘贴到这里，最多 100 万字"
+              />
+            </label>
+            <div className="resource-actions">
+              <button type="submit" className="journal-button primary" disabled={!draft.trim()}>
+                {pending ? '正在保存…' : snapshot ? '替换正文' : '保存正文'}
+              </button>
+              <button
+                type="button"
+                className="journal-button"
+                onClick={() => {
+                  setEditing(false)
+                  setDraft('')
+                  setError('')
+                }}
+              >
+                取消
+              </button>
+            </div>
+          </fieldset>
+        </form>
+      ) : (
+        <>
+          {confirming && snapshot && (
+            <div
+              className="snapshot-confirm"
+              role="group"
+              aria-label="删除正文确认"
+              tabIndex={-1}
+              ref={confirmBox}
+            >
+              <p>删除这份正文副本后不能撤销。原网页、原件与这份资料本身都不受影响。</p>
+              <div className="resource-actions">
+                <button
+                  type="button"
+                  className="journal-button danger"
+                  disabled={pending}
+                  onClick={() =>
+                    void run(() => deleteResourceSnapshot(resourceId, snapshot.version))
+                  }
+                >
+                  {pending ? '正在删除…' : '确认删除正文'}
+                </button>
+                <button
+                  type="button"
+                  className="journal-button"
+                  disabled={pending}
+                  onClick={() => setConfirming(false)}
+                >
+                  取消
+                </button>
+              </div>
+            </div>
+          )}
+          {!result ? (
+            <p role="status">正在读取正文…</p>
+          ) : unreadable ? (
+            // A failed read of an optional section is reported politely: the loud
+            // role="alert" is reserved for writes the user just asked for.
+            <div className="resource-error">
+              <p role="status">{failureText(result.error)} 正文没有读到，资料本身不受影响。</p>
+              <button type="button" className="journal-button" onClick={retry}>
+                重新读取正文
+              </button>
+            </div>
+          ) : snapshot ? (
+            <>
+              {frozen?.key === `${resourceId}:${revision}` ? (
+                <>
+                  {frozen.listFailed ? (
+                    <p className="resource-hint" role="alert">
+                      已冻结图片的清单没有读出来。正文里若有图片，这一次会一律按原网站的地址显示 ——
+                      也就是说会向原网站发请求。刷新页面可以再试一次。
+                    </p>
+                  ) : (
+                    frozen.failed > 0 && (
+                      <p className="resource-hint" role="alert">
+                        有 {frozen.failed} 张已冻结的图片，本机那一份读不出来。它们若出现在正文里，
+                        会改用原网站的地址显示 —— 也就是会向原网站发请求，且原网站删图或改版后失效。
+                      </p>
+                    )
+                  )}
+                  {showSource ? (
+                    // 源码视图保留：TASK-042 之前用户只能看到源码，不该因为加了渲染就
+                    // 失去它。入口在 `⋯` 菜单里（TASK-046）。它是代码不是文章，所以
+                    // 保留自己的框与等宽排版，不跟着正文放大。
+                    <pre className="snapshot-body" tabIndex={0}>
+                      {snapshot.content}
+                    </pre>
+                  ) : (
+                    <div
+                      className="snapshot-rendered"
+                      // 内容来自 `renderSnapshot`，它以 `html: false` 渲染：正文里的原始 HTML
+                      // 已被转义成字面文本，进不了 DOM。这一处是本项目唯一的
+                      // dangerouslySetInnerHTML，其安全性完全依赖那个配置，
+                      // 而那个配置由 `snapshotMarkdown.test.ts` 直接断言。
+                      //
+                      // **没有 `tabIndex`**：TASK-046 之前它是个 420px 高的滚动框，可聚焦是
+                      // 为了能用键盘滚动它。现在正文由页面自己滚，一个可聚焦的非交互 div
+                      // 只会在 Tab 序里多占一站。
+                      dangerouslySetInnerHTML={{ __html: rendered }}
+                    />
+                  )}
+                </>
+              ) : (
+                <p className="resource-hint" role="status">
+                  正在取回已冻结的图片…
+                </p>
+              )}
+            </>
+          ) : (
+            // 空状态**保留一个就地入口**。有正文时三个动作都收进了 `⋯`；没有正文时页面上
+            // 空无一物，再把唯一能做的事也藏进菜单，等于让人自己去猜。
+            <>
+              <p className="resource-hint">{emptyHints[sourceType]}</p>
+              <div className="resource-actions">
+                <button
+                  type="button"
+                  className="journal-button"
+                  disabled={pending}
+                  onClick={() => {
+                    setError('')
+                    setDraft('')
+                    setEditing(true)
+                  }}
+                >
+                  粘贴正文
+                </button>
+              </div>
+            </>
+          )}
+        </>
       )}
     </section>
   )
