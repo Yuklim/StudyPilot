@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-049"
-status = "IN_REVIEW"
+status = "ACCEPTED"
 risk = "L2"
 risk_reason = "改的是阅读页窄屏档**一处定位方式**，目的是修掉一个已登记的用户可见缺陷（TASK-046 遗留 H：滚到文章中部再展开心得，阅读位置被拽回文章开头）。影响面按实际判断：① 不改任何公共契约、接口调用、写入语义、数据含义与门禁；② 无障碍机器契约（三态唯一 `h1` 与路由焦点落点、`Esc` 归还焦点、窄屏展开时正文 `inert`、收起后焦点还给心得按钮）**全部不动**，且由既有的、本轮不改的 e2e 断言继续守着；③ 涉及真实浏览器的版式数值（`position`/`top`/`max-height`、滚动位置），jsdom 量不到，必须走 Playwright。④ 唯一的结构性新增是「实测顶栏高度写进 CSS 变量」，因为它决定浮层是否被不透明的 sticky 顶栏压住（顶栏 z-index 6 > 浮层 5），是本任务的功能前提而不是装饰。按规定 L2：1 Worker → 自动检查 → 1 名独立只读 Reviewer 检查最终 diff；独立 Acceptance N/A。不升 L3 的理由：无契约/接口/迁移/认证/关键数据模型改动，不跨模块（改动落在 `frontend/src/features/resources/ResourceDetail.tsx`、`frontend/src/styles.css` 与 e2e），也不是治理或门禁权限变更。"
 risk_flags = ["business"]
@@ -235,7 +235,41 @@ TASK-046 的独立 Integration/Acceptance 把 H 列为「合并前须向用户�
 | 实现 | `2a4c44f` |
 | 测试 | `8298d6b` |
 | 记录/证据 | `e4806ee` |
-| 被审候选（Review PASS 对应） | `698218dde4fc29aca5e8d6f0e0b151524a611a5b` |
-| 处置 F1 后的新候选 | 见下方「增量确认」（同一 Reviewer 复核后补记） |
+| 被审候选（第一轮 Review PASS 对应） | `698218dde4fc29aca5e8d6f0e0b151524a611a5b` |
+| 处置 F1 后的新候选（增量确认 PASS 对应） | `fa7e0c977988b4a173a61c8e07eda029af93fe42` |
+| 本记录的写回提交 | 见 git 历史；与 `fa7e0c9` 的树差异**仅本文件的 status 与标记区**，产品/测试文件逐字节相同 |
+
+**增量确认（同一 Reviewer，`previous_candidate..new_candidate`）**
+
+- 增量范围：`698218d..fa7e0c9`，**仅本记录文件 +52/−3**（diff 存于 `/tmp/task049-review/delta-fa7e0c9.diff`，非仓库内容）。
+- 新候选上的机械检查：`STATIC PASS`、`files=5`、`product_fingerprint=f29732e64bfc400de37097568bc68622d553b5a9d00abf2a0744f2262e5369d0`（与旧候选相同）、`CHECKS PASS`。
+- 结论：**PASS（覆盖 base..fa7e0c9 完整最终候选）**
+
+报告原文：
+
+> **PASS**（覆盖 `base..fa7e0c9` 完整最终候选）
+>
+> 逐块核对：
+>
+> 1. **F1 修正**：`+16/−6`、`+28/−2` 与我此前从 `product.diff` 各 hunk 头独立算出的数字一致（e2e `+69/−21` 亦一致）。仅口径变真，未动实现/测试/完成条件的实质。
+> 2. **Review 原文**：逐段比对，我的三条 findings、无法核实项、PASS 结论与「想改需再出候选」等不利句均被保留，无删改失真。处置表（F1 出新候选、F2/F3 转下个任务、F3 非退化）与我的原文相符。
+> 3. **遗留项 4/5**：分别是我的 F2、F3，表述与严重度无误；旧 1-3 未变。
+>
+> **合规判断**：增量 diff 仅记录文件一处，产品三文件逐字节未动（delta 无其 hunk，且我已在工作区核对内容一致）。§6 禁的是「借证据写回」暗改标记区外字段；此处是显式登记、单独成候选、并由同一 Reviewer 增量复核——正是 §6 对「任务授权修订」规定的路径，合规。唯一残留是它与写回同处一个提交，故处置表里写明来源是必要的（已写明）。
+>
+> **继承范围**：`698218d` 上对 `styles.css` / `ResourceDetail.tsx` / 两个 e2e 的全文审查（含包含块前提、实测逻辑、e2e 断言方向、无未声明行为变化）与全部剩余风险声明（F2/F3、读屏未测、F7）继续有效。
+
+**最终状态**：`ACCEPTED`（L2：1 Worker → 自动检查 → 1 名独立只读 Reviewer → 主 Agent 汇总；独立 Acceptance N/A）。**未 MERGED**——是否合并由用户本人决定，Agent 不合并、不推送 main。
+
+**日期与决定日志**
+
+| 日期 | 事件 |
+| --- | --- |
+| 2026-09-12 | 用户在两形态中选定「A 视口定位（保持现状）」；登记 TASK-049（`4427e00`） |
+| 2026-09-12 | 实现 `2a4c44f`、测试 `8298d6b`；`CHECKS PASS`、e2e 55 passed、判别性实验通过 |
+| 2026-09-12 | 冻结候选 `698218d`（先处置 `diff --check` 行尾空白） |
+| 2026-09-12 | 独立只读 Review 第一轮 → **PASS**，F1/F2/F3 |
+| 2026-09-12 | 处置 F1 → 新候选 `fa7e0c9`；同一 Reviewer 增量确认 → **PASS**（覆盖 base..fa7e0c9） |
+| 2026-09-12 | 主 Agent 写回并置 `ACCEPTED`；待用户合并 |
 
 <!-- EVIDENCE:END -->
