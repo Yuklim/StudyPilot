@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-046"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "本任务改的是**应用外壳自身的渲染条件**，不只是阅读器页内部版式。实质风险：① **外壳按页隐藏是一条新的全局机制**——`App.tsx` 在 `immersive` 页面上不渲染左侧导航、面包屑与页脚，导航（除返回链接外）在这一页整个消失；若返回链接或 `h1` 焦点落点在任一状态下缺失，键盘/读屏用户会被困在没有出口的页面上（屏幕上看不出来）。TASK-044 建立的「每种状态恰有一个 `h1` 且它是路由焦点落点」契约必须原样保持。② **工具条改为 sticky**：`.reader-menu`（绝对定位）与 `.reader-panel`（在流内）此前同在 `.reader-toolbar` 盒子里，sticky 化必须把面板移出 sticky 容器，否则学习状态/编辑资料/删除面板会跟着钉在顶部；层叠上下文还要与 TASK-045 的窄屏心得浮层（z-index 5）协调，否则浮层被顶栏盖住或反之。③ **销毁性动作换位置**：`删除正文` 从正文下方的直接按钮移进 ⋯ 菜单，进菜单后必须补一步确认——菜单项误触即不可逆删除是新引入的风险，原位置至少有正文作视觉隔离。④ **`ContentSnapshot` 的三个动作被上提为受控 props**（`showSource` 由父级持有、替换/删除走请求令牌），跨 `ResourceDetail`/`ResourceToolbar`/`ContentSnapshot` 三个组件的状态编排；`ContentSnapshot` 是全仓唯一使用 `dangerouslySetInnerHTML` 的文件。⑤ 正文列宽/字号改动会同时影响 TASK-045 的挤压式侧栏数值断言与 TASK-043/044 的「正文落在第一屏」断言，需真实浏览器复测。不改后端、`/api/v1`、openapi、本机访问门禁、`extension/`；**不动 `snapshotMarkdown.ts`（渲染与安全形态一字不改）**、`ResourceDeletion.tsx`、`NotesPanel.tsx`、`NotesPage.tsx`；不改任何写入语义与接口调用。"
 risk_flags = ["business", "architecture"]
@@ -409,6 +409,7 @@ R1 与 R2 各两轮：首轮审 `194d77b..83cc3e4` 完整最终 diff，第二轮
 ### 状态决定
 
 - 任务状态置 **ACCEPTED**：L3 链路（实现 → 独立 Review ×2 → 独立 Integration/Acceptance）已走完，结论均为 PASS、0 阻断；等待用户决定合并。
+- **2026-09-12 用户本人合并 PR #55**，merge commit `1924717`（分支 tip `0f4dd19` 为其第二父，已核实是 `origin/main` 祖先）→ 状态置 **MERGED**。交付时为 ACCEPTED，合并仅由用户执行。
 - 本候选之后仅剩证据写回提交（只改 `docs/tasks/**`），产品内容仍等于最终候选 `a2b19b9`。
 - 验收新增的非阻断项 F1–F7 登记于本区（不写入实现段遗留列表，避免借证据写回改动标记区外的记录）。
 - **合并前须向用户披露三项**：H（窄屏滚动到文章中部再开心得浮层会把阅读位置拽回开头，触发条件由本任务造成，修法涉及 TASK-045 的浮层形态即用户可见的形态决定）、G（删除确认的读屏播报未在真实读屏软件上验证）、I（正文读取失败时「替换正文」令牌悬置、之后迟到重放）。另有条件 3 的焦点断言缺一档（部分满足）与条件 12 的 `extension` 未执行（结构性推断），一并披露。
