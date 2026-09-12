@@ -48,5 +48,10 @@ checks = ["frontend"]
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-（实施后填写）
+- 候选 SHA：`f13942e`（实现 `c8999af` + risk_flags 词表修正；本行为其后的补记）。
+- 检查：`check_task.py --candidate f13942e` → `STATIC PASS`，`files=5`，`product_fingerprint=7559daee…`，`profiles=frontend` 五项 exit 0，`562 passed` → **CHECKS PASS**；`npm run test:e2e` **58 passed**（基线 57 + 1）。
+- Review：**L1，N/A**。Acceptance：**L1，N/A**。
+- 最终状态：status=**ACCEPTED**；待用户合并。
+- 非阻断遗留项：无。
+- 日期与决定日志：2026-09-12 用户提出；主 Agent 实测定位（flex-shrink / nav-dot 占位）后修，先写红用例再改。
 <!-- EVIDENCE:END -->
