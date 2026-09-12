@@ -621,6 +621,38 @@ describe('content snapshot', () => {
     expect(screen.getByRole('menuitem', { name: '粘贴正文' })).toBeInTheDocument()
   })
 
+  it('does not render the leading h1 twice when it is the resource title itself', async () => {
+    // TASK-053（用户：「标题在页面最上面已经有了，在正文里就不用再出现了吧」）。资料标题
+    // 就叫「冻结的标题」、正文又以 `# 冻结的标题` 开头时，页面上这个一级标题只出现一次
+    // ——页面自己那个；正文里那个不渲染。**正文其余部分照旧，源码视图照旧。**
+    vi.spyOn(api, 'request').mockImplementation(async (path) => {
+      if (path === snapshotPath) return { data: frozen }
+      if (path === detailPath) return { data: sample({ title: '冻结的标题' }) }
+      return detail(path) ?? samplePage([])
+    })
+    renderWithRouter(<App />, `/resources/${resourceId}`)
+    // 正文读到了的信号换成段落：标题此刻正是被去重的对象。
+    await screen.findByText('正文。')
+    const headings = screen.getAllByRole('heading', { name: '冻结的标题', level: 1 })
+    expect(headings).toHaveLength(1)
+    expect(headings[0]!.closest('.snapshot-rendered')).toBeNull()
+    // 源码视图是原文，`# 冻结的标题` 还在。
+    fromMenu('看 Markdown 源码')
+    expect(await screen.findByText(/# 冻结的标题/)).toBeInTheDocument()
+  })
+
+  it('keeps the leading h1 when the resource title is something else', async () => {
+    // 对照：标题不同就不删——这一条守的是「不误删」。
+    vi.spyOn(api, 'request').mockImplementation(async (path) => {
+      if (path === snapshotPath) return { data: frozen }
+      if (path === detailPath) return { data: sample({ title: '冻结的标题 - 某站' }) }
+      return detail(path) ?? samplePage([])
+    })
+    renderWithRouter(<App />, `/resources/${resourceId}`)
+    const inBody = await bodyShown()
+    expect(inBody.closest('.snapshot-rendered')).not.toBeNull()
+  })
+
   it('offers none of the body actions while the body cannot be read', async () => {
     // TASK-046 遗留 I：读取失败时 `snapshotExists` 停在 null，菜单却照样渲染「粘贴正文」，
     // 点它什么都不发生（令牌只在读到之后才消费）。**读不到就不该有任何对它动手的入口**：

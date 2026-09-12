@@ -1,4 +1,5 @@
 import MarkdownIt from 'markdown-it'
+import type Token from 'markdown-it/lib/token.mjs'
 
 // 把冻结的正文渲染成文档。**这一步把一条结构性安全性质换成了配置性的**：
 // TASK-036 起的保证是「抓自开放网络的不可信内容压根不进 DOM」，从这里开始，
@@ -80,6 +81,7 @@ export function renderSnapshot(
   markdown: string,
   frozen: ReadonlyMap<string, string>,
   base?: string | null,
+  options: RenderOptions = {},
 ): string {
   const md = createRenderer((src) => {
     if (!src) return null
@@ -96,7 +98,58 @@ export function renderSnapshot(
     // 再挡一次协议：只有 http(s) 才值得去请求。
     return /^https?:\/\//i.test(absolute) ? { kind: 'origin', url: absolute } : null
   })
+  if (options.pageTitle) omitDuplicateTitle(md, options.pageTitle)
   return md.render(markdown)
+}
+
+export type RenderOptions = {
+  /**
+   * 页面上已经显示的资料标题（TASK-053）。给出时，正文**第一个块**若是 `h1` 且纯文本与它
+   * 相同，就不再渲染那个标题——用户原话：「标题在页面最上面已经有了，在正文里就不用
+   * 再出现了吧」。不给或为空则输出与以往逐字节相同。
+   */
+  pageTitle?: string | null
+}
+
+/** 比较用的规范形式：NFC、去首尾空白、连续空白折叠、大小写折叠。 */
+function comparable(text: string): string {
+  return text.normalize('NFC').replace(/\s+/g, ' ').trim().toLowerCase()
+}
+
+/**
+ * 在 core 阶段删掉与页面标题重复的开头 `h1`（三枚 token：`heading_open`/`inline`/
+ * `heading_close`）。**判据取最保守的一种**：只看第一个块、只认 h1、纯文本相同才删。
+ * 一条会静默吞掉内容的规则，宁可漏删也不误删——「标题 + 站点后缀」这类形态因此
+ * 保留，不做前缀或模糊匹配。正文数据一字不动，只影响这一次渲染。
+ *
+ * 只删 token、不碰任何渲染规则：`html:false`、image/link 的地址校验与转义路径全部照旧。
+ */
+function omitDuplicateTitle(md: MarkdownIt, pageTitle: string): void {
+  const wanted = comparable(pageTitle)
+  if (!wanted) return
+  md.core.ruler.push('omit_duplicate_title', (state) => {
+    const [open, inline, close] = state.tokens
+    if (!open || open.type !== 'heading_open' || open.tag !== 'h1') return
+    if (!inline || inline.type !== 'inline' || !close || close.type !== 'heading_close') return
+    // 按**纯文本**比较：`# **冻结的**标题` 的标题仍是「冻结的标题」。
+    if (comparable(plainText(inline.children ?? [])) !== wanted) return
+    state.tokens.splice(0, 3)
+  })
+}
+
+/**
+ * 行内 token 的纯文本。**不用 markdown-it 自带的 `renderInlineAsText`**：它跳过
+ * `code_inline`，于是 `# React Hooks \`v18\`` 会被读成「React Hooks 」，与标题「React Hooks」
+ * 撞上而误删（独立 Review F1）。这里把行内代码的内容也算进去，换行折成空格。
+ */
+function plainText(children: Token[]): string {
+  let out = ''
+  for (const token of children) {
+    if (token.type === 'text' || token.type === 'code_inline') out += token.content
+    else if (token.type === 'softbreak' || token.type === 'hardbreak') out += ' '
+    else if (token.children) out += plainText(token.children)
+  }
+  return out
 }
 
 /**

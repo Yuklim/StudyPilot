@@ -74,6 +74,7 @@ export type SnapshotState = { unreadable: true } | { unreadable: false; exists: 
 export function ContentSnapshot({
   resourceId,
   sourceType,
+  pageTitle,
   showSource = false,
   editRequest,
   deleteRequest,
@@ -81,6 +82,11 @@ export function ContentSnapshot({
 }: {
   resourceId: string
   sourceType: Source
+  /**
+   * 页面上已经显示的资料标题（TASK-053）：正文开头与它相同的 `h1` 不再渲染一遍。
+   * 可选；不传时渲染与以往完全一致。源码视图不受影响——那是原文。
+   */
+  pageTitle?: string | null
   /**
    * 是否显示 Markdown 源码。**受控于父级**（TASK-046）：切换入口搬进了工具条的 `⋯`
    * 菜单，而菜单项的文案要随当前视图变（「看源码」/「看渲染后的正文」），所以状态必须
@@ -170,8 +176,11 @@ export function ContentSnapshot({
   // **必须 memo**：`renderSnapshot` 每次都新建渲染器并全文解析，而正文上限是
   // 100 万字。不 memo 的话，在快照旁边的编辑框里每敲一个字都会重解析整篇。
   const rendered = useMemo(
-    () => (snapshot && frozen ? renderSnapshot(snapshot.content ?? '', frozen.images, base) : ''),
-    [snapshot, frozen, base],
+    () =>
+      snapshot && frozen
+        ? renderSnapshot(snapshot.content ?? '', frozen.images, base, { pageTitle })
+        : '',
+    [snapshot, frozen, base, pageTitle],
   )
 
   async function run(work: () => Promise<unknown>) {
