@@ -1,4 +1,5 @@
 import MarkdownIt from 'markdown-it'
+import type Token from 'markdown-it/lib/token.mjs'
 
 // 把冻结的正文渲染成文档。**这一步把一条结构性安全性质换成了配置性的**：
 // TASK-036 起的保证是「抓自开放网络的不可信内容压根不进 DOM」，从这里开始，
@@ -131,10 +132,24 @@ function omitDuplicateTitle(md: MarkdownIt, pageTitle: string): void {
     if (!open || open.type !== 'heading_open' || open.tag !== 'h1') return
     if (!inline || inline.type !== 'inline' || !close || close.type !== 'heading_close') return
     // 按**纯文本**比较：`# **冻结的**标题` 的标题仍是「冻结的标题」。
-    const text = md.renderer.renderInlineAsText(inline.children ?? [], md.options, state.env)
-    if (comparable(text) !== wanted) return
+    if (comparable(plainText(inline.children ?? [])) !== wanted) return
     state.tokens.splice(0, 3)
   })
+}
+
+/**
+ * 行内 token 的纯文本。**不用 markdown-it 自带的 `renderInlineAsText`**：它跳过
+ * `code_inline`，于是 `# React Hooks \`v18\`` 会被读成「React Hooks 」，与标题「React Hooks」
+ * 撞上而误删（独立 Review F1）。这里把行内代码的内容也算进去，换行折成空格。
+ */
+function plainText(children: Token[]): string {
+  let out = ''
+  for (const token of children) {
+    if (token.type === 'text' || token.type === 'code_inline') out += token.content
+    else if (token.type === 'softbreak' || token.type === 'hardbreak') out += ' '
+    else if (token.children) out += plainText(token.children)
+  }
+  return out
 }
 
 /**

@@ -254,6 +254,18 @@ describe('a leading h1 identical to the page title is not rendered twice', () =>
     expect(render('# **冻结的**标题\n\n正文。\n', '冻结的标题').querySelector('h1')).toBeNull()
   })
 
+  it('counts inline code as part of the heading text', () => {
+    // 独立 Review F1：markdown-it 自带的 `renderInlineAsText` 跳过行内代码，`# React Hooks \`v18\``
+    // 会被读成「React Hooks」而与同名标题撞上——多出来的 `v18` 说明它不是同一个标题。
+    expect(
+      render('# React Hooks `v18`\n\n正文。\n', 'React Hooks').querySelector('h1')?.textContent,
+    ).toBe('React Hooks v18')
+    // 反过来，标题本身含代码段时仍按纯文本相同处理。
+    expect(
+      render('# React Hooks `v18`\n\n正文。\n', 'React Hooks v18').querySelector('h1'),
+    ).toBeNull()
+  })
+
   it('keeps the h1 when the title differs, including a site-suffixed title', () => {
     expect(render(body, '另一个标题').querySelector('h1')?.textContent).toBe('冻结的标题')
     // 站点后缀不算相同（保守：不做前缀匹配，避免误删）。
