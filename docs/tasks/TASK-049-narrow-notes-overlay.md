@@ -125,8 +125,8 @@ TASK-046 的独立 Integration/Acceptance 把 H 列为「合并前须向用户�
 
 | 文件 | 改动 | 做了什么 |
 | --- | --- | --- |
-| `frontend/src/styles.css` | +22/−8 | 窄屏档 `.reader-notes`：`position: absolute; top: 6px` → `position: fixed; top: var(--reader-toolbar-h, 74px)`；删掉窄屏里已无消费者的 `.reader-body { position: relative }`；写明全宽外壳这个前提 |
-| `frontend/src/features/resources/ResourceDetail.tsx` | +30/−1 | 浮层加 `ref`；展开时 `useLayoutEffect` 实测 `.reader-toolbar` 高度写进 `--reader-toolbar-h`，`resize` 时重测；不 setState |
+| `frontend/src/styles.css` | +16/−6 | 窄屏档 `.reader-notes`：`position: absolute; top: 6px` → `position: fixed; top: var(--reader-toolbar-h, 74px)`；删掉窄屏里已无消费者的 `.reader-body { position: relative }`；写明全宽外壳这个前提 |
+| `frontend/src/features/resources/ResourceDetail.tsx` | +28/−2 | 浮层加 `ref`；展开时 `useLayoutEffect` 实测 `.reader-toolbar` 高度写进 `--reader-toolbar-h`，`resize` 时重测；不 setState |
 | `frontend/e2e/reader-immersive.spec.ts` | +69/−21 | 新增 1 条阅读位置守卫；改写既有窄屏层叠用例的断言 |
 
 ### 实测数值（真实浏览器，逐档打印在测试输出里）
@@ -176,6 +176,8 @@ TASK-046 的独立 Integration/Acceptance 把 H 列为「合并前须向用户�
 1. **浮层打开期间顶栏若因 ⋯ 菜单展开而变高，实测值不会跟着更新**（只在展开时与 window `resize` 时重测），菜单会盖住浮层头部。该菜单变高属 TASK-046 验收登记的 **F7**（≤640px 菜单 `position: static` 且顶栏可高至 `min(70vh,560px)`），**本任务未修，也不假装修了**。重评触发条件：F7 被立项修复时，一并把测量改为 `ResizeObserver` 观察顶栏。
 2. **`fixed` 依赖「阅读页是全宽外壳」**：已在 `styles.css` 注释里写明。若日后给阅读页加外壳留白，`left/right: 0` 会相对视口而不是正文列，需要改回按容器定位。属前提记录，非缺陷。
 3. **未在真实读屏软件下验证**（承接 TASK-046 遗留 G，本任务未改语义故未新增证据）。
+4. **完成条件 4 缺测试直证**（独立 Review F2，可选建议）：computed `position: fixed` / `max-height` / `overflow-y` / 浮层宽度对 `.reader-body` 都没有断言；「没变」目前由「hunk 之外未改」这一 diff 事实承载，而不是由断言承载。后续补一条 computed-style 断言即可。
+5. **极矮横屏（如 568×320）浮层底边会越出视口**，固定定位下越出部分含内滚末端够不到（独立 Review F3）。相对修复前的 H 不是退化，且用户明确要求不改 `max-height`，故不在本任务修；若与 F7 一并立项，可考虑 `max-height: calc(100dvh - var(--reader-toolbar-h) - 8px)`。
 
 <!-- EVIDENCE:BEGIN -->
 
@@ -187,6 +189,53 @@ TASK-046 的独立 Integration/Acceptance 把 H 列为「合并前须向用户�
 - 需求/实现/测试证据见上一节：实现 SHA `2a4c44f`、测试 SHA `8298d6b`，含 `CHECKS PASS`、`product_fingerprint=f29732e6…`、vitest 548、e2e 55 passed、判别性实验及其口径说明。
 - 候选之后只允许更新本标记区与 `status`（§6）；写回提交与冻结候选的树差异**仅本记录文件一处**，实现与测试文件逐字节相同。
 
-**独立 Review**：（待写回原文）
+**独立 Review（L2，1 名独立只读 Reviewer，独立于实现者）**
+
+- 被审候选：`698218dde4fc29aca5e8d6f0e0b151524a611a5b`
+- 审查者工具面：仅 Read/Grep/Glob（无 Bash、无写工具），运行器层只读——**无法**自行执行 git/测试，故所有 SHA、指纹与测试计数由主 Agent 以文件形式提供，审查者按报告采信并在结论里明确声明「未独立验证」。
+- 结论：**PASS**
+
+报告原文：
+
+> ## 结论：PASS
+>
+> **读过**：`/tmp/task049-review/product.diff`（全 210 行）、`manifest.txt`、`docs/tasks/TASK-049-narrow-notes-overlay.md`；候选内容下的 `frontend/src/styles.css`（2180-2345、2410-2610）、`frontend/src/features/resources/ResourceDetail.tsx`（全文）、`frontend/e2e/reader-immersive.spec.ts`（100-280）、`reader-notes-sidebar.spec.ts`（未改，抽查）、`frontend/src/App.tsx`（外壳）。
+>
+> **核对结论**
+>
+> - 包含块前提成立：全仓 `transform` 只落在 `.skip-link`/`.add-link`/`.sidebar-note`/`.note-pin`/`.journal-decoration`/`.washi-tape`/`.text-link .icon`/`.resource-more summary::before`/`.resource-card::before`，无一在 `.reader-notes` 祖先链；无 `filter`/`perspective`/`contain`/`will-change`；tsx 无内联相关样式。`.reader-body`/`.resource-sheet.reader`/`.workspace`/`.app-shell` 均干净。
+> - 实测逻辑自洽：`useLayoutEffect` 仅在 `opening` 为真时挂 `resize` 并清理；写元素自身 inline 变量（同元素 `top` 可用），`useLayoutEffect` 保证首帧前写入，74px 只是兜底。让开量=实测顶栏高，故 5<6 的 z-index 不产生遮挡，足够。
+> - 删 `.reader-body{position:relative}` 安全：该作用域内无其他绝对定位后代依赖它（`.reader-menu` 在 toolbar 内，`.notes-badge` 锚 `.reader-notes-toggle`）。
+> - e2e 改写方向正确且不弱：被删的「确有重叠」前提描述的正是被修掉的缺陷几何（旧 CSS 下新断言 6 vs 122 必红）；`elementFromPoint`+真点击守卫保留。
+> - 无未声明行为变化：hunk 之外未改，故 `max-height`/`overflow-y`/圆角/阴影/`z-index`/ARIA/`inert`/三种关闭路径全部原样。
+>
+> **Findings**
+>
+> 1. 记录 +/− 数与 diff 不符（可记录后继续）：`styles.css` 记 +22/−8，实际 hunk `@@ -2481,14 +2481,24 @@` 为 **+16/−6**；`ResourceDetail.tsx` 记 +30/−1，实际四个 hunk 为 **+28/−2**；`reader-immersive.spec.ts` 的 +69/−21 与 diff 一致。仅记录口径错，候选内容与修复不受影响。注意这些数字在 EVIDENCE 标记区之外，按 §6 想改需再出候选。
+> 2. 完成条件 4 无测试直证（可选建议）：computed `position: fixed` / `max-height` / `overflow-y` / 浮层宽度对 `.reader-body` 都没有断言；我以 diff 证明前者未变（hunk 外即未改）、fixed 与整宽由几何断言+全宽外壳隐含。可留待后续补一条 computed-style 断言。
+> 3. 矮视口剩余风险（可记录后继续，非退化）：`top=123px` + `max-height:78vh` 在极矮横屏（如 568×320）会让浮层底边越出视口，固定定位下越出部分含内滚末端够不到；测试只覆盖 844/1024 高。相对修复前的 H 不是退化，且用户明确要求不改 `max-height`，故非必须修复；建议与 F7 的 `ResizeObserver` 一并在后续考虑 `max-height: calc(100dvh - var(--reader-toolbar-h) - 8px)`。
+>
+> **本环境无法核实**：四个 SHA、`product_fingerprint`、vitest 548、e2e 55、实测 123/75px、判别性实验与 md5——均无 Bash/无执行，按报告采信，未独立验证。
+>
+> **下一步**：候选可接受；建议主 Agent 在汇总时知悉 F1/F3 的登记口径，F2/F3 转下个任务。
+
+**主 Agent 对 findings 的处置**
+
+| # | 处置 | 依据 |
+| --- | --- | --- |
+| F1 | **已改，出新候选**（本提交）。实测复核确认审查者正确：`git diff --numstat base 候选 --` 得 `styles.css 16/6`、`ResourceDetail.tsx 28/2`、`reader-immersive.spec.ts 69/21`。§6 允许修正记录口径，但该表在 EVIDENCE 标记区之外，故必须出新候选；本提交之后的候选由同一 Reviewer 增量确认（`previous_candidate..new_candidate`）。 | §6「任何……任务授权修订形成新候选，使旧结论不能直接代表新 SHA」 |
+| F2 | **转下个任务**（可选建议，不阻断）。记录为遗留项 4。 | §6 不为可选建议阻断 |
+| F3 | **转下个任务**（非退化，不阻断）。记录为遗留项 5；与 F7 同一批考虑。 | 相对修复前状态是净改善，非本任务引入的退化 |
+
+**候选链条（最终）**
+
+| 环节 | SHA |
+| --- | --- |
+| base | `1924717994632118e1c7af21b540742335ad9393` |
+| 实现 | `2a4c44f` |
+| 测试 | `8298d6b` |
+| 记录/证据 | `e4806ee` |
+| 被审候选（Review PASS 对应） | `698218dde4fc29aca5e8d6f0e0b151524a611a5b` |
+| 处置 F1 后的新候选 | 见下方「增量确认」（同一 Reviewer 复核后补记） |
 
 <!-- EVIDENCE:END -->
