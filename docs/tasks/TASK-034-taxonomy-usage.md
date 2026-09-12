@@ -170,9 +170,9 @@ checks = []
   >
   > ## Findings（均为非阻断，`可记录后继续`）
   >
-  > 1. `/Users/yuklimching/Desktop/StudyPilot/docs/tasks/TASK-034-taxonomy-usage.md:128` —— 小标题写「**两条**测试的变异验证」，其下只列出一条（聚合查询那条）。触发：读者据此认为有两条已做变异验证。影响：证据描述与实际不符（并未虚报第二条的结果，只是计数悬空），等级低。最小修正：改为「一条」或补上第二条；因该段在 EVIDENCE 标记区外，修正会形成新候选——也可由主 Agent 在 EVIDENCE 区如实记一行更正（与 TASK-033 处理口径更正的做法相同）。
-  > 2. `/Users/yuklimching/Desktop/StudyPilot/docs/tasks/任务索引.md:24` 记 `IN_PROGRESS`，而 `TASK-034-taxonomy-usage.md:6` 已是 `IN_REVIEW`。触发：候选时点两处状态不一致。影响：仅索引可读性，属证据写回阶段本就要更新的字段。最小修正：随 Review 写回一并同步。
-  > 3. `/Users/yuklimching/Desktop/StudyPilot/frontend/src/features/taxonomy/ClassificationManager.tsx:79` —— 删除面板的「查看这 N 份资料」链接依据列表快照的 `resource_count`。触发：列表加载后、点删除前该分类被别处引用（本机单用户，概率低）。影响：此时 409 文案仍如实给出份数，但缺链接；用户点「放弃草稿，载入最新版本」即刷新 `item` 后链接出现，可恢复。完成条件 9 的常规路径已满足。建议仅记录，不修。
+  > 1. `<repo>/docs/tasks/TASK-034-taxonomy-usage.md:128` —— 小标题写「**两条**测试的变异验证」，其下只列出一条（聚合查询那条）。触发：读者据此认为有两条已做变异验证。影响：证据描述与实际不符（并未虚报第二条的结果，只是计数悬空），等级低。最小修正：改为「一条」或补上第二条；因该段在 EVIDENCE 标记区外，修正会形成新候选——也可由主 Agent 在 EVIDENCE 区如实记一行更正（与 TASK-033 处理口径更正的做法相同）。
+  > 2. `<repo>/docs/tasks/任务索引.md:24` 记 `IN_PROGRESS`，而 `TASK-034-taxonomy-usage.md:6` 已是 `IN_REVIEW`。触发：候选时点两处状态不一致。影响：仅索引可读性，属证据写回阶段本就要更新的字段。最小修正：随 Review 写回一并同步。
+  > 3. `<repo>/frontend/src/features/taxonomy/ClassificationManager.tsx:79` —— 删除面板的「查看这 N 份资料」链接依据列表快照的 `resource_count`。触发：列表加载后、点删除前该分类被别处引用（本机单用户，概率低）。影响：此时 409 文案仍如实给出份数，但缺链接；用户点「放弃草稿，载入最新版本」即刷新 `item` 后链接出现，可恢复。完成条件 9 的常规路径已满足。建议仅记录，不修。
   >
   > 无安全、隐私、越权、数据损坏问题；`resource_count` 为聚合数字，不含用户正文；无新路由绕过安全中间件，无基础设施泄漏进业务模块，前端仍只调同源 `/api`。
   >
@@ -221,8 +221,8 @@ checks = []
   >
   > ## 本轮 findings（2 条，均非阻断 `可记录后继续`）
   >
-  > 1. `/Users/yuklimching/Desktop/StudyPilot/docs/tasks/TASK-034-taxonomy-usage.md:185-186` —— EVIDENCE 区出现**两条并列的 Acceptance 项**（新增的「待执行…」与旧的「L3 独立只读 Integration/Acceptance，待填。」）。触发：读者/Acceptance 实例不确定该填哪一条。影响：仅记录整洁度，二者语义不冲突。最小修正：删去其一，可在 Acceptance 写回时顺手完成（属 EVIDENCE 区，无需新候选）。
-  > 2. `/Users/yuklimching/Desktop/StudyPilot/docs/tasks/TASK-034-taxonomy-usage.md:150` —— 标为「报告原文：」的引用块实为我第一轮报告的**压缩改写**（覆盖段的回读文件清单被删、findings 的 `path:line` 与我给出的两种修法之一被删减、七点结论逐条重写）。§6 要求 L3 独立报告原文写回。影响有限：结论 PASS、三条 findings 及其严重度、NOT_RUN 标注、剩余风险与缺口均在，未软化任何一条，也**未加入我没说过的内容**（我逐句比对过）。最小修正：要么贴逐字原文，要么把标题改为「摘要（经 Reviewer 确认无实质删改）」；同属 EVIDENCE 区，可在下次写回时处理，不必为此再造候选。
+  > 1. `<repo>/docs/tasks/TASK-034-taxonomy-usage.md:185-186` —— EVIDENCE 区出现**两条并列的 Acceptance 项**（新增的「待执行…」与旧的「L3 独立只读 Integration/Acceptance，待填。」）。触发：读者/Acceptance 实例不确定该填哪一条。影响：仅记录整洁度，二者语义不冲突。最小修正：删去其一，可在 Acceptance 写回时顺手完成（属 EVIDENCE 区，无需新候选）。
+  > 2. `<repo>/docs/tasks/TASK-034-taxonomy-usage.md:150` —— 标为「报告原文：」的引用块实为我第一轮报告的**压缩改写**（覆盖段的回读文件清单被删、findings 的 `path:line` 与我给出的两种修法之一被删减、七点结论逐条重写）。§6 要求 L3 独立报告原文写回。影响有限：结论 PASS、三条 findings 及其严重度、NOT_RUN 标注、剩余风险与缺口均在，未软化任何一条，也**未加入我没说过的内容**（我逐句比对过）。最小修正：要么贴逐字原文，要么把标题改为「摘要（经 Reviewer 确认无实质删改）」；同属 EVIDENCE 区，可在下次写回时处理，不必为此再造候选。
   >
   > 第一轮的 3 条 findings 处置结果我确认：F1 已实修（证据强度提高）、F2 已修、F3 记录接受且理由成立。无新增阻断项，无安全/隐私/越权/数据问题。
   >
@@ -281,7 +281,7 @@ checks = []
   >
   > ## Findings（3 条，全部位于 EVIDENCE 标记区，写回时即可修正，不形成新候选）
   >
-  > - **A. `/Users/yuklimching/Desktop/StudyPilot/docs/tasks/TASK-034-taxonomy-usage.md:142` —— 「候选 SHA：待填。」** 触发：§6 明确要求候选精确 SHA 记在之后的 Review/证据段，而冻结候选 `cad70bc`（代码 `67b6145`）至今未登记在该字段。影响：完成条件 14 与 §6 的可追溯性缺一环——虽可从两轮 Review 小标题反推，但正式字段为空。**这是三条里唯一带实质性的一条：若本次写回后仍留「待填」，条件 14 不算满足。**
+  > - **A. `<repo>/docs/tasks/TASK-034-taxonomy-usage.md:142` —— 「候选 SHA：待填。」** 触发：§6 明确要求候选精确 SHA 记在之后的 Review/证据段，而冻结候选 `cad70bc`（代码 `67b6145`）至今未登记在该字段。影响：完成条件 14 与 §6 的可追溯性缺一环——虽可从两轮 Review 小标题反推，但正式字段为空。**这是三条里唯一带实质性的一条：若本次写回后仍留「待填」，条件 14 不算满足。**
   > - **B. `…TASK-034-taxonomy-usage.md:242` —— 「核对 15 条完成条件」，实为 14 条。** 影响：记录事实错误，等级低。
   > - **C. `…TASK-034-taxonomy-usage.md:243` —— 最终状态行仍写 `status=IN_REVIEW`、「等待同一 Reviewer 对增量做复审」。** 与同文件 TOML 的 `IN_ACCEPTANCE` 及已完成的第二轮矛盾。影响：记录内部不一致，等级低。
   >

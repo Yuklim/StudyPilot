@@ -72,7 +72,7 @@ checks = ["frontend", "contracts", "governance"]
 `base=cd348e9d9935a69902e24223b1e5421bba6821bd`，`candidate=7ed35e9e4b76918fd21748373942d2bc91fec929`。实际只读权限已确认：运行器为 `sandbox read-only / approval never`，仓库根执行 `test -w .` 退出 `1`，未试写；当前 `HEAD=7ed35e9e4b76918fd21748373942d2bc91fec929`，`git merge-base(base,candidate)=base`，`git status --short --branch` 仅见分支 `ahead 2`，无工作区改动。
 
 阻断：
-- [frontend/src/features/learning/model.ts](/Users/yuklimching/Desktop/StudyPilot/frontend/src/features/learning/model.ts:50) 与 [frontend/src/features/learning/api.ts](/Users/yuklimching/Desktop/StudyPilot/frontend/src/features/learning/api.ts:82) 没有把 `LearningProgress` 和 `ActiveReviewPlan` 做联合一致性校验，反而在 `options()` 里接受了 `REVIEW_DUE + PAUSED` 这种与契约第 6.1 节不一致的组合。触发条件：后端快照漂移、返回不完整/错误状态，或未来有人误改投影字段。影响：前端不会 fail closed，而会展示不可能的当前状态，甚至给出学习表单里本不该出现的状态选项，违背本任务“完整进度/计划字段验证”和状态矩阵要求。最小修正：在资源投影解析处补齐跨字段不变量校验，例如 `REVIEW_DUE` 必须伴随 `SCHEDULED` 计划，`IN_PROGRESS` 不得带当前 `completed_at`，并删除/拒绝 `PAUSED + REVIEW_DUE` 分支，遇到不一致快照直接报 `INVALID_RESPONSE`。
+- [frontend/src/features/learning/model.ts](<repo>/frontend/src/features/learning/model.ts:50) 与 [frontend/src/features/learning/api.ts](<repo>/frontend/src/features/learning/api.ts:82) 没有把 `LearningProgress` 和 `ActiveReviewPlan` 做联合一致性校验，反而在 `options()` 里接受了 `REVIEW_DUE + PAUSED` 这种与契约第 6.1 节不一致的组合。触发条件：后端快照漂移、返回不完整/错误状态，或未来有人误改投影字段。影响：前端不会 fail closed，而会展示不可能的当前状态，甚至给出学习表单里本不该出现的状态选项，违背本任务“完整进度/计划字段验证”和状态矩阵要求。最小修正：在资源投影解析处补齐跨字段不变量校验，例如 `REVIEW_DUE` 必须伴随 `SCHEDULED` 计划，`IN_PROGRESS` 不得带当前 `completed_at`，并删除/拒绝 `PAUSED + REVIEW_DUE` 分支，遇到不一致快照直接报 `INVALID_RESPONSE`。
 
 覆盖：已完整审阅首轮 `base..candidate` 的 27 文件 diff，并补核学习页核心调用链、共享客户端错误映射、资源投影、路由接入、契约 1.3/2.3/4.4/4.9/6 与相关 OpenAPI 片段。按要求复用现有机械检查证据，未全量重跑；除上述问题外，未再发现需要阻断的缺陷。
 
@@ -85,7 +85,7 @@ checks = ["frontend", "contracts", "governance"]
 
 权限仍满足独立只读：运行器为 `read-only / never`，`test -w .` 退出 `1`，未试写。`base=cd348e9d9935a69902e24223b1e5421bba6821bd`，旧候选 `7ed35e9e4b76918fd21748373942d2bc91fec929`，新最终候选 `80e3eb6abeb54fc90f24898d8a57776804c38c34`；当前 `HEAD=80e3eb6abeb54fc90f24898d8a57776804c38c34`，`git status --short --branch` 仅见分支 `ahead 4`，无工作区改动。
 
-No findings。已按要求完整读取 `7ed35e9..80e3eb6` 的 6 文件增量 diff。首轮唯一问题已解决：`progress()` 现在对归档记忆态也校验未开始/完成/学习中的时间与进度不变量，[frontend/src/features/learning/model.ts](/Users/yuklimching/Desktop/StudyPilot/frontend/src/features/learning/model.ts:70) 新增 `validateProgressPlan()`，并在资源解析、状态选项和写成功响应处统一 fail-closed 使用，[frontend/src/features/resources/api.ts](/Users/yuklimching/Desktop/StudyPilot/frontend/src/features/resources/api.ts:135) 与 [frontend/src/features/learning/api.ts](/Users/yuklimching/Desktop/StudyPilot/frontend/src/features/learning/api.ts:84) 已移除对 `REVIEW_DUE+PAUSED`、`IN_PROGRESS/COMPLETED+SCHEDULED` 半更新快照的依赖。新增测试覆盖矛盾快照拒绝、合法 `REVIEW_DUE+SCHEDULED` / 归档恢复可用，以及写成功返回矛盾状态时拒绝报成功，和修复目标一致。
+No findings。已按要求完整读取 `7ed35e9..80e3eb6` 的 6 文件增量 diff。首轮唯一问题已解决：`progress()` 现在对归档记忆态也校验未开始/完成/学习中的时间与进度不变量，[frontend/src/features/learning/model.ts](<repo>/frontend/src/features/learning/model.ts:70) 新增 `validateProgressPlan()`，并在资源解析、状态选项和写成功响应处统一 fail-closed 使用，[frontend/src/features/resources/api.ts](<repo>/frontend/src/features/resources/api.ts:135) 与 [frontend/src/features/learning/api.ts](<repo>/frontend/src/features/learning/api.ts:84) 已移除对 `REVIEW_DUE+PAUSED`、`IN_PROGRESS/COMPLETED+SCHEDULED` 半更新快照的依赖。新增测试覆盖矛盾快照拒绝、合法 `REVIEW_DUE+SCHEDULED` / 归档恢复可用，以及写成功返回矛盾状态时拒绝报成功，和修复目标一致。
 
 继承首轮其余覆盖不变；本次结论绑定新最终候选 `80e3eb6abeb54fc90f24898d8a57776804c38c34`。
 
@@ -94,7 +94,7 @@ No findings。已按要求完整读取 `7ed35e9..80e3eb6` 的 6 文件增量 dif
 
 - 独立于实现者和 Reviewer 的 CLI 会话 `01a06662-e779-7603-a06d-bac2d06d60ab`，沿用已批准临时 gpt-5.4 / medium，启动头 read-only / never，未子派发，进程退出 0。以下为验收报告原文。
 
-候选与运行权限：独立会话实际为 `read-only / never`，`test -w .` 退出 `1`；当前 `HEAD=f0351299dee486417fcc00d9c7c9385a1dc9a252`。`check_task --candidate HEAD --evidence-from 80e3eb6... --static-only` 返回 `EVIDENCE_ONLY PASS`；`80e3eb6..HEAD` 仅见 [TASK-016-learning-pages.md](/Users/yuklimching/Desktop/StudyPilot/docs/tasks/TASK-016-learning-pages.md) 与 [任务索引.md](/Users/yuklimching/Desktop/StudyPilot/docs/tasks/任务索引.md) 的状态/EVIDENCE写回。
+候选与运行权限：独立会话实际为 `read-only / never`，`test -w .` 退出 `1`；当前 `HEAD=f0351299dee486417fcc00d9c7c9385a1dc9a252`。`check_task --candidate HEAD --evidence-from 80e3eb6... --static-only` 返回 `EVIDENCE_ONLY PASS`；`80e3eb6..HEAD` 仅见 [TASK-016-learning-pages.md](<repo>/docs/tasks/TASK-016-learning-pages.md) 与 [任务索引.md](<repo>/docs/tasks/任务索引.md) 的状态/EVIDENCE写回。
 
 1. 条件1：任务记录已绑定最终产品候选 `80e3eb6...`、指纹 `338dfef...`，前端真实联通与纯文本展示证据齐备，无缺口。
 2. 条件2：215 前端测试与 22 Chromium 证据覆盖冲突重读、锁定、防重入、迟到保护、空错态，无缺口。

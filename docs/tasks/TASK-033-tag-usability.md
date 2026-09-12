@@ -137,7 +137,7 @@ checks = []
 - 候选 SHA（最终）：`26b2818`（代码修订 SHA `5f79e21`，`5f79e21..26b2818` 仅为第一轮报告与处置的证据写回，不含代码改动）。第一轮候选：`dcd0301`（含需求、实现与测试证据；代码实现 SHA `f801ad1`，`f801ad1..dcd0301` 仅为本记录的证据写回，不含代码改动。`check_task.py --candidate f801ad1` CHECKS PASS，base=`b6ab87e`、files=14、profiles=frontend、product_fingerprint=`cd5e125a92a8fd44ee0f1a6b3115b852176b48bd6cceca400f96d28304d2c3c7`、risk=L2 stages=(worker, review)）。base..candidate 的完整 diff 已导出到 scratchpad 的 `TASK-033-full-diff.patch`，供无 Bash 的只读 Reviewer 直接 Read。
 - Review 第一轮（L2 独立只读，`b6ab87e..dcd0301`）：**PASS（含 F1～F4 四项非阻断）**。
 
-  派发方式：本实现会话以 `/Users/yuklimching` 为启动目录，项目级 `.claude/agents/reviewer.md` 未注册（已实测：把该文件复制到用户级 `~/.claude/agents/` 后当场重试仍为 `Agent type 'reviewer' not found`，说明注册表在会话启动时一次性构建，中途放文件不生效）。因此改由同机另一个在 StudyPilot 目录下启动的会话 `studypilot-05` 代为派发。**执行审查的仍是 `.claude/agents/reviewer.md` 定义的只读实例（`tools: Read, Grep, Glob`，运行器层无 Bash、无写工具），全新实例、无上下文继承、独立于实现者。** 未用带 Bash 的 `Explore`/`general-purpose` 冒充。
+  派发方式：本实现会话以 `~` 为启动目录，项目级 `.claude/agents/reviewer.md` 未注册（已实测：把该文件复制到用户级 `~/.claude/agents/` 后当场重试仍为 `Agent type 'reviewer' not found`，说明注册表在会话启动时一次性构建，中途放文件不生效）。因此改由同机另一个在 StudyPilot 目录下启动的会话 `studypilot-05` 代为派发。**执行审查的仍是 `.claude/agents/reviewer.md` 定义的只读实例（`tools: Read, Grep, Glob`，运行器层无 Bash、无写工具），全新实例、无上下文继承、独立于实现者。** 未用带 Bash 的 `Explore`/`general-purpose` 冒充。
 
   外部核实（派发会话以 Bash 提供，补上 Reviewer 自身无法自证的一环）：
   > 主 Agent（派发会话）已用 `diff` 核实：交给 Reviewer 的 `TASK-033-full-diff.patch` 与 `git diff b6ab87e..dcd0301` 逐字节一致（1008 行、14 文件），patch 忠实于仓库。此项补上了 TASK-032 的 Reviewer 曾列为覆盖缺口的一点（Reviewer 无 Bash，无法自证导出 patch 忠实于仓库）。

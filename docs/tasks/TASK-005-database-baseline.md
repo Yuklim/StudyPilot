@@ -74,10 +74,10 @@ CHANGES_REQUIRED
 base `8d8a3b0c3c03e5227bf0f78bb081e9b1bdd4cc43` → candidate `d41b213ee92819bfa7843ea9793f9c540d754be0`。实际只读权限证据：本会话环境声明 `filesystem sandbox: read-only`，且只执行读取命令；`git status` 过程中对 `/tmp/xcrun_db-*` 的写入也收到 `Operation not permitted`，符合只读运行。
 
 Findings
-1. `OriginalFile.media_type` 的冻结模型和初始迁移与已批准契约不一致。[docs/contracts/API与数据契约基线.md:417](/Users/yuklimching/Desktop/StudyPilot/docs/contracts/API与数据契约基线.md:417) 与 [docs/contracts/API与数据契约基线.md:418](/Users/yuklimching/Desktop/StudyPilot/docs/contracts/API与数据契约基线.md:418) 明确 Markdown/TXT 的规范媒体类型分别是 `text/markdown; charset=utf-8`、`text/plain; charset=utf-8`，但候选只允许无 charset 的值，见 [backend/src/studypilot/infrastructure/database/models.py:139](/Users/yuklimching/Desktop/StudyPilot/backend/src/studypilot/infrastructure/database/models.py:139) 和 [backend/migrations/versions/0001_initial.py:288](/Users/yuklimching/Desktop/StudyPilot/backend/migrations/versions/0001_initial.py:288)。触发条件：后续服务按契约写入 Markdown/TXT 原件时。影响：合法契约值会被数据库约束拒绝，形成已批准契约与存储基线漂移。安全修正：把模型与 `0001_initial` 的允许值改成契约规定的规范值，并补正反测试覆盖这两个文本媒体类型；当前测试仅覆盖 `application/pdf` 和一个非法值，未覆盖该契约点，见 [backend/tests/test_database.py:191](/Users/yuklimching/Desktop/StudyPilot/backend/tests/test_database.py:191)。
+1. `OriginalFile.media_type` 的冻结模型和初始迁移与已批准契约不一致。[docs/contracts/API与数据契约基线.md:417](<repo>/docs/contracts/API与数据契约基线.md:417) 与 [docs/contracts/API与数据契约基线.md:418](<repo>/docs/contracts/API与数据契约基线.md:418) 明确 Markdown/TXT 的规范媒体类型分别是 `text/markdown; charset=utf-8`、`text/plain; charset=utf-8`，但候选只允许无 charset 的值，见 [backend/src/studypilot/infrastructure/database/models.py:139](<repo>/backend/src/studypilot/infrastructure/database/models.py:139) 和 [backend/migrations/versions/0001_initial.py:288](<repo>/backend/migrations/versions/0001_initial.py:288)。触发条件：后续服务按契约写入 Markdown/TXT 原件时。影响：合法契约值会被数据库约束拒绝，形成已批准契约与存储基线漂移。安全修正：把模型与 `0001_initial` 的允许值改成契约规定的规范值，并补正反测试覆盖这两个文本媒体类型；当前测试仅覆盖 `application/pdf` 和一个非法值，未覆盖该契约点，见 [backend/tests/test_database.py:191](<repo>/backend/tests/test_database.py:191)。
 
 覆盖与风险
-- 已按首次 Review 要求检查完整 `base..candidate` diff，并核对了 root `AGENTS.md`、[backend/AGENTS.md](/Users/yuklimching/Desktop/StudyPilot/backend/AGENTS.md:1)、[docs/tasks/TASK-005-database-baseline.md](/Users/yuklimching/Desktop/StudyPilot/docs/tasks/TASK-005-database-baseline.md:1)、风险规则实际风险章节、契约第 2-4/6/8-9 节、架构第 5.3/6/12 节。
+- 已按首次 Review 要求检查完整 `base..candidate` diff，并核对了 root `AGENTS.md`、[backend/AGENTS.md](<repo>/backend/AGENTS.md:1)、[docs/tasks/TASK-005-database-baseline.md](<repo>/docs/tasks/TASK-005-database-baseline.md:1)、风险规则实际风险章节、契约第 2-4/6/8-9 节、架构第 5.3/6/12 节。
 - 复用任务内可信机械检查证据：后端 45 项、治理 23 项已通过；未见需要额外重跑的其他具体证据缺口。
 - 除上述契约漂移外，模型/迁移一致性、外键与级联方向、事务入口、UTC/日期边界、版本并发、防普通 ORM 改写历史、初始迁移重复升级与非空降级保护均已覆盖到位。
 
@@ -92,7 +92,7 @@ PASS
 
 实际只读权限证据：本会话仍处于 `read-only` 沙箱；且 `git status` 运行时对 `/tmp/xcrun_db-*` 的写入继续收到 `Operation not permitted`，符合独立只读运行。
 
-上轮唯一 finding 已关闭。`OriginalFile.media_type` 模型与冻结迁移现已改为契约要求的 `text/markdown; charset=utf-8` / `text/plain; charset=utf-8`，见 [models.py](/Users/yuklimching/Desktop/StudyPilot/backend/src/studypilot/infrastructure/database/models.py:139) 和 [0001_initial.py](/Users/yuklimching/Desktop/StudyPilot/backend/migrations/versions/0001_initial.py:288)；并补了两个合法值持久化正例与两个裸类型反例，见 [test_database.py](/Users/yuklimching/Desktop/StudyPilot/backend/tests/test_database.py:191)。
+上轮唯一 finding 已关闭。`OriginalFile.media_type` 模型与冻结迁移现已改为契约要求的 `text/markdown; charset=utf-8` / `text/plain; charset=utf-8`，见 [models.py](<repo>/backend/src/studypilot/infrastructure/database/models.py:139) 和 [0001_initial.py](<repo>/backend/migrations/versions/0001_initial.py:288)；并补了两个合法值持久化正例与两个裸类型反例，见 [test_database.py](<repo>/backend/tests/test_database.py:191)。
 
 新 findings：No findings。
 
@@ -105,7 +105,7 @@ PASS
 
 **PASS**
 
-已按独立 `Integration/Acceptance` 只读验收执行。实际 runtime 为只读且 `approval: never`，不是只看任务描述：当前会话里 `git status`/`git rev-parse` 都触发了对 `/tmp/xcrun_db-*` 的写入失败并返回 `Operation not permitted`，可作为实际只读证明。当前证据头是 `b7a01170d4f7b51a271860276d0a75c0781fc33c`，已 Review 的最终候选是 `6dee1d061b84fa4b0dc63ef9f6d331d1fb46dec2`；我核对了 `6dee1d0..b7a0117`，只有 [docs/tasks/TASK-005-database-baseline.md](/Users/yuklimching/Desktop/StudyPilot/docs/tasks/TASK-005-database-baseline.md:1) 和 [docs/tasks/任务索引.md](/Users/yuklimching/Desktop/StudyPilot/docs/tasks/任务索引.md:1) 的证据/状态写回，没有实现代码变化，与“后续只写证据”一致。独立 Reviewer `01a064fa-2a88-7b70-a847-485041a59554` 的最终结论是 PASS，且覆盖到最终候选。
+已按独立 `Integration/Acceptance` 只读验收执行。实际 runtime 为只读且 `approval: never`，不是只看任务描述：当前会话里 `git status`/`git rev-parse` 都触发了对 `/tmp/xcrun_db-*` 的写入失败并返回 `Operation not permitted`，可作为实际只读证明。当前证据头是 `b7a01170d4f7b51a271860276d0a75c0781fc33c`，已 Review 的最终候选是 `6dee1d061b84fa4b0dc63ef9f6d331d1fb46dec2`；我核对了 `6dee1d0..b7a0117`，只有 [docs/tasks/TASK-005-database-baseline.md](<repo>/docs/tasks/TASK-005-database-baseline.md:1) 和 [docs/tasks/任务索引.md](<repo>/docs/tasks/任务索引.md:1) 的证据/状态写回，没有实现代码变化，与“后续只写证据”一致。独立 Reviewer `01a064fa-2a88-7b70-a847-485041a59554` 的最终结论是 PASS，且覆盖到最终候选。
 
 六条完成条件未见证据缺口：
 1. 11 个模型都在候选中，`DeletionConfirmation.resource_id` 仅为逻辑绑定索引、非资料级联外键；`OriginalFile.media_type` 契约漂移已修复，Review 增量 PASS。

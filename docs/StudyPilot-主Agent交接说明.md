@@ -7,8 +7,8 @@
 
 - 用户今后只与当前对话中的主 Agent 交互；主 Agent 负责理解目标、登记任务、判断风险、协调 Worker/Reviewer/Acceptance、汇总证据并向用户汇报。
 - 旧对话已停止开发，不与当前主 Agent 并行写入。共享目录同一时刻只能有一个写入者。
-- 侧栏保存目录 `/Users/yuklimching/Documents/Study` 不是 Git 仓库，只作为项目工作目录参考。
-- 真正代码仓库是 `/Users/yuklimching/Desktop/StudyPilot`，远程为 [Yuklim/StudyPilot](https://github.com/Yuklim/StudyPilot.git)。所有仓库命令必须显式使用真实仓库路径。
+- 侧栏保存目录 `~/Documents/Study` 不是 Git 仓库，只作为项目工作目录参考。
+- 真正代码仓库是 `<repo>`，远程为 [Yuklim/StudyPilot](https://github.com/Yuklim/StudyPilot.git)。所有仓库命令必须显式使用真实仓库路径。
 - 当前工作分支为 `agent/frontend_worker/TASK-023-resource-safe-delete-pages`，工作树干净；远程 `origin/main` 已包含 TASK-022 的合并提交 `51b427f5722427246b4ebc460f3aa6f2e0585338`。
 - 当前未授权任何真实用户资料删除、回收站清理或公网部署操作。
 - 合并事实以 GitHub PR #27 的合并提交 `51b427f5722427246b4ebc460f3aa6f2e0585338` 和任务索引 `MERGED` 记录为准；若看到 TASK-022 文件顶部仍为 `ACCEPTED`，只能做状态字段收口，不能重写已完成的实现、测试、Review 或 Acceptance 证据。
@@ -116,10 +116,10 @@ StudyPilot 是个人本机运行的学习资料与随手心得工具：帮助用
 以下命令只用于确认仓库身份、分支和工作树，不改变状态：
 
 ```bash
-git -C /Users/yuklimching/Desktop/StudyPilot status --short --branch
-git -C /Users/yuklimching/Desktop/StudyPilot log -1 --oneline --decorate
-git -C /Users/yuklimching/Desktop/StudyPilot rev-parse --show-toplevel
-test -d /Users/yuklimching/Documents/Study/.git && echo unexpected-git || echo sidebar-is-not-git
+git -C <repo> status --short --branch
+git -C <repo> log -1 --oneline --decorate
+git -C <repo> rev-parse --show-toplevel
+test -d ~/Documents/Study/.git && echo unexpected-git || echo sidebar-is-not-git
 ```
 
 开始任何新任务前，先阅读根 `AGENTS.md`、`docs/tasks/任务索引.md`、相关 TASK 最终证据、`项目需求说明.md` 对应章节和 `docs/contracts/` 对应章节；不要回看全部长聊天或整仓扫描。

@@ -72,7 +72,7 @@ No findings。已完整审阅一次 `base..candidate` 15 文件 diff，并补核
 
 - 2026-09-03：独立于实现者及 Reviewer 的 CLI 会话 `01a06639-451c-79b3-aae6-8c830d858220`，沿用已批准临时 `gpt-5.4 / medium`，启动头 read-only / never，禁止子派发，进程退出 0。以下为报告原文。
 
-PASS。验收候选 `3453af065c0688242e30c910b66d8e9085f6cdbd`，当前 `HEAD=75cfb899958df47619c578a0442804e66f3ba579`。本会话实际独立只读：`approval=never`，`test -w .` 退出 `1`，未试写；`git status --short --branch` 仅见分支前进，无工作区改动。`candidate..HEAD` 仅变更 [docs/tasks/TASK-015-learning-backend.md](/Users/yuklimching/Desktop/StudyPilot/docs/tasks/TASK-015-learning-backend.md) 与 [docs/tasks/任务索引.md](/Users/yuklimching/Desktop/StudyPilot/docs/tasks/任务索引.md) 的合法状态/Review/EVIDENCE/索引写回；`--static-only` 返回 `EVIDENCE_ONLY PASS`，未称全测。
+PASS。验收候选 `3453af065c0688242e30c910b66d8e9085f6cdbd`，当前 `HEAD=75cfb899958df47619c578a0442804e66f3ba579`。本会话实际独立只读：`approval=never`，`test -w .` 退出 `1`，未试写；`git status --short --branch` 仅见分支前进，无工作区改动。`candidate..HEAD` 仅变更 [docs/tasks/TASK-015-learning-backend.md](<repo>/docs/tasks/TASK-015-learning-backend.md) 与 [docs/tasks/任务索引.md](<repo>/docs/tasks/任务索引.md) 的合法状态/Review/EVIDENCE/索引写回；`--static-only` 返回 `EVIDENCE_ONLY PASS`，未称全测。
 
 五项完成条件证据完整，均绑定同一 `product_fingerprint=68c2b314879d2c6afc0d7174bdcd9a566eda177b22b5d8703a58b3feb4a70618`：三操作与 schema/page/envelope、状态矩阵与 before/version/summary-only/复习边界、严格筛选/分页/安全与未知筛选空页、SQLite 原子回滚/竞争写受控回滚、契约深比较不变且仅新增 metadata 三操作。366 后端测试、93 新测、23 治理与契约/类型/lint/format 均有退出 0 证据；首次全检脚本退出 1 仅因 `uv` 缓存权限导致 `uv build --offline` 退出 2，后续同输入单独构建退出 0，已诚实保留，不构成阻断。未解决缺口仅为已记录边界：前端本次未接入且未重跑旧前端/浏览器证据，SQLite 竞争写允许受控 `500/409` 回滚且不重放，summary-only 追加历史不改 progress version，不创建/暂停/完成复习计划。最终是否合并仍由用户本人决定。
 
