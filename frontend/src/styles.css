@@ -2383,6 +2383,10 @@ a.source-chip:focus-visible {
   justify-content: center;
   width: 32px;
   height: 32px;
+  /* 左栏是 flex 列且高度钉在 100dvh：展开态内容超出容器时子项按默认 flex-shrink 被
+     压缩，这个按钮没有最小高度就会被压成 32×18，收起态内容少不溢出又回到 32×32——
+     两态尺寸不一样（TASK-055 实测）。不许它参与压缩。 */
+  flex-shrink: 0;
   margin-bottom: 10px;
   padding: 0;
   border: 1px solid #cfd6c6;
@@ -2425,8 +2429,14 @@ a.source-chip:focus-visible {
 .app-shell.nav-collapsed .primary-nav a,
 .app-shell.nav-collapsed .add-link {
   justify-content: center;
+  /* 收起态只剩图标：`gap` 与当前项的圆点都不该再占位，否则图标被挤到中心偏左
+     6.5px（TASK-055 实测）。当前项由高亮背景表示，圆点在这一态没有信息量。 */
+  gap: 0;
   padding-left: 8px;
   padding-right: 8px;
+}
+.app-shell.nav-collapsed .nav-dot {
+  display: none;
 }
 
 /* ---------------------------------------------------------------------------
