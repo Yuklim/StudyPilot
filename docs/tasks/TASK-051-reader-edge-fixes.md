@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-051"
-status = "IN_REVIEW"
+status = "ACCEPTED"
 risk = "L2"
 risk_reason = "修三个已由独立 Review/验收登记为「非阻断、可后续修」的阅读页缺陷，全部是同一页面（/resources/:id）的交互边缘：① 正文读取失败时菜单仍有「替换/粘贴正文」且点击令牌悬置迟到重放（TASK-046 遗留 I）；② 心得侧栏 + ⋯ 菜单叠开时第二下 Esc 不关侧栏（TASK-045 遗留 1「死键」）；③ 心得聚焦令牌在资料刷新窗口被烧掉而未聚焦（TASK-045 复审 R2 finding 3）。不改公共 API、后端、契约、数据含义与门禁；不引入依赖。判 L2 而非 L1：② ③ 触及已确立的无障碍焦点契约（Esc 归还、聚焦一次不抢焦点），改错了屏幕上看不出来，需要独立 Reviewer 看最终 diff 与测试是否真守得住。不到 L3：无架构/契约/迁移/认证变更。"
 risk_flags = ["business"]
@@ -94,8 +94,46 @@ checks = ["frontend"]
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：**待冻结**——本提交之后的 HEAD 即候选，精确 SHA 在 Review 写回时补记（提交无法引用自身）。
-- Review：待派独立只读 Reviewer（`.claude/agents/reviewer.md`，仅 Read/Grep/Glob）审 `adb0304..候选` 完整 diff。
+- 候选 SHA：**`5a0a0df02b9b96b0f3c4595eb528e9511d950fbe`**（base `adb0304`；10 个文件：7 前端 + TASK-050/051 记录 + 索引，全部在 `allowed_paths` 内）。实现 SHA `8bcdb82`；`9efb8f4..5a0a0df` 仅三份文档（`git diff --stat` 3 files，`-- frontend/` 为空）。
+- 检查绑定候选本身：`check_task.py --candidate 5a0a0df` → `STATIC PASS`，`files=10`，`product_fingerprint=404b2cdb…`（与 `9efb8f4` 的 `dbd01591…` 不同，仅因 TASK-050 记录进入文件集；前端内容逐字节一致），`profiles=frontend` 五项 exit 0，`552 passed` → **CHECKS PASS**。
+- Review（L2，独立只读 Reviewer，`.claude/agents/reviewer.md`，仅 Read/Grep/Glob；输入为导出 diff 文件 + 候选工作区源文件）：**PASS**，三个 findings 均非阻断。报告原文：
+
+> **候选/基线/只读证明**
+> - 基线 `adb03045…9db00` → 候选 `5a0a0df0…950fbe`；审 `task051-frontend.diff`（7 个前端文件）+ `task051-record.diff`（仅 TASK-051.md），并读候选工作区源文件核对调用链。
+> - 本 Agent 仅有 Read/Grep/Glob，无 Write/Edit/Bash，未改任何文件。
+>
+> **核对结论（对应五个问题）**
+> 1. 三个修复各自正确，未见新的焦点/Esc 回归。焦点停在 `aria-expanded="true"` 的 ⋯ 触发钮上按 Esc：菜单自身 handler 关菜单并归焦，侧栏守卫让位——两个 document 监听无论注册先后结果一致（菜单先跑时同步 `focus()` 后 DOM 属性仍是 "true"）。心得按钮先于 `aria-expanded` 判据放行是必要的（它展开时恰为 true）。`deleting/pending` 立即作废与目标 3/非目标一致，取舍合理。
+> 2. 令牌路径：`editRequest` 只在 `result` 到达时消费；失败态菜单项不渲染、retry 期间 `!result` 不回传父级仍视为 unreadable，无法再点；保存后 `revision+1` 的重读与「读取中等读到」同一形态。未发现新的迟到重放路径。`snapshotUnreadable` 只有 `ResourceDetail.tsx:227` 一处传入，默认 false，既有用法不受影响。
+> 3. 既有用例改动属修正假绿：旧写法在同一棵树下无 blur 时 `not.toHaveFocus()` 必红，其通过依赖 Router→无 Router 的整树重挂丢焦；新写法单树 + 显式 blur 才真正断言「翻转不抢焦」。断言未减少。记录解释属实。
+> 4. 四条新用例按代码逻辑均能对旧逻辑变红（分别命中：无条件渲染粘贴项 / `&& !unreadable` 守卫 / `.reader-toolbar` closest 守卫 / 守卫前烧令牌）。
+> 5. 范围全在 allowed_paths；无顺手改动。numstat 逐文件复核：+174/−35 与各文件分项一致；552=548+4 成立；e2e 55 无法复核，采信记录。
+>
+> **Findings**
+> - F1（可记录后继续）记录/证据口径：`docs/tasks/TASK-051-reader-edge-fixes.md:89` 检查绑定的是 `9efb8f4`（`files=8` = 7 前端 + TASK-051.md），而送审候选是 `5a0a0df`，且导出的 record diff 未含 TASK-050.md/任务索引.md 的 MERGED 登记（工作区已是 MERGED）。请主 Agent 写回时确认 `9efb8f4..5a0a0df` 仅为文档提交、product_fingerprint 不变，否则检查需重跑。
+> - F2（可选）`frontend/src/features/resources/ResourceDetail.tsx:157`：`aria-expanded="true"` 判据未限定在工具条内；`App.tsx:105` 导航栏折叠钮展开态也命中，焦点在其上按 Esc 将不再关侧栏（旧逻辑会关）。触发概率极低、方向是「少关一层」，可加 `active.closest('.reader-toolbar')` 收窄。
+> - F3（可选）`frontend/src/features/notes/NotesPanel.test.tsx:291` 注释「那一刻写作框是禁用态」不准确——textarea 只随 `pending` 禁用（`NotesPanel.tsx:313`），`!available` 不禁用；断言本身不受影响。
+>
+> **覆盖/剩余风险**：面板触发钮（学习状态/原件）打开态 Esc 仍为死键，为既有形态、不在本任务范围。
+>
+> **结论：PASS**（F1 由主 Agent 在 EVIDENCE 写回时补证即可，不构成阻断）。
+
+- findings 处置：
+
+| # | 处置 | 依据 |
+| --- | --- | --- |
+| F1 | **已补证，不出新候选**。`9efb8f4..5a0a0df` 为三份文档（见上），前端 diff 为空；已在候选 `5a0a0df` 本身重跑完整 `check_task.py --candidate` → CHECKS PASS（上条）。fingerprint 变化原因如上，不是内容变化。 | §6「检查以被测内容为准」 |
+| F2 | **记录后继续，不改**。阅读页是沉浸式（外壳不渲染，`App.tsx` 导航折叠钮在这一页不存在），实际触发面为零；修改会形成新候选并需增量复审，收益不抵成本。登记为遗留 1。 | §6「不为理论完备阻断」 |
+| F3 | **记录后继续，不改**。测试注释措辞不准确，断言不受影响；改注释同样形成新候选。登记为遗留 2，下次触碰该文件时顺手修正。 | 同上 |
+
 - Acceptance：L2，N/A。
-- 最终状态/风险/用户操作：status=**IN_REVIEW**。
+- 最终状态/风险/用户操作：status=**ACCEPTED**（L2：1 Worker → 自动检查 → 1 名独立只读 Reviewer → 主 Agent 汇总）。**未 MERGED**——是否合并由用户本人决定，Agent 不合并、不推送 main。
+- 非阻断遗留项：
+  1. （F2）Esc 守卫的 `aria-expanded="true"` 判据未限定在 `.reader-toolbar` 内；当前阅读页无外壳，无可触发控件。**重评触发条件**：阅读页重新渲染外壳或任何工具条外出现 `aria-expanded` 控件时，加 `closest('.reader-toolbar')` 收窄。
+  2. （F3）`NotesPanel.test.tsx` 新用例注释「禁用态」应为「暂不能保存」。
+  3. （Reviewer 剩余风险）面板触发钮（学习状态 / 原件）打开态下焦点停在触发钮上按 Esc，面板与侧栏都不关——面板本就不处理 Esc，属既有形态，非本任务引入。
+- 日期与决定日志：
+  - 2026-09-12 用户指示「先做两个小的任务」；主 Agent 合为一个任务登记。
+  - 2026-09-12 实现 `8bcdb82`（4 条新用例逐条「还原旧逻辑变红」验证）；`9efb8f4` 修基线 SHA 格式；`5a0a0df` 冻结候选并登记 TASK-050 MERGED。
+  - 2026-09-12 独立只读 Review → **PASS**（F1 补证 / F2 F3 记录）；主 Agent 写回并置 `ACCEPTED`；待用户合并。
 <!-- EVIDENCE:END -->
