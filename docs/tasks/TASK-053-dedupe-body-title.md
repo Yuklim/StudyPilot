@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-053"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L2"
 risk_reason = "改的是快照渲染管线 `snapshotMarkdown.ts`——本项目唯一 `dangerouslySetInnerHTML` 的内容来源，其安全性质（`html:false`、链接/图片仅收 validateLink 放行地址）由配置与测试钉住。本任务只在 markdown-it 的 core 阶段加一条**删 token** 的规则（首个块若是 h1 且文本与资料标题相同则移除三枚 token），不触碰 `RENDERER_OPTIONS`、image/link 规则与转义路径；正文数据一字不动，只影响显示。仍判 L2 而非 L1：进了安全敏感文件，且「删掉一个标题」若判断写错会静默吞掉用户内容，需独立 Reviewer 核对判据与测试。不到 L3：无契约/接口/数据变更。"
 risk_flags = ["business"]
@@ -141,7 +141,7 @@ TASK-052 把资料标题移入正文列后，它与正文 Markdown 自带的 `# 
 | F4 | **本区写回取代**（上文首条已注明第 96-97 行被 `2be6e7c` 取代），标记区外正文不改。 | §6 证据写回规则 |
 
 - Acceptance：L2，N/A。
-- 最终状态/风险/用户操作：status=**ACCEPTED**（L2：1 Worker → 自动检查 → 1 名独立只读 Reviewer（两轮）→ 主 Agent 汇总）。**未 MERGED**——是否合并由用户本人决定，Agent 不合并、不推送 main。
+- 最终状态/风险/用户操作：status=**MERGED**（2026-09-12 用户合并 PR #61，merge commit `23c9dc5`，已用 `gh pr view 61` 与 `git log origin/main` 双向核实；本行状态登记按根 `AGENTS.md` §5 并入 TASK-054 的控制面提交）。交付时为 **ACCEPTED**（L2：1 Worker → 自动检查 → 1 名独立只读 Reviewer（两轮）→ 主 Agent 汇总）。
 - 非阻断遗留项：
   1. 站点后缀形态（资料标题「xxx - 某站」、正文 h1「xxx」）不去重（刻意保守）。**重评触发条件**：用户在真实资料上遇到该形态并要求放宽。
   2. 占位标题「未命名资料」参与比较（F3）。
