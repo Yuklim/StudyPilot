@@ -19,6 +19,7 @@ allowed_paths = [
   "frontend/src/features/resources/ResourceLibrary.tsx",
   "frontend/src/features/resources/LibraryFilters.tsx",
   "frontend/src/features/resources/ResourcePages.test.tsx",
+  "frontend/src/features/resources/ResourceDeleteDialog.test.tsx",
   "frontend/src/features/taxonomy/ClassificationPicker.tsx",
   "frontend/src/features/taxonomy/ClassificationPages.test.tsx",
   "frontend/src/styles.css",
@@ -68,6 +69,7 @@ checks = ["backend", "frontend", "contracts"]
 ### 实现中修订授权范围（登记后、冻结前）
 
 - 追加 `frontend/e2e/file-pages.spec.ts`：库内「搜索 / 应用筛选」按钮改名「搜索」（它现在只管搜索词），该文件一处按名称点击需同步；断言不变。
+- 追加 `frontend/src/features/resources/ResourceDeleteDialog.test.tsx`：其中一条用例按名称点「搜索 / 应用筛选」，随按钮改名同步为「搜索」；断言不变。
 - 追加 `frontend/e2e/scaffold.spec.ts`：「只用批准的读请求」守卫把资料库页允许的 GET 白名单加上 `/api/v1/topics`、`/api/v1/tags`（筛选行芯片的两次列表读取是本任务新增的正当读请求）；守卫本身不放宽。
 
 ### 非目标
