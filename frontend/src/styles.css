@@ -995,27 +995,51 @@ fieldset:disabled {
 .resource-error .journal-button {
   margin-top: 12px;
 }
-.resource-deletion {
-  margin-top: 28px;
-  padding-top: 22px;
-  border-top: 1px dashed var(--line);
+/* 删除资料的确认弹窗（TASK-056）。模态：遮罩盖住整窗，其余子树 `inert`（见组件）。
+   只有标题、一句不可恢复、心得数与两个按钮——影响摘要网格（原件/图片/学习历史…）随
+   页面内面板一起下线，那是用户明示的决定。 */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(46, 44, 38, 0.42);
 }
-.deletion-confirmation {
-  padding: 22px;
+.modal-dialog {
+  width: min(440px, 100%);
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
+  padding: 26px 26px 22px;
   border: 1px solid #dec5b3;
   border-radius: 16px;
   background: #fff8ef;
+  box-shadow: 0 18px 48px rgba(60, 50, 40, 0.28);
 }
-.deletion-confirmation .note-tab {
-  display: inline-block;
-  margin-bottom: 13px;
-}
-.deletion-confirmation h3 {
-  margin: 0 0 12px;
+.modal-dialog h2 {
+  margin: 0 0 10px;
   font:
     600 19px/1.5 'Songti SC',
     serif;
   color: #6f4939;
+  overflow-wrap: anywhere;
+}
+.deletion-dialog-body {
+  color: #785c4b;
+  font-size: 13px;
+  line-height: 1.9;
+}
+.deletion-dialog-body p {
+  margin: 0;
+}
+.deletion-dialog-body .resource-error {
+  margin: 12px 0 0;
+}
+.deletion-dialog-body ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
 }
 .deletion-warning {
   margin: 0;
@@ -1023,30 +1047,72 @@ fieldset:disabled {
   font-size: 13px;
   line-height: 1.9;
 }
-.deletion-impact {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  list-style: none;
-  padding: 0;
-  margin: 18px 0;
+.modal-dialog .resource-actions {
+  justify-content: flex-end;
+  margin-top: 18px;
 }
-.deletion-impact li {
+
+/* 资料库内的删除入口（TASK-056）：每份一个复选框 + 一个删除图标按钮；选中 ≥1 份时
+   列表上方的选择条给出「删除所选」。 */
+.resource-selection {
   display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 11px 12px;
-  border-radius: 10px;
-  background: #f5eadc;
-  color: #785c4b;
-  font-size: 11px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  min-height: 38px;
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--muted);
 }
-.deletion-impact strong {
-  font-size: 18px;
-  color: #6f4939;
+.resource-select-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
 }
-.deletion-error {
-  margin-bottom: 0;
+.resource-select {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #647e57;
+  cursor: pointer;
+}
+.resource-delete {
+  flex-shrink: 0;
+  color: #8a5a44;
+}
+.resource-delete:hover,
+.resource-delete:focus-visible {
+  border-color: #c9a08a;
+  background: #fbefe6;
+}
+.resource-card-heading .resource-delete {
+  margin-left: auto;
+}
+.resource-row.selected,
+.resource-card.selected {
+  background: #f3f5ec;
+}
+/* 窄屏：列表行装不下「复选框 + 主体 + 右侧元信息 + 删除」一行（320px 实测右侧元信息就
+   已到 340px），让元信息换到第二行整行排；删除按钮留在第一行末尾。 */
+@media (max-width: 760px) {
+  .resource-row {
+    flex-wrap: wrap;
+  }
+  .resource-row-main {
+    flex: 1 1 0;
+  }
+  .resource-row-side {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    white-space: normal;
+    padding-left: 32px;
+  }
+  .resource-row .resource-delete {
+    order: 1;
+  }
 }
 .feature-boundary {
   margin-top: 24px;

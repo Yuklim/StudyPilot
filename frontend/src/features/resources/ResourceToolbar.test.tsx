@@ -294,18 +294,20 @@ describe('reader toolbar', () => {
   })
 
   it('runs the deletion flow outside the popup so a stray click cannot drop the token', async () => {
-    // 删除流程渲染在面板里而不是菜单里：菜单是浮层，点一下别处就整块卸载，
-    // 会把已经取到的一次性令牌、乃至在途的删除请求一起丢掉。
+    // 删除流程渲染在菜单之外：菜单是浮层，点一下别处就整块卸载，会把已经取到的一次性
+    // 令牌、乃至在途的删除请求一起丢掉。TASK-056 起它是模态弹窗（portal 到 body），
+    // 菜单关掉、弹窗留下；点页面别处（不是遮罩）不会关掉它。
     mount()
     await screen.findByRole('button', { name: '更多操作' })
     fireEvent.click(more())
     fireEvent.click(screen.getByRole('menuitem', { name: '删除资料…' }))
-    const panel = await screen.findByRole('region', { name: '放下这一页' })
+    const dialog = await screen.findByRole('dialog', { name: /^删除“/ })
     expect(screen.queryByRole('menu')).toBeNull()
-    expect(within(panel).getByRole('button', { name: '删除这份资料' })).toBeInTheDocument()
-    // 点面板外面不会把它收掉——那是菜单才有的行为。
+    expect(dialog.closest('.reader-menu')).toBeNull()
+    expect(within(dialog).getByRole('button', { name: '删除' })).toBeInTheDocument()
     fireEvent.pointerDown(document.body)
-    expect(screen.getByRole('region', { name: '放下这一页' })).toBeInTheDocument()
+    fireEvent.mouseDown(document.body)
+    expect(screen.getByRole('dialog', { name: /^删除“/ })).toBeInTheDocument()
   })
 
   it('does not steal focus back when a click elsewhere closes the menu', async () => {

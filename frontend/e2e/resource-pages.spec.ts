@@ -37,7 +37,7 @@ test('real UI saves WEB and PASTE, refreshes details, searches and safely reads 
   await expect(page.getByRole('alert')).toContainText('请填写')
   expect(creates).toBe(0)
   await page.reload()
-  await page.getByLabel('标题').fill('页面合成 · 一页阅读方法')
+  await page.getByLabel('标题', { exact: true }).fill('页面合成 · 一页阅读方法')
   await page.getByLabel('网页地址（必填）').fill('https://example.com/reading')
   await openOptionalFields(page)
   await page.getByLabel('来源名称（选填）').fill('合成书屋')
@@ -66,7 +66,7 @@ test('real UI saves WEB and PASTE, refreshes details, searches and safely reads 
   await expect(page).toHaveURL(/\/resources$/)
   await page.getByRole('link', { name: '添加资料', exact: true }).click()
   await page.getByRole('radio', { name: /粘贴内容/ }).check()
-  await page.getByLabel('标题').fill('页面合成 · 写在页边的小记')
+  await page.getByLabel('标题', { exact: true }).fill('页面合成 · 写在页边的小记')
   const original =
     '  # 合成学习摘录\n慢慢积累，也是一种前进。\n<script>document.body.dataset.executed="yes"</script>\n<img src="https://example.com/tracker" onerror="alert(1)">\n '
   await page.getByLabel('粘贴原文（必填）').fill(original)
@@ -140,7 +140,7 @@ test('failed reads can be retried and uncertain saves do not replay or discard i
   await page.getByRole('button', { name: '重新加载' }).click()
   await expect(page.getByRole('navigation', { name: '资料分页' })).toBeVisible()
   await page.getByRole('link', { name: '添加资料', exact: true }).click()
-  await page.getByLabel('标题').fill('合成失败输入')
+  await page.getByLabel('标题', { exact: true }).fill('合成失败输入')
   await page.getByLabel('网页地址（必填）').fill('https://example.com')
   let attempts = 0
   await page.route('**/api/v1/resources', async (route) => {
@@ -151,7 +151,7 @@ test('failed reads can be retried and uncertain saves do not replay or discard i
   })
   await page.getByRole('button', { name: '保存到资料库' }).click()
   await expect(page.getByRole('alert')).toContainText('保存结果尚未确认')
-  await expect(page.getByLabel('标题')).toHaveValue('合成失败输入')
+  await expect(page.getByLabel('标题', { exact: true })).toHaveValue('合成失败输入')
   await expect(page.getByRole('button', { name: '保存到资料库' })).toBeEnabled()
   expect(attempts).toBe(1)
   await page.goto('/resources/00000000-0000-4000-8000-000000000000')
@@ -200,14 +200,14 @@ test('a tag created while saving becomes a clickable filter that survives reload
   const name = '就地新建 · ' + Date.now()
 
   await page.goto('/resources/new')
-  await page.getByLabel('标题').fill('带新标签的资料')
+  await page.getByLabel('标题', { exact: true }).fill('带新标签的资料')
   await page.getByLabel('网页地址（必填）').fill('https://example.com/inline-tag')
   await page.getByRole('button', { name: '选择主题与标签（选填）' }).click()
   await page.getByLabel('新建标签').fill(name)
   await page.getByRole('button', { name: '新建并选用' }).click()
   // Created and selected in place: the half-written form is still standing.
   await expect(page.getByRole('button', { name: `移除已选标签 ${name} ×` })).toBeVisible()
-  await expect(page.getByLabel('标题')).toHaveValue('带新标签的资料')
+  await expect(page.getByLabel('标题', { exact: true })).toHaveValue('带新标签的资料')
   await page.getByRole('button', { name: '保存到资料库' }).click()
   await expect(page.getByRole('heading', { name: '带新标签的资料' })).toBeVisible()
 
@@ -239,7 +239,7 @@ test('a web resource can keep a pasted snapshot of its text alongside the link',
   const body = `# 冻结正文 ${suffix}\n\n第一段。\n\n\`\`\`py\nprint('x')\n\`\`\`\n`
 
   await page.goto('/resources/new')
-  await page.getByLabel('标题').fill('带快照的资料 ' + suffix)
+  await page.getByLabel('标题', { exact: true }).fill('带快照的资料 ' + suffix)
   await page.getByLabel('网页地址（必填）').fill('https://example.com/snapshot')
   await page.getByRole('button', { name: '保存到资料库' }).click()
   await expect(page.getByRole('heading', { name: '带快照的资料 ' + suffix })).toBeVisible()
@@ -283,4 +283,102 @@ test('a web resource can keep a pasted snapshot of its text alongside the link',
   // Dropping the snapshot leaves the resource itself untouched.
   await expect(page.getByRole('heading', { name: '带快照的资料 ' + suffix })).toBeVisible()
   expect(errors).toEqual([])
+})
+
+test('resources can be deleted from the library, one or several at a time, through the real backend', async ({
+  page,
+}) => {
+  // TASK-056（用户 2026-09-12 选定）：删除是模态弹窗、两次点击、资料库里就能删（单个 + 多选）。
+  // 真实后端：预览取一次性令牌 → 持令牌删除；这里只看用户看得见的结果与后端的 404。
+  await page.goto('/')
+  const ids = await page.evaluate(async () => {
+    const modulePath = '/src/api/client.ts'
+    const { api } = await import(modulePath)
+    const out: string[] = []
+    for (const name of ['删除合成 甲', '删除合成 乙', '删除合成 丙']) {
+      const created = (await api.request('/api/v1/resources', {
+        method: 'POST',
+        body: { source_type: 'WEB', title: name, source_url: 'https://example.com/delete' },
+      })) as { data: { id: string } }
+      out.push(created.data.id)
+    }
+    // 甲有两条心得：弹窗要把它们的数量报出来。
+    for (const content of ['心得一', '心得二'])
+      await api.request(`/api/v1/resources/${out[0]}/notes`, { method: 'POST', body: { content } })
+    return out
+  })
+  await page.goto('/resources')
+  await page.getByLabel('搜索资料').fill('删除合成')
+  await page.getByRole('button', { name: '搜索 / 应用筛选' }).click()
+  await expect(page.getByText('共 3 份资料', { exact: true })).toBeVisible()
+
+  // 单个：每份资料旁的删除按钮 → 弹窗 → 删除。
+  await page.getByRole('button', { name: '删除 删除合成 丙' }).click()
+  const single = page.getByRole('dialog', { name: '删除“删除合成 丙”？' })
+  await expect(single).toBeVisible()
+  await expect(single.getByText('删除后不可恢复。')).toBeVisible()
+  await expect(single.getByText(/心得会一起删除/)).toHaveCount(0)
+  await single.getByRole('button', { name: '删除' }).click()
+  await expect(single).toHaveCount(0)
+  await expect(page.getByText('共 2 份资料', { exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: '删除合成 丙' })).toHaveCount(0)
+
+  // 多选：勾两份 → 删除所选 → 一次确认（心得数是两份之和）。
+  await page.getByRole('checkbox', { name: '选择 删除合成 甲' }).check()
+  await page.getByRole('checkbox', { name: '选择 删除合成 乙' }).check()
+  await expect(page.getByText('已选 2 份')).toBeVisible()
+  await page.getByRole('button', { name: '删除所选' }).click()
+  const multi = page.getByRole('dialog', { name: '删除 2 份资料？' })
+  await expect(multi).toBeVisible()
+  await expect(multi.getByText('这些资料的 2 条心得会一起删除。')).toBeVisible()
+  // 模态：弹窗外的页面不可聚焦（inert），Tab 不会溜出去。
+  await expect(multi.getByRole('button', { name: '取消' })).toBeFocused()
+  await page.keyboard.press('Shift+Tab')
+  expect(
+    await page.evaluate(() => Boolean(document.activeElement?.closest('[role="dialog"]'))),
+  ).toBe(true)
+  await multi.getByRole('button', { name: '删除' }).click()
+  await expect(multi).toHaveCount(0)
+  await expect(page.getByText('共 0 份资料', { exact: true })).toBeVisible()
+
+  // 后端确实删了：三份都 404，令牌从未出现在页面上。
+  const statuses = await page.evaluate(async (list) => {
+    const modulePath = '/src/api/client.ts'
+    const { api, ApiError } = await import(modulePath)
+    const out: number[] = []
+    for (const id of list) {
+      try {
+        await api.request(`/api/v1/resources/${id}`)
+        out.push(200)
+      } catch (e: unknown) {
+        out.push(e instanceof ApiError ? ((e as { status?: number }).status ?? -1) : -1)
+      }
+    }
+    return out
+  }, ids)
+  expect(statuses).toEqual([404, 404, 404])
+})
+
+test('the reader page deletes in two clicks and returns to the library', async ({ page }) => {
+  await page.goto('/')
+  const id = await page.evaluate(async () => {
+    const modulePath = '/src/api/client.ts'
+    const { api } = await import(modulePath)
+    const created = (await api.request('/api/v1/resources', {
+      method: 'POST',
+      body: { source_type: 'WEB', title: '删除合成 详情页', source_url: 'https://example.com/d' },
+    })) as { data: { id: string } }
+    return created.data.id
+  })
+  await page.goto(`/resources/${id}`)
+  await expect(page.getByRole('heading', { name: '删除合成 详情页', level: 1 })).toBeVisible()
+  await page.getByRole('button', { name: '更多操作' }).click()
+  await page.getByRole('menuitem', { name: '删除资料…' }).click()
+  const dialog = page.getByRole('dialog', { name: '删除“删除合成 详情页”？' })
+  await expect(dialog).toBeVisible()
+  // 旧流程的「删除这份资料」中间步骤没有了。
+  await expect(page.getByRole('button', { name: '删除这份资料' })).toHaveCount(0)
+  await dialog.getByRole('button', { name: '删除' }).click()
+  await expect(page).toHaveURL(/\/resources$/)
+  await expect(page.getByRole('heading', { name: '资料库', level: 1 })).toBeVisible()
 })
