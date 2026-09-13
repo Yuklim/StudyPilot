@@ -434,9 +434,7 @@ def test_actual_stale_orm_update_classified_without_replay(
     assert calls == 2 and authorized.get(url(item)).json() == current
 
 
-def test_real_competing_updates_one_winner(
-    authorized: TestClient, item: dict[str, Any], monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_real_competing_updates_one_winner(authorized: TestClient, item: dict[str, Any]) -> None:
     # TASK-058: BEGIN IMMEDIATE serialises the two write transactions, so the barrier
     # lines up the requests instead of the inside of `check_version`. One winner, and
     # the loser is a clean 409 (no more "database is locked" 500 for the second writer).
@@ -453,13 +451,7 @@ def test_real_competing_updates_one_winner(
     winners = [r for r in results if r.status_code == 200]
     assert len(winners) == 1
     loser = next(r for r in results if r.status_code != 200)
-    error(
-        loser,
-        loser.status_code,
-        "VERSION_CONFLICT" if loser.status_code == 409 else "UNKNOWN_ERROR",
-        2 if loser.status_code == 409 else None,
-    )
-    assert loser.status_code in {409, 500}
+    error(loser, 409, "VERSION_CONFLICT", 2)
     assert winners[0].json()["data"]["version"] == 2
     assert authorized.get(url(item)).json() == winners[0].json()
 

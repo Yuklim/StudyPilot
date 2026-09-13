@@ -404,7 +404,6 @@ def test_actual_orm_stale_write_is_classified_without_replay(
 def test_real_competing_transactions_do_not_overwrite_or_delete_newer_content(
     authorized: TestClient,
     item: dict[str, Any],
-    monkeypatch: pytest.MonkeyPatch,
     second_action: str,
 ) -> None:
     note = add(authorized, item)
@@ -834,7 +833,6 @@ def test_scope_move_failure_rolls_back_without_replay(
 def test_real_competing_scope_moves_have_a_single_winner(
     authorized: TestClient,
     item: dict[str, Any],
-    monkeypatch: pytest.MonkeyPatch,
     move: str,
 ) -> None:
     if move == "attach":

@@ -58,7 +58,7 @@ checks = ["backend"]
   - 新用例 `test_concurrent_previews_both_succeed`（两线程同时预览同一资料 → 均 200、令牌不同）修前红：`[(500, ''), (200, '…')]`；`test_transactions_begin_immediate_and_commit`（`before_cursor_execute` 抓到的首条语句为 `BEGIN IMMEDIATE`；提交后 `topics` 里查得到该行——防 legacy/autocommit 混用导致静默不提交）修前红：首条语句是 `INSERT INTO topics …`。修后两条绿。
   - 真实服务（e2e 沙盒）：修前同一资料并发两次预览 `["UNKNOWN_ERROR/500","ok"]`；修后并发三次 `["ok","ok","ok"]`。
   - 迁移路径：临时库 `uv run alembic upgrade head` → `0005_snapshot_assets (head)`。
-- **既有用例调整**（见「实现中修订授权范围」）：7 条，全部是测试自身制造的事务叠开/事务内 Barrier；断言不减，并发 5 条把「loser 可为 500」收紧为「必须 409（删除先赢时 404）」。`[delete]` 变体在修改初版偶发红（删除先赢 → 后到的更新 404），按真实语义补上分支。
+- **既有用例调整**（见「实现中修订授权范围」）：7 条，全部是测试自身制造的事务叠开/事务内 Barrier；断言不减，并发 5 条把「loser 可为 500」收紧为「必须 409（删除先赢时 404）」——首轮候选漏收紧了 `test_resource_updates.py` 那条（仍容忍 500），独立 Review F1 指出后补齐（`error(loser, 409, "VERSION_CONFLICT", 2)`），并去掉三处已无用的 `monkeypatch` 形参、更新 `connection.py` 顶部一处仍讲非 legacy 控制的注释。`[delete]` 变体在修改初版偶发红（删除先赢 → 后到的更新 404），按真实语义补上分支。
 - **检查**：`check_task.py --candidate 858c11e` → `STATIC PASS`，`files=6`，`product_fingerprint=2302673e…`，`profiles=backend`：ruff format/check、mypy、**pytest 555 passed**（连续 5 次全绿，基线 553 + 2）、`uv build` 全 exit 0 → **CHECKS PASS**；前端 e2e（真实后端跑在新事务模式下）**60 passed**。
 - **已知取舍**：所有事务（含只读）都以 IMMEDIATE 开始 → 同一时刻只有一个事务在跑，并发到达的第二个在 BEGIN 处按 `busy_timeout`（5s）等待。本机单用户、事务均为毫秒级，可接受；不开 WAL。若日后出现长事务，改为「只对写事务 IMMEDIATE」需要在 7 个应用层 `_transaction` 入口区分读写（登记为遗留）。
 

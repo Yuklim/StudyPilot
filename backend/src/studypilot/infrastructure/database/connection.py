@@ -14,8 +14,9 @@ from studypilot.infrastructure.config import get_settings
 
 
 def set_sqlite_foreign_keys(connection: SQLiteConnection, *, enabled: bool) -> None:
-    # PRAGMA foreign_keys must be set outside a transaction, including with
-    # Python 3.13's explicit non-legacy transaction control.
+    # PRAGMA foreign_keys must be set outside a transaction. The engine now uses the
+    # legacy transaction control with isolation_level=None (TASK-058), so nothing is
+    # open at connect time; toggling `autocommit` here is kept as a harmless guard.
     previous = connection.autocommit
     connection.autocommit = True
     try:
