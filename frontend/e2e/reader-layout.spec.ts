@@ -223,3 +223,36 @@ test('a body that opens with the resource title itself shows that title only onc
   await page.getByRole('menuitem', { name: '看 Markdown 源码' }).click()
   await expect(page.locator('.snapshot-body')).toContainText(`# ${title}`)
 })
+
+test('the sidebar toggle keeps its size and collapsed icons sit centered', async ({ page }) => {
+  // TASK-055（用户 2026-09-12：「切换图标收起与展开状态下大小不一样；我的学习四个功能的
+  // 图标也不在中央」）。改前实测：展开态按钮被 flex 列压成 32×18（收起态 32×32）；收起态
+  // 图标中心比链接中心偏左 6.5px（`.nav-dot` 与 13px gap 仍在占位）。**只能在真实浏览器里量。**
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/resources')
+  const toggleBox = () => page.locator('.nav-toggle').boundingBox()
+  const expanded = (await toggleBox())!
+  expect(expanded.width, '展开态按钮宽').toBeCloseTo(32, 0)
+  expect(expanded.height, '展开态按钮高（改前被压成 18）').toBeCloseTo(32, 0)
+  await page.getByRole('button', { name: '收起导航栏' }).click()
+  await expect(page.getByRole('button', { name: '展开导航栏' })).toBeVisible()
+  const collapsed = (await toggleBox())!
+  expect(collapsed.width).toBeCloseTo(expanded.width, 0)
+  expect(collapsed.height).toBeCloseTo(expanded.height, 0)
+  // 收起态每个入口（含「添加资料」）的图标中心与入口中心重合（±1px）。
+  const offsets = await page.evaluate(() =>
+    [...document.querySelectorAll<HTMLElement>('.primary-nav a, .add-link')].map((link) => {
+      const icon = link.querySelector('.icon')!
+      const l = link.getBoundingClientRect()
+      const i = icon.getBoundingClientRect()
+      return {
+        name: link.getAttribute('aria-label'),
+        offset: i.x + i.width / 2 - (l.x + l.width / 2),
+      }
+    }),
+  )
+  expect(offsets.length).toBeGreaterThanOrEqual(4)
+  for (const { name, offset } of offsets) {
+    expect(Math.abs(offset), `收起态「${name}」图标居中（改前偏左 6.5px）`).toBeLessThanOrEqual(1)
+  }
+})
