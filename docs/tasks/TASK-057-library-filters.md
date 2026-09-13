@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-057"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "改公共 API 与契约基线：`GET /resources` 的 `topic_id` 由单值改为可重复（任一匹配）、`topic_unassigned=true` 由与 `topic_id` 互斥改为可并列（OR）、新增 `tag_match=any|all`（默认 `all` 保持既有语义）；同步 `openapi-v1.json` 与契约文档，后端 ResourceQuery/存储层/测试随之改。前端资料库筛选形态重做（主题/标签以已有项芯片列出、点选即生效、去掉「按主题与标签筛选」面板）。命中 risk-policy `public-api`；跨 backend/docs/frontend 三处。L3：独立只读 Review + 独立 Integration/Acceptance。"
 risk_flags = ["public-api", "business"]
@@ -98,10 +98,20 @@ checks = ["backend", "frontend", "contracts"]
 
 ## 实现与测试
 
-（实施后填写）
+- **实现 SHA**：后端 + 契约 `beb0996`；前端 `26db654`；范围追加 `f14b33a`（记录）。合计 `git diff --numstat d3a0754..HEAD` 19 文件。
+- **后端**（`contracts.py` / `api/resources.py` / `resource_store.py` / `test_resources.py`）：`ResourceQuery.topic_id: list[UUID]`（可重复），去掉「与 `topic_unassigned` 互斥」校验，新增 `tag_match: Literal["all","any"]="all"`；`list_resources` 的可重复参数白名单加 `topic_id`；存储层主题条件 `OR(topic_id IN set, topic_id IS NULL)`，标签 `any` 用 `LearningResource.id IN (SELECT resource_id FROM resource_tags WHERE tag_id IN set)`。**为什么不是 correlated EXISTS + IN**：SQLite 3.51 会把那种写法展平成 join，同一份资料按命中的标签数重复出现（实现时先写了 EXISTS 版本，`total_items` 2≠1 抓到，用内存库最小复现确认，注释已写明）；单标签的逐个 EXISTS（`all`）不受影响。测试：`test_invalid_query_before_database` 去掉「互斥 422」用例、加 `tag_match=`/`some`/重复、`topic_id=not-a-uuid`；`test_classification_filters…` 加多主题 OR、主题+未分配 OR、`tag_match` 默认/all/any、维度之间仍为「且」共 11 组期望。
+- **契约**：`openapi-v1.json` 的 `topic_id` 改 array 并写明并列语义、`tag_id` 描述改为由 `tag_match` 决定、新增 `tag_match`（enum all|any，default all）；契约文档「搜索、筛选与排序」两行改写（并明确学习记录/复习列表的 `topic_id` 仍单值）。
+- **前端**：新 `LibraryFilters.tsx`（`ClassificationChips`：`listClassifications(kind, 'page_size=100&sort=name')`，芯片 `aria-pressed`，主题多一枚「未分配」，网址里带着但列表里没有的 id 显示为「已不存在或未列出」孤儿芯片且仍筛选、可点掉；>100 提示去分类整理）；`ResourceLibrary.tsx`：`Applied` 改为 `topicIds[]/unassigned/tagIds[]`，请求有标签即 `tag_match=any`，类型/状态/排序与芯片全部走 `pick()`（**函数式 `setParams`，基于最新网址算**，连点两枚芯片不会互相覆盖），搜索词仍是唯一草稿（按钮改名「搜索」），渲染期同步只在网址 `q` 变化时重置草稿（点芯片不会吞掉正在输入的搜索词），`unreadable` 提示与按 id 逐个取名的 effect 删除（由孤儿芯片承担）；`ClassificationPicker.tsx` 删除 `filter` 模式（表单用法不变）；CSS 加 `.filter-chips/.chip*`。
+- **测试**：单测重写 8 条（`ResourcePages.test.tsx` 6 + `ClassificationPages.test.tsx` 1 + `ResourceDeleteDialog.test.tsx` 按钮名 1），新增 `libraryRequests()` 按路径分派的桩（芯片会同时读主题/标签，`mockResolvedValueOnce` 顺序会被吃掉）；新增 1 条「主题芯片 + 未分配 + 多主题任一 → 网址与请求参数」。契约断言逐条保留：网址↔请求参数、翻页/筛选回第一页、重置回默认、读不懂的网址值忽略并提示、不存在 id 仍筛选。e2e：`taxonomy-pages` 改为芯片流程并加「标签任一」（一个无人用的标签与「待读」并选仍命中；只留无人用为 0）与「未分配并列」；`resource-pages` 标签链接用例改断言芯片按下态；4 个文件的「搜索 / 应用筛选」→「搜索」；`scaffold` 守卫白名单加两条读；`reader-notes-sidebar` 一处按文字定位（目标 7）。
+- **判别性验证**（临时改动后实跑、随后恢复）：A 让 `pick()` 不写网址 → 6 条红；B 不带 `tag_match=any` → 2 条红；C 主题只发第一个 → 2 条红；D 后端 `any` 分支退回全匹配 → `test_classification_filters…` 红（`total_items 0≠1`）。
+- **检查**（候选 `f14b33a`）：`check_task.py --candidate` → `STATIC PASS`，`files=19`，`product_fingerprint=cd3adc17…`，`profiles=backend,contracts,frontend`：ruff format/check、mypy、**pytest 553 passed**、`uv build`、openapi 校验、format:check/lint/typecheck、**vitest 571 passed**、build 全 exit 0 → **CHECKS PASS**；`npm run test:e2e` **60 passed**（基线 60：−0 +0，taxonomy 用例扩写、无新增文件）。
+- **已知限制**：芯片只列前 100 个主题/标签（按名称升序）；更多的不在网址里选不到（提示去分类整理）。资料数角标来自列表接口的 `resource_count`，不随筛选变化。
+- **既有问题（顺带确认，未修）**：≤760px 顶栏两组导航文字重叠（`main` 即存在，TASK-056 已登记）。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-（实施后填写）
+- 候选 SHA：本提交之后的 HEAD 即候选（`f14b33a` + 本证据写回 + 状态登记），精确 SHA 在 Review 写回时补记。
+- Review / Integration：待派。
+- 最终状态：status=**IN_REVIEW**。
 <!-- EVIDENCE:END -->
