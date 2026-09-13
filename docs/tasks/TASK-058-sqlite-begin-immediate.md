@@ -12,6 +12,9 @@ base = "881e9aeb1244af1a2885e7d8d390fb473bfd6827"
 allowed_paths = [
   "backend/src/studypilot/infrastructure/database/connection.py",
   "backend/tests/test_resources.py",
+  "backend/tests/test_database.py",
+  "backend/tests/test_notes.py",
+  "backend/tests/test_resource_updates.py",
   "docs/tasks/TASK-057-library-filters.md",
   "docs/tasks/TASK-058-sqlite-begin-immediate.md",
   "docs/tasks/任务索引.md",
@@ -31,6 +34,13 @@ checks = ["backend"]
 ### 顺带完成的状态登记
 
 `TASK-057-library-filters.md`（PR #65，merge `881e9ae`）登记 MERGED，索引同步。
+
+### 实现中修订授权范围（登记后、冻结前）
+
+改为 BEGIN IMMEDIATE 后，7 条既有用例失败——全部是**测试自身**在一个线程里叠开两个事务或在事务内部用 Barrier 制造「两个写者同时在 check_version 里」的形态，这正是 IMMEDIATE 使之不可能的形态：
+- `test_database.py`（2 条）：「每个新连接都启用 FK」改在原生 DBAPI 连接上读 PRAGMA（不经 SQLAlchemy 开事务）；「版本冲突与 noop 保时间戳」把第二个会话的读取挪到第一个会话 `commit()` 之后。断言不变。
+- `test_notes.py`（2 个参数化函数共 4 条）与 `test_resource_updates.py`（1 条）「真实并发」：Barrier 从 `check_version` 内部挪到**发请求之前**（两个请求同时在途，事务在 BEGIN 处串行）；**断言收紧**：此前容忍 loser 为 `500 UNKNOWN_ERROR`（正是本任务修的「database is locked」），现在必须是干净的 `409 VERSION_CONFLICT`（删除先赢时为 `404`）。不再 monkeypatch `check_version`。
+故追加上述三个测试文件到 `allowed_paths`。
 
 ## 完成条件
 

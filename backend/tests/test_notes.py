@@ -408,36 +408,33 @@ def test_real_competing_transactions_do_not_overwrite_or_delete_newer_content(
     second_action: str,
 ) -> None:
     note = add(authorized, item)
+    # TASK-058: transactions open with BEGIN IMMEDIATE, so two writers can no longer be
+    # inside `check_version` at the same time -- the barrier now lines up the *requests*
+    # (both in flight together; the second waits at BEGIN until the first commits).
+    # The loser must be a clean 409 with the current version: the former 500 tolerance
+    # was exactly the "database is locked" race this change removes.
     barrier = Barrier(2, timeout=5)
-    original = NoteStore.check_version
-
-    def synchronize(record: Note, expected: int) -> None:
-        original(record, expected)
-        barrier.wait()
 
     def write(index: int) -> Any:
         with TestClient(create_app(), base_url="http://127.0.0.1:8000") as client:
             authorize(client)
+            barrier.wait()
             if index == 1 and second_action == "delete":
                 return client.delete(path(item, note), headers={"If-Match": '"1"'})
             return client.patch(
                 path(item, note), json={"content": f"winner {index}", "expected_version": 1}
             )
 
-    with monkeypatch.context() as patch:
-        patch.setattr(NoteStore, "check_version", staticmethod(synchronize))
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            responses = list(pool.map(write, [0, 1]))
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        responses = list(pool.map(write, [0, 1]))
     winners = [r for r in responses if r.status_code in {200, 204}]
     assert len(winners) == 1
     loser = next(r for r in responses if r not in winners)
-    assert loser.status_code in {409, 500}
-    error(
-        loser,
-        loser.status_code,
-        "VERSION_CONFLICT" if loser.status_code == 409 else "UNKNOWN_ERROR",
-        {"current_version": 2} if loser.status_code == 409 else {},
-    )
+    if winners[0].status_code == 204:
+        # The delete committed first: the late update finds no note at all.
+        error(loser, 404, "NOTE_NOT_FOUND")
+    else:
+        error(loser, 409, "VERSION_CONFLICT", {"current_version": 2})
     if winners[0].status_code == 204:
         error(authorized.get(path(item, note)), 404, "NOTE_NOT_FOUND")
     else:
@@ -848,26 +845,22 @@ def test_real_competing_scope_moves_have_a_single_winner(
         note = add(authorized, item, "并发解除")
         url = detach_url(item, note)
         body = {"expected_version": 1}
+    # TASK-058: see the competing update test above -- requests race, transactions
+    # serialise under BEGIN IMMEDIATE, and the loser is a clean 404/409, never a 500.
     barrier = Barrier(2, timeout=5)
-    original = NoteStore.check_version
-
-    def synchronize(record: Note, expected: int) -> None:
-        original(record, expected)
-        barrier.wait()
 
     def write(_index: int) -> Any:
         with TestClient(create_app(), base_url="http://127.0.0.1:8000") as client:
             authorize(client)
+            barrier.wait()
             return client.post(url, json=body)
 
-    with monkeypatch.context() as patch:
-        patch.setattr(NoteStore, "check_version", staticmethod(synchronize))
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            responses = list(pool.map(write, [0, 1]))
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        responses = list(pool.map(write, [0, 1]))
     winners = [r for r in responses if r.status_code == 200]
     assert len(winners) == 1
     loser = next(r for r in responses if r is not winners[0])
-    assert loser.status_code in {404, 409, 500}
+    assert loser.status_code in {404, 409}
     data = winners[0].json()["data"]
     assert data["id"] == note["id"]
     assert data["version"] == 2

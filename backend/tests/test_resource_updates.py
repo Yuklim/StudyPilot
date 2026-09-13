@@ -437,22 +437,19 @@ def test_actual_stale_orm_update_classified_without_replay(
 def test_real_competing_updates_one_winner(
     authorized: TestClient, item: dict[str, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # TASK-058: BEGIN IMMEDIATE serialises the two write transactions, so the barrier
+    # lines up the requests instead of the inside of `check_version`. One winner, and
+    # the loser is a clean 409 (no more "database is locked" 500 for the second writer).
     barrier = Barrier(2, timeout=5)
-    original = ResourceStore.check_version
-
-    def synchronize(row: LearningResource, expected: int) -> None:
-        original(row, expected)
-        barrier.wait()
 
     def write(index: int) -> Any:
         with TestClient(create_app(), base_url="http://127.0.0.1:8000") as client:
             authorize(client)
+            barrier.wait()
             return client.patch(url(item), json={"expected_version": 1, "title": f"winner {index}"})
 
-    with monkeypatch.context() as patch:
-        patch.setattr(ResourceStore, "check_version", staticmethod(synchronize))
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            results = list(pool.map(write, [0, 1]))
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(write, [0, 1]))
     winners = [r for r in results if r.status_code == 200]
     assert len(winners) == 1
     loser = next(r for r in results if r.status_code != 200)
