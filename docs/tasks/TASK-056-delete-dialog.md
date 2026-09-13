@@ -8,7 +8,7 @@ risk = "L3"
 risk_reason = "重做「删除资料」这条**销毁性**用户路径的前端交互：入口从详情页 ⋯ 菜单扩展到资料库列表（单个 + 多选），确认由页面内嵌面板改为模态弹窗，确认文案由 7 格影响摘要精简为「不可恢复 + 心得会一起删除」。后端契约（预览取一次性令牌 → 持令牌删除 → 影响变化 409 须重新确认）**一字不改**，但前端要在多份资料上串行走这条契约、并把令牌过期/重放/影响变化的受控恢复都做进弹窗；命中 risk-policy 的 `deletion` 高风险标记，且改错了会静默多删或少删用户数据。因此 L3：独立只读 Review + 独立 Integration/Acceptance。"
 risk_flags = ["deletion", "business"]
 owner = "coordinator"
-base = "23c9dc5b17bc8de24e7c10ef28b06f609069e1c8"
+base = "bcebb8762600891418c2853648425bc0f7f54895"
 allowed_paths = [
   "frontend/src/features/resources/ResourceDeleteDialog.tsx",
   "frontend/src/features/resources/ResourceDeleteDialog.test.tsx",
@@ -151,6 +151,7 @@ checks = ["frontend"]
 | Acceptance 2（e2e 日志附 SHA） | **记录**：本次 e2e 日志由主 Agent 在 `7b01175` 干净工作区实跑，Integration 已以行号间接核对；后续任务可在日志头加 `git rev-parse HEAD`。 | 可记录后继续 |
 | Acceptance 3（遮罩正向关闭用例、按钮文案） | **记录**：遮罩正向关闭无单测（e2e/单测均只有负向）；部分失败全失败态按钮文案「重试」、混合态「重试未删除的」，目标 6 的措辞按实现理解。登记遗留 2/3。 | 可选 |
 
+- **合并前并入 main（2026-09-12）**：用户合并 PR #63（TASK-055，merge `bcebb87`）后本 PR 出现冲突；`git merge origin/main` → `cdcb01c`，只解 `任务索引.md` 表头相邻行冲突（保留 main 的 055/053 行 + 本分支 056 行），`styles.css` 自动合并。核实：`git diff 7b01175..cdcb01c -- frontend/` 的全部增删行与 `git diff 23c9dc5..bcebb87 -- frontend/`（即 TASK-055 的改动）**逐行一致**，本任务代码未变；基线前移为 `bcebb87`。并入后 `check_task.py --worktree` → `STATIC PASS base=bcebb87`，`files=13`，`product_fingerprint=b57c8c76…`，**570 passed → CHECKS PASS**；`npm run test:e2e` **60 passed**（= 并入后基线 58 + 2）。Review/Acceptance 结论按 §6 继承（并入内容为已独立审过并合并的 L1 改动，与本任务无路径重叠的 hunk）。
 - 最终状态/风险/用户操作：status=**ACCEPTED**（L3：1 Worker → 自动检查 → 独立只读 Review（两轮）→ 独立 Integration/Acceptance → 主 Agent 汇总）。**未 MERGED**——是否合并由用户本人决定，Agent 不合并、不推送 main。
 - 非阻断遗留项：
   1. （Review F6）资料库内删除成功后焦点落 body（opener 已卸载）。重评触发条件：键盘用户反馈或下次触碰 `ResourceLibrary` 时顺手聚焦「共 N 份资料」。
