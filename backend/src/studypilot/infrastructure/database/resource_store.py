@@ -441,16 +441,35 @@ class ResourceStore:
             statement = statement.where(LearningProgress.status != "ARCHIVED")
         if query.source_type:
             statement = statement.where(LearningResource.source_type.in_(query.source_type))
-        if query.topic_id is not None:
-            statement = statement.where(LearningResource.topic_id == query.topic_id)
+        # TASK-057: any of the selected topics, optionally OR-ed with "unassigned".
+        topic_clauses = []
+        if query.topic_id:
+            topic_clauses.append(LearningResource.topic_id.in_(set(query.topic_id)))
         if query.topic_unassigned:
-            statement = statement.where(LearningResource.topic_id.is_(None))
-        for tag in set(query.tag_id):
+            topic_clauses.append(LearningResource.topic_id.is_(None))
+        if topic_clauses:
+            statement = statement.where(or_(*topic_clauses))
+        tags = set(query.tag_id)
+        if tags and query.tag_match == "any":
+            # `IN (subquery)`, deliberately not a correlated `EXISTS ... IN (...)`: SQLite
+            # 3.51 flattens that form into a join and returns the same resource once per
+            # matching tag (reproduced in a unit test while building this; the
+            # single-tag EXISTS below is unaffected).
             statement = statement.where(
-                select(ResourceTag.resource_id)
-                .where(ResourceTag.resource_id == LearningResource.id, ResourceTag.tag_id == tag)
-                .exists()
+                LearningResource.id.in_(
+                    select(ResourceTag.resource_id).where(ResourceTag.tag_id.in_(tags))
+                )
             )
+        else:
+            # `all`: one EXISTS per tag, none may be missing (the existing meaning).
+            for tag in tags:
+                statement = statement.where(
+                    select(ResourceTag.resource_id)
+                    .where(
+                        ResourceTag.resource_id == LearningResource.id, ResourceTag.tag_id == tag
+                    )
+                    .exists()
+                )
         if query.progress_min is not None:
             statement = statement.where(LearningProgress.progress_percent >= query.progress_min)
         if query.progress_max is not None:

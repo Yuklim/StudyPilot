@@ -194,7 +194,10 @@ def test_malformed_and_unsupported_before_database(
         "updated_to=2026-02-30T00:00:00Z",
         "created_from=2026-09-03T00:00:00Z&created_to=2026-09-02T00:00:00Z",
         "topic_unassigned=1",
-        f"topic_id={uuid4()}&topic_unassigned=true",
+        "tag_match=",
+        "tag_match=some",
+        "tag_match=any&tag_match=all",
+        "topic_id=not-a-uuid",
     ],
 )
 def test_invalid_query_before_database(
@@ -405,6 +408,30 @@ def test_classification_filters_projection_and_read_stability(
         authorized.get("/api/v1/resources?topic_unassigned=false").json()["page"]["total_items"]
         == 2
     )
+    # TASK-057: topics match any of the repeated `topic_id`, OR-ed with "unassigned".
+    unrelated = str(uuid4())
+    for query, expected in (
+        (f"topic_id={topic_id}&topic_id={unrelated}", 1),
+        (f"topic_id={unrelated}&topic_id={unrelated}", 0),
+        (f"topic_id={topic_id}&topic_unassigned=true", 2),
+        (f"topic_id={unrelated}&topic_unassigned=true", 1),
+        (f"topic_id={topic_id}&topic_unassigned=false", 1),
+    ):
+        page = authorized.get("/api/v1/resources?" + query).json()["page"]
+        assert page["total_items"] == expected, query
+    # TASK-057: `tag_match` defaults to `all`; `any` needs at least one of the tags.
+    for query, expected in (
+        (f"tag_id={tag_ids[0]}&tag_id={unrelated}", 0),
+        (f"tag_id={tag_ids[0]}&tag_id={unrelated}&tag_match=all", 0),
+        (f"tag_id={tag_ids[0]}&tag_id={unrelated}&tag_match=any", 1),
+        (f"tag_id={unrelated}&tag_match=any", 0),
+        (f"tag_id={tag_ids[0]}&tag_id={tag_ids[1]}&tag_match=any", 1),
+        # Dimensions still AND together: a tag match does not widen the topic filter.
+        (f"tag_id={tag_ids[1]}&tag_match=any&topic_unassigned=true", 0),
+        (f"tag_id={tag_ids[1]}&tag_match=any&topic_id={topic_id}&topic_unassigned=true", 1),
+    ):
+        page = authorized.get("/api/v1/resources?" + query).json()["page"]
+        assert page["total_items"] == expected, query
     assert (
         authorized.get("/api/v1/resources?learning_status=ARCHIVED").json()["page"]["total_items"]
         == 1
