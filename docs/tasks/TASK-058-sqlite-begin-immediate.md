@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-058"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "改 `backend/src/studypilot/infrastructure/database/connection.py` 的事务模式（命中 risk-policy 高风险路径 `backend/**/database*`）：从 sqlite3 的隐式 BEGIN DEFERRED 改为 SQLAlchemy `begin` 事件显式 `BEGIN IMMEDIATE`。影响所有会话与迁移连接；改错会让提交静默失效或把所有请求串成一串。因此 L3：独立只读 Review + 独立 Integration/Acceptance，并以并发回归测试与全量后端套件为证据。"
 risk_flags = ["critical-data", "internal-refactor"]
@@ -51,10 +51,21 @@ checks = ["backend"]
 
 ## 实现与测试
 
-（实施后填写）
+- **实现 SHA**：`858c11e`（实现 + 测试同一提交）。`git diff --numstat 881e9ae..858c11e`：`connection.py` +20/−2、`test_resources.py` +51/0、`test_database.py` +11/−5、`test_notes.py` +18/−32、`test_resource_updates.py` +7/−12。
+- **变更**（`infrastructure/database/connection.py`）：`connect_args` 由 `{"autocommit": False, ...}` 改为 `{"isolation_level": None, ...}`（legacy 事务控制、驱动不隐式 BEGIN；注释写明**不能**用 sqlite3 的 `autocommit=True`——那种模式下 commit/rollback 是空操作）；新增引擎 `begin` 事件 `_begin_immediate`：`connection.exec_driver_sql("BEGIN IMMEDIATE")`。`_sqlite_pragma`（FK/busy_timeout）不变，仍在事务外生效（实跑：运行连接 `PRAGMA foreign_keys`=1、迁移引擎=0）。
+- **根因复现与修复证据**：
+  - 修前，临时打印 `respond()` 吞掉的异常：`sqlite3.OperationalError: database is locked`，抛在 `preview_deletion` 的 `flush()`（两个 DEFERRED 事务读后同时升级为写，第二个立即 `SQLITE_BUSY`，不走 `busy_timeout`）。
+  - 新用例 `test_concurrent_previews_both_succeed`（两线程同时预览同一资料 → 均 200、令牌不同）修前红：`[(500, ''), (200, '…')]`；`test_transactions_begin_immediate_and_commit`（`before_cursor_execute` 抓到的首条语句为 `BEGIN IMMEDIATE`；提交后 `topics` 里查得到该行——防 legacy/autocommit 混用导致静默不提交）修前红：首条语句是 `INSERT INTO topics …`。修后两条绿。
+  - 真实服务（e2e 沙盒）：修前同一资料并发两次预览 `["UNKNOWN_ERROR/500","ok"]`；修后并发三次 `["ok","ok","ok"]`。
+  - 迁移路径：临时库 `uv run alembic upgrade head` → `0005_snapshot_assets (head)`。
+- **既有用例调整**（见「实现中修订授权范围」）：7 条，全部是测试自身制造的事务叠开/事务内 Barrier；断言不减，并发 5 条把「loser 可为 500」收紧为「必须 409（删除先赢时 404）」。`[delete]` 变体在修改初版偶发红（删除先赢 → 后到的更新 404），按真实语义补上分支。
+- **检查**：`check_task.py --candidate 858c11e` → `STATIC PASS`，`files=6`，`product_fingerprint=2302673e…`，`profiles=backend`：ruff format/check、mypy、**pytest 555 passed**（连续 5 次全绿，基线 553 + 2）、`uv build` 全 exit 0 → **CHECKS PASS**；前端 e2e（真实后端跑在新事务模式下）**60 passed**。
+- **已知取舍**：所有事务（含只读）都以 IMMEDIATE 开始 → 同一时刻只有一个事务在跑，并发到达的第二个在 BEGIN 处按 `busy_timeout`（5s）等待。本机单用户、事务均为毫秒级，可接受；不开 WAL。若日后出现长事务，改为「只对写事务 IMMEDIATE」需要在 7 个应用层 `_transaction` 入口区分读写（登记为遗留）。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-（实施后填写）
+- 候选 SHA：本提交之后的 HEAD 即候选（`858c11e` + 本证据写回 + 状态登记），精确 SHA 在 Review 写回时补记。
+- Review / Integration：待派。
+- 最终状态：status=**IN_REVIEW**。
 <!-- EVIDENCE:END -->
