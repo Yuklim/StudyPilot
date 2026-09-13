@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-057"
-status = "IN_REVIEW"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "改公共 API 与契约基线：`GET /resources` 的 `topic_id` 由单值改为可重复（任一匹配）、`topic_unassigned=true` 由与 `topic_id` 互斥改为可并列（OR）、新增 `tag_match=any|all`（默认 `all` 保持既有语义）；同步 `openapi-v1.json` 与契约文档，后端 ResourceQuery/存储层/测试随之改。前端资料库筛选形态重做（主题/标签以已有项芯片列出、点选即生效、去掉「按主题与标签筛选」面板）。命中 risk-policy `public-api`；跨 backend/docs/frontend 三处。L3：独立只读 Review + 独立 Integration/Acceptance。"
 risk_flags = ["public-api", "business"]
@@ -111,7 +111,48 @@ checks = ["backend", "frontend", "contracts"]
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：本提交之后的 HEAD 即候选（`f14b33a` + 本证据写回 + 状态登记），精确 SHA 在 Review 写回时补记。
-- Review / Integration：待派。
-- 最终状态：status=**IN_REVIEW**。
+- 候选 SHA：**`264992c`**（base `d3a0754`）。实现段「19 文件」是 `f14b33a` 时口径（Review/Acceptance 均指出）：候选 `264992c` 另含 TASK-055/056 记录的 MERGED 登记与索引，`check_task --candidate 264992c` → **`files=22`**，`product_fingerprint=e673bad8…`；product code 自 `f14b33a` 起未变。
+- 检查绑定候选本身：`check_task.py --candidate 264992c` → `STATIC PASS`，`profiles=backend,contracts,frontend`：ruff format/check、mypy、**pytest 553 passed**、`uv build`、openapi 校验、format:check/lint/typecheck、**vitest 571 passed**、build 全 exit 0 → **CHECKS PASS**（全文落盘供 Integration）；`npm run test:e2e`（日志首行 `git rev-parse HEAD` = `264992c`）**60 passed**；`git diff --check d3a0754..264992c` exit 0。
+- 判别性验证：A 让 `pick()` 不写网址 → 6 条红；B 不带 `tag_match=any` → 2 条红；C 主题只发第一个 → 2 条红；D 后端 `any` 分支退回全匹配 → `test_classification_filters…` 红（0≠1）。
+- **Review**（L3，独立只读 Reviewer，仅 Read/Grep/Glob）：**PASS**，无必须修复项。报告原文：
+
+> 基线 `d3a0754` → 候选 `264992c`；检查证据绑定 `f14b33a`，之后仅任务记录/索引变更，product code 未变。本 Reviewer 仅持 Read/Grep/Glob，无写工具、无 Bash。
+> 审查覆盖：后端+契约 diff 全读（`api/resources.py:124-135`、`resource_store.py:444-467`、`contracts.py:156-165`、`test_resources.py:194-201,411-434`；学习记录 `learning_store.py:125` 仍单值）；前端 diff 全读（`ResourceLibrary.tsx`、`LibraryFilters.tsx`、`useResourceQuery.ts`、`taxonomy/api.ts`；`ClassificationPicker` 仅剩 `ResourceForm.tsx:273` 与测试用法，无 `filter` 残留；e2e 五个文件与 `scaffold` 守卫）。
+> 1. 契约自洽向后兼容：单值 `topic_id` 是 list 的一元情形；`tag_match` 默认 `all` 走原逐个 EXISTS 分支；`topic_unassigned=false` 不入子句；openapi 与 `ResourceQuery` 一致；契约文档仅改资料列表两行并明示学习记录/复习仍单值；四处 `test_*_contract` 只读 schemas 不受影响。
+> 2. 查询正确：主题 `or_(IN, IS NULL)` 与其余条件 AND；`any` 用 `id IN (SELECT …)` 无 join 不会重复行，`test_resources.py:428` 钉住；`all` 单标签 EXISTS 不受展平影响；SQLite 3.48+ 的 EXISTS→JOIN 优化确有此类重复风险，改写理由可信且写法更优。非可重复参数重复仍 422；非法 UUID/`tag_match` 非法/重复均有用例。
+> 3. 状态模型：`readApplied/writeApplied` 对称；`pick()` 函数式更新、`page:1`、`ignored:[]`；渲染期同步以 `q` 变化为触发（Back 回到 q 不同的地址会重置，相同则保留未发草稿，可接受）；重置显式清草稿并清网址。
+> 4. 芯片：key 固定、挂载读一次，失败 alert+重试，其余筛选不受影响；孤儿仍入请求且可点掉；角标 `aria-hidden`。
+> 5. 测试：8 条重写逐条保留原契约断言；新增覆盖多主题/未分配并列/标签任一/点选即生效/孤儿；e2e 「无人用+待读→1、只留无人用→0、未分配并列→1、去主题→0」真判别任一/并列；判别性 A–D 可信；scaffold 白名单仅加两条读。
+> 6. 范围：全部在 allowed_paths，追加三文件理由成立；`ClassificationPicker` 表单用法零变化。
+> Findings：可选——多个孤儿芯片可访问名相同；可选——`topic_id/tag_id` 不做 UUID 形状校验，畸形值直达后端 422（基线即如此）；可记录——记录「19 文件」为 `f14b33a` 口径，当前 HEAD 应为 22。**结论：PASS。**
+
+- **Integration/Acceptance**（L3，独立于实现者与 Reviewer，只读）：**PASS**。报告原文：
+
+> 候选 `264992c`（check.log `input=264992c`、e2e.log 首行 `git rev-parse HEAD: 264992c`），基线 `d3a0754`。仅 Read/Grep/Glob。
+> 1 ✅ 后端分支覆盖：`test_classification_filters…` 新增 12 组期望（多主题 OR、主题+未分配 OR、`tag_match` 默认/all/any 含双真标签→1 钉住去重、维度间 AND）；`test_invalid_query_before_database` 加四条 422。ruff/mypy/pytest 553 绑定 `264992c`。
+> 2 ✅ openapi 与 `ResourceQuery`、白名单一致；契约文档两行改写并注明学习记录/复习仍单值；contracts profile openapi 校验 exit=0。
+> 3 ✅ 目标 3/4/5/6 各有直证（用例名列出）；判别性 A–D 与断言分布逻辑相符。
+> 4 ✅ 重写限于目标 6 三文件 + 追加三文件，理由成立；三 profile PASS、vitest 571、e2e 60 均绑定 `264992c`。`git diff --check` 未在日志中出现，依主 Agent 陈述。
+> 跨模块：前端参数 ↔ 后端条件一一对应；学习记录 `topic_id` 仍 `UUID | None`。用户三项选定已落实；TASK-055/056 登记与 notes e2e 修正属实。
+> Findings（无必须修复）：可记录——`files=19` 为 `f14b33a` 口径，候选为 22；可选——孤儿芯片同名、网址 id 形状不校验。**结论：PASS。**
+
+- findings 处置：
+
+| # | 处置 | 依据 |
+| --- | --- | --- |
+| Review/Acceptance：文件数口径 | **本区已更正**（候选 22 文件、指纹 `e673bad8…`）。 | 叙述精度 |
+| Review 可选：孤儿芯片同名 | **记录**：多个孤儿时可访问名相同，屏幕阅读器难区分；可在 `aria-label` 附 id 前缀。登记遗留 1。 | §6 可选 |
+| Review 可选：网址 id 形状校验 | **记录**：与基线一致，畸形值由后端 422 兜底。登记遗留 2。 | 非本任务回归 |
+| Acceptance：`git diff --check` 未入日志 | **本区补记**：主 Agent 在 `d3a0754..264992c` 上实跑 exit 0（上文）。 | — |
+
+- 最终状态/风险/用户操作：status=**ACCEPTED**（L3：1 Worker → 自动检查 → 独立只读 Review → 独立 Integration/Acceptance → 主 Agent 汇总）。**未 MERGED**——是否合并由用户本人决定，Agent 不合并、不推送 main。
+- 非阻断遗留项：
+  1. 多个孤儿芯片可访问名相同。
+  2. 网址 `topic_id/tag_id` 不做 UUID 形状校验（与基线一致）。
+  3. 芯片只列前 100 个主题/标签。
+  4. 既有：≤760px 顶栏两组导航文字重叠（TASK-056 已登记）；后端并发 deletion-preview 回 500（TASK-056 已登记）。
+- 日期与决定日志：
+  - 2026-09-12 用户原话 + 三项选定（真多选任一 / 标签任一 / 点选即生效），明知涉及契约（L3）。
+  - 2026-09-12 后端+契约 `beb0996`（实现中发现 SQLite 3.51 对 correlated EXISTS+IN 的展平重复，改用 `IN (subquery)`）；前端 `26db654`；范围追加 `f14b33a`；冻结 `264992c`。
+  - 2026-09-12 独立 Review PASS → 独立 Integration/Acceptance PASS → 主 Agent 写回并置 `ACCEPTED`；待用户合并。
 <!-- EVIDENCE:END -->
