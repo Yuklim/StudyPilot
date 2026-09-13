@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-055"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L1"
 risk_reason = "只改左栏两处 CSS（折叠按钮不被压扁、收起态导航项去掉占位的圆点并归零间距），加一条真实浏览器几何断言。不改任何 DOM、可访问名称、路由、契约、门禁；无行为变化。可证明低风险：改前改后均有实测数值。"
 risk_flags = ["small-ui"]
@@ -51,7 +51,7 @@ checks = ["frontend"]
 - 候选 SHA：`f13942e`（实现 `c8999af` + risk_flags 词表修正；本行为其后的补记）。
 - 检查：`check_task.py --candidate f13942e` → `STATIC PASS`，`files=5`，`product_fingerprint=7559daee…`，`profiles=frontend` 五项 exit 0，`562 passed` → **CHECKS PASS**；`npm run test:e2e` **58 passed**（基线 57 + 1）。
 - Review：**L1，N/A**。Acceptance：**L1，N/A**。
-- 最终状态：status=**ACCEPTED**；待用户合并。
+- 最终状态：status=**MERGED**（2026-09-12 用户合并 PR #63，merge `bcebb87`，已双向核实；登记并入 TASK-057 控制面提交）。交付时为 ACCEPTED。
 - 非阻断遗留项：无。
 - 日期与决定日志：2026-09-12 用户提出；主 Agent 实测定位（flex-shrink / nav-dot 占位）后修，先写红用例再改。
 <!-- EVIDENCE:END -->

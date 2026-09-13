@@ -121,7 +121,7 @@ async def create_resource(request: Request) -> JSONResponse:
 
 @router.get("")
 def list_resources(request: Request) -> JSONResponse:
-    repeated = {"tag_id", "source_type", "learning_status"}
+    repeated = {"topic_id", "tag_id", "source_type", "learning_status"}
     values: dict[str, Any] = {}
     for key in request.query_params:
         entries = request.query_params.getlist(key)

@@ -42,6 +42,8 @@ test('classification UI manages real data and organizes resources with combined 
   await button(page, '标签').click()
   await create(page, '标签', '分类页面 · 待读')
   await create(page, '标签', '分类页面 · 实践')
+  // TASK-057：一个不挂到任何资料上的标签，用来验证标签筛选是「任一」而不是「全部」。
+  await create(page, '标签', '分类页面 · 无人用')
   await create(page, '标签', '分类页面 · 临时')
   await button(page, '删除标签 分类页面 · 临时').click()
   await expect(page.getByRole('heading', { name: '确认删除“分类页面 · 临时”？' })).toBeVisible()
@@ -82,15 +84,35 @@ test('classification UI manages real data and organizes resources with combined 
     }),
   ).toBeVisible()
   await page.getByRole('link', { name: '返回资料库' }).click()
-  await button(page, '按主题与标签筛选').click()
-  await page.getByRole('radio', { name: '分类页面 · 阅读方法', exact: true }).check()
-  await page.getByRole('checkbox', { name: '分类页面 · 待读', exact: true }).check()
-  await page.getByRole('checkbox', { name: '分类页面 · 实践', exact: true }).check()
-  await button(page, '搜索 / 应用筛选').click()
+  // TASK-057：主题/标签是筛选行里的芯片，点选即生效（不再有「按主题与标签筛选」面板与
+  // 「应用」按钮）。主题多选=任一，可与「未分配」并列；标签多选=含任一。
+  const chips = page.getByRole('group', { name: /选项$/ })
+  const chip = (name: string) => chips.getByRole('button', { name, exact: true })
+  await expect(page.getByRole('button', { name: '按主题与标签筛选' })).toHaveCount(0)
+  await chip('分类页面 · 阅读方法').click()
   await expect(page.getByText('共 1 份资料', { exact: true })).toBeVisible()
-  await page.getByRole('radio', { name: '仅未分配主题', exact: true }).check()
-  await button(page, '搜索 / 应用筛选').click()
+  await expect(page).toHaveURL(/topic_id=/)
+  await chip('分类页面 · 待读').click()
+  await chip('分类页面 · 无人用').click()
+  await expect(page).toHaveURL(/tag_id=.*tag_id=/)
+  // 标签「任一」：「无人用」不在这份资料上，但「待读」在——仍匹配（全匹配语义下会是 0）。
+  await expect(page.getByText('共 1 份资料', { exact: true })).toBeVisible()
+  await chip('分类页面 · 待读').click()
+  // 只剩「无人用」：没有资料带它，结果为空；把「待读」点回来，后面的主题断言靠它把
+  // 其他用例留下的无标签资料挡在外面。
   await expect(page.getByText('共 0 份资料', { exact: true })).toBeVisible()
+  await chip('分类页面 · 待读').click()
+  await expect(page.getByText('共 1 份资料', { exact: true })).toBeVisible()
+  // 「未分配」与主题并列（或）：这份资料有主题，仍然在结果里。
+  await chip('未分配').click()
+  await expect(page).toHaveURL(/topic_unassigned=true/)
+  await expect(page.getByText('共 1 份资料', { exact: true })).toBeVisible()
+  // 取消主题、只留「未分配」+ 标签：这份资料有主题，结果为空（同库其他资料没有这些标签）。
+  await chip('分类页面 · 阅读方法').click()
+  await expect(page).not.toHaveURL(/topic_id=/)
+  await expect(page.getByText('共 0 份资料', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '重置' }).click()
+  await expect(page).toHaveURL(/\/resources$/)
   await page.goto('/classifications')
   await button(page, '删除主题 分类页面 · 阅读方法').click()
   await button(page, '确认删除主题').click()

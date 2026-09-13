@@ -46,7 +46,10 @@ test('navigation, history, direct links and keyboard focus use only approved res
     const approvedRead =
       request.method() === 'GET' &&
       ((resourcePageOpened &&
-        ['/api/v1/local-session', '/api/v1/resources'].includes(url.pathname)) ||
+        // TASK-057 起资料库一打开就读主题/标签列表给筛选行的芯片。
+        ['/api/v1/local-session', '/api/v1/resources', '/api/v1/topics', '/api/v1/tags'].includes(
+          url.pathname,
+        )) ||
         (learningPageOpened && url.pathname === '/api/v1/study-records'))
     if (url.origin !== 'http://127.0.0.1:15173' || (isApi && !approvedRead)) {
       unexpectedRequests.push(url.origin + url.pathname)

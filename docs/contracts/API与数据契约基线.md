@@ -156,12 +156,12 @@ TASK-011/012 已完成分类后端与页面，TASK-013/014 已完成 FILE 后端
 - 排序使用白名单字段；前缀 `-` 表示降序。所有排序最后追加 `id` 升序作为稳定决胜项，因此翻页不会因相同时间而随机换位。
 - 不接受任意数据库列名。未知搜索、筛选或排序参数返回 `422 VALIDATION_ERROR`；不把未知参数静默忽略。
 - 文本搜索在 Unicode NFKC 规范化、大小写折叠和连续空白折叠后做“包含”匹配。`progress_min/max` 两端都包含；时间范围 `from` 包含、`to` 不包含。语法正确但不存在的筛选 ID 返回空页，不返回 404。
-- `topic_id` 与 `topic_unassigned=true` 互斥；`topic_unassigned=false` 等同省略。`ReviewScope` 默认 TODAY；ALL 同时包含 SCHEDULED 与 PAUSED，其他三个 scope 只包含 SCHEDULED。按 `due_date` 升序时，PAUSED 的 null 永远排在所有有日期计划之后；降序时仍排在最后，然后按 `title,id` 决胜，不能依赖数据库默认 null 顺序。
+- 资料列表的 `topic_id` 可重复（TASK-057 起）：资料主题属于其中任一即匹配；`topic_unassigned=true` 可与 `topic_id` 并列，语义为「属于所选主题之一 **或** 未分配」；`topic_unassigned=false` 等同省略。重复 `tag_id` 的匹配方式由 `tag_match` 决定：`all`（默认，与此前一致）须同时具有全部所选标签，`any` 含任一即可；其他值 `422`。各筛选维度之间仍为「且」。学习记录/复习列表的 `topic_id` 仍为单值。`ReviewScope` 默认 TODAY；ALL 同时包含 SCHEDULED 与 PAUSED，其他三个 scope 只包含 SCHEDULED。按 `due_date` 升序时，PAUSED 的 null 永远排在所有有日期计划之后；降序时仍排在最后，然后按 `title,id` 决胜，不能依赖数据库默认 null 顺序。
 - 资料按 `title` 排序（升或降）时，无标题(null)固定排在有标题之后，再按该方向对标题排序并追加 `id` 升序决胜；不能依赖数据库默认 null 顺序。
 
 | 列表 | 搜索/筛选白名单 | 排序白名单与默认值 |
 | --- | --- | --- |
-| 资料 | `q` 只搜标题、来源名称、保存原因；`topic_id`、`topic_unassigned`、重复 `tag_id`、重复 `source_type`、重复 `learning_status`、`progress_min/max`、`created_from/to`、`updated_from/to` | `created_at`、`updated_at`、`title`、`progress_percent`；默认 `-created_at,id` |
+| 资料 | `q` 只搜标题、来源名称、保存原因；重复 `topic_id`（任一）、`topic_unassigned`（可与 `topic_id` 并列为「或」）、重复 `tag_id` + `tag_match=all|any`（默认 `all`）、重复 `source_type`、重复 `learning_status`、`progress_min/max`、`created_from/to`、`updated_from/to` | `created_at`、`updated_at`、`title`、`progress_percent`；默认 `-created_at,id` |
 | 单资料学习记录 | `started_from/to` | `started_at`、`created_at`、`duration_seconds`；默认 `-started_at,id` |
 | 全局学习记录 | 在上项基础上增加 `resource_id`、`topic_id` | 同上 |
 | 复习列表 | `scope=TODAY/OVERDUE/UPCOMING/ALL`、`time_zone`、`topic_id`、`q`（同资料搜索） | `due_date`、`title`；默认 `due_date NULLS LAST,title,id`，`-due_date` 也固定 NULLS LAST |

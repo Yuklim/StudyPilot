@@ -157,9 +157,12 @@ class ResourceQuery(BaseModel):
     page: int = Field(default=1, ge=1)
     page_size: int = Field(default=20, ge=1, le=100)
     q: str | None = Field(default=None, min_length=1, max_length=200)
-    topic_id: UUID | None = None
+    # TASK-057: `topic_id` repeats (match any) and may combine with `topic_unassigned=true` (OR).
+    topic_id: list[UUID] = Field(default_factory=list)
     topic_unassigned: bool = False
     tag_id: list[UUID] = Field(default_factory=list)
+    # `all` (default) keeps the existing meaning: every selected tag; `any`: at least one.
+    tag_match: Literal["all", "any"] = "all"
     source_type: list[Source] = Field(default_factory=list)
     learning_status: list[Status] = Field(default_factory=list)
     progress_min: int | None = Field(default=None, ge=0, le=100)
@@ -207,8 +210,6 @@ class ResourceQuery(BaseModel):
     def valid_ranges(self) -> Self:
         if self.q is not None and not normalized_search(self.q):
             raise ValueError("empty search")
-        if self.topic_id is not None and self.topic_unassigned:
-            raise ValueError("exclusive topic filters")
         if (
             self.progress_min is not None
             and self.progress_max is not None
