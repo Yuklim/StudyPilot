@@ -114,7 +114,9 @@ test('wide screen: notes are collapsed by default and squeeze the reading column
   await expect(page.getByText('删除这条心得？')).toBeVisible()
   await page.getByRole('checkbox', { name: '我确认永久删除上方这条心得' }).check()
   await page.getByRole('button', { name: '确认删除心得', exact: true }).click()
-  await expect(page.getByRole('status')).toContainText('这条心得已删除，资料与其他记录仍保留。')
+  // 按文字定位：CI 上这一瞬心得列表可能正在刷新，`getByRole('status')` 会同时命中
+  // 「正在翻开心得…」而触发 strict mode（PR #64 首跑失败、重跑通过）。
+  await expect(page.getByText('这条心得已删除，资料与其他记录仍保留。')).toBeVisible()
   await expect(toggle(page)).toContainText('2')
   expect((await call(page, `/resources/${id}/notes`)).body.page.total_items).toBe(2)
 

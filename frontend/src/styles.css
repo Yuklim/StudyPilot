@@ -1052,6 +1052,71 @@ fieldset:disabled {
   margin-top: 18px;
 }
 
+/* 筛选行里的主题/标签芯片（TASK-057）：已有项直接列出，点选即生效。 */
+.filter-chips {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.filter-chips legend {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 0;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--ink);
+}
+.filter-chips legend .resource-hint {
+  font-size: 11px;
+}
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 4px 12px;
+  border: 1px solid #cfd6c6;
+  border-radius: 999px;
+  background: var(--paper);
+  color: #4c5a47;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s;
+}
+.chip:hover {
+  border-color: #a9b79c;
+  background: #f1f4ea;
+}
+.chip[aria-pressed='true'] {
+  border-color: #647e57;
+  background: #dce5d4;
+  color: #2f4029;
+  font-weight: 600;
+}
+.chip.orphan {
+  border-style: dashed;
+  color: var(--muted);
+}
+.chip-count {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.resource-filters .filter-chips + .filter-chips {
+  margin-top: 12px;
+}
+
 /* 资料库内的删除入口（TASK-056）：每份一个复选框 + 一个删除图标按钮；选中 ≥1 份时
    列表上方的选择条给出「删除所选」。 */
 .resource-selection {

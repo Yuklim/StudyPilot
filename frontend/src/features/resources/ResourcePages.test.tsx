@@ -184,12 +184,33 @@ describe('resource form', () => {
   })
 })
 
+// TASK-057 起资料库一打开就同时读主题/标签列表（筛选行芯片）；库内用例的桩按路径分派，
+// 资料请求单独计数，避免 `mockResolvedValueOnce` 的顺序被分类请求吃掉。
+function libraryRequests(
+  resources: (query: URLSearchParams, call: number) => unknown,
+  classifications: { topics?: unknown; tags?: unknown } = {},
+) {
+  let calls = 0
+  return vi.spyOn(api, 'request').mockImplementation(async (path) => {
+    if (path.startsWith('/api/v1/topics?')) return classifications.topics ?? categoryPage([])
+    if (path.startsWith('/api/v1/tags?')) return classifications.tags ?? categoryPage([])
+    if (path.startsWith('/api/v1/resources?')) {
+      calls += 1
+      const out = resources(new URL(path, 'http://x.test').searchParams, calls)
+      if (out instanceof Error) throw out
+      return out
+    }
+    return samplePage([])
+  })
+}
+const resourceCalls = (request: ReturnType<typeof libraryRequests>) =>
+  request.mock.calls.map(([path]) => path).filter((path) => path.startsWith('/api/v1/resources?'))
+
 describe('resource library', () => {
   it('distinguishes loading, service errors, retries and an empty library', async () => {
-    const request = vi
-      .spyOn(api, 'request')
-      .mockRejectedValueOnce(new ApiError('UNKNOWN_ERROR', 500))
-      .mockResolvedValue(samplePage([]))
+    const request = libraryRequests((_, call) =>
+      call === 1 ? new ApiError('UNKNOWN_ERROR', 500) : samplePage([]),
+    )
     renderWithRouter(<App />, '/resources')
     expect(screen.getByRole('status')).toHaveTextContent('正在翻开')
     expect(await screen.findByRole('alert')).toHaveTextContent('创建数据库')
@@ -197,7 +218,7 @@ describe('resource library', () => {
     expect(
       await screen.findByRole('heading', { name: '给想学的内容，留一个位置' }),
     ).toBeInTheDocument()
-    expect(request).toHaveBeenCalledTimes(2)
+    expect(resourceCalls(request)).toHaveLength(2)
     expect(screen.getByRole('button', { name: '下一页' })).toBeDisabled()
   })
   it('applies combined queries, resets pagination, shows tags/progress and switches views', async () => {
@@ -205,15 +226,17 @@ describe('resource library', () => {
       tags: [{ id: resourceId, name: '合成标签' }],
       progress: { ...sample().progress, status: 'IN_PROGRESS', progress_percent: 30 },
     })
-    const request = vi
-      .spyOn(api, 'request')
-      .mockResolvedValueOnce(
-        samplePage([item], { total_items: 21, total_pages: 2, has_more: true }),
-      )
-      .mockResolvedValueOnce(
-        samplePage([sample({ title: '第二页' })], { number: 2, total_items: 21, total_pages: 2 }),
-      )
-      .mockResolvedValue(samplePage([]))
+    const request = libraryRequests((query, call) =>
+      call === 1
+        ? samplePage([item], { total_items: 21, total_pages: 2, has_more: true })
+        : query.get('page') === '2'
+          ? samplePage([sample({ title: '第二页' })], {
+              number: 2,
+              total_items: 21,
+              total_pages: 2,
+            })
+          : samplePage([]),
+    )
     renderWithRouter(<App />, '/resources')
     expect(await screen.findByText('学习中 · 30%')).toBeInTheDocument()
     expect(screen.getByText('合成标签')).toBeInTheDocument()
@@ -221,14 +244,22 @@ describe('resource library', () => {
     expect(screen.getByRole('list', { name: '资料结果' })).toHaveClass('list')
     fireEvent.click(screen.getByRole('button', { name: '下一页' }))
     expect(await screen.findByText('第二页')).toBeInTheDocument()
-    expect(request.mock.lastCall?.[0]).toContain('page=2')
-    change('搜索资料', ' 合成 & 标题 ')
+    expect(resourceCalls(request).at(-1)).toContain('page=2')
+    // TASK-057：类型/状态/排序改动即生效（各自发一次请求并回到第一页）；搜索词仍要点「搜索」。
     change('资料类型', 'PASTE')
+    await waitFor(() => expect(resourceCalls(request).at(-1)).toContain('source_type=PASTE'))
+    expect(resourceCalls(request).at(-1)).not.toContain('page=2')
     change('学习状态', 'ARCHIVED')
+    await waitFor(() => expect(resourceCalls(request).at(-1)).toContain('learning_status=ARCHIVED'))
     change('排序', '-progress_percent')
-    fireEvent.click(screen.getByRole('button', { name: '搜索 / 应用筛选' }))
+    await waitFor(() => expect(resourceCalls(request).at(-1)).toContain('sort=-progress_percent'))
+    change('搜索资料', ' 合成 & 标题 ')
+    const beforeSearch = resourceCalls(request).length
+    expect(resourceCalls(request).at(-1)).not.toContain('q=')
+    fireEvent.click(screen.getByRole('button', { name: '搜索' }))
     expect(await screen.findByRole('heading', { name: '这一页没有找到资料' })).toBeInTheDocument()
-    const url = new URL(request.mock.lastCall![0], 'http://example.test')
+    expect(resourceCalls(request).length).toBe(beforeSearch + 1)
+    const url = new URL(resourceCalls(request).at(-1)!, 'http://example.test')
     expect(Object.fromEntries(url.searchParams)).toEqual({
       page: '1',
       page_size: '20',
@@ -239,7 +270,7 @@ describe('resource library', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: '重置' }))
     await waitFor(() =>
-      expect(request.mock.lastCall![0]).toBe(
+      expect(resourceCalls(request).at(-1)).toBe(
         '/api/v1/resources?page=1&page_size=20&sort=-created_at',
       ),
     )
@@ -254,17 +285,16 @@ describe('resource library', () => {
   })
   it('ignores older search responses and rejects oversized search without sending it', async () => {
     const old = deferred<unknown>()
-    const request = vi
-      .spyOn(api, 'request')
-      .mockReturnValueOnce(old.promise)
-      .mockResolvedValue(samplePage([sample({ title: '新的结果' })]))
+    const request = libraryRequests((_, call) =>
+      call === 1 ? old.promise : samplePage([sample({ title: '新的结果' })]),
+    )
     renderWithRouter(<App />, '/resources')
     change('搜索资料', '字'.repeat(201))
-    fireEvent.click(screen.getByRole('button', { name: '搜索 / 应用筛选' }))
+    fireEvent.click(screen.getByRole('button', { name: '搜索' }))
     expect(screen.getByRole('alert')).toHaveTextContent('最多 200 字')
-    expect(request).toHaveBeenCalledTimes(1)
+    expect(resourceCalls(request)).toHaveLength(1)
     change('搜索资料', '新的')
-    fireEvent.click(screen.getByRole('button', { name: '搜索 / 应用筛选' }))
+    fireEvent.click(screen.getByRole('button', { name: '搜索' }))
     expect(await screen.findByText('新的结果')).toBeInTheDocument()
     await act(async () => old.resolve(samplePage([sample({ title: '过期的结果' })])))
     expect(screen.queryByText('过期的结果')).not.toBeInTheDocument()
@@ -320,6 +350,8 @@ describe('resource detail', () => {
   )
 })
 
+const topicIdA = '00000000-0000-4000-8000-000000000010'
+
 describe('resource library filters in the address bar', () => {
   it('applies filters to the URL, restores them on load and clears them on reset', async () => {
     const request = vi.spyOn(api, 'request').mockResolvedValue(samplePage([]))
@@ -343,13 +375,14 @@ describe('resource library filters in the address bar', () => {
     expect(screen.getByLabelText('搜索资料')).toHaveValue('已存')
     expect(screen.getByLabelText('学习状态')).toHaveValue('ARCHIVED')
 
-    change('搜索资料', ' 新词 ')
     change('资料类型', 'PASTE')
-    fireEvent.click(screen.getByRole('button', { name: '搜索 / 应用筛选' }))
-    await waitFor(() => expect(address()).toContain('q=%E6%96%B0%E8%AF%8D'))
-    // Applying a filter returns to the first page, so `page` drops out of the URL.
-    expect(address()).toContain('source_type=PASTE')
+    // 点选即生效：类型一改网址就变、回到第一页（`page` 从网址里消失）。
+    await waitFor(() => expect(address()).toContain('source_type=PASTE'))
     expect(address()).not.toContain('page=')
+    change('搜索资料', ' 新词 ')
+    fireEvent.click(screen.getByRole('button', { name: '搜索' }))
+    await waitFor(() => expect(address()).toContain('q=%E6%96%B0%E8%AF%8D'))
+    expect(address()).toContain('source_type=PASTE')
 
     fireEvent.click(screen.getByRole('button', { name: '重置' }))
     await waitFor(() => expect(address()).toBe(''))
@@ -368,30 +401,38 @@ describe('resource library filters in the address bar', () => {
       `/resources?tag_id=${tagId}`,
     )
   })
-  it('resolves the tag name behind an id in the URL and reports one it cannot read', async () => {
-    const request = vi.spyOn(api, 'request').mockImplementation(async (path) => {
-      if (path === `/api/v1/tags/${tagId}`)
-        return { data: category({ id: tagId, name: '来自网址' }) }
-      if (path.startsWith('/api/v1/tags/')) throw new ApiError('TAG_NOT_FOUND', 404)
-      return samplePage([])
+  it('shows the tag behind an id in the URL as a pressed chip, and one it cannot list as an orphan', async () => {
+    // TASK-057：名字来自筛选行的标签列表；列表里没有的 id 显示为「已不存在或未列出」芯片，
+    // 且**仍在筛选**（请求照带）——条件不能因为读不到名字就悄悄丢掉（原用例的断言保留）。
+    const request = libraryRequests(() => samplePage([]), {
+      tags: categoryPage([category({ id: tagId, name: '来自网址' })]),
     })
     const missing = '00000000-0000-4000-8000-0000000000ff'
     renderWithRouter(<App />, `/resources?tag_id=${tagId}&tag_id=${missing}`)
-    expect(await screen.findByText(/已不存在或读不到/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /移除已选标签 来自网址/ })).toBeInTheDocument()
-    // The unreadable id keeps filtering; it is only its name that cannot be shown.
-    const sent = new URL(
-      request.mock.calls.filter(([path]) => path.startsWith('/api/v1/resources')).at(-1)![0],
-      'http://example.test',
+    expect(await screen.findByRole('button', { name: '来自网址' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
     )
+    expect(screen.getByRole('button', { name: '已不存在或未列出' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    const sent = new URL(resourceCalls(request).at(-1)!, 'http://example.test')
     expect(sent.searchParams.getAll('tag_id')).toEqual([tagId, missing])
+    expect(sent.searchParams.get('tag_match')).toBe('any')
+    // 点孤儿芯片即可把它从筛选里去掉。
+    fireEvent.click(screen.getByRole('button', { name: '已不存在或未列出' }))
+    await waitFor(() =>
+      expect(
+        new URL(resourceCalls(request).at(-1)!, 'http://example.test').searchParams.getAll(
+          'tag_id',
+        ),
+      ).toEqual([tagId]),
+    )
   })
-  it('clears an unapplied draft on reset even when the address is already empty', async () => {
-    const request = vi.spyOn(api, 'request').mockImplementation(async (path) => {
-      if (path.startsWith('/api/v1/tags?'))
-        return categoryPage([category({ id: tagId, name: '合成标签' })])
-      if (path.startsWith('/api/v1/topics?')) return categoryPage([])
-      return samplePage([])
+  it('clears an unapplied search draft on reset even when the address is already empty', async () => {
+    const request = libraryRequests(() => samplePage([]), {
+      tags: categoryPage([category({ id: tagId, name: '合成标签' })]),
     })
     renderWithRouter(
       <>
@@ -402,14 +443,21 @@ describe('resource library filters in the address bar', () => {
     )
     await waitFor(() => expect(request).toHaveBeenCalled())
     change('搜索资料', '还没应用的词')
-    fireEvent.click(screen.getByRole('button', { name: '按主题与标签筛选' }))
-    fireEvent.click(await screen.findByRole('checkbox', { name: '合成标签' }))
-    expect(screen.getByText(/已选 1 个标签/)).toBeInTheDocument()
-    // The address never changed, so the render-time sync cannot do this for us.
-    expect(address()).toBe('')
+    // 芯片点选即生效：网址立刻带上 tag_id，而未提交的搜索词不在网址里。
+    fireEvent.click(await screen.findByRole('button', { name: '合成标签' }))
+    await waitFor(() => expect(address()).toBe(`?tag_id=${tagId}`))
+    expect(screen.getByLabelText('搜索资料')).toHaveValue('还没应用的词')
+    fireEvent.click(screen.getByRole('button', { name: '重置' }))
+    await waitFor(() => expect(address()).toBe(''))
+    expect(screen.getByLabelText('搜索资料')).toHaveValue('')
+    expect(screen.getByRole('button', { name: '合成标签' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+    // 网址本来就空时再重置：草稿仍要清（渲染期同步不会替我们做）。
+    change('搜索资料', '又一个草稿')
     fireEvent.click(screen.getByRole('button', { name: '重置' }))
     expect(screen.getByLabelText('搜索资料')).toHaveValue('')
-    expect(screen.getByText(/已选 0 个标签/)).toBeInTheDocument()
     expect(address()).toBe('')
   })
   it('makes the tag on a resource detail page a filter link too', async () => {
@@ -429,21 +477,49 @@ describe('resource library filters in the address bar', () => {
       `/resources?tag_id=${tagId}`,
     )
   })
-  it('keeps the unreadable-classification warning while that id is still filtering', async () => {
+  it('keeps an unlisted classification id filtering across paging', async () => {
     const missing = '00000000-0000-4000-8000-0000000000ff'
-    const request = vi.spyOn(api, 'request').mockImplementation(async (path) => {
-      if (path.startsWith('/api/v1/tags/')) throw new ApiError('TAG_NOT_FOUND', 404)
-      return samplePage([sample()], { total_items: 21, total_pages: 2, has_more: true })
-    })
+    const request = libraryRequests(() =>
+      samplePage([sample()], { total_items: 21, total_pages: 2, has_more: true }),
+    )
     renderWithRouter(<App />, `/resources?tag_id=${missing}`)
-    expect(await screen.findByText(/已不存在或读不到/)).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: '已不存在或未列出' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '下一页' }))
-    await waitFor(() => expect(request.mock.lastCall?.[0]).toContain('page=2'))
-    // Paging must not quietly drop the warning: the bad id is still filtering.
-    expect(screen.getByText(/已不存在或读不到/)).toBeInTheDocument()
+    await waitFor(() => expect(resourceCalls(request).at(-1)).toContain('page=2'))
+    // 翻页不能悄悄丢掉它：孤儿芯片仍在、请求仍带着它。
+    expect(screen.getByRole('button', { name: '已不存在或未列出' })).toBeInTheDocument()
     expect(
-      new URL(request.mock.lastCall![0], 'http://x.test').searchParams.getAll('tag_id'),
+      new URL(resourceCalls(request).at(-1)!, 'http://x.test').searchParams.getAll('tag_id'),
     ).toEqual([missing])
+  })
+  it('lists topics with an unassigned chip and applies several topics as any-of', async () => {
+    const other = '00000000-0000-4000-8000-000000000011'
+    const request = libraryRequests(() => samplePage([]), {
+      topics: categoryPage([
+        category({ id: topicIdA, name: '主题甲', resource_count: 2 }),
+        category({ id: other, name: '主题乙' }),
+      ]),
+    })
+    renderWithRouter(
+      <>
+        <App />
+        <Address />
+      </>,
+      '/resources',
+    )
+    fireEvent.click(await screen.findByRole('button', { name: '主题甲' }))
+    fireEvent.click(screen.getByRole('button', { name: '主题乙' }))
+    fireEvent.click(screen.getByRole('button', { name: '未分配' }))
+    await waitFor(() =>
+      expect(address()).toBe(`?topic_id=${topicIdA}&topic_id=${other}&topic_unassigned=true`),
+    )
+    const sent = new URL(resourceCalls(request).at(-1)!, 'http://x.test').searchParams
+    expect(sent.getAll('topic_id')).toEqual([topicIdA, other])
+    expect(sent.get('topic_unassigned')).toBe('true')
+    expect(sent.get('tag_match')).toBeNull()
+    // 网址回放：三个芯片都是按下状态。
+    for (const name of ['主题甲', '主题乙', '未分配'])
+      expect(screen.getByRole('button', { name })).toHaveAttribute('aria-pressed', 'true')
   })
   it('ignores filter values in the address it cannot understand, and says so', async () => {
     const request = vi.spyOn(api, 'request').mockResolvedValue(samplePage([]))
@@ -482,15 +558,15 @@ describe('resource library filters in the address bar', () => {
     })
   })
   it('offers no tag creation while filtering, only while choosing tags for a resource', async () => {
-    vi.spyOn(api, 'request').mockImplementation(async (path) =>
-      path.startsWith('/api/v1/tags?') || path.startsWith('/api/v1/topics?')
-        ? categoryPage([])
-        : samplePage([]),
-    )
+    // TASK-057：筛选行只列已有标签（芯片），没有任何「新建标签」入口；新建仍只在表单里。
+    libraryRequests(() => samplePage([]), {
+      tags: categoryPage([category({ id: tagId, name: '合成标签' })]),
+    })
     renderWithRouter(<App />, '/resources')
-    fireEvent.click(await screen.findByRole('button', { name: '按主题与标签筛选' }))
-    expect(await screen.findByRole('heading', { name: '标签' })).toBeInTheDocument()
+    expect(await screen.findByRole('group', { name: '标签选项' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '合成标签' })).toBeInTheDocument()
     expect(screen.queryByLabelText('新建标签')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '按主题与标签筛选' })).toBeNull()
   })
 })
 

@@ -408,7 +408,7 @@ describe('deleting from the library', () => {
     fireEvent.change(screen.getByRole('searchbox', { name: '搜索资料' }), {
       target: { value: '甲' },
     })
-    fireEvent.click(screen.getByRole('button', { name: '搜索 / 应用筛选' }))
+    fireEvent.click(screen.getByRole('button', { name: '搜索' }))
     await waitFor(() => expect(screen.queryByText(/已选 \d+ 份/)).toBeNull())
   })
 })

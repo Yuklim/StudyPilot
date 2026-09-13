@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useMemo, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
 import { BookSketch, Icon } from '../../shell/Icon'
@@ -7,17 +7,11 @@ import { ResourceDeleteDialog, type DeleteTarget } from './ResourceDeleteDialog'
 import { resourceTitle } from './resourceTitle'
 import { ResourceError, ResourceProgress } from './ResourceState'
 import { useResourceQuery } from './useResourceQuery'
-import { ClassificationPicker, type Selection } from '../taxonomy/ClassificationPicker'
-import { getClassification, type Kind } from '../taxonomy/api'
+import { ClassificationChips } from './LibraryFilters'
 
 const EMPTY_SELECTION: ReadonlySet<string> = new Set()
 
 const DEFAULT_SORT = '-created_at'
-const UNASSIGNED = 'unassigned'
-// Chip text shown while an id from the address bar has no name yet, or cannot get one.
-// They are placeholders, never real names, so they must not be cached as if they were.
-const PENDING_NAME = '正在读取名称…'
-const MISSING_NAME = '（已不存在）'
 
 const SORTS: [string, string][] = [
   ['-created_at', '最近添加'],
@@ -35,7 +29,9 @@ interface Applied {
   source: string
   status: string
   sort: string
-  topicId: string
+  // TASK-057：主题多选（任一）+「未分配」可并列；标签多选（任一）。
+  topicIds: string[]
+  unassigned: boolean
   tagIds: string[]
   page: number
   // Values the address bar asked for that this page refuses to forward.
@@ -69,8 +65,8 @@ function readApplied(params: URLSearchParams): Applied {
         '排序',
         SORTS.map(([value]) => value),
       ) || DEFAULT_SORT,
-    topicId:
-      params.get('topic_unassigned') === 'true' ? UNASSIGNED : (params.get('topic_id') ?? ''),
+    topicIds: params.getAll('topic_id'),
+    unassigned: params.get('topic_unassigned') === 'true',
     tagIds: params.getAll('tag_id'),
     page: Number.isInteger(page) && page >= 1 ? page : 1,
     ignored,
@@ -83,86 +79,34 @@ function writeApplied(applied: Applied): URLSearchParams {
   if (applied.source) next.set('source_type', applied.source)
   if (applied.status) next.set('learning_status', applied.status)
   if (applied.sort !== DEFAULT_SORT) next.set('sort', applied.sort)
-  if (applied.topicId === UNASSIGNED) next.set('topic_unassigned', 'true')
-  else if (applied.topicId) next.set('topic_id', applied.topicId)
+  applied.topicIds.forEach((id) => next.append('topic_id', id))
+  if (applied.unassigned) next.set('topic_unassigned', 'true')
   applied.tagIds.forEach((id) => next.append('tag_id', id))
   if (applied.page > 1) next.set('page', String(applied.page))
   return next
 }
 
+// 草稿里只剩搜索词：类型/状态/排序与主题/标签都是点选即生效（TASK-057），直接写网址。
 function draftOf(applied: Applied) {
-  return {
-    q: applied.q,
-    source: applied.source,
-    status: applied.status,
-    sort: applied.sort,
-    classification: selectionOf(applied),
-  }
-}
-
-function selectionOf(applied: Applied): Selection {
-  return {
-    topic: applied.topicId ? { id: applied.topicId, name: '' } : null,
-    tags: applied.tagIds.map((id) => ({ id, name: '' })),
-  }
+  return { q: applied.q }
 }
 
 export function ResourceLibrary() {
   const [params, setParams] = useSearchParams()
   const address = params.toString()
   const applied = useMemo(() => readApplied(new URLSearchParams(address)), [address])
-  // Ids come from the address bar without names; resolve them so the chips stay readable.
-  const [names, setNames] = useState<Record<string, string>>({})
   const [draft, setDraft] = useState(() => draftOf(applied))
-  const [shown, setShown] = useState(address)
+  const [shown, setShown] = useState({ address, q: applied.q })
   const [view, setView] = useState<'cards' | 'list'>('list')
   const [validation, setValidation] = useState('')
 
-  if (shown !== address) {
-    // A new address (Back, a tag chip, a pasted link) replaces the unapplied form.
-    setShown(address)
-    setDraft(draftOf(applied))
+  if (shown.address !== address) {
+    // A new address (Back, a pasted link, a chip) is the truth. The unsent search draft
+    // is replaced only when the address's own `q` changed: picking a chip must not wipe
+    // the words the user is still typing (TASK-057, everything else applies instantly).
+    setShown({ address, q: applied.q })
+    if (applied.q !== shown.q) setDraft(draftOf(applied))
   }
-
-  useEffect(() => {
-    const wanted: [Kind, string][] = [
-      ...(applied.topicId && applied.topicId !== UNASSIGNED
-        ? ([['topics', applied.topicId]] as [Kind, string][])
-        : []),
-      ...applied.tagIds.map((id) => ['tags', id] as [Kind, string]),
-    ]
-    const missing = wanted.filter(([, id]) => names[id] === undefined)
-    if (!missing.length) return
-    let alive = true
-    void Promise.all(
-      missing.map(async ([kind, id]) => {
-        // An empty name marks "asked and could not resolve", so we never ask twice.
-        try {
-          return [id, (await getClassification(kind, id)).name || ' '] as const
-        } catch {
-          return [id, ''] as const
-        }
-      }),
-    ).then((rows) => {
-      if (!alive) return
-      setNames((current) => ({ ...current, ...Object.fromEntries(rows) }))
-    })
-    return () => {
-      alive = false
-    }
-  }, [applied, names])
-
-  function label(choice: { id: string; name: string }): string {
-    if (choice.id === UNASSIGNED) return '未分配主题'
-    if (choice.name) return choice.name
-    const known = names[choice.id]
-    if (known === undefined) return PENDING_NAME
-    return known.trim() || MISSING_NAME
-  }
-  const named = (selection: Selection): Selection => ({
-    topic: selection.topic ? { ...selection.topic, name: label(selection.topic) } : null,
-    tags: selection.tags.map((tag) => ({ ...tag, name: label(tag) })),
-  })
 
   const query = new URLSearchParams({
     page: String(applied.page),
@@ -172,14 +116,21 @@ export function ResourceLibrary() {
   if (applied.q) query.set('q', applied.q)
   if (applied.source) query.set('source_type', applied.source)
   if (applied.status) query.set('learning_status', applied.status)
-  if (applied.topicId === UNASSIGNED) query.set('topic_unassigned', 'true')
-  else if (applied.topicId) query.set('topic_id', applied.topicId)
+  applied.topicIds.forEach((id) => query.append('topic_id', id))
+  if (applied.unassigned) query.set('topic_unassigned', 'true')
   applied.tagIds.forEach((id) => query.append('tag_id', id))
+  // 标签任一匹配（用户 2026-09-12 选定）；后端默认仍是全匹配，所以必须显式带上。
+  if (applied.tagIds.length) query.set('tag_match', 'any')
   const key = query.toString()
   const load = useCallback(() => listResources(key), [key])
   const { result, retry } = useResourceQuery(key, load)
   const filtered = Boolean(
-    applied.q || applied.source || applied.status || applied.topicId || applied.tagIds.length,
+    applied.q ||
+    applied.source ||
+    applied.status ||
+    applied.topicIds.length ||
+    applied.unassigned ||
+    applied.tagIds.length,
   )
   const page = applied.page
   const data = result?.data
@@ -229,13 +180,6 @@ export function ResourceLibrary() {
     [retry, setSelected],
   )
 
-  // Derived, not stored: the warning stands exactly as long as an unreadable id is
-  // still filtering, so paging or re-applying cannot quietly drop it.
-  const unreadable = [
-    ...(applied.topicId && applied.topicId !== UNASSIGNED ? [applied.topicId] : []),
-    ...applied.tagIds,
-  ].filter((id) => names[id] === '')
-
   function apply(next: Applied) {
     setParams(writeApplied(next))
   }
@@ -247,18 +191,20 @@ export function ResourceLibrary() {
       return
     }
     setValidation('')
-    apply({
-      q: draft.q.trim(),
-      source: draft.source,
-      status: draft.status,
-      sort: draft.sort,
-      topicId: draft.classification.topic?.id ?? '',
-      tagIds: draft.classification.tags.map((tag) => tag.id),
-      page: 1,
-      // Built from the form, so nothing was rejected on the way in.
-      ignored: [],
+    apply({ ...applied, q: draft.q.trim(), page: 1, ignored: [] })
+  }
+  // 点选即生效：改一项就写网址、回到第一页。**基于最新网址算**（函数式更新），连点两个
+  // 芯片时第二下不会拿着上一次渲染的旧状态把第一下覆盖掉。
+  function pick(patch: Partial<Applied> | ((current: Applied) => Partial<Applied>)) {
+    setValidation('')
+    setParams((current) => {
+      const latest = readApplied(current)
+      const next = typeof patch === 'function' ? patch(latest) : patch
+      return writeApplied({ ...latest, ...next, page: 1, ignored: [] })
     })
   }
+  const toggleIn = (list: string[], id: string, on: boolean) =>
+    on ? (list.includes(id) ? list : [...list, id]) : list.filter((item) => item !== id)
 
   return (
     <section aria-label="我的资料">
@@ -280,7 +226,7 @@ export function ResourceLibrary() {
           </label>
           <div className="resource-actions">
             <button className="journal-button primary" type="submit">
-              搜索 / 应用筛选
+              搜索
             </button>
             <button
               className="journal-button"
@@ -310,8 +256,8 @@ export function ResourceLibrary() {
             <span>类型</span>
             <select
               aria-label="资料类型"
-              value={draft.source}
-              onChange={(e) => setDraft({ ...draft, source: e.target.value })}
+              value={applied.source}
+              onChange={(e) => pick({ source: e.target.value })}
             >
               <option value="">全部类型</option>
               {Object.entries(sourceLabels).map(([value, label]) => (
@@ -325,8 +271,8 @@ export function ResourceLibrary() {
             <span>状态</span>
             <select
               aria-label="学习状态"
-              value={draft.status}
-              onChange={(e) => setDraft({ ...draft, status: e.target.value })}
+              value={applied.status}
+              onChange={(e) => pick({ status: e.target.value })}
             >
               <option value="">全部未归档</option>
               {Object.entries(statusLabels).map(([value, label]) => (
@@ -340,8 +286,8 @@ export function ResourceLibrary() {
             <span>排序</span>
             <select
               aria-label="排序"
-              value={draft.sort}
-              onChange={(e) => setDraft({ ...draft, sort: e.target.value })}
+              value={applied.sort}
+              onChange={(e) => pick({ sort: e.target.value })}
             >
               {SORTS.map(([value, label]) => (
                 <option key={value} value={value}>
@@ -350,41 +296,26 @@ export function ResourceLibrary() {
               ))}
             </select>
           </label>
-          <ClassificationPicker
-            value={named(draft.classification)}
-            onChange={(classification) => {
-              // Names picked in page are authoritative; remember them for the address bar.
-              setNames((current) => ({
-                ...current,
-                ...Object.fromEntries(
-                  [...(classification.topic ? [classification.topic] : []), ...classification.tags]
-                    .filter(
-                      (choice) =>
-                        choice.name &&
-                        choice.id !== UNASSIGNED &&
-                        choice.name !== PENDING_NAME &&
-                        choice.name !== MISSING_NAME,
-                    )
-                    .map((choice) => [choice.id, choice.name]),
-                ),
-              }))
-              setDraft({ ...draft, classification })
-            }}
-            filter
-          />
           {validation && (
             <span className="resource-filter-note" role="alert">
               {validation}
             </span>
           )}
         </div>
+        {/* 主题/标签芯片各占一行，点选即生效（TASK-057）。 */}
+        <ClassificationChips
+          kind="topics"
+          selected={applied.topicIds}
+          unassigned={applied.unassigned}
+          onToggle={(id, on) => pick((cur) => ({ topicIds: toggleIn(cur.topicIds, id, on) }))}
+          onToggleUnassigned={(on) => pick({ unassigned: on })}
+        />
+        <ClassificationChips
+          kind="tags"
+          selected={applied.tagIds}
+          onToggle={(id, on) => pick((cur) => ({ tagIds: toggleIn(cur.tagIds, id, on) }))}
+        />
       </form>
-      {unreadable.length > 0 && (
-        <p role="alert" className="resource-filter-note">
-          网址里有 {unreadable.length}{' '}
-          个已不存在或读不到的主题/标签，它对应的筛选条件仍在生效但显示不出名称；其余筛选条件不受影响。
-        </p>
-      )}
       {applied.ignored.length > 0 && (
         <p role="alert" className="resource-filter-note">
           网址里的{applied.ignored.join('、')}读不懂，已忽略；其余筛选条件照常生效。

@@ -94,7 +94,7 @@ test('real UI saves WEB and PASTE, refreshes details, searches and safely reads 
   }
   await page.getByRole('link', { name: '返回资料库' }).click()
   await page.getByLabel('搜索资料').fill('页面合成')
-  await page.getByRole('button', { name: '搜索 / 应用筛选' }).click()
+  await page.getByRole('button', { name: '搜索', exact: true }).click()
   await expect(page.getByText('共 2 份资料', { exact: true })).toBeVisible()
   await expect(page.getByRole('list', { name: '资料结果' }).getByRole('heading')).toHaveCount(2)
   for (const width of [320, 390, 1440]) {
@@ -107,7 +107,7 @@ test('real UI saves WEB and PASTE, refreshes details, searches and safely reads 
   await page.getByLabel('资料类型').selectOption('PASTE')
   await page.getByLabel('学习状态').selectOption('UNREAD')
   await page.getByLabel('排序').selectOption('title')
-  await page.getByRole('button', { name: '搜索 / 应用筛选' }).click()
+  await page.getByRole('button', { name: '搜索', exact: true }).click()
   await expect(page.getByText('共 1 份资料', { exact: true })).toBeVisible()
   await page.getByRole('link', { name: '页面合成 · 写在页边的小记' }).click()
   await openPasted(page)
@@ -178,7 +178,7 @@ test('real pagination retains search and order and is keyboard operable', async 
   await page.goto('/resources')
   await page.getByLabel('搜索资料').fill('分页合成')
   await page.getByLabel('排序').selectOption('title')
-  await page.getByRole('button', { name: '搜索 / 应用筛选' }).click()
+  await page.getByRole('button', { name: '搜索', exact: true }).click()
   await expect(page.getByText('共 21 份资料', { exact: true })).toBeVisible()
   await expect(page.getByRole('list', { name: '资料结果' }).getByRole('heading')).toHaveCount(20)
   await page.getByRole('button', { name: '下一页' }).focus()
@@ -216,17 +216,21 @@ test('a tag created while saving becomes a clickable filter that survives reload
   await expect(page).toHaveURL(/\/resources\?tag_id=[0-9a-f-]{36}$/)
   const filtered = page.getByRole('list', { name: '资料结果' })
   await expect(filtered.getByRole('heading', { name: '带新标签的资料' })).toBeVisible()
-  await expect(page.getByRole('button', { name: `移除已选标签 ${name} ×` })).toBeVisible()
+  // TASK-057：筛选行里那个标签的芯片处于按下状态（取代旧的「移除已选标签 ×」按钮）。
+  const tagChip = page
+    .getByRole('group', { name: '标签选项' })
+    .getByRole('button', { name, exact: true })
+  await expect(tagChip).toHaveAttribute('aria-pressed', 'true')
 
   const address = page.url()
   await page.reload()
   await expect(page).toHaveURL(address)
   await expect(filtered.getByRole('heading', { name: '带新标签的资料' })).toBeVisible()
-  await expect(page.getByRole('button', { name: `移除已选标签 ${name} ×` })).toBeVisible()
+  await expect(tagChip).toHaveAttribute('aria-pressed', 'true')
 
   await page.goBack()
   await expect(page).toHaveURL(/\/resources$/)
-  await expect(page.getByText('已选 0 个标签')).toBeVisible()
+  await expect(tagChip).toHaveAttribute('aria-pressed', 'false')
   expect(errors).toEqual([])
 })
 
@@ -309,7 +313,7 @@ test('resources can be deleted from the library, one or several at a time, throu
   })
   await page.goto('/resources')
   await page.getByLabel('搜索资料').fill('删除合成')
-  await page.getByRole('button', { name: '搜索 / 应用筛选' }).click()
+  await page.getByRole('button', { name: '搜索', exact: true }).click()
   await expect(page.getByText('共 3 份资料', { exact: true })).toBeVisible()
 
   // 单个：每份资料旁的删除按钮 → 弹窗 → 删除。

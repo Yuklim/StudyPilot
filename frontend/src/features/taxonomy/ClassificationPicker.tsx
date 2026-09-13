@@ -8,14 +8,16 @@ export interface Selection {
   topic: Choice | null
   tags: Choice[]
 }
+/**
+ * 表单里的主题/标签选择（选填）。TASK-057 起资料库的筛选不再走这里（改为筛选行芯片、
+ * 点选即生效），`filter` 模式随之删除；本组件只剩表单用法，行为不变。
+ */
 export function ClassificationPicker({
   value,
   onChange,
-  filter = false,
 }: {
   value: Selection
   onChange: (value: Selection) => void
-  filter?: boolean
 }) {
   const [open, setOpen] = useState(false)
   // Bumped after a create so the shared browser reloads and shows the new tag.
@@ -29,11 +31,11 @@ export function ClassificationPicker({
         aria-expanded={open}
         onClick={() => setOpen(!open)}
       >
-        {open ? '收起分类选择' : filter ? '按主题与标签筛选' : '选择主题与标签（选填）'}
+        {open ? '收起分类选择' : '选择主题与标签（选填）'}
       </button>
       <p className="resource-hint">
-        {value.topic ? `主题：${value.topic.name}` : filter ? '不限主题' : '未选择主题'} · 已选{' '}
-        {value.tags.length} 个标签{filter ? '（须全部匹配）' : '（最多 20 个）'}
+        {value.topic ? `主题：${value.topic.name}` : '未选择主题'} · 已选 {value.tags.length}{' '}
+        个标签（最多 20 个）
       </p>
       {value.tags.length > 0 && (
         <div className="selection-chips" aria-label="已选标签">
@@ -62,21 +64,8 @@ export function ClassificationPicker({
                 checked={!value.topic}
                 onChange={() => onChange({ ...value, topic: null })}
               />
-              {filter ? '不限主题' : '不分配主题'}
+              不分配主题
             </label>
-            {filter && (
-              <label className="classification-choice">
-                <input
-                  type="radio"
-                  name="topic-choice"
-                  checked={value.topic?.id === 'unassigned'}
-                  onChange={() =>
-                    onChange({ ...value, topic: { id: 'unassigned', name: '未分配主题' } })
-                  }
-                />
-                仅未分配主题
-              </label>
-            )}
             <ClassificationBrowser
               kind="topics"
               render={(item) => (
@@ -94,17 +83,14 @@ export function ClassificationPicker({
           </section>
           <section aria-label="选择资料标签">
             <h3>标签</h3>
-            {/* Filtering is a read: offering to create a tag there would only mis-create. */}
-            {!filter && (
-              <TagCreateField
-                disabled={full}
-                hint={full ? '已选满 20 个标签，先移除一个再新建。' : undefined}
-                created={(tag) => {
-                  onChange({ ...value, tags: [...value.tags, tag] })
-                  setRevision(revision + 1)
-                }}
-              />
-            )}
+            <TagCreateField
+              disabled={full}
+              hint={full ? '已选满 20 个标签，先移除一个再新建。' : undefined}
+              created={(tag) => {
+                onChange({ ...value, tags: [...value.tags, tag] })
+                setRevision(revision + 1)
+              }}
+            />
             <ClassificationBrowser
               kind="tags"
               revision={revision}

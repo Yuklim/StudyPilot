@@ -25,6 +25,8 @@ allowed_paths = [
   "frontend/e2e/taxonomy-pages.spec.ts",
   "frontend/e2e/resource-pages.spec.ts",
   "frontend/e2e/reader-notes-sidebar.spec.ts",
+  "frontend/e2e/file-pages.spec.ts",
+  "frontend/e2e/scaffold.spec.ts",
   "docs/tasks/TASK-055-sidebar-polish.md",
   "docs/tasks/TASK-056-delete-dialog.md",
   "docs/tasks/TASK-057-library-filters.md",
@@ -62,6 +64,11 @@ checks = ["backend", "frontend", "contracts"]
 5. `ClassificationPicker` 去掉 `filter` 模式（只剩表单里的「选择主题与标签（选填）」，行为不变）。
 6. 既有用例按新交互重写（`ResourcePages.test.tsx` 筛选相关、`ClassificationPages.test.tsx` 库内筛选、e2e `taxonomy-pages.spec.ts:85-93`），契约断言（网址↔请求参数、重置、不存在 id 提示）逐条保留；新增：多主题 OR、未分配并列、标签任一、点选即生效（不点按钮请求就发）。
 7. 顺带：`reader-notes-sidebar.spec.ts:117` 的 `getByRole('status')` 改为按文字定位（CI 上与「正在翻开心得…」撞出 strict mode，PR #64 首跑失败、重跑通过）。
+
+### 实现中修订授权范围（登记后、冻结前）
+
+- 追加 `frontend/e2e/file-pages.spec.ts`：库内「搜索 / 应用筛选」按钮改名「搜索」（它现在只管搜索词），该文件一处按名称点击需同步；断言不变。
+- 追加 `frontend/e2e/scaffold.spec.ts`：「只用批准的读请求」守卫把资料库页允许的 GET 白名单加上 `/api/v1/topics`、`/api/v1/tags`（筛选行芯片的两次列表读取是本任务新增的正当读请求）；守卫本身不放宽。
 
 ### 非目标
 

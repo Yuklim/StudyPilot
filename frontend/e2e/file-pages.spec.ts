@@ -80,7 +80,7 @@ test('file page saves an original, filters it and downloads identical bytes afte
   await page.getByRole('link', { name: '返回资料库' }).click()
   await page.getByLabel('资料类型').selectOption('FILE')
   await page.getByLabel('搜索资料').fill('原件端到端')
-  await page.getByRole('button', { name: '搜索 / 应用筛选' }).click()
+  await page.getByRole('button', { name: '搜索', exact: true }).click()
   await expect(page.getByText('共 1 份资料', { exact: true })).toBeVisible()
   await page.getByRole('link', { name: '原件端到端 · 日常小记' }).click()
   await openOriginal(page)

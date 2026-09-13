@@ -247,31 +247,56 @@ describe('classification selection and resource integration', () => {
     ])
   })
   it('combines classifications with existing filters and clears them on reset', async () => {
+    // TASK-057：主题/标签是筛选行里的芯片、点选即生效；主题多选=任一，可与「未分配」并列，
+    // 标签多选=任一（请求带 `tag_match=any`）。网址↔请求参数与「重置回默认」的断言原样保留。
+    const other = '00000000-0000-4000-8000-000000000011'
     const request = vi
       .spyOn(api, 'request')
       .mockImplementation(async (path) =>
-        path.startsWith('/api/v1/resources?') ? samplePage([]) : reads(path),
+        path.startsWith('/api/v1/resources?')
+          ? samplePage([])
+          : path.startsWith('/api/v1/topics?')
+            ? categoryPage([category(), category({ id: other, name: '另一主题' })])
+            : reads(path),
       )
     renderWithRouter(<App />, '/resources')
     await screen.findByText('给想学的内容，留一个位置')
-    click('按主题与标签筛选')
-    fireEvent.click(await screen.findByRole('radio', { name: '合成主题' }))
-    fireEvent.click(await screen.findByRole('checkbox', { name: '合成标签' }))
+    const chip = (name: string) => screen.getByRole('button', { name })
+    fireEvent.click(await screen.findByRole('button', { name: '合成主题' }))
+    // 点选即生效：没有点任何「应用」按钮，请求已带上 topic_id。
+    await waitFor(() => expect(request.mock.lastCall?.[0]).toContain(`topic_id=${topicId}`))
+    expect(chip('合成主题')).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(chip('另一主题'))
+    fireEvent.click(chip('合成标签'))
     change('资料类型', 'WEB')
-    click('搜索 / 应用筛选')
-    await waitFor(() =>
-      expect(request.mock.lastCall?.[0]).toContain(`topic_id=${topicId}&tag_id=${tagId}`),
-    )
-    fireEvent.click(screen.getByRole('radio', { name: '仅未分配主题' }))
-    click('搜索 / 应用筛选')
+    await waitFor(() => {
+      const sent = new URL(request.mock.lastCall![0], 'http://x.test').searchParams
+      expect(sent.getAll('topic_id')).toEqual([topicId, other])
+      expect(sent.getAll('tag_id')).toEqual([tagId])
+      expect(sent.get('tag_match')).toBe('any')
+      expect(sent.get('source_type')).toBe('WEB')
+    })
+    // 「未分配」与主题并列（或），不再互斥。
+    fireEvent.click(chip('未分配'))
     await waitFor(() => expect(request.mock.lastCall?.[0]).toContain('topic_unassigned=true'))
-    expect(request.mock.lastCall?.[0]).not.toContain('topic_id=')
+    expect(
+      new URL(request.mock.lastCall![0], 'http://x.test').searchParams.getAll('topic_id'),
+    ).toEqual([topicId, other])
+    // 再点一次取消。
+    fireEvent.click(chip('合成主题'))
+    await waitFor(() =>
+      expect(
+        new URL(request.mock.lastCall![0], 'http://x.test').searchParams.getAll('topic_id'),
+      ).toEqual([other]),
+    )
     click('重置')
     await waitFor(() =>
       expect(request.mock.lastCall?.[0]).toBe(
         '/api/v1/resources?page=1&page_size=20&sort=-created_at',
       ),
     )
+    expect(chip('另一主题')).toHaveAttribute('aria-pressed', 'false')
+    expect(chip('未分配')).toHaveAttribute('aria-pressed', 'false')
   })
   it('refreshes real details after one tag operation and preserves errors on failure', async () => {
     let attached = false
