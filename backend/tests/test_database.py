@@ -148,7 +148,7 @@ def test_version_conflict_and_noop_preserve_timestamps(database: Engine) -> None
         (ActiveReviewPlan, {"status": "SCHEDULED", "due_date": None}),
         (ActiveReviewPlan, {"status": "PAUSED", "due_date": date(2026, 9, 12)}),
         (Note, {"content": ""}),
-        (Note, {"content": "x" * 50_001}),
+        (Note, {"content": "x" * 2_000_001}),
         (ReviewRecord, {"planned_date": date(2026, 9, 3), "result": "NEEDS_REVIEW"}),
         (
             StudyRecord,

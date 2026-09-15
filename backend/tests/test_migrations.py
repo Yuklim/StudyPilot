@@ -9,6 +9,7 @@ import pytest
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 from sqlalchemy import inspect, select
+from sqlalchemy.exc import IntegrityError
 from support import BACKEND, migrate
 
 from studypilot.infrastructure.database import Base, create_database_engine, create_session_factory
@@ -29,7 +30,7 @@ def test_upgrade_is_repeatable_and_matches_models(tmp_path: Path) -> None:
                 "alembic_version",
             }
             context = MigrationContext.configure(connection, opts={"compare_type": True})
-            assert context.get_current_heads() == ("0005_snapshot_assets",)
+            assert context.get_current_heads() == ("0006_note_content_limit",)
             assert compare_metadata(context, Base.metadata) == []
         with factory() as session:
             assert session.scalar(select(Topic.name)) == "Kept after upgrade"
@@ -64,7 +65,7 @@ def test_nonempty_downgrade_refuses_before_dropping_any_table(tmp_path: Path) ->
             # The downgrade runs in one transaction; the non-empty guard aborts it,
             # rolling back the already-applied 0002 step too, so head stays put.
             assert MigrationContext.configure(connection).get_current_heads() == (
-                "0005_snapshot_assets",
+                "0006_note_content_limit",
             )
         with factory() as session:
             assert session.scalar(select(Topic.name)) == "Must not be deleted"
@@ -100,6 +101,39 @@ def test_0001_to_head_keeps_attached_notes_and_allows_standalone(tmp_path: Path)
                 "stays attached",
                 "free standing",
             }
+    finally:
+        engine.dispose()
+
+
+def test_0006_widens_note_content_and_refuses_lossy_downgrade(tmp_path: Path) -> None:
+    """0006 rebuilds `notes` so content over 50,000 characters is accepted
+    (TASK-063 inline images); going back is refused while such a note exists."""
+    engine = create_database_engine(f"sqlite:///{tmp_path / 'wide.db'}")
+    try:
+        migrate(engine, "0005_snapshot_assets")
+        factory = create_session_factory(engine)
+        with factory.begin() as session:
+            session.add(Note(resource_id=None, content="short before"))
+        with factory.begin() as session, pytest.raises(IntegrityError):
+            session.add(Note(resource_id=None, content="x" * 60_000))
+            session.flush()
+        migrate(engine)
+        with factory.begin() as session:
+            session.add(Note(resource_id=None, content="y" * 60_000))
+        with factory() as session:
+            assert sorted(len(note.content) for note in session.query(Note).all()) == [12, 60_000]
+        with pytest.raises(RuntimeError, match="exceed 50000"):
+            migrate(engine, "0005_snapshot_assets", downgrade=True)
+        with engine.connect() as connection:
+            assert MigrationContext.configure(connection).get_current_heads() == (
+                "0006_note_content_limit",
+            )
+        with factory.begin() as session:
+            session.query(Note).filter(Note.content == "y" * 60_000).delete()
+        migrate(engine, "0005_snapshot_assets", downgrade=True)
+        with factory.begin() as session, pytest.raises(IntegrityError):
+            session.add(Note(resource_id=None, content="z" * 60_000))
+            session.flush()
     finally:
         engine.dispose()
 

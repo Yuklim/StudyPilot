@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { ApiError } from '../../api/client'
@@ -6,12 +6,13 @@ import { useHeadingSlot } from '../../shell/heading'
 import { Icon } from '../../shell/Icon'
 import { failureText, isResourceId } from '../resources/api'
 import { renderSnapshot } from '../resources/snapshotMarkdown'
-import { cleanContent, deleteNote, getNote, saveNote, type Note } from './api'
+import { MAX_CONTENT, cleanContent, deleteNote, getNote, saveNote, type Note } from './api'
+import { NoteImageError, imageFiles, imageToMarkdown, inlineImageBytes } from './noteImages'
 import { noteTitle } from './noteTitle'
 
 /** 停笔多久之后自动保存。 */
 const AUTOSAVE_DELAY = 1000
-const MAX_CHARS = 50000
+const MAX_CHARS = MAX_CONTENT
 
 type SaveState =
   | { kind: 'idle' }
@@ -48,7 +49,9 @@ export function NoteEditorPage({ noteId }: { noteId?: string }) {
   const [note, setNote] = useState<Note | null>(null)
   const [draft, setDraft] = useState('')
   const [loading, setLoading] = useState(!creating)
-  const [loadError, setLoadError] = useState<unknown>(null)
+  const [loadFailure, setLoadError] = useState<unknown>(null)
+  // 上一条打不开的错误不带进「新建」（TASK-062 Review F5）：新建页没有读取这回事。
+  const loadError = creating ? null : loadFailure
   const [save, setSave] = useState<SaveState>({ kind: 'idle' })
   const [preview, setPreview] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -183,7 +186,10 @@ export function NoteEditorPage({ noteId }: { noteId?: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigate, scope])
 
-  flushRef.current = flush
+  // 在 commit 阶段同步给读取 effect 用（TASK-062 Review F4：不在渲染期写 ref）。
+  useLayoutEffect(() => {
+    flushRef.current = flush
+  }, [flush])
   function schedule() {
     if (timer.current !== null) window.clearTimeout(timer.current)
     timer.current = window.setTimeout(() => {
@@ -210,10 +216,69 @@ export function NoteEditorPage({ noteId }: { noteId?: string }) {
   }, [flush])
 
   // 失败后再次改动会重新排程；冲突则不再自动保存，等用户选。
+  const [images, setImages] = useState<{ pending: number; error: string | null }>({
+    pending: 0,
+    error: null,
+  })
   function onChange(value: string) {
     setDraft(value)
     if (latest.current.save.kind === 'failed') setSave({ kind: 'idle' })
     if (latest.current.save.kind !== 'conflict') schedule()
+    // 图片没插进去的提示只到下一次改动为止。
+    setImages((state) => (state.error ? { ...state, error: null } : state))
+  }
+
+  // --- 图片（TASK-063）：粘贴/拖入 → 压缩成 data URI → 作为一行 Markdown 插到光标处 ---
+  function insertAtCursor(text: string) {
+    const element = textarea.current
+    const current = latest.current.draft
+    const start = element?.selectionStart ?? current.length
+    const end = element?.selectionEnd ?? current.length
+    const before = current.slice(0, start)
+    const after = current.slice(end)
+    // 图片自成一段：前后各保证一个换行，不粘在别的句子上。
+    const lead = before && !before.endsWith('\n') ? '\n' : ''
+    const trail = after && !after.startsWith('\n') ? '\n' : ''
+    const next = before + lead + text + trail + after
+    onChange(next)
+    // 连续插几张：下一张要接在这张后面，不能等下一次 commit 才更新。
+    latest.current = { ...latest.current, draft: next }
+    const caret = (before + lead + text + trail).length
+    window.setTimeout(() => {
+      if (textarea.current === element && element) {
+        element.setSelectionRange(caret, caret)
+        element.focus()
+      }
+    }, 0)
+  }
+  async function insertImages(files: File[]) {
+    if (files.length === 0) return
+    setImages((state) => ({ pending: state.pending + files.length, error: null }))
+    for (const file of files) {
+      try {
+        const line = await imageToMarkdown(file)
+        if (!alive.current) return
+        insertAtCursor(line)
+      } catch (cause) {
+        if (!alive.current) return
+        const message = cause instanceof NoteImageError ? cause.message : '这张图无法处理。'
+        setImages((state) => ({ ...state, error: message }))
+      } finally {
+        if (alive.current) setImages((state) => ({ ...state, pending: state.pending - 1 }))
+      }
+    }
+  }
+  function onPaste(event: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const files = imageFiles(event.clipboardData)
+    if (files.length === 0) return
+    event.preventDefault()
+    void insertImages(files)
+  }
+  function onDrop(event: React.DragEvent<HTMLTextAreaElement>) {
+    const files = imageFiles(event.dataTransfer)
+    if (files.length === 0) return
+    event.preventDefault()
+    void insertImages(files)
   }
 
   async function reload() {
@@ -287,14 +352,24 @@ export function NoteEditorPage({ noteId }: { noteId?: string }) {
   // 预览：与正文快照同一渲染器；页面 h1 已经是第一行，正文开头同名的 `#` 标题不再渲染一遍
   // （TASK-053 的去重规则同样适用）。
   const rendered = useMemo(
-    () => (preview ? renderSnapshot(draft, new Map(), null, { pageTitle: title }) : ''),
+    () =>
+      preview
+        ? renderSnapshot(draft, new Map(), null, { pageTitle: title, inlineImages: true })
+        : '',
     [preview, draft, title],
   )
   const length = [...cleanContent(draft)].length
   const tooLong = length > MAX_CHARS
 
   const status = (() => {
-    if (tooLong) return `超过 ${MAX_CHARS.toLocaleString()} 字，删减到上限内才会保存`
+    if (tooLong) {
+      const imageBytes = inlineImageBytes(draft)
+      return imageBytes > 0
+        ? `正文过大（含图片约 ${(imageBytes / 1024 / 1024).toFixed(1)} MB），删掉一些图片才会保存`
+        : `超过 ${MAX_CHARS.toLocaleString()} 字，删减到上限内才会保存`
+    }
+    if (images.pending > 0) return '正在处理图片…'
+    if (images.error) return images.error
     switch (save.kind) {
       case 'saving':
         return '正在保存…'
@@ -405,10 +480,15 @@ export function NoteEditorPage({ noteId }: { noteId?: string }) {
                 ref={textarea}
                 className="note-editor-textarea"
                 aria-label="心得正文（Markdown）"
-                placeholder="写下此刻的理解、疑问或下一步。支持 Markdown，停笔后自动保存。"
+                placeholder="写下此刻的理解、疑问或下一步。支持 Markdown，可直接粘贴图片，停笔后自动保存。"
                 value={draft}
                 onChange={(event) => onChange(event.target.value)}
                 onBlur={() => void flush()}
+                onPaste={onPaste}
+                onDrop={onDrop}
+                onDragOver={(event) => {
+                  if (imageFiles(event.dataTransfer).length > 0) event.preventDefault()
+                }}
                 spellCheck={false}
               />
             )}

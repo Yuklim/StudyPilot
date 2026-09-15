@@ -6,7 +6,7 @@ import { resourceTitle } from '../resources/resourceTitle'
 import { renderSnapshot } from '../resources/snapshotMarkdown'
 import { useResourceQuery } from '../resources/useResourceQuery'
 import { attachNote, deleteNote, listNotes, type Note, type NotePage } from './api'
-import { noteSnippet, noteTitle } from './noteTitle'
+import { displayText, noteSnippet, noteTitle } from './noteTitle'
 import { ResourceAttachPicker } from './ResourceAttachPicker'
 
 /** 两栏（列表 + 预览）的最小宽度；以下只有列表，点一条直接进编辑页。 */
@@ -98,7 +98,10 @@ export function NotesPage() {
 
   const notes = useMemo(() => pages.flat(), [pages])
   const needle = query.trim().toLowerCase()
-  const shown = needle ? notes.filter((row) => row.content.toLowerCase().includes(needle)) : notes
+  // 按去掉内嵌图片数据的文本匹配（TASK-063）：base64 里什么字母都有，直接搜正文会假命中。
+  const shown = needle
+    ? notes.filter((row) => displayText(row.content).toLowerCase().includes(needle))
+    : notes
   const selected = notes.find((row) => row.id === selectedId) ?? null
   // 地址里指着一条、但已加载的独立列表里没有：已绑定资料、已删除，或在还没加载的页里
   // （TASK-061 Review F3）。不能静默当成「没选」。
@@ -293,7 +296,7 @@ function NotePreview({
   }, [confirmDelete, pending])
   const title = noteTitle(note.content)
   const html = useMemo(
-    () => renderSnapshot(note.content, new Map(), null, { pageTitle: title }),
+    () => renderSnapshot(note.content, new Map(), null, { pageTitle: title, inlineImages: true }),
     [note.content, title],
   )
 

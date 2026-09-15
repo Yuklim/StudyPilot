@@ -102,7 +102,7 @@ describe('quick personal notes', () => {
     type(' \n ')
     submit()
     expect(screen.getByRole('alert')).toHaveTextContent('写下一点内容')
-    type('x'.repeat(50001))
+    type('x'.repeat(2_000_001))
     submit()
     expect(request.mock.calls.some(([, init]) => init?.method)).toBe(false)
     await screen.findByText('还没有心得，写下一句话就可以开始。')
@@ -162,6 +162,12 @@ describe('quick personal notes', () => {
     expect(confirm).toHaveBeenCalledTimes(3)
     expect(screen.getByRole('textbox')).toHaveValue('未完成草稿')
     expect(screen.getByRole('form', { name: '心得编辑' })).toBeInTheDocument()
+  })
+  it('shows inline images as a placeholder in the plain-text card (TASK-063)', async () => {
+    setup([note({ content: '看这张\n![截图](data:image/webp;base64,AAAA)\n完' })])
+    const card = await screen.findByText(/看这张/)
+    expect(card).toHaveTextContent('看这张 [图片：截图] 完')
+    expect(card.textContent).not.toContain('base64')
   })
   it('keeps a conflicting draft, requires successful reload and explicit re-confirmation', async () => {
     const request = setup([note()])

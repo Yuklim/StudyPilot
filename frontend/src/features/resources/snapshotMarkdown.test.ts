@@ -161,6 +161,35 @@ describe('non-canonical absolute addresses', () => {
   })
 })
 
+describe('inline base64 images (TASK-063, notes only)', () => {
+  const png = 'data:image/png;base64,iVBORw0KGgo='
+  it('renders a data: image only when inlineImages is requested', () => {
+    const host = document.createElement('div')
+    host.innerHTML = renderSnapshot(`![截图](${png})`, noFrozen, null, { inlineImages: true })
+    const img = host.querySelector('img')
+    expect(img?.getAttribute('src')).toBe(png)
+    expect(img?.getAttribute('alt')).toBe('截图')
+    // 不是原站图：不带 referrerpolicy / data-origin-image。
+    expect(img?.hasAttribute('referrerpolicy')).toBe(false)
+    expect(img?.hasAttribute('data-origin-image')).toBe(false)
+    // 默认（资料正文快照）照旧拒绝，输出与以往相同：只留替代文字。
+    host.innerHTML = renderSnapshot(`![截图](${png})`, noFrozen)
+    expect(host.querySelector('img')).toBeNull()
+    expect(host.textContent).toContain('截图')
+  })
+  it.each([
+    'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=',
+    'data:text/html;base64,PHNjcmlwdD4=',
+    'data:image/png,notbase64',
+    'data:image/png;base64,AAAA<script>',
+  ])('still refuses %s even with inlineImages', (src) => {
+    const host = document.createElement('div')
+    host.innerHTML = renderSnapshot(`![x](${src})`, noFrozen, null, { inlineImages: true })
+    expect(host.querySelector('img')).toBeNull()
+    expect(host.querySelector('script')).toBeNull()
+  })
+})
+
 describe('a very long body', () => {
   // 完成条件 11 的一支：正文上限是 100 万字。此前既无用例也无实测——
   // 由 TASK-042 的独立验收指出，属实现者自评的空档。

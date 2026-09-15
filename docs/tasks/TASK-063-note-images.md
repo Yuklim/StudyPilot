@@ -15,6 +15,7 @@ allowed_paths = [
   "backend/migrations/versions/0006_note_content_limit.py",
   "backend/tests/test_notes.py",
   "backend/tests/test_migrations.py",
+  "backend/tests/test_database.py",
   "docs/contracts/API与数据契约基线.md",
   "docs/contracts/openapi-v1.json",
   "frontend/src/features/notes/api.ts",
