@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-061"
-status = "IN_REVIEW"
+status = "ACCEPTED"
 risk = "L2"
 risk_reason = "重做 `/notes` 页面：由「写作框 + 列表 + 编辑 + 删除同一组件」改为备忘录式两栏（左列表可搜索，右预览与管理动作），编辑一律进 TASK-060 的整页编辑器。前端为主，只给 `listNotes` 加一个契约里已有的可选 `sort` 参数；不改后端与契约。判 L2：动了「回看 / 管理心得」这条核心路径与后贴/删除的版本化写调用，需独立 Reviewer 看最终 diff；不到 L3。"
 risk_flags = ["business"]
@@ -89,7 +89,31 @@ checks = ["frontend"]
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 冻结候选：**`92b8cdf`**（= 实现 `b61589f` + 本记录/TASK-060 MERGED 登记/索引；产品代码与 `b61589f` 相同）。范围 `b06b6e9..92b8cdf`，11 个文件（前端 8 + 任务记录 3），均在 `allowed_paths` 内。
-- 检查：`check_task.py --task … --candidate 92b8cdf` **CHECKS PASS**（`files=11 product_fingerprint=b26da71b…`；format/lint/typecheck/test 600/build）；e2e 62 passed（`b61589f` 工作区，之后只改文档）；`git diff --check b06b6e9 92b8cdf` exit 0。
-- Review：（待写回）
+- 冻结候选：首轮 **`92b8cdf`**（= 实现 `b61589f` + 记录/TASK-060 MERGED 登记/索引）→ Review F1 修复后**最终候选 `b86f175`**（`fix(frontend): 心得后贴成功后立即刷新独立列表`，只动 `NotesPage.tsx`/`NotesPage.test.tsx`/`notes-pages.spec.ts`）。范围 `b06b6e9..b86f175`，11 个文件（前端 8 + 任务记录 3），均在 `allowed_paths` 内。
+- 检查（绑定 `b86f175`）：`check_task.py --task … --candidate b86f175` **CHECKS PASS**（`files=11 product_fingerprint=2055a1bf…`；format/lint/typecheck/test 600/build）；e2e **62 passed**（`b86f175` 工作区）；`git diff --check b06b6e9 b86f175` exit 0。F1 修复的判别性：去掉后贴成功后的 `refresh()` → attach 用例红（`waitFor` 超时）；累计 5 处定向变红。
+- Review（L2 独立只读 Reviewer `.claude/agents/reviewer.md`，仅 Read/Grep/Glob，自证无写工具；原文）：
+
+> **首轮**（`b06b6e9..92b8cdf`）：范围未越目标——无全量列表、无内联编辑、未改阅读器侧栏/后端/契约；`shell/pages.ts` 未动，`/notes` 非 `ownHeading`，页内仅 h2，焦点契约无破坏。契约：`backend/src/studypilot/modules/notes/contracts.py:45-46` `page_size ≤100`、sort 四枚举与前端一致；`listNotes` 默认值与请求串不变，既有调用方 `NotesPanel.tsx:87/257` 不受影响。安全：`dangerouslySetInnerHTML` 仅经 `renderSnapshot`（`html=false`），单测断言 `<script>` 转义且无 h1。时序：`extra.after === firstPage` 绑定、`alive` 守卫、`key={selected.id}`、后贴/删除后 `select(null)+refresh()` 均正确。测试：9 条单测覆盖目标 1–2；4 处变红声明可信；e2e 改写保留 API 计数断言。
+> - **F1（记录后继续）** `NotesPage.tsx:280-292`：后贴成功后列表未即时移除该条，需点「回到列表」才刷新；若改点其他条目，陈旧行仍在，再对它删除/后贴会得到 404/409 受控错误，无数据损坏。与目标「成功后从列表移除」有偏差，且 e2e 删掉了 `list.not.toContainText` 断言。建议 attach 成功时也触发列表刷新（保留提示块）。
+> - **F2（可选）** 删除模态无 Escape 关闭与焦点移入（TASK-056/060 同类对话框有）；「取消」与背景点击可用。
+> - **F3（可选）** `?note=` 指向未加载页/已绑定心得时右栏静默显示「从左边选一条」；`refresh` 与在途 `loadMore` 竞态可能使「加载更多」可见性短暂不准。
+> - **结论：PASS**（F1 建议补一处刷新，不阻断）。
+>
+> **增量复审**（`92b8cdf..b86f175`，继承首轮全部结论）：修法与描述一致——`attached` 上移到 `NotesPage`，`onAttached` → `setAttached + select(null) + refresh()`，右栏在无选中且 `attached` 非空时渲染提示块；列表项 `onClick` 与「回到列表」清 `attached`，`onDeleted` 同步清，避免残留。时序：`onAttached` 后 `NotePreview` 卸载，`finally` 的 `setPending(false)` 在同一同步段执行，无告警；刷新期间提示块照常显示。首轮 F1 的陈旧行路径已消失。单测去掉 `refresh()` 确实变红，判别性可信；e2e 恢复了 UI 断言。未触及契约/后端/其他模块。
+> - **No findings**（F2/F3 仍为可选建议，不阻断）。
+> - **结论：PASS，覆盖新候选 `b86f175`。**
+
+- findings 处置：
+
+| # | 处置 | 依据 |
+| --- | --- | --- |
+| F1 | **已改**（`b86f175`：后贴成功立即刷新列表，提示块由父级保留）+ 单测/e2e 断言。 | 与本任务目标有偏差，修复成本一处 |
+| F2 | **记录**：删除模态补 Escape/焦点移入——与 TASK-056/060 对话框看齐，可在 TASK-062 顺带。 | 「取消」与背景点击可用，非核心路径 |
+| F3 | **记录**：`?note=` 指向未加载/已绑定心得时给一句提示；`refresh` 与在途 `loadMore` 竞态仅影响按钮短暂可见性。 | 触发少、无数据影响 |
+
+- Acceptance：L2，N/A。
+- 最终状态/风险/用户操作：status=**ACCEPTED**（L2：1 Worker → 自动检查 → 1 名独立只读 Reviewer（两轮）→ 主 Agent 汇总）。**未 MERGED**——是否合并由用户本人决定。
+- 非阻断遗留项：1. F2/F3（→ TASK-062 顺带或单列）；2. TASK-060 F3/F7（→ TASK-062）；3. 待用户决定：「所有心得（含绑定资料的）一页看全」需要新契约。
+- 日期与决定日志：
+  - 2026-09-14 登记 `3975264`；2026-09-15 实现 `b61589f`（实跑抓到 `.sr-only` 被 `display:none` 吞掉可访问名称、e2e「写心得」双匹配）；写回 `92b8cdf` 冻结；Review 首轮 PASS 附 F1 → 修复 `b86f175` → 增量复审 PASS；主 Agent 写回并置 `ACCEPTED`；待用户合并。
 <!-- EVIDENCE:END -->
