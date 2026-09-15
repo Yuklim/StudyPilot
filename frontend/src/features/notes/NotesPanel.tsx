@@ -20,6 +20,7 @@ import {
   saveNote,
   type Note,
 } from './api'
+import { collapseImages, expandImages } from './noteImages'
 import { displayText } from './noteTitle'
 import { ResourceAttachPicker } from './ResourceAttachPicker'
 
@@ -46,7 +47,11 @@ export function NotesPanel({
 }) {
   const scope = resourceId ?? null
   const standalone = scope === null
+  // `draft` 是折叠后的文本：内嵌图片在框里只显示 `![图片](image:N)`，data URI 在 `gallery`
+  // （TASK-064）；比较、校验、保存都先展开。侧栏不接粘贴图片，图片表只来自读到的心得。
   const [draft, setDraft] = useState('')
+  const [gallery, setGallery] = useState<string[]>([])
+  const expanded = expandImages(draft, gallery)
   const [selected, setSelected] = useState<Note | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [page, setPage] = useState(1)
@@ -100,7 +105,7 @@ export function NotesPanel({
     if (totalNotes === undefined) return
     onCount?.(totalNotes)
   }, [onCount, totalNotes])
-  const dirty = !deleting && draft !== (selected?.content ?? '')
+  const dirty = !deleting && expanded !== (selected?.content ?? '')
   function discardAllowed() {
     return !dirty || window.confirm('这份草稿尚未保存，确定放弃当前编辑吗？')
   }
@@ -116,6 +121,7 @@ export function NotesPanel({
   function reset() {
     setSelected(null)
     setDraft('')
+    setGallery([])
     setDeleting(false)
     setRecovery(null)
     setConfirmed(false)
@@ -136,7 +142,9 @@ export function NotesPanel({
       const latest = await getNote(scope, row.id)
       if (!alive.current) return
       setSelected(latest)
-      setDraft(latest.content)
+      const collapsed = collapseImages(latest.content)
+      setGallery(collapsed.images)
+      setDraft(collapsed.text)
       setDeleting(remove)
       setRecovery(null)
       setConfirmed(false)
@@ -220,7 +228,10 @@ export function NotesPanel({
     )
       return
     if (deleting && (!selected || !confirmed)) return
-    if (!deleting && (!cleanContent(draft) || [...cleanContent(draft)].length > MAX_CONTENT)) {
+    if (
+      !deleting &&
+      (!cleanContent(expanded) || [...cleanContent(expanded)].length > MAX_CONTENT)
+    ) {
       setError(`写下一点内容再保存吧，最多 ${MAX_CONTENT.toLocaleString()} 个字符。`)
       return
     }
@@ -234,7 +245,7 @@ export function NotesPanel({
         if (alive.current)
           setNotice(scope === null ? '这条心得已删除。' : '这条心得已删除，资料与其他记录仍保留。')
       } else {
-        const saved = await saveNote(scope, draft, selected)
+        const saved = await saveNote(scope, expanded, selected)
         if (alive.current) setNotice(`心得已保存 · ${displayTime(saved.updated_at)}`)
       }
       if (alive.current) {

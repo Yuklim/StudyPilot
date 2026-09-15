@@ -175,6 +175,26 @@ describe('quick personal notes', () => {
       '看这张\n[图片：截图]\n完',
     )
   })
+  it('edits a note with inline images through placeholders and saves the real data back (TASK-064)', async () => {
+    const a = 'data:image/webp;base64,AAAA'
+    const request = setup([note({ content: `看图\n![截图](${a})\n完` })])
+    await screen.findByRole('button', { name: '编辑' })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    fireEvent.click(screen.getByRole('button', { name: '编辑' }))
+    await screen.findByRole('button', { name: '保存修改' })
+    // 框里只有占位符；刚打开不算脏（再点编辑不会问）。
+    expect(screen.getByRole('textbox')).toHaveValue('看图\n![截图](image:1)\n完')
+    fireEvent.click(screen.getByRole('button', { name: '编辑' }))
+    expect(confirm).not.toHaveBeenCalled()
+    await screen.findByRole('button', { name: '保存修改' })
+    type('看图\n![截图](image:1)\n完 补一句')
+    submit()
+    await screen.findByText(/心得已保存/)
+    expect(request.mock.calls.find(([, init]) => init?.method === 'PATCH')?.[1]?.body).toEqual({
+      content: `看图\n![截图](${a})\n完 补一句`,
+      expected_version: 1,
+    })
+  })
   it('keeps a conflicting draft, requires successful reload and explicit re-confirmation', async () => {
     const request = setup([note()])
     fireEvent.click(await screen.findByRole('button', { name: '编辑' }))
