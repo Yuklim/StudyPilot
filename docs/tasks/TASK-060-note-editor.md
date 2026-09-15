@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-060"
-status = "IN_REVIEW"
+status = "ACCEPTED"
 risk = "L2"
 risk_reason = "新增前端路由与页面（`/notes/new`、`/notes/:noteId`），全局键盘快捷键与侧栏入口，心得改为自动保存（防抖 + 离开前保底）。不改后端与契约：心得仍是纯文本 `content`（≤50,000 字），Markdown 只是文本；预览复用阅读器正文渲染器（`html:false`）。判 L2：触及「随手记录」这条核心路径与版本冲突保护（自动保存下冲突/离线的处理改错会静默丢字或覆盖），需独立 Reviewer 看最终 diff；不到 L3：无契约/后端/数据变更。"
 risk_flags = ["business"]
@@ -96,7 +96,42 @@ checks = ["frontend"]
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：本提交之后的 HEAD 即候选（`1ccbfa3` + 本证据写回 + 状态登记），精确 SHA 在 Review 写回时补记。
-- Review：待派。Acceptance：L2，N/A。
-- 最终状态：status=**IN_REVIEW**。
+- 候选 SHA：首轮候选 **`c741725`**（实现 `1ccbfa3`）→ 处置 F1/F2/F4/F5/F6/F8 后 **`a032f02`** → 处置 F9/F10 后最终候选 **`b5a35cc`**（产品代码 = 实现提交 **`7d7de7b`**）。
+- 检查绑定最终候选：`check_task.py --candidate b5a35cc` → `STATIC PASS`，`files=13`，`product_fingerprint=de8f8ff0…`，frontend 五项 exit 0，**587 passed**（= 基线 571 + 16）→ **CHECKS PASS**；`npm run test:e2e`（在 `7d7de7b` 上）**62 passed**（= 60 + 2）；`git diff --check` exit 0。
+- 判别性：A 不排程自动保存 → 3 红；B 409 当普通失败 → 2 红；C 卸载不保底 → 1 红；D 快捷键不导航 → 2 红；E 去掉外壳「可编辑控件里不接管焦点」→ 1 红；F 去掉保存成功后的补排程 → 1 红；G 补排条件还原为 `!== 'conflict'` → 1 红。
+- **Review**（L2，独立只读 Reviewer，仅 Read/Grep/Glob，三轮）：首轮 **CHANGES_REQUIRED**（F1 必须修复 + F2–F8）→ 第二轮 **CHANGES_REQUIRED**（F9：我修 F2 引入的失败无限重试；F10 记录 SHA 口径）→ 第三轮 **PASS**（F11 写回时更正候选 SHA，本区已按此写）。报告原文：
+
+> **首轮**（`1a5d3fb..c741725`）：审查全部 9 个前端文件 diff、`notes/api.ts`、`snapshotMarkdown.ts`、`App.tsx` 焦点契约、`heading.tsx`、`pages.ts`、`ShellPages.test`/`App.test` 守卫、`NotesPanel.tsx` 草稿保护。diff 全在 allowed_paths；三项假设如实登记。核对通过：`latest` ref 由 effect 同步且 `onBlur→flush` 读到最新草稿；`new→/notes/:id` 的 replace 与 setNote 同批处理、load effect 守卫可靠；卸载 flush 在 `alive=false` 后请求仍发出；删除后置空 `latest` 覆盖 Esc/后退；预览只吃 `renderSnapshot`（`html:false`）；`?resource=` 经 `isResourceId`；侧栏为 Link；各态一个 h1、返回链接常驻。
+> - **F1（必须修复）** 新建 → POST 成功 → `navigate(replace)` → App 焦点 effect 无条件把焦点从正在书写的 textarea 抢到 h1，接着敲的字落在标题上（e2e 用 `fill()` 自带聚焦、单测未断言，未抓到）。
+> - F2（可记录，建议顺手修）保存进行中继续输入并停笔 → flush 命中 inflight 直接返回，完成后不再排程，状态「已保存」而草稿未保存。
+> - F3（可记录）`NotesPanel` 有未保存草稿时按 ⌘J 绕过其「草稿尚未保存」确认。F4（可记录）超长文案与行为不符。F5（可记录）读取失败态无用例。F6（可选）「内容未变不发」用同值 change 空过。F7（可选）切换 noteId 不先 flush（当前无入口）。F8（可选）「重新读取」无二次确认；Ctrl+J 在 Windows/Linux 浏览器是下载页。
+> - **结论：CHANGES_REQUIRED。**
+>
+> **第二轮**（`c741725..a032f02`）：F1 焦点守卫只在可编辑控件跨路由仍挂载时生效，点链接/⌘J 场景旧输入框已卸载、契约照旧；`latest` 手动写入与 effect 同步无双向覆盖窗口；F2 用例（既有心得 + 慢 PATCH）判别性成立。
+> - **F9（必须修复，一行）** `.finally` 补排只排除 conflict，保存失败也会补排 → 1s 后再失败再排程：无限重试循环，状态栏每秒闪烁。建议只在成功保存后补排，并补失败用例。
+> - **F10（可记录，写回时必须改）** 「实现 SHA `1ccbfa3`」与「586 passed」不再对应。
+> - **结论：CHANGES_REQUIRED（仅 F9 + F10）。**
+>
+> **第三轮**（`a032f02..b5a35cc`，产品代码 `7d7de7b`）：F9 修复条件 `state.kind === 'saved'`；`.catch` 已同步写入 `failed/conflict`，失败/冲突不再自动重试；`saved` 分支保留 F2 补排；卸载保底不受影响。新用例判别性成立。F10 实现 SHA 链已如实登记。
+> - F11（可记录，写回时改）EVIDENCE 区候选 SHA 更正为 `b5a35cc`。
+> - **结论：PASS（覆盖 `b5a35cc`）。**
+
+- findings 处置：
+
+| # | 处置 | 依据 |
+| --- | --- | --- |
+| F1 | **已改**（`App.tsx` 路由焦点 effect：活动元素为可编辑控件时不接管）+ 用例。 | 核心路径丢字 |
+| F2 | **已改**（保存成功后若草稿≠已保存则补排；保存结果同步写入 ref）+ 用例。 | 时序丢字 |
+| F9 | **已改**（补排只在 `saved` 态）+ 用例。 | 我修 F2 时引入的回归 |
+| F4/F5/F6/F8（注释）/F10/F11 | **已改**。 | 叙述与覆盖精度 |
+| F3 | **记录 → TASK-062**：阅读器侧栏/「我的心得」`NotesPanel` 有脏草稿时按 ⌘J 会丢草稿；衔接时跳过脏文本域或把草稿带进编辑页。 | 假设范围内 |
+| F7 | **记录 → TASK-061**：编辑页内直接切换到另一条心得时不先 flush；加链接前补 flush 或按 noteId 给 key（保留 new→id 例外）。 | 当前无入口 |
+| F8 其余 | **记录**：「重新读取」一键丢弃本地改动无二次确认；冲突态点返回不提示。 | 目标未要求 |
+
+- Acceptance：L2，N/A。
+- 最终状态/风险/用户操作：status=**ACCEPTED**（L2：1 Worker → 自动检查 → 1 名独立只读 Reviewer（三轮）→ 主 Agent 汇总）。**未 MERGED**——是否合并由用户本人决定。
+- 非阻断遗留项：1. F3（→062）；2. F7（→061）；3. F8 其余；4. 主 Agent 假设（⌘J / 自动保存 / 侧栏保留）待用户实际使用后确认或推翻。
+- 日期与决定日志：
+  - 2026-09-14 用户「先做到 B」；主 Agent 拆三步、登记假设。
+  - 2026-09-14 实现 `1ccbfa3`（实跑抓到：应用无 `<Routes>` 参数由 Screen 传入；按 noteId 给 key 会在地址切换时重挂丢字；移动端两个入口叠格）；Review 三轮：F1 → `a032f02`，F9 → `7d7de7b`/`b5a35cc` → PASS；主 Agent 写回并置 `ACCEPTED`；待用户合并。
 <!-- EVIDENCE:END -->
