@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-061"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L2"
 risk_reason = "重做 `/notes` 页面：由「写作框 + 列表 + 编辑 + 删除同一组件」改为备忘录式两栏（左列表可搜索，右预览与管理动作），编辑一律进 TASK-060 的整页编辑器。前端为主，只给 `listNotes` 加一个契约里已有的可选 `sort` 参数；不改后端与契约。判 L2：动了「回看 / 管理心得」这条核心路径与后贴/删除的版本化写调用，需独立 Reviewer 看最终 diff；不到 L3。"
 risk_flags = ["business"]
@@ -89,5 +89,7 @@ checks = ["frontend"]
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-（实施后填写）
+- 冻结候选：**`92b8cdf`**（= 实现 `b61589f` + 本记录/TASK-060 MERGED 登记/索引；产品代码与 `b61589f` 相同）。范围 `b06b6e9..92b8cdf`，11 个文件（前端 8 + 任务记录 3），均在 `allowed_paths` 内。
+- 检查：`check_task.py --task … --candidate 92b8cdf` **CHECKS PASS**（`files=11 product_fingerprint=b26da71b…`；format/lint/typecheck/test 600/build）；e2e 62 passed（`b61589f` 工作区，之后只改文档）；`git diff --check b06b6e9 92b8cdf` exit 0。
+- Review：（待写回）
 <!-- EVIDENCE:END -->
