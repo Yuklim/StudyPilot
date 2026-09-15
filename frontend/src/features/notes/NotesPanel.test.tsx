@@ -156,6 +156,12 @@ describe('quick personal notes', () => {
     expect(screen.getByRole('textbox')).toHaveValue('未完成草稿')
     confirm.mockReturnValue(true)
     expect(leave()).toBe(true)
+    // 「整页编辑」链接同样过守卫（独立 Review F1）：拒绝则不导航，草稿仍在。
+    confirm.mockReturnValue(false)
+    fireEvent.click(screen.getByRole('link', { name: '整页编辑' }))
+    expect(confirm).toHaveBeenCalledTimes(3)
+    expect(screen.getByRole('textbox')).toHaveValue('未完成草稿')
+    expect(screen.getByRole('form', { name: '心得编辑' })).toBeInTheDocument()
   })
   it('keeps a conflicting draft, requires successful reload and explicit re-confirmation', async () => {
     const request = setup([note()])

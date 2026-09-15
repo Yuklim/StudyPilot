@@ -506,7 +506,14 @@ export function NotesPanel({
                         解除绑定
                       </button>
                       {/* TASK-062：长文去整页编辑器（TASK-060），返回处仍是这份资料。 */}
-                      <Link className="journal-button" to={`/notes/${row.id}?resource=${scope}`}>
+                      <Link
+                        className="journal-button"
+                        to={`/notes/${row.id}?resource=${scope}`}
+                        onClick={(event) => {
+                          // 面板里正写着的草稿不能被这一下静默丢掉（独立 Review F1）。
+                          if (!discardAllowed()) event.preventDefault()
+                        }}
+                      >
                         整页编辑
                       </Link>
                     </>

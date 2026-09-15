@@ -438,6 +438,52 @@ describe('write-note entry points', () => {
     vi.useRealTimers()
   })
 
+  it('saves and clears the note in hand when the address turns into /notes/new without a remount (TASK-062)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const calls: Array<{ path: string; method?: string; body?: unknown }> = []
+    mock((path, options) => {
+      calls.push({ path, method: options?.method, body: options?.body })
+      const content = (options?.body as { content?: string } | undefined)?.content ?? ''
+      if (path === `/api/v1/notes/${noteId}` && options?.method === 'PATCH')
+        return { data: note({ content, version: 2 }) }
+      if (path === `/api/v1/notes/${noteId}`) return { data: note() }
+      if (path === '/api/v1/notes' && options?.method === 'POST')
+        return { data: note({ id: '018f1f58-4eb2-4a0d-a716-fb81b1960ccc', content, version: 1 }) }
+      return { data: [] }
+    })
+    let go!: (to: string) => void
+    function Probe() {
+      go = useNavigate()
+      return null
+    }
+    render(
+      <MemoryRouter initialEntries={[`/notes/${noteId}`]}>
+        <App />
+        <Probe />
+      </MemoryRouter>,
+    )
+    await screen.findByDisplayValue(note().content)
+    type('旧那条改了一笔')
+    await act(async () => {
+      go('/notes/new')
+    })
+    expect(editor()).toHaveValue('')
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('新心得')
+    expect(calls.filter((c) => c.method === 'PATCH')).toEqual([
+      {
+        path: `/api/v1/notes/${noteId}`,
+        method: 'PATCH',
+        body: { content: '旧那条改了一笔', expected_version: 1 },
+      },
+    ])
+    type('全新的一条')
+    await settle()
+    // 新内容走 POST 新建，而不是 PATCH 到旧那条。
+    expect(calls.filter((c) => c.method === 'PATCH')).toHaveLength(1)
+    expect(calls.find((c) => c.method === 'POST')?.body).toEqual({ content: '全新的一条' })
+    vi.useRealTimers()
+  })
+
   it('offers a sidebar link and a global shortcut that binds to the open resource', async () => {
     mock((path) => {
       if (path === `/api/v1/resources/${resourceId}`) return { data: sample() }

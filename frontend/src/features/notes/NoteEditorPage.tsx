@@ -75,7 +75,18 @@ export function NoteEditorPage({ noteId }: { noteId?: string }) {
 
   // --- 读取（编辑既有心得） ---
   useEffect(() => {
-    if (creating) return
+    if (creating) {
+      // 从一条既有心得直接换到「新建」而组件没重挂（独立 Review F2）：先把旧的保下来，
+      // 再把手里的东西清空，否则继续键入会 PATCH 到旧那条。
+      if (latest.current.note) {
+        void flushRef.current()
+        setNote(null)
+        setDraft('')
+        setSave({ kind: 'idle' })
+        setPreview(false)
+      }
+      return
+    }
     // 刚在本页新建、地址已换成 /notes/:id：这条就是手里这条，不再从服务端读回来盖掉
     // 用户在保存期间继续敲的字。换到**另一条**心得（noteId 变了且不是手里这条）才重读，
     // 并把保存状态与预览态归零。
