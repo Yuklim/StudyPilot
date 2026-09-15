@@ -385,6 +385,11 @@ test('standalone note attaches to a resource and detaches back through the real 
   await expect(attached).toBeVisible()
   const openLink = page.getByRole('link', { name: `打开《${title}》查看` })
   await expect(openLink).toHaveAttribute('href', `/resources/${id}`)
+  // The standalone list refreshes at once: it was the only standalone note, so the empty
+  // state shows up while the notice stays.
+  await expect(page.getByRole('heading', { name: '还没有独立心得' })).toBeVisible()
+  await expect(list).toHaveCount(0)
+  await expect(attached).toBeVisible()
   expect((await call(page, '/notes')).body.page.total_items).toBe(0)
 
   // Open the resource detail from the notice; the note now lives under the resource.

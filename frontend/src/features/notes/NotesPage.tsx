@@ -70,6 +70,8 @@ export function NotesPage() {
   const error = result?.error
   const [query, setQuery] = useState('')
   const [loadingMore, setLoadingMore] = useState(false)
+  // 刚后贴成功的那条：列表已刷新（它不再是独立心得），右栏仍要给出「打开《资料》」的去处。
+  const [attached, setAttached] = useState<Resource | null>(null)
   const alive = useRef(true)
   useEffect(() => {
     alive.current = true
@@ -173,6 +175,7 @@ export function NotesPage() {
                     to={wide ? `/notes?note=${row.id}` : `/notes/${row.id}`}
                     aria-current={current ? 'true' : undefined}
                     replace={wide}
+                    onClick={() => setAttached(null)}
                   >
                     <span className="notes-index-title">{title}</span>
                     {snippet && <span className="notes-index-snippet">{snippet}</span>}
@@ -205,11 +208,29 @@ export function NotesPage() {
             <NotePreview
               key={selected.id}
               note={selected}
-              onChanged={() => {
+              onAttached={(resource) => {
+                setAttached(resource)
+                select(null)
+                refresh()
+              }}
+              onDeleted={() => {
+                setAttached(null)
                 select(null)
                 refresh()
               }}
             />
+          ) : attached ? (
+            <div className="notes-preview-done" role="status">
+              <p>
+                已后贴到资料。
+                <Link className="text-link" to={`/resources/${attached.id}`}>
+                  打开《{resourceTitle(attached)}》查看
+                </Link>
+              </p>
+              <button type="button" className="journal-button" onClick={() => setAttached(null)}>
+                回到列表
+              </button>
+            </div>
           ) : (
             <div className="notes-preview-empty">
               <p className="resource-hint">
@@ -223,13 +244,23 @@ export function NotesPage() {
   )
 }
 
-/** 右栏：一条心得的预览与管理动作。`onChanged` 在后贴/删除成功后调用（这条已不在独立列表里）。 */
-function NotePreview({ note, onChanged }: { note: Note; onChanged: () => void }) {
+/**
+ * 右栏：一条心得的预览与管理动作。后贴/删除成功后这条已不在独立列表里，由父级立刻刷新列表
+ * （`onAttached` 还带着目标资料，父级据此给出去处）。
+ */
+function NotePreview({
+  note,
+  onAttached,
+  onDeleted,
+}: {
+  note: Note
+  onAttached: (resource: Resource) => void
+  onDeleted: () => void
+}) {
   const [attaching, setAttaching] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [attached, setAttached] = useState<Resource | null>(null)
   const alive = useRef(true)
   useEffect(() => {
     alive.current = true
@@ -250,8 +281,7 @@ function NotePreview({ note, onChanged }: { note: Note; onChanged: () => void })
     try {
       await attachNote(note, resource.id)
       if (!alive.current) return
-      setAttached(resource)
-      setAttaching(false)
+      onAttached(resource)
     } catch (cause) {
       if (!alive.current) return
       setError(failureText(cause))
@@ -266,7 +296,7 @@ function NotePreview({ note, onChanged }: { note: Note; onChanged: () => void })
     try {
       await deleteNote(null, note)
       if (!alive.current) return
-      onChanged()
+      onDeleted()
     } catch (cause) {
       if (!alive.current) return
       setConfirmDelete(false)
@@ -274,22 +304,6 @@ function NotePreview({ note, onChanged }: { note: Note; onChanged: () => void })
     } finally {
       if (alive.current) setPending(false)
     }
-  }
-
-  if (attached) {
-    return (
-      <div className="notes-preview-done" role="status">
-        <p>
-          已后贴到资料。
-          <Link className="text-link" to={`/resources/${attached.id}`}>
-            打开《{resourceTitle(attached)}》查看
-          </Link>
-        </p>
-        <button type="button" className="journal-button" onClick={onChanged}>
-          回到列表
-        </button>
-      </div>
-    )
   }
 
   return (

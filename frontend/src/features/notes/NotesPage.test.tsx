@@ -209,9 +209,13 @@ describe('notes manager page', () => {
       `/api/v1/notes/${A}/attach`,
       { method: 'POST', body: { resource_id: resourceId, expected_version: 1 } },
     ])
-    fireEvent.click(screen.getByRole('button', { name: '回到列表' }))
+    // 列表立刻刷新（这条已不是独立心得），提示块仍在，直到「回到列表」或点别的条目。
     await waitFor(() => expect(within(list()).queryByText('甲的标题')).toBeNull())
     expect(address()).toBe('')
+    expect(screen.getByText(/已后贴到资料/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '回到列表' }))
+    expect(screen.queryByText(/已后贴到资料/)).toBeNull()
+    expect(screen.getByText('从左边选一条，在这里预览。')).toBeInTheDocument()
   })
 
   it('deletes the previewed note after one confirmation and refreshes the list', async () => {
