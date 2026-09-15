@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-063"
-status = "IN_REVIEW"
+status = "IN_ACCEPTANCE"
 risk = "L3"
 risk_reason = "放宽已批准公共契约（`Note.content` 上限 50,000 → 2,000,000 字符；`docs/contracts/**` 与 `openapi-v1.json` 同步）并新增 0006 迁移改写 `notes` 表的 CHECK；前端编辑器接受粘贴/拖入图片，压缩后以 data URI 内嵌进 Markdown，渲染器放行 `data:image/*;base64`。命中 public-api + migration + critical-data，走 L3：独立只读 Reviewer + 独立只读 Integration/Acceptance。"
 risk_flags = ["public-api", "migration", "critical-data", "business"]
@@ -107,8 +107,33 @@ checks = []
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 冻结候选：**`bb2961b`**（= 实现 `e912fd6` + 本记录/TASK-062 MERGED 登记/索引；产品代码与 `e912fd6` 相同）。范围 `4edcc27..bb2961b`，26 个文件（后端 6 + 契约 2 + 前端 15 + 任务记录 3），均在 `allowed_paths` 内。
-- 检查：`check_task.py --task … --candidate bb2961b` **CHECKS PASS**（profiles backend, contracts, frontend；pytest 556、vitest 627、OpenAPI 校验、两端 build）；e2e 63 passed（`e912fd6` 工作区，之后只改文档）；`git diff --check 4edcc27 bb2961b` exit 0。
-- Review：（待写回）
-- Integration/Acceptance：（待写回）
+- 冻结候选：首轮 **`bb2961b`**（= 实现 `e912fd6` + 记录/TASK-062 MERGED 登记/索引）→ Review F1/F2/F3/F5/F6 修复后**最终候选 `9cb9987`**（`fix(frontend): 拖入图片按 types 判定 dragover；文字+图片粘贴不接管；侧栏三处预览/摘要首行/搜索 memo`，只动前端 7 个文件）。范围 `4edcc27..9cb9987`，26 个文件（后端 6 + 契约 2 + 前端 15 + 任务记录 3），均在 `allowed_paths` 内。
+- 检查（绑定 `9cb9987`）：`check_task.py --task … --candidate 9cb9987` **CHECKS PASS**（profiles backend, contracts, frontend；ruff/mypy/pytest **556**/uv build、OpenAPI 校验、format/lint/typecheck/vitest **630**/build）；e2e **63 passed**（`9cb9987` 工作区）；`git diff --check 4edcc27 9cb9987` exit 0。修复的判别性：R8 dragover 改回按 `imageFiles` 判定（原缺陷）→ `NoteEditorPage.test` 2 红；R9 文字+图片粘贴仍接管 → 1 红；累计 9 处定向变红。
+- Review（L3 独立只读 Reviewer `.claude/agents/reviewer.md`，仅 Read/Grep/Glob，自证无写工具；原文）：
+
+> **首轮**（`4edcc27..bb2961b`）：26 文件均在 allowed_paths；`renderSnapshot(` 全部调用点里仅编辑页/心得页右栏传 `inlineImages: true`，`ContentSnapshot.tsx:181` 未传；`INLINE_IMAGE` 唯一 `.test()` 用点（非 `g`）；`noteTitle` 的 `g` 正则仅用于 `replace`；`html:false` 未动；五处 2,000,000 数值一致（contracts/models/0006/api.ts/openapi 三处/4.8/1.3）；迁移与 `test_migrations` 新用例（0005 下 60,000 IntegrityError → 0006 可写 → 有超长行拒降级且 head 不动 → 删后可降级并再拒），`compare_metadata==[]` 兼证索引保留，`test_resource_deletion` 在迁移库上证级联；e2e 断言 `value.length > 50_000` 且服务端读回含同一 data URI，直证 CHECK 已放宽。
+> - **F1（必须修复）** `NoteEditorPage.tsx:475-477` `onDragOver` 用 `imageFiles(event.dataTransfer)` 判定，而 dragover 阶段拖拽数据处于 protected mode，`files` 为空、`getAsFile()` 返回 null → 永远不 `preventDefault`，纯文件拖入不会触发 `drop`，浏览器走默认动作。目标 3 的「拖入」实际不可用，且无测试覆盖。
+> - **F2（可记录后继续）** `onPaste`：剪贴板同时含非空 `text/plain` 与图片文件时（Excel/Word 复制单元格常见）无条件取图片、取消默认粘贴。建议有非空文本时走默认粘贴。
+> - **F3（可记录）** `NotesPanel.tsx:317,363,375` 删除预览、冲突「最新已保存内容」「刚读取的最新心得」仍直出 `content` 原文，含图心得会把 base64 铺到界面。
+> - **F4（可记录，越 allowed_paths）** `docs/开发与运行.md:97,123` 仍写 50,000。
+> - **F5（可选）** `noteTitle` 跳过首行纯图片，但 `noteSnippet` 仍把首个非空行（图片行）当标题行，标题与摘要会重复。
+> - **F6（可选）** `NotesPage.tsx:103` 搜索每次渲染对全部已加载正文跑 `displayText`，未 memo。
+> - R1–R7 变红声明与用例结构相符，可信；`'🌱'.repeat(2_000_000)` 约 8 MB，单次可接受。完成条件 1 因拖入缺证据部分未满足。剩余风险：2 MB 受控 textarea 每键重渲染与列表页拉 100 条含图正文的性能（用户已接受）；程序化插入后原生撤销栈失效；旧浏览器 `createImageBitmap` 不带 EXIF 方向时相机照片可能转向。
+> - **结论：CHANGES_REQUIRED**（仅 F1）。
+>
+> **增量复审**（`bb2961b..9cb9987`，继承首轮全部结论）：F1 `draggingFiles` 按 `types` 含 'Files' 或 `items[].kind==='file'` 判定，`onDrop` 仍用 `imageFiles`；单测覆盖 dragover 只带 types → 拦、text/plain → 不拦、drop → 插入。F2 `getData('text/plain').trim()` 非空即返回；e2e 的 `DataTransfer` 只含文件不受影响。F3 三处改 `displayText`，删除预览有断言。F5 标题行判定与 `noteTitle` 同口径。F6 `useMemo` 建 id→可搜文本 Map。F4 越范围，接受。
+> - **F7（可选）** `onDrop` 拖入非图片文件时 dragover 已放行、drop 却不 `preventDefault`，浏览器仍可能导航到该文件（与修复前相同，非回归）。建议 `draggingFiles` 为真时一律 `preventDefault` 并提示「只支持图片」。
+> - **结论：PASS**（覆盖新候选 `9cb9987`）。
+
+- findings 处置：
+
+| # | 处置 | 依据 |
+| --- | --- | --- |
+| F1 | **已改**（`9cb9987`：`draggingFiles` 按 types 判定）+ 单测。 | 目标 3 的拖入路径实际失效 |
+| F2 | **已改**（有文字走默认粘贴）+ 单测。 | 常见复制场景误接管，1 行 |
+| F3 | **已改**（侧栏三处 `displayText`）+ 断言。 | 目标 6 的漏网处 |
+| F4 | **记录 → 下个任务**（`docs/开发与运行.md` 两处 50,000 改 2,000,000）。 | 越 allowed_paths |
+| F5 | **已改**（摘要标题行同口径）+ 单测。 | 2 行 |
+| F6 | **已改**（`useMemo`）。 | 含图正文 MB 级 |
+| F7 | **记录**：非图片文件拖入时 drop 一律 `preventDefault` 并提示——与修复前行为相同，非回归；下个任务顺带。 | 不再开一轮候选 |
 <!-- EVIDENCE:END -->
