@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-063"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "放宽已批准公共契约（`Note.content` 上限 50,000 → 2,000,000 字符；`docs/contracts/**` 与 `openapi-v1.json` 同步）并新增 0006 迁移改写 `notes` 表的 CHECK；前端编辑器接受粘贴/拖入图片，压缩后以 data URI 内嵌进 Markdown，渲染器放行 `data:image/*;base64`。命中 public-api + migration + critical-data，走 L3：独立只读 Reviewer + 独立只读 Integration/Acceptance。"
 risk_flags = ["public-api", "migration", "critical-data", "business"]
@@ -107,5 +107,8 @@ checks = []
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-（实施后填写）
+- 冻结候选：**`bb2961b`**（= 实现 `e912fd6` + 本记录/TASK-062 MERGED 登记/索引；产品代码与 `e912fd6` 相同）。范围 `4edcc27..bb2961b`，26 个文件（后端 6 + 契约 2 + 前端 15 + 任务记录 3），均在 `allowed_paths` 内。
+- 检查：`check_task.py --task … --candidate bb2961b` **CHECKS PASS**（profiles backend, contracts, frontend；pytest 556、vitest 627、OpenAPI 校验、两端 build）；e2e 63 passed（`e912fd6` 工作区，之后只改文档）；`git diff --check 4edcc27 bb2961b` exit 0。
+- Review：（待写回）
+- Integration/Acceptance：（待写回）
 <!-- EVIDENCE:END -->
