@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-064"
-status = "IN_REVIEW"
+status = "ACCEPTED"
 risk = "L2"
 risk_reason = "只改前端两个编辑器的「显示层」：textarea 里把 base64 data URI 折叠成短占位符，预览与保存前展开回原文。存进后端的内容、契约、渲染器都不变。动的是自动保存/冲突/对比的输入源（折叠 ↔ 展开必须严格可逆，否则会把图片丢掉或把占位符存进后端），需独立 Reviewer 看最终 diff；不到 L3。"
 risk_flags = ["business"]
@@ -83,5 +83,29 @@ PR #71 若在本任务收尾前合并，`TASK-063-note-images.md` 登记 MERGED�
 
 - 冻结候选：**`3bd6274`**（= 实现 `96e9ea4` + 本记录/索引；产品代码与 `96e9ea4` 相同）。范围 `f4cd190..3bd6274`，10 个文件（前端 8 + 任务记录 2），均在 `allowed_paths` 内。
 - 检查：`check_task.py --task … --candidate 3bd6274` **CHECKS PASS**（format/lint/typecheck/test 636/build）；e2e 63 passed（`96e9ea4` 工作区，之后只改文档）；`git diff --check f4cd190 3bd6274` exit 0。
-- Review：（待写回）
+- Review（L2 独立只读 Reviewer `.claude/agents/reviewer.md`，仅 Read/Grep/Glob，自证无写工具；原文）：
+
+> **结论：PASS**（附已处置的非阻断项）。范围 `f4cd190..3bd6274` 全量 diff（10 文件，均在 allowed_paths）+ 最终文件调用链。未改契约、后端、渲染器；侧栏未接粘贴。
+> 核对：INLINE/PLACEHOLDER 的 alt 均为 `[^\]]*`，含 `( ) [` 可往返；`expandImages` 按编号索引，删中间占位符后 `image:2` 仍取 `images[1]`（编辑器用例 PATCH 断言直证）；`svg+xml` 会被折叠但渲染器 `INLINE_IMAGE` 仍拒，无变化。`source()` 在 flush/finally/beforeunload 三处与原语义等价（`cleanContent` 去首尾与服务端一致，夹具注释成立）；`overwrite`/`reload`/`remove`/`creating` 分支 ref 与 state 同步正确。`noteTitle` 不看 URL，标题等价。NotesPanel `recover()`/「作为新心得」保留 draft+gallery，`reset` 清空，正确。F7 `onDrop` 与 `onDragOver` 同用 `draggingFiles`。R1–R5 与用例结构对应；e2e 由 poll 证明服务端读回 data URI 且 > 50,000。e2e 单次 1 failed 未定位、候选绑定检查 PASS 且随后两次 63 全绿——不阻断，记剩余风险。
+> - **F1（可记录后继续）** `noteImages.ts:141-163`：正文已含字面 `![x](image:k)` 且 k ≤ 真实图片数时不可逆（展开后两处都是同一张）。编辑器/侧栏保存时均已展开，此形态只能来自外部写入，发生可能极低；建议把「任意合法正文」限定为「不含字面占位符」。
+> - **F2（可选）** 跨心得复制占位符文本不带图（存成字面 `image:N`，渲染器丢弃）；提示文案可补一句。
+> - **F3（可选）** `NoteEditorPage.tsx:82-87`：`load()` 同步写 ref 的 draft/gallery，但 `note` 要等 commit；`.then`→commit 的宏任务窗口内 beforeunload 会以 `current=null` POST 重复。几乎不可触发；可让 `load(note)` 一并写 `note`。
+> - **F4（可选）** e2e 注释「切换预览触发保存」已不成立，实际守卫是 poll，证明链仍成立，建议改注释。
+> - **F5（可选）** `NotesPanel.tsx:54` `expanded` 每次渲染重算；侧栏场景可接受，可 `useMemo`。
+
+- findings 处置：
+
+| # | 处置 | 依据 |
+| --- | --- | --- |
+| F1 | **记录**（前提补进本区）：目标 1 的可逆性前提是**正文里没有用户手打的字面 `![x](image:k)`**；两个编辑器保存时都已展开，正常路径不会产生这种正文；只有外部直接写 API 才可能。 | 发生可能极低；目标文本按规则不在证据写回时改 |
+| F2 | **记录**：跨心得复制占位符不带图——下次动编辑器时提示文案补一句。 | 可选 |
+| F3 | **记录**：`load()` 一并写 `note` 到 ref（1 行），下次动编辑器时顺带。 | 几乎不可触发 |
+| F4 | **记录**：e2e 注释措辞，下次动该用例时改。 | 注释 |
+| F5 | **记录**：侧栏 `expanded` 可 `useMemo`。 | 可选 |
+
+- Acceptance：L2，N/A。
+- 最终状态/风险/用户操作：status=**ACCEPTED**（L2：1 Worker → 自动检查 → 1 名独立只读 Reviewer → 主 Agent 汇总）。**未 MERGED**——是否合并由用户本人决定。**依赖 PR #71（TASK-063）先合并**：本分支从其分支尖创建，PR 以该分支为 base，#71 合并后 GitHub 会自动把 base 换成 main。
+- 非阻断遗留项：1. F1 前提 / F2 / F3 / F4 / F5（上表）；2. e2e 一次未定位的偶发失败；3. TASK-063 F4（`docs/开发与运行.md` 两处 50,000）仍待有该路径的任务。
+- 日期与决定日志：
+  - 2026-09-15 用户试用后「一串很长的文字很影响书写」→ 主 Agent 提出占位符方案并开做；登记 `b5d11b1`；实现 `96e9ea4`；写回 `3bd6274` 冻结；Review PASS（F1–F5 记录）；主 Agent 写回并置 `ACCEPTED`；待用户合并（先 #71）。
 <!-- EVIDENCE:END -->
