@@ -8,7 +8,7 @@ risk = "L1"
 risk_reason = "只改 ≤760px 媒体查询下的三条 CSS（第二组导航的网格行、折叠按钮隐藏），加一条真实浏览器几何断言。不改 DOM、可访问名称、路由、契约；桌面布局不受影响。可证明低风险：改前改后均有实测。"
 risk_flags = ["small-ui"]
 owner = "coordinator"
-base = "881e9aeb1244af1a2885e7d8d390fb473bfd6827"
+base = "5f58545ed96a8c8e421a9a0f2c9e695dd2e3b393"
 allowed_paths = [
   "frontend/src/styles.css",
   "frontend/e2e/scaffold.spec.ts",
@@ -47,6 +47,7 @@ checks = ["frontend"]
 
 - 候选 SHA：`68d62c3`（实现 + 测试同一提交；本行为其后的补记）。
 - Review：**L1，N/A**。Acceptance：**L1，N/A**。
+- **合并前并入 main（2026-09-14）**：用户合并 PR #66（TASK-058，merge `5f58545`）后本 PR 出现索引冲突；`git merge origin/main` → `761e08b`，只解 `任务索引.md` 表头相邻行（保留 main 的 058/057 行 + 本分支 059 行）。核实 `git diff 68d62c3..761e08b -- backend/ frontend/` 的增删行与 `881e9ae..5f58545`（即 TASK-058 的改动）逐行一致，本任务代码未变；基线前移为 `5f58545`。并入后 `check_task.py --worktree` → CHECKS PASS（571），e2e 60 passed（真实后端跑在 TASK-058 的事务模式下）。
 - 最终状态：status=**ACCEPTED**；待用户合并。
 - 非阻断遗留项：无。
 - 日期与决定日志：2026-09-14 用户「老问题修复一下」之二；主 Agent 读 CSS 定位根因（同一选择器命中两组导航），先写红用例再改。
