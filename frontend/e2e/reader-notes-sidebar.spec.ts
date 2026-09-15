@@ -90,7 +90,10 @@ test('wide screen: notes are collapsed by default and squeeze the reading column
   // 在侧栏里新增一条心得 → 角标实时从 2 变 3（数据来自侧栏自己的 total_items）。
   await page.getByRole('textbox', { name: '这次想记下什么？' }).fill('展开时记下的一条')
   await page.getByRole('button', { name: '保存心得', exact: true }).click()
-  await expect(page.getByRole('status')).toContainText('心得已保存')
+  // 按文字定位：保存后列表刷新，CI 上「正在翻开心得…」会与这条提示同时在场，裸的
+  // `getByRole('status')` 触发 strict mode（PR #71/#72 首跑失败、同提交重跑通过）；同文件
+  // 下面删除那一步早已这样写。
+  await expect(page.getByText(/心得已保存/)).toBeVisible()
   await expect(toggle(page)).toContainText('3')
 
   // Esc 收起并把焦点还给「心得」按钮，正文回到满宽。
