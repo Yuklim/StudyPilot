@@ -121,6 +121,27 @@ export const pages: ShellPage[] = [
     description: '不必先收藏资料，随手记下的想法都会留在这里，可随时回看与修改。',
   },
   {
+    // TASK-060：整页心得编辑器。沉浸式 + 自带 h1（标题取心得第一行）；出口是顶栏「← 返回」。
+    path: '/notes/new',
+    title: '写心得',
+    caption: '写下此刻的理解、疑问或下一步。',
+    icon: 'note',
+    ownHeading: true,
+    immersive: true,
+    emptyTitle: '',
+    description: '',
+  },
+  {
+    path: '/notes/:noteId',
+    title: '编辑心得',
+    caption: '回看与修改这条心得。',
+    icon: 'note',
+    ownHeading: true,
+    immersive: true,
+    emptyTitle: '',
+    description: '',
+  },
+  {
     path: '/classifications',
     title: '分类整理',
     caption: '给每一份好奇，贴上自己的线索。',
@@ -136,7 +157,9 @@ export const primaryNavigation = pages.filter((page) => page.section === 'primar
 /** 侧栏次级/后续能力导航：仍可达但降低视觉层级，不伪装未开放能力。 */
 export const moreNavigation = pages.filter((page) => page.section === 'more')
 /** 兼容旧引用：完整过滤（不把 /resources/ 详情、添加等当独立导航）。 */
-export const navigation = pages.filter((page) => !page.path.startsWith('/resources/'))
+export const navigation = pages.filter(
+  (page) => !page.path.startsWith('/resources/') && !page.path.startsWith('/notes/'),
+)
 export const missingPage: ShellPage = {
   path: '*',
   title: '没有找到这个页面',

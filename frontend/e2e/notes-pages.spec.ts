@@ -378,3 +378,72 @@ test('standalone note attaches to a resource and detaches back through the real 
   await expect(page.getByRole('list', { name: '心得列表' })).toContainText(standaloneNote)
   expect((await call(page, '/notes')).body.page.total_items).toBe(1)
 })
+
+test('the full-page note editor: shortcut, autosave, reload, preview, delete', async ({ page }) => {
+  // TASK-060（用户 2026-09-14「像备忘录 / Typora 那样的编辑页面」，Markdown 选 B）。真实后端。
+  await page.goto('/resources')
+  await page.waitForSelector('.resource-filters')
+  // ⌘J（headless Chromium 报 MacIntel）→ 新建独立心得，焦点直接在写作框。
+  await page.keyboard.press('Meta+j')
+  await expect(page).toHaveURL(/\/notes\/new$/)
+  const editor = page.getByRole('textbox', { name: '心得正文（Markdown）' })
+  await expect(editor).toBeFocused()
+  await expect(page.getByRole('heading', { name: '新心得', level: 1 })).toBeVisible()
+  // 沉浸式：没有左栏，出口是「返回我的心得」。
+  await expect(page.locator('.sidebar')).toHaveCount(0)
+  await expect(page.getByRole('link', { name: '返回我的心得' })).toBeVisible()
+  await editor.fill('# 编辑器合成 · 首行\n\n先分清状态的性质。\n\n- **本地状态**：用 `useState`\n')
+  // 停笔 → 自动保存 → 地址换成这条心得；标题跟第一行走。
+  await expect(page.getByRole('status')).toContainText('已保存', { timeout: 5000 })
+  await expect(page).toHaveURL(/\/notes\/[0-9a-f-]{36}$/)
+  await expect(page.getByRole('heading', { name: '编辑器合成 · 首行', level: 1 })).toBeVisible()
+  const address = page.url()
+  // 预览：Markdown 渲染、脚本转义、标题不重复。
+  await editor.fill(
+    '# 编辑器合成 · 首行\n\n先分清状态的性质。\n\n- **本地状态**：用 `useState`\n\n<script>alert(1)</script>\n',
+  )
+  await page.getByRole('button', { name: '预览' }).click()
+  const preview = page.getByLabel('预览')
+  await expect(preview.locator('strong')).toHaveText('本地状态')
+  await expect(preview.locator('h1')).toHaveCount(0)
+  expect(await preview.locator('script').count()).toBe(0)
+  await expect(preview).toContainText('<script>alert(1)</script>')
+  await page.getByRole('button', { name: '编辑' }).click()
+  // 刷新还在（切换预览时已保存）。
+  await page.reload()
+  await expect(page.getByRole('textbox', { name: '心得正文（Markdown）' })).toHaveValue(
+    /alert\(1\)/,
+  )
+  // 出现在「我的心得」列表里。
+  await page.getByRole('link', { name: '返回我的心得' }).click()
+  await expect(page.getByRole('heading', { name: '我的心得', level: 1 })).toBeVisible()
+  await expect(page.getByText('编辑器合成 · 首行', { exact: false }).first()).toBeVisible()
+  // 回到编辑页删除 → 回到「我的心得」，列表里没了。
+  await page.goto(address)
+  await page.getByRole('button', { name: '更多操作' }).click()
+  await page.getByRole('menuitem', { name: '删除心得…' }).click()
+  await page
+    .getByRole('dialog', { name: /^删除“编辑器合成/ })
+    .getByRole('button', { name: '删除' })
+    .click()
+  await expect(page).toHaveURL(/\/notes$/)
+  await expect(page.getByText('编辑器合成 · 首行', { exact: false })).toHaveCount(0)
+  // 侧栏「写心得」入口也在。
+  await expect(page.getByRole('link', { name: '写心得' })).toHaveAttribute('href', '/notes/new')
+})
+
+test('a note started from the reader is bound to that resource', async ({ page }) => {
+  const id = await createResource(page, '编辑器合成 · 绑定资料')
+  await page.keyboard.press('Meta+j')
+  await expect(page).toHaveURL(new RegExp(`/notes/new\\?resource=${id}$`))
+  await expect(page.getByRole('link', { name: '返回资料' })).toHaveAttribute(
+    'href',
+    `/resources/${id}`,
+  )
+  await page.getByRole('textbox', { name: '心得正文（Markdown）' }).fill('从阅读器按快捷键写下的')
+  await expect(page.getByRole('status')).toContainText('已保存', { timeout: 5000 })
+  await page.getByRole('link', { name: '返回资料' }).click()
+  await expect(page).toHaveURL(`/resources/${id}`)
+  await openNotes(page)
+  await expect(page.getByRole('list', { name: '心得列表' })).toContainText('从阅读器按快捷键写下的')
+})
