@@ -6,6 +6,7 @@ import { ResourceForm } from '../features/resources/ResourceForm'
 import { ResourceLibrary } from '../features/resources/ResourceLibrary'
 import { ClassificationManager } from '../features/taxonomy/ClassificationManager'
 import { RecordHistory } from '../features/learning/RecordHistory'
+import { NoteEditorPage } from '../features/notes/NoteEditorPage'
 import { NotesPage } from '../features/notes/NotesPage'
 
 import { BookSketch, Icon } from './Icon'
@@ -99,9 +100,16 @@ function Overview() {
 
 export function Screen({ page }: { page: ShellPage }) {
   const match = useMatch('/resources/:resourceId')
+  const noteMatch = useMatch('/notes/:noteId')
   if (page.path === '/') return <Overview />
   if (page.path === '/classifications') return <ClassificationManager />
   if (page.path === '/notes') return <NotesPage />
+  if (page.path === '/notes/new' || page.path === '/notes/:noteId') {
+    // **不按 noteId 给 key**：新建后地址从 /notes/new 换成 /notes/:id，重挂会丢掉保存期间
+    // 继续敲的字并重读一遍；换条心得时由页面自己按 noteId 重新读取。
+    const noteId = noteMatch?.params.noteId
+    return <NoteEditorPage noteId={noteId === 'new' ? undefined : noteId} />
+  }
   if (page.path === '/study-records') return <RecordHistory />
   if (page.path === '/capture') return <CapturePage />
   if (page.path === '/resources/new') return <ResourceForm />

@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-058"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "改 `backend/src/studypilot/infrastructure/database/connection.py` 的事务模式（命中 risk-policy 高风险路径 `backend/**/database*`）：从 sqlite3 的隐式 BEGIN DEFERRED 改为 SQLAlchemy `begin` 事件显式 `BEGIN IMMEDIATE`。影响所有会话与迁移连接；改错会让提交静默失效或把所有请求串成一串。因此 L3：独立只读 Review + 独立 Integration/Acceptance，并以并发回归测试与全量后端套件为证据。"
 risk_flags = ["critical-data", "internal-refactor"]
@@ -99,7 +99,7 @@ checks = ["backend"]
 | Review/Acceptance：`ready()` 在事务内哈希文件持 RESERVED | **本区登记为遗留 1**（此前只写了「全部事务串行化」）。 | §6 可记录后继续 |
 | Acceptance：「真实服务三次 ok」无日志 | **记录**：来自 e2e 沙盒一次性 spec 的 console 输出（修前 `["UNKNOWN_ERROR/500","ok"]`、修后 `["ok","ok","ok"]`），未落盘；机械证据以回归用例为准。 | — |
 
-- 最终状态/风险/用户操作：status=**ACCEPTED**（L3：1 Worker → 自动检查 → 独立只读 Review（两轮）→ 独立 Integration/Acceptance → 主 Agent 汇总）。**未 MERGED**——是否合并由用户本人决定，Agent 不合并、不推送 main。
+- 最终状态/风险/用户操作：status=**MERGED**（2026-09-14 用户合并 PR #66，merge `5f58545`，已双向核实；登记并入 TASK-060 控制面提交）。交付时为 **ACCEPTED**（L3 全链）。
 - 非阻断遗留项：
   1. **所有事务（含只读）均 IMMEDIATE、串行化**；`file_store.ready()`（`application/files.py:56,114` → `file_store.py:121-128`）在事务内对上传文件做校验哈希，此时持 RESERVED 锁而非 SHARED：大文件校验期间并发请求在 BEGIN 处最多等 `busy_timeout` 5s 后 500。缓解：上传有大小上限、已有进程级 `lock`。**重评触发条件**：出现 >5s 的事务或用户遇到「稍后再试」类 500；届时改为只对写事务 IMMEDIATE（需在 7 个应用层 `_transaction` 入口区分读写）。
 - 日期与决定日志：

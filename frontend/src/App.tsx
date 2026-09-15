@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, NavLink, useLocation } from 'react-router-dom'
+import { Link, NavLink, matchPath, useLocation, useNavigate } from 'react-router-dom'
 
 import { HeadingSlot } from './shell/heading'
 import { Icon } from './shell/Icon'
@@ -18,8 +18,16 @@ function readCollapsed(): boolean {
   }
 }
 
+/**
+ * ⌘J（macOS）/ Ctrl+J：随时新建一条心得（TASK-060）。J = journal。macOS 上 ⌘J 无默认动作；
+ * Windows/Linux 的 Ctrl+J 在 Chrome/Firefox 里是「下载」页，这里 `preventDefault` 覆盖它。
+ */
+const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
+const SHORTCUT_LABEL = IS_MAC ? '⌘J' : 'Ctrl+J'
+
 function App() {
   const { pathname } = useLocation()
+  const navigate = useNavigate()
   const page = pageAt(pathname)
   const heading = useRef<HTMLHeadingElement>(null)
   const previousPath = useRef(pathname)
@@ -61,10 +69,37 @@ function App() {
     }
   }
 
+  // 全局快捷键：在阅读器里新建的心得绑定当前资料；在编辑页自身按下无动作。
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      // ⌘J 或 Ctrl+J 都认：标签写平台习惯的那个，另一个按了也不该没反应。
+      if (event.key.toLowerCase() !== 'j' || event.altKey || event.shiftKey) return
+      if (!(event.metaKey || event.ctrlKey) || (event.metaKey && event.ctrlKey)) return
+      if (page.path === '/notes/new' || page.path === '/notes/:noteId') return
+      event.preventDefault()
+      const reader = matchPath('/resources/:resourceId', pathname)?.params.resourceId
+      navigate(reader ? `/notes/new?resource=${reader}` : '/notes/new')
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [navigate, page.path, pathname])
+
   useEffect(() => {
     document.title = `${page.title} · StudyPilot`
     if (previousPath.current !== pathname) {
       previousPath.current = pathname
+      // **用户正在可编辑控件里打字时不接管焦点。** 心得编辑页首次保存后会把地址从
+      // /notes/new 换成 /notes/:id（TASK-060），组件没换、人还在写；此时把焦点搬到 h1，
+      // 接着敲的字会落在不可编辑的标题上。点链接/按键导航时活动元素不是可编辑控件，契约照旧。
+      const active = document.activeElement
+      const editing =
+        active instanceof HTMLElement &&
+        (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT' || active.isContentEditable)
+      if (editing) {
+        wantFocus.current = false
+        focusedForRoute.current = false
+        return
+      }
       wantFocus.current = true
       focusedForRoute.current = false
       if (heading.current) {
@@ -111,6 +146,17 @@ function App() {
           <Link className="add-link" to="/resources/new" aria-label="添加资料" title="添加资料">
             <Icon name="plus" />
             {!collapsed && <span>添加资料</span>}
+          </Link>
+          {/* TASK-060：随时能写（用户 2026-09-14「像 iPhone 备忘录那样有快捷入口」）。
+              这是一个链接不是按钮——左栏「恰好一个按钮（折叠）」的守卫因此不受影响。 */}
+          <Link
+            className="add-link write-link"
+            to="/notes/new"
+            aria-label="写心得"
+            title={`写心得（${SHORTCUT_LABEL}）`}
+          >
+            <Icon name="note" />
+            {!collapsed && <span>写心得</span>}
           </Link>
           <div className="nav-section">
             <p className="nav-label">我的学习</p>
