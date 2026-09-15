@@ -64,24 +64,88 @@ describe('note editor page', () => {
     type('   \n  ')
     await settle()
     expect(request).not.toHaveBeenCalled()
-    // 首次非空 → POST；标题跟着第一行走；地址换成这条心得。
+    // 首次非空 → POST；标题跟着第一行走；地址换成这条心得。（先把焦点放进写作框：真实用户
+    // 是在里面打字的，下面「保存后焦点仍在写作框」的断言才有意义。）
+    editor().focus()
     type('# 第一行\n\n正文')
     expect(screen.getByRole('heading', { name: '第一行', level: 1 })).toBeInTheDocument()
     await settle()
     expect(calls.filter((c) => c.method === 'POST')).toHaveLength(1)
     expect(calls.find((c) => c.method === 'POST')?.body).toEqual({ content: '# 第一行\n\n正文' })
     expect(status()).toHaveTextContent(/已保存/)
-    // 再改 → PATCH 带 expected_version=1；内容未变 → 不发。
+    // 首次保存把地址换成 /notes/:id——外壳的路由焦点契约会想把焦点交给 h1；用户此刻还在写，
+    // 焦点必须留在写作框（独立 Review F1：否则接着敲的字落在标题上）。
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5)
+    })
+    expect(editor()).toHaveFocus()
+    // 再改 → PATCH 带 expected_version=1。
     type('# 第一行\n\n正文，再补一句')
     await settle()
     const patches = calls.filter((c) => c.method === 'PATCH')
     expect(patches).toHaveLength(1)
     expect(patches[0]?.body).toEqual({ content: '# 第一行\n\n正文，再补一句', expected_version: 1 })
-    type('# 第一行\n\n正文，再补一句')
+    // 内容未变 → 不发：失焦与切换预览都会触发 flush，但相等守卫挡住（同值 change 事件
+    // 在 React 里根本不触发 onChange，不能拿它来验这一条——独立 Review F6）。
+    fireEvent.blur(editor())
+    fireEvent.click(screen.getByRole('button', { name: '预览' }))
     await settle()
     expect(calls.filter((c) => c.method === 'PATCH')).toHaveLength(1)
+    fireEvent.click(screen.getByRole('button', { name: '编辑' }))
     // 写作框里的字一直是用户的，没有被保存结果盖掉。
     expect(editor()).toHaveValue('# 第一行\n\n正文，再补一句')
+  })
+
+  it('re-schedules a save for text typed while a save was still in flight', async () => {
+    // 独立 Review F2：保存请求进行中又敲了字，那次停笔的 flush 撞上 inflight 直接返回；
+    // 请求完成后必须补排一次，否则状态「已保存」而最后几句没保存。用既有心得 + 慢 PATCH
+    // 复现（新建那一路会因地址切换顺带触发一次保底 flush，测不到这个缺口）。
+    let release: (() => void) | undefined
+    const bodies: unknown[] = []
+    let version = 1
+    mock((path, options) => {
+      if (path === `/api/v1/notes/${noteId}` && options?.method === 'PATCH') {
+        bodies.push(options.body)
+        const content = (options.body as { content: string }).content
+        if (bodies.length === 1)
+          return new Promise((resolve) => {
+            release = () => resolve({ data: note({ content, version: ++version }) })
+          })
+        return { data: note({ content, version: ++version }) }
+      }
+      if (path === `/api/v1/notes/${noteId}`) return { data: note({ content: '原文' }) }
+      return { data: [] }
+    })
+    renderWithRouter(<App />, `/notes/${noteId}`)
+    await screen.findByRole('heading', { name: '原文', level: 1 })
+    type('原文，第一段')
+    await settle()
+    expect(bodies).toEqual([{ content: '原文，第一段', expected_version: 1 }])
+    expect(status()).toHaveTextContent('正在保存')
+    // PATCH 还没回来，继续写并停笔：不会再发（inflight），也不会丢。
+    type('原文，第一段，第二段')
+    await settle()
+    expect(bodies).toHaveLength(1)
+    release!()
+    await settle()
+    expect(bodies[1]).toEqual({ content: '原文，第一段，第二段', expected_version: 2 })
+    expect(status()).toHaveTextContent(/已保存/)
+    expect(editor()).toHaveValue('原文，第一段，第二段')
+  })
+
+  it('keeps one h1 and a way back when the note cannot be read', async () => {
+    mock((path) => {
+      if (path === `/api/v1/notes/${noteId}`) return new ApiError('NETWORK_ERROR')
+      return { data: [] }
+    })
+    renderWithRouter(<App />, `/notes/${noteId}`)
+    expect(
+      await screen.findByRole('heading', { name: '这条心得打不开', level: 1 }),
+    ).toBeInTheDocument()
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+    expect(screen.getByRole('alert')).toHaveTextContent('连接失败')
+    expect(screen.getByRole('link', { name: '返回我的心得' })).toHaveAttribute('href', '/notes')
+    expect(screen.queryByRole('textbox')).toBeNull()
   })
 
   it('opens an existing standalone note and a resource-bound one on their own paths', async () => {

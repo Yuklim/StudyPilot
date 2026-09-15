@@ -121,24 +121,39 @@ export function NoteEditorPage({ noteId }: { noteId?: string }) {
         if (!alive.current) return
         setNote(saved)
         setSave({ kind: 'saved', at: new Date() })
+        // 同步写进 ref：紧接着的补排程/卸载保底要拿到刚保存的版本，不能等下一次 commit 的 effect。
+        latest.current = { ...latest.current, note: saved, save: { kind: 'saved', at: new Date() } }
         // 新建后把地址换成这条心得的编辑地址：刷新、后退都还在这条上。
         if (!current) {
+          // 地址一换，外壳的路由焦点契约通常会把焦点交给 h1；用户此刻正在写作框里打字，
+          // 外壳对「焦点在可编辑控件里」的切换不接管（独立 Review F1，见 App.tsx）。
           navigate(`/notes/${saved.id}${scope ? `?resource=${scope}` : ''}`, { replace: true })
         }
       })
       .catch((cause: unknown) => {
         if (!alive.current) return
-        if (cause instanceof ApiError && cause.code === 'VERSION_CONFLICT') {
-          setSave({ kind: 'conflict' })
-        } else {
-          setSave({ kind: 'failed', message: failureText(cause) })
-        }
+        const next: SaveState =
+          cause instanceof ApiError && cause.code === 'VERSION_CONFLICT'
+            ? { kind: 'conflict' }
+            : { kind: 'failed', message: failureText(cause) }
+        setSave(next)
+        latest.current = { ...latest.current, save: next }
       })
       .finally(() => {
         inflight.current = null
+        // 保存进行中又敲了字：那次停笔的 flush 撞上 inflight 直接返回了，这里补排一次
+        // （独立 Review F2），否则状态显示「已保存」而最后几句其实没保存。
+        if (!alive.current) return
+        const { draft: text, note: current, save: state } = latest.current
+        const cleaned = cleanContent(text)
+        if (state.kind !== 'conflict' && cleaned && cleaned !== (current?.content ?? '')) {
+          schedule()
+        }
       })
     inflight.current = run
     return run
+    // schedule 只用 timer/flush 两个 ref，不需要进依赖。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigate, scope])
 
   function schedule() {
@@ -251,7 +266,7 @@ export function NoteEditorPage({ noteId }: { noteId?: string }) {
   const tooLong = length > MAX_CHARS
 
   const status = (() => {
-    if (tooLong) return `超过 ${MAX_CHARS.toLocaleString()} 字，多出的部分不会保存`
+    if (tooLong) return `超过 ${MAX_CHARS.toLocaleString()} 字，删减到上限内才会保存`
     switch (save.kind) {
       case 'saving':
         return '正在保存…'

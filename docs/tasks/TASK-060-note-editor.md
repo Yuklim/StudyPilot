@@ -88,8 +88,9 @@ checks = ["frontend"]
   - `App.tsx`：侧栏「写心得」链接（`Link`，左栏「恰好一个按钮」守卫不受影响）；全局 `keydown`：`⌘J`/`Ctrl+J`（两种修饰键都认，标签按平台显示），阅读器里带 `?resource=当前资料`，编辑页自身按下无动作。
   - `styles.css`：编辑页样式；≤760px 顶栏网格改三列（品牌 | 添加资料 | 写心得）——首版两个入口叠在同一格，scaffold e2e 的「点添加资料」超时抓到。
 - **测试**：`noteTitle.test.ts` 4 条；`NoteEditorPage.test.tsx` 9 条（假定时器）：创建/PATCH/不变不发 + 标题跟第一行 + 写作框不被保存结果盖掉；独立与绑定两条路径与返回处；409 停止自动保存 + 覆盖（先取版本再 PATCH）；重新读取丢弃本地；离开前保底（不等 1s 直接点返回 → POST 已发）；预览转义 + 不重复标题 + 切回编辑源码不变；删除一次确认回「我的心得」；侧栏链接 + Ctrl+J/⌘J + 编辑页内无动作；阅读器内快捷键绑定资料。e2e `notes-pages.spec.ts` +2（真实后端）：⌘J → 焦点在写作框 → 沉浸式无左栏 → 自动保存换地址 → 标题 → 预览（strong/无 script/无重复 h1）→ 刷新仍在 → 列表可见 → 删除回列表；阅读器内 ⌘J 绑定资料并出现在该资料心得列表。
-- **判别性**（临时破坏后实跑 `NoteEditorPage.test.tsx`、随后恢复）：A 不排程自动保存 → 3 红；B 409 当普通失败 → 2 红；C 卸载不保底 → 1 红；D 快捷键不导航 → 2 红。
-- **检查**：`check_task.py --candidate 1ccbfa3` → `STATIC PASS`，`files=10`，`product_fingerprint=c43bf212…`，frontend 五项 exit 0，**584 passed**（基线 571 + 13）→ **CHECKS PASS**；`npm run test:e2e` **62 passed**（基线 60 + 2）；`git diff --check` exit 0。
+- **判别性**（临时破坏后实跑 `NoteEditorPage.test.tsx`、随后恢复）：A 不排程自动保存 → 3 红；B 409 当普通失败 → 2 红；C 卸载不保底 → 1 红；D 快捷键不导航 → 2 红；（Review 后）E 去掉外壳的「可编辑控件里不接管焦点」→ 首条用例红；F 去掉保存完成后的补排程 → 「re-schedules…」红。
+- **独立 Review 处置（首轮 CHANGES_REQUIRED）**：F1 首次保存后地址切换、外壳把焦点搬到 h1 → **改在 `App.tsx` 路由焦点 effect**：活动元素是 `TEXTAREA/INPUT/contentEditable` 时不接管（点链接/按键导航时活动元素不是可编辑控件，契约照旧），用例 `editor().focus()` 后首次保存断言焦点仍在写作框；F2 保存进行中又敲字 → `.finally` 里若草稿≠已保存内容则 `schedule()`，并把保存结果**同步写进 `latest` ref**（不等下一次 commit 的 effect），用例改为既有心得 + 慢 PATCH 复现；F4 超长文案改「删减到上限内才会保存」；F5 补读取失败态用例（h1「这条心得打不开」+ 返回链接 + 无写作框）；F6「内容未变不发」改用失焦 + 切换预览触发 `flush` 断言；F8 注释改为如实说明 Ctrl+J 在 Windows/Linux 浏览器是下载页、由 `preventDefault` 覆盖。F3/F7/F8 其余登记遗留。
+- **检查**：`check_task.py --candidate 1ccbfa3` → `STATIC PASS`，`files=10`，`product_fingerprint=c43bf212…`，frontend 五项 exit 0，**586 passed**（基线 571 + 15）→ **CHECKS PASS**；`npm run test:e2e` **62 passed**（基线 60 + 2）；`git diff --check` exit 0。
 - **已知限制**：预览与编辑不同时显示（B 的定义）；无标题字段，列表里的标题由 TASK-061 按同一规则推导；快捷键在浏览器地址栏聚焦时不生效（属浏览器）。
 
 <!-- EVIDENCE:BEGIN -->

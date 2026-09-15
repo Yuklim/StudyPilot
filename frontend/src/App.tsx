@@ -18,7 +18,10 @@ function readCollapsed(): boolean {
   }
 }
 
-/** ⌘J（macOS）/ Ctrl+J：随时新建一条心得（TASK-060）。J = journal；不与浏览器默认快捷键冲突。 */
+/**
+ * ⌘J（macOS）/ Ctrl+J：随时新建一条心得（TASK-060）。J = journal。macOS 上 ⌘J 无默认动作；
+ * Windows/Linux 的 Ctrl+J 在 Chrome/Firefox 里是「下载」页，这里 `preventDefault` 覆盖它。
+ */
 const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
 const SHORTCUT_LABEL = IS_MAC ? '⌘J' : 'Ctrl+J'
 
@@ -85,6 +88,18 @@ function App() {
     document.title = `${page.title} · StudyPilot`
     if (previousPath.current !== pathname) {
       previousPath.current = pathname
+      // **用户正在可编辑控件里打字时不接管焦点。** 心得编辑页首次保存后会把地址从
+      // /notes/new 换成 /notes/:id（TASK-060），组件没换、人还在写；此时把焦点搬到 h1，
+      // 接着敲的字会落在不可编辑的标题上。点链接/按键导航时活动元素不是可编辑控件，契约照旧。
+      const active = document.activeElement
+      const editing =
+        active instanceof HTMLElement &&
+        (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT' || active.isContentEditable)
+      if (editing) {
+        wantFocus.current = false
+        focusedForRoute.current = false
+        return
+      }
       wantFocus.current = true
       focusedForRoute.current = false
       if (heading.current) {
