@@ -100,6 +100,15 @@ describe('controlled note API', () => {
     const request = vi.spyOn(api, 'request')
     await expect(listNotes('../bad')).rejects.toMatchObject({ code: 'INVALID_REQUEST' })
     await expect(listNotes(resourceId, 0)).rejects.toMatchObject({ code: 'INVALID_REQUEST' })
+    await expect(
+      listNotes(null, 1, 'title' as unknown as Parameters<typeof listNotes>[2]),
+    ).rejects.toMatchObject({ code: 'INVALID_REQUEST' })
+    await expect(listNotes(null, 1, '-updated_at', 101)).rejects.toMatchObject({
+      code: 'INVALID_REQUEST',
+    })
+    await expect(listNotes(null, 1, '-updated_at', 0)).rejects.toMatchObject({
+      code: 'INVALID_REQUEST',
+    })
     await expect(saveNote(resourceId, 'x', note({ resource_id: 'other' }))).rejects.toMatchObject({
       code: 'INVALID_REQUEST',
     })
@@ -142,6 +151,12 @@ describe('standalone note API (resource_id null)', () => {
     await listNotes(null, 1)
     expect(request).toHaveBeenLastCalledWith(
       standaloneUrl + '?page=1&page_size=20&sort=-created_at',
+    )
+    // TASK-061：管理页按最近更新排序、一次拉满契约上限。
+    request.mockResolvedValueOnce(notePage([standalone]))
+    await listNotes(null, 1, '-updated_at', 100)
+    expect(request).toHaveBeenLastCalledWith(
+      standaloneUrl + '?page=1&page_size=100&sort=-updated_at',
     )
     request.mockResolvedValueOnce({ data: standalone })
     await getNote(null, standalone.id)

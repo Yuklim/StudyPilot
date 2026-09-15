@@ -15,3 +15,26 @@ export function noteTitle(content: string): string | null {
   }
   return null
 }
+
+/** 去掉行内 Markdown 记号（粗斜体、行内代码、链接），摘要里只留文字。 */
+function plainInline(line: string): string {
+  return line
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/`([^`]*)`/g, '$1')
+    .replace(/(\*\*|__)(.+?)\1/g, '$2')
+    .replace(/(\*|_)(.+?)\1/g, '$2')
+}
+
+/** 列表里标题下面那行摘要：标题行之后的正文，折成一行，最多 `limit` 字。 */
+export function noteSnippet(content: string, limit = 80): string {
+  const lines = content.split(/\r?\n/)
+  const start = lines.findIndex((line) => line.trim() !== '')
+  const rest = lines
+    .slice(start + 1)
+    .map((line) => plainInline(line.replace(/^\s*(#{1,6}\s+|[-*+]\s+|\d+\.\s+|>\s*)/, '')).trim())
+    .filter(Boolean)
+    .join(' ')
+  const chars = [...rest]
+  return chars.length > limit ? chars.slice(0, limit).join('') + '…' : rest
+}

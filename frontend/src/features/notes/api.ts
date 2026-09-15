@@ -85,10 +85,27 @@ function path(resourceId: string | null, noteId?: string): string {
   const base = resourceId === null ? '/api/v1/notes' : `/api/v1/resources/${resourceId}/notes`
   return base + (noteId ? '/' + noteId : '')
 }
-export async function listNotes(resourceId: string | null, number = 1): Promise<NotePage> {
-  if (!Number.isSafeInteger(number) || number < 1) throw new ApiError('INVALID_REQUEST')
+/** 契约里心得列表允许的排序；默认与以往一致。 */
+export type NoteSort = '-created_at' | 'created_at' | '-updated_at' | 'updated_at'
+const NOTE_SORTS: readonly NoteSort[] = ['-created_at', 'created_at', '-updated_at', 'updated_at']
+
+export async function listNotes(
+  resourceId: string | null,
+  number = 1,
+  sort: NoteSort = '-created_at',
+  pageSize = 20,
+): Promise<NotePage> {
+  if (
+    !Number.isSafeInteger(number) ||
+    number < 1 ||
+    !NOTE_SORTS.includes(sort) ||
+    !Number.isSafeInteger(pageSize) ||
+    pageSize < 1 ||
+    pageSize > 100
+  )
+    throw new ApiError('INVALID_REQUEST')
   const envelope = object(
-    await api.request(path(resourceId) + `?page=${number}&page_size=20&sort=-created_at`),
+    await api.request(path(resourceId) + `?page=${number}&page_size=${pageSize}&sort=${sort}`),
   )
   const page = object(envelope.page)
   if (!Array.isArray(envelope.data) || typeof page.has_more !== 'boolean' || page.number !== number)

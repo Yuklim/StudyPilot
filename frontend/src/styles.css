@@ -1223,6 +1223,134 @@ fieldset:disabled {
   background: #e4e8dc;
 }
 
+/* 「我的心得」两栏管理 + 预览（TASK-061）。≥1024px 左列表右预览；以下只有列表。 */
+.notes-manager {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.notes-manager.two-pane {
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+}
+.notes-list-pane {
+  min-width: 0;
+}
+.notes-list-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.notes-list-tools .search-field {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.notes-list-tools .journal-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.notes-list-hint {
+  margin: 0 0 12px;
+}
+.notes-index {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper);
+  overflow: hidden;
+}
+.notes-index li + li {
+  border-top: 1px solid var(--line);
+}
+.notes-index a {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'title time'
+    'snippet snippet';
+  gap: 4px 12px;
+  padding: 12px 16px;
+  color: inherit;
+  text-decoration: none;
+}
+.notes-index a:hover {
+  background: #f3f5ec;
+}
+.notes-index li.selected a {
+  background: #dce5d4;
+}
+.notes-index-title {
+  grid-area: title;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notes-index-snippet {
+  grid-area: snippet;
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notes-index time {
+  grid-area: time;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.notes-more {
+  margin-top: 12px;
+}
+.notes-empty {
+  padding: 32px 20px;
+}
+.notes-preview-pane {
+  min-width: 0;
+  position: sticky;
+  top: 24px;
+}
+.notes-preview,
+.notes-preview-empty,
+.notes-preview-done {
+  padding: 24px 28px 32px;
+  border: 1px solid var(--line);
+  border-radius: 5px 20px 20px 20px;
+  background: var(--paper);
+}
+.notes-preview-empty {
+  min-height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.notes-preview-head h2 {
+  margin: 0 0 6px;
+  font-size: 1.4rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.notes-preview-head .resource-actions {
+  margin: 12px 0 0;
+}
+.notes-preview-body {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  font-size: 16px;
+  line-height: 1.8;
+}
+.notes-preview .resource-attach-picker {
+  margin-top: 14px;
+}
+
 /* 资料库内的删除入口（TASK-056）：每份一个复选框 + 一个删除图标按钮；选中 ≥1 份时
    列表上方的选择条给出「删除所选」。 */
 .resource-selection {
