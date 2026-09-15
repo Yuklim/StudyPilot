@@ -8,7 +8,7 @@ risk = "L2"
 risk_reason = "只改前端两个编辑器的「显示层」：textarea 里把 base64 data URI 折叠成短占位符，预览与保存前展开回原文。存进后端的内容、契约、渲染器都不变。动的是自动保存/冲突/对比的输入源（折叠 ↔ 展开必须严格可逆，否则会把图片丢掉或把占位符存进后端），需独立 Reviewer 看最终 diff；不到 L3。"
 risk_flags = ["business"]
 owner = "coordinator"
-base = "f4cd190a2a2b0903ed6a5971a08774380ca381be"
+base = "7768d7dae4153e346de298fb34698a8b959e0643"
 allowed_paths = [
   "frontend/src/features/notes/noteImages.ts",
   "frontend/src/features/notes/noteImages.test.ts",
@@ -107,5 +107,6 @@ PR #71 若在本任务收尾前合并，`TASK-063-note-images.md` 登记 MERGED�
 - 最终状态/风险/用户操作：status=**ACCEPTED**（L2：1 Worker → 自动检查 → 1 名独立只读 Reviewer → 主 Agent 汇总）。**未 MERGED**——是否合并由用户本人决定。**依赖 PR #71（TASK-063）先合并**：本分支从其分支尖创建，PR 以该分支为 base，#71 合并后 GitHub 会自动把 base 换成 main。
 - 非阻断遗留项：1. F1 前提 / F2 / F3 / F4 / F5（上表）；2. e2e 一次未定位的偶发失败；3. TASK-063 F4（`docs/开发与运行.md` 两处 50,000）仍待有该路径的任务。
 - 日期与决定日志：
+  - 2026-09-15 PR #73 合并后 TASK-063 分支并入 main（`7768d7d`）；本分支并入 `7768d7d` 为 merge `8f830b9`，只解索引冲突（064 行排到 065 行之后）；`git diff 3bd6274 8f830b9 -- frontend/src frontend/e2e/notes-pages.spec.ts` 为空，产品代码与候选 `3bd6274` 逐字节一致，Review 结论继续覆盖；`base` 前移到 `7768d7d`。
   - 2026-09-15 用户试用后「一串很长的文字很影响书写」→ 主 Agent 提出占位符方案并开做；登记 `b5d11b1`；实现 `96e9ea4`；写回 `3bd6274` 冻结；Review PASS（F1–F5 记录）；主 Agent 写回并置 `ACCEPTED`；待用户合并（先 #71）。
 <!-- EVIDENCE:END -->
