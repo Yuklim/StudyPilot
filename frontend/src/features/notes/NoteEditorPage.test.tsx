@@ -133,6 +133,41 @@ describe('note editor page', () => {
     expect(editor()).toHaveValue('原文，第一段，第二段')
   })
 
+  it('does not retry a failed save on its own, only after the next keystroke', async () => {
+    // 独立 Review F9：失败后草稿必然≠已保存内容，若保存结束时一律补排就成了每秒一次的
+    // 无限重试。失败态只等用户再敲一次。
+    let attempts = 0
+    mock((path, options) => {
+      if (path === `/api/v1/notes/${noteId}` && options?.method === 'PATCH') {
+        attempts += 1
+        if (attempts < 3) return new ApiError('NETWORK_ERROR')
+        return {
+          data: note({ content: (options.body as { content: string }).content, version: 2 }),
+        }
+      }
+      if (path === `/api/v1/notes/${noteId}`) return { data: note({ content: '原文' }) }
+      return { data: [] }
+    })
+    renderWithRouter(<App />, `/notes/${noteId}`)
+    await screen.findByRole('heading', { name: '原文', level: 1 })
+    type('原文，改一下')
+    await settle()
+    expect(attempts).toBe(1)
+    expect(status()).toHaveTextContent('保存失败')
+    // 再等两个周期：没有自动重试。
+    await settle()
+    await settle()
+    expect(attempts).toBe(1)
+    // 再敲一次 → 重试一次（这次还失败）→ 再敲 → 成功。
+    type('原文，改一下，再改')
+    await settle()
+    expect(attempts).toBe(2)
+    type('原文，改一下，再改，好了')
+    await settle()
+    expect(attempts).toBe(3)
+    expect(status()).toHaveTextContent(/已保存/)
+  })
+
   it('keeps one h1 and a way back when the note cannot be read', async () => {
     mock((path) => {
       if (path === `/api/v1/notes/${noteId}`) return new ApiError('NETWORK_ERROR')

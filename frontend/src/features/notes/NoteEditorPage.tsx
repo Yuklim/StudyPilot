@@ -146,7 +146,9 @@ export function NoteEditorPage({ noteId }: { noteId?: string }) {
         if (!alive.current) return
         const { draft: text, note: current, save: state } = latest.current
         const cleaned = cleanContent(text)
-        if (state.kind !== 'conflict' && cleaned && cleaned !== (current?.content ?? '')) {
+        // **只在这次保存成功后**补排。失败/冲突时草稿必然≠已保存内容，若也补排就是每秒一次的
+        // 无限重试（独立 Review F9）；失败由用户下一次键入重排，冲突等用户选。
+        if (state.kind === 'saved' && cleaned && cleaned !== (current?.content ?? '')) {
           schedule()
         }
       })
