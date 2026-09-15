@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-057"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "改公共 API 与契约基线：`GET /resources` 的 `topic_id` 由单值改为可重复（任一匹配）、`topic_unassigned=true` 由与 `topic_id` 互斥改为可并列（OR）、新增 `tag_match=any|all`（默认 `all` 保持既有语义）；同步 `openapi-v1.json` 与契约文档，后端 ResourceQuery/存储层/测试随之改。前端资料库筛选形态重做（主题/标签以已有项芯片列出、点选即生效、去掉「按主题与标签筛选」面板）。命中 risk-policy `public-api`；跨 backend/docs/frontend 三处。L3：独立只读 Review + 独立 Integration/Acceptance。"
 risk_flags = ["public-api", "business"]
@@ -145,7 +145,7 @@ checks = ["backend", "frontend", "contracts"]
 | Review 可选：网址 id 形状校验 | **记录**：与基线一致，畸形值由后端 422 兜底。登记遗留 2。 | 非本任务回归 |
 | Acceptance：`git diff --check` 未入日志 | **本区补记**：主 Agent 在 `d3a0754..264992c` 上实跑 exit 0（上文）。 | — |
 
-- 最终状态/风险/用户操作：status=**ACCEPTED**（L3：1 Worker → 自动检查 → 独立只读 Review → 独立 Integration/Acceptance → 主 Agent 汇总）。**未 MERGED**——是否合并由用户本人决定，Agent 不合并、不推送 main。
+- 最终状态/风险/用户操作：status=**MERGED**（2026-09-12 用户合并 PR #65，merge commit `881e9ae`，已用 `gh pr view` 与 `git log origin/main` 双向核实；登记并入 TASK-058 控制面提交）。交付时为 **ACCEPTED**（L3 全链）。
 - 非阻断遗留项：
   1. 多个孤儿芯片可访问名相同。
   2. 网址 `topic_id/tag_id` 不做 UUID 形状校验（与基线一致）。

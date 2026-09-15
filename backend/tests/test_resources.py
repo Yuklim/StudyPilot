@@ -1,6 +1,7 @@
 """Real HTTP/SQLite resource behavior; synthetic data and isolated fixtures only."""
 
 import json
+import threading
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
@@ -514,3 +515,61 @@ def test_only_ready_files_visible_and_internal_fields_absent(
     detail = authorized.get(f"/api/v1/resources/{identities['READY']}").json()["data"]
     assert detail["original_file"]["sha256"] == "a" * 64
     assert "storage_key" not in json.dumps(detail) and "staging_key" not in json.dumps(detail)
+
+
+def test_concurrent_previews_both_succeed(authorized: TestClient, database: Any) -> None:
+    # TASK-058: two read-then-write transactions used to deadlock on the SQLite
+    # SHARED->RESERVED upgrade (the second flush got "database is locked" at once,
+    # bypassing busy_timeout) and surfaced as a 500. With BEGIN IMMEDIATE the
+    # second writer waits at BEGIN instead.
+    created = authorized.post(
+        "/api/v1/resources",
+        json=WEB | {"title": "concurrent"},
+    ).json()["data"]
+    results: list[tuple[int, str]] = []
+
+    def preview() -> None:
+        response = authorized.post(f"/api/v1/resources/{created['id']}/deletion-preview")
+        token = response.json().get("data", {}).get("confirmation_token", "")
+        results.append((response.status_code, token))
+
+    threads = [threading.Thread(target=preview) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert [code for code, _ in results] == [200, 200], results
+    assert len({token for _, token in results}) == 2
+
+
+def test_transactions_begin_immediate_and_commit(runtime: RuntimePaths, database: Any) -> None:
+    # TASK-058: every transaction opens with BEGIN IMMEDIATE, and commits still land
+    # (the sqlite3 autocommit=True mode would make commit() a no-op).
+    from sqlalchemy import event, text
+
+    from studypilot.infrastructure.database.connection import (
+        create_database_engine,
+        create_session_factory,
+    )
+
+    engine = create_database_engine()
+    statements: list[str] = []
+    event.listen(
+        engine,
+        "before_cursor_execute",
+        lambda conn, cursor, statement, *rest: statements.append(statement.strip()),
+    )
+    try:
+        with create_session_factory(engine).begin() as session:
+            session.add(Topic(name="immediate"))
+        assert statements and statements[0] == "BEGIN IMMEDIATE", statements[:3]
+        with engine.connect() as connection:
+            assert connection.execute(text("PRAGMA foreign_keys")).scalar() == 1
+            assert (
+                connection.execute(
+                    text("SELECT count(*) FROM topics WHERE name = 'immediate'")
+                ).scalar()
+                == 1
+            )
+    finally:
+        engine.dispose()
