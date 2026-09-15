@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-059"
-status = "IN_PROGRESS"
+status = "ACCEPTED"
 risk = "L1"
 risk_reason = "只改 ≤760px 媒体查询下的三条 CSS（第二组导航的网格行、折叠按钮隐藏），加一条真实浏览器几何断言。不改 DOM、可访问名称、路由、契约；桌面布局不受影响。可证明低风险：改前改后均有实测。"
 risk_flags = ["small-ui"]
@@ -37,10 +37,17 @@ checks = ["frontend"]
 
 ## 实现与测试
 
-（实施后填写）
+- **变更**：`styles.css` ≤760px 块两处——`.nav-section-more { grid-row: 3 }`；`.nav-toggle { display: none }`（放在文件末尾那个 ≤760px 块里：`.nav-toggle` 基础规则在原块之后，同特异度靠顺序取胜——首次放在前一个块里实测无效，e2e 抓到）。
+- **测试**：`scaffold.spec.ts` 两档视口用例内补断言：「主要导航」+「更多能力」全部链接两两 boundingBox 不相交、右沿在视口内、`.nav-toggle` 隐藏（沉浸式阅读页除外，那页没有顶栏）。改前实跑红：「学习概览」与「学习记录」重叠。`reader-layout.spec.ts` 折叠态确认改为断言 `nav-collapsed` 类（见范围修订）。
+- **目视**：390px 截图两组导航上下排列、无折叠按钮。
+- **检查**：`check_task.py --candidate 68d62c3` → `STATIC PASS`，`files=4`，`product_fingerprint=250cb5b6…`，frontend 五项 exit 0，**571 passed** → **CHECKS PASS**；`npm run test:e2e` **60 passed**（基线 60，断言只增）；`git diff --check` exit 0。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-（实施后填写）
+- 候选 SHA：`68d62c3`（实现 + 测试同一提交；本行为其后的补记）。
+- Review：**L1，N/A**。Acceptance：**L1，N/A**。
+- 最终状态：status=**ACCEPTED**；待用户合并。
+- 非阻断遗留项：无。
+- 日期与决定日志：2026-09-14 用户「老问题修复一下」之二；主 Agent 读 CSS 定位根因（同一选择器命中两组导航），先写红用例再改。
 <!-- EVIDENCE:END -->
