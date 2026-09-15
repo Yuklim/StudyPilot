@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-063"
-status = "IN_ACCEPTANCE"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "放宽已批准公共契约（`Note.content` 上限 50,000 → 2,000,000 字符；`docs/contracts/**` 与 `openapi-v1.json` 同步）并新增 0006 迁移改写 `notes` 表的 CHECK；前端编辑器接受粘贴/拖入图片，压缩后以 data URI 内嵌进 Markdown，渲染器放行 `data:image/*;base64`。命中 public-api + migration + critical-data，走 L3：独立只读 Reviewer + 独立只读 Integration/Acceptance。"
 risk_flags = ["public-api", "migration", "critical-data", "business"]
@@ -107,7 +107,7 @@ checks = []
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 冻结候选：首轮 **`bb2961b`**（= 实现 `e912fd6` + 记录/TASK-062 MERGED 登记/索引）→ Review F1/F2/F3/F5/F6 修复后**最终候选 `9cb9987`**（`fix(frontend): 拖入图片按 types 判定 dragover；文字+图片粘贴不接管；侧栏三处预览/摘要首行/搜索 memo`，只动前端 7 个文件）。范围 `4edcc27..9cb9987`，26 个文件（后端 6 + 契约 2 + 前端 15 + 任务记录 3），均在 `allowed_paths` 内。
+- 冻结候选：首轮 **`bb2961b`**（= 实现 `e912fd6` + 记录/TASK-062 MERGED 登记/索引）→ Review F1/F2/F3/F5/F6 修复后**最终候选 `9cb9987`**（`fix(frontend): 拖入图片按 types 判定 dragover；文字+图片粘贴不接管；侧栏三处预览/摘要首行/搜索 memo`，只动前端 9 个文件：`NoteEditorPage`/`NotesPanel`/`NotesPage`/`noteImages`/`noteTitle` 及其测试）。范围 `4edcc27..9cb9987`，26 个文件（后端 6 + 契约 2 + 前端 15 + 任务记录 3），均在 `allowed_paths` 内。
 - 检查（绑定 `9cb9987`）：`check_task.py --task … --candidate 9cb9987` **CHECKS PASS**（profiles backend, contracts, frontend；ruff/mypy/pytest **556**/uv build、OpenAPI 校验、format/lint/typecheck/vitest **630**/build）；e2e **63 passed**（`9cb9987` 工作区）；`git diff --check 4edcc27 9cb9987` exit 0。修复的判别性：R8 dragover 改回按 `imageFiles` 判定（原缺陷）→ `NoteEditorPage.test` 2 红；R9 文字+图片粘贴仍接管 → 1 红；累计 9 处定向变红。
 - Review（L3 独立只读 Reviewer `.claude/agents/reviewer.md`，仅 Read/Grep/Glob，自证无写工具；原文）：
 
@@ -136,4 +136,21 @@ checks = []
 | F5 | **已改**（摘要标题行同口径）+ 单测。 | 2 行 |
 | F6 | **已改**（`useMemo`）。 | 含图正文 MB 级 |
 | F7 | **记录**：非图片文件拖入时 drop 一律 `preventDefault` 并提示——与修复前行为相同，非回归；下个任务顺带。 | 不再开一轮候选 |
+
+- Integration/Acceptance（L3 独立只读，第三个 Agent 实例，独立于实现者与 Reviewer；仅 Read/Grep/Glob，自证无写工具；原文摘录）：
+
+> **结论：PASS**（附 2 条非阻断记录项）。候选 `9cb9987` / 基线 `4edcc27`；依据 final.diff（全量）与 fix1.diff（增量，blob 尾哈希与全量一致，证实即 `bb2961b..9cb9987`）。
+> - 完成条件 1：目标 1–7 各有直证（`test_notes` 边界 + data URI 往返、`test_0006_widens_note_content_and_refuses_lossy_downgrade`；契约 4.8/1.3/openapi 三处；编辑器粘贴/拖放/失败三条用例 + `noteImages.test`；`api.test`/`NotesPanel.test`/超限文案；`snapshotMarkdown.test` 开启/默认拒绝 + 4 种拒绝；`noteTitle`/`displayText`/搜索/卡片与删除预览；e2e 真实 paste → 1600×1000 → 预览 → 服务端读回 > 50,000 → 心得页）。R1–R9 与用例结构对应（R7：`conftest.py:36` 用 `migrate(engine)`，upgrade 置空会同时红两个文件）。
+> - 完成条件 2：增量只在 `frontend/src/features/notes/`，未触及 backend/docs/contracts，后端与迁移证据对 `9cb9987` 仍有效；pytest 556 / vitest 630（= 627 + 3，与新增用例数吻合）。**保留**：scratchpad 无绑定候选的 check/e2e 日志工件，PASS 仅为记录声明。
+> - 跨模块一致性：`contracts.py`/`models.py`/0006 CHECK/`api.ts`（编辑器、NotesPanel、`noteAt`、`saveNote` 引用）/openapi 三处/契约 4.8、1.3 数值一致，计数口径均为码点；1.2 节「不得收紧既有输入」，放宽不属破坏性变更；`renderSnapshot(` 调用点里 `ContentSnapshot.tsx:181` 未传 `inlineImages`，仅编辑页/心得页传 true，`inline` 不加 referrerpolicy——承诺成立。
+> - 迁移证据：用例在 0005 下写 60,000 得 IntegrityError（模型 CHECK 已是 2,000,000，拒绝只能来自库内旧 CHECK），升到 0006 后可写——证明的是迁移而非模型；`compare_metadata==[]` 兼证 `alembic check`。本机需 `alembic upgrade head` 的说明与启动脚本行为相符。
+> - Review 处置：F1–F7 与原文一一对应；F1/F2/F3/F5/F6 均在增量里有改动与用例；F4 越 allowed_paths、F7 为既有行为，记录合理。
+> - 范围：无图片接口、无文件存储、`snapshot_assets` 未动；`onPaste/onDrop` 仅在编辑页；分页未改。
+> - Findings（非阻断）：1. 记录称最终修复「只动前端 7 个文件」，实为 9 个，建议更正；2. 绑定 `9cb9987` 的 check/e2e 输出未留工件，汇报时宜附摘要。
+
+- Acceptance findings 处置：1. **已改**（上文口径更正为 9 个）；2. **已补**：`check_task --candidate ed9d772`（产品代码与 `9cb9987` 相同，只多任务记录提交）完整日志与 `playwright test` 日志存于会话 scratchpad `t063/check-ed9d772.log`、`t063/e2e-9cb9987.log`——CHECKS PASS（pytest 556、vitest 630）、e2e 63 passed；`check_task` 拒绝对非检出 SHA 跑完整检查（"full checks require the candidate checked out"），故按检出的 HEAD 绑定。
+- 最终状态/风险/用户操作：status=**ACCEPTED**（L3：1 Worker → 自动检查 → 独立只读 Reviewer（两轮）→ 独立只读 Integration/Acceptance → 主 Agent 汇总）。**未 MERGED**——是否合并由用户本人决定。**合并后用户本机需迁移**（启动脚本自动 `alembic upgrade head`，或手动执行），否则保存含图心得会被旧 CHECK 拒绝。
+- 非阻断遗留项：1. F4 `docs/开发与运行.md:97,123` 两处 50,000（下个任务）；2. F7 非图片文件拖入的 drop 处理；3. 用户已接受的存法代价（列表页拉含图正文、PATCH 整份带图、侧栏编辑含图心得是 base64 原文）；4. 主 Agent 假设（1600px / WebP / 600 KB / 2,000,000）待用户实际使用后确认或调整。
+- 日期与决定日志：
+  - 2026-09-15 用户「不能粘贴图片」→ 反问后选「直接内嵌进正文」；登记 `3846ed0`；实现 `e912fd6`（实跑抓到：batch 迁移误传 `table_args` 会留下第二条旧 CHECK；lint 禁止 effect 内无条件 setState → `loadError` 改为派生值；纯色图压成 WebP 只有几 KB，e2e 需噪点带才能超过旧上限）；写回 `bb2961b` 冻结；Review 首轮 CHANGES_REQUIRED（F1 dragover 看不到文件）→ 修复 `9cb9987`（含 F2/F3/F5/F6）→ 增量复审 PASS → 独立 Integration/Acceptance PASS；主 Agent 写回并置 `ACCEPTED`；待用户合并。
 <!-- EVIDENCE:END -->
