@@ -48,7 +48,7 @@ describe('controlled note API', () => {
     { version: 1.5 },
     { content: '' },
     { content: ' '.repeat(3) },
-    { content: 'x'.repeat(50001) },
+    { content: 'x'.repeat(2_000_001) },
     { created_at: '2026-09-03T02:00:00' },
     { updated_at: 'wrong' },
   ])('rejects malformed or wrong-parent notes %j', async (override) => {
@@ -71,7 +71,7 @@ describe('controlled note API', () => {
     request.mockResolvedValue({ data: note() })
     await expect(deleteNote(resourceId, note())).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
   })
-  it.each([0, 3, 50001])(
+  it.each([0, 3, 2_000_001])(
     'rejects invalid content without a request (length %s)',
     async (length) => {
       const content = length < 4 ? ' '.repeat(length) : 'x'.repeat(length)
@@ -81,7 +81,8 @@ describe('controlled note API', () => {
     },
   )
   it('counts Unicode characters and preserves internal whitespace', async () => {
-    const content = '🌱'.repeat(50000)
+    // 上限按码点算（TASK-063 起 2,000,000）：这里是 2,000,000 个四字节字符。
+    const content = '🌱'.repeat(2_000_000)
     vi.spyOn(api, 'request').mockResolvedValue({ data: note({ content }) })
     await expect(saveNote(resourceId, content, null)).resolves.toMatchObject({ content })
     expect(cleanContent('\u0085\u001f one\n  two \u0085')).toBe('one\n  two')

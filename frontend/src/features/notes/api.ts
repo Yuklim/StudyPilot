@@ -1,6 +1,12 @@
 import { api, ApiError } from '../../api/client'
 import { isResourceId } from '../resources/api'
 
+/**
+ * 正文上限（字符数，按码点）：契约 4.8。TASK-063 起 2,000,000——图片以 base64 内嵌进正文，
+ * 一条心得放得下几张压缩过的截图。
+ */
+export const MAX_CONTENT = 2_000_000
+
 export interface Note {
   id: string
   /** 独立心得为 null；绑定资料心得为其资源 id。 */
@@ -64,7 +70,7 @@ function noteAt(value: unknown, expectedResourceId: string | null): Note {
     rid !== expectedResourceId ||
     typeof row.content !== 'string' ||
     !cleanContent(row.content) ||
-    [...row.content].length > 50000
+    [...row.content].length > MAX_CONTENT
   )
     return invalid()
   return {
@@ -142,7 +148,7 @@ export async function saveNote(
   const cleaned = cleanContent(content)
   if (
     !cleaned ||
-    [...cleaned].length > 50000 ||
+    [...cleaned].length > MAX_CONTENT ||
     (previous &&
       (previous.resource_id !== resourceId ||
         !Number.isSafeInteger(previous.version) ||

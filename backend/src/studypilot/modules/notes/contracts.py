@@ -6,7 +6,13 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
-Content = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=50_000)]
+# TASK-063: images are pasted into notes as base64 data URIs inside the Markdown
+# (user-chosen storage), so the ceiling is 2,000,000 characters (roughly 5-10
+# compressed screenshots). Lower bound, trimming and versioned writes are unchanged.
+MAX_CONTENT = 2_000_000
+Content = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=MAX_CONTENT)
+]
 
 
 class NoteError(Exception):

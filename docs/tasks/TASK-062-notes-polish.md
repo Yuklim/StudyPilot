@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-062"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L2"
 risk_reason = "只改前端：「我的心得」页去掉页内写入口并修摘要/文案；阅读器侧栏心得卡加「整页编辑」链接；补 TASK-060 F3（⌘J 绕过侧栏脏草稿确认）与 F7（编辑页切换 noteId 不先保存）、TASK-061 F2（删除模态 Esc/焦点）与 F3（`?note=` 失配提示）。动的是「写/回看心得」核心路径上的导航守卫与保存时序，需独立 Reviewer 看最终 diff；不改后端与契约，不到 L3。"
 risk_flags = ["business"]
@@ -118,8 +118,9 @@ checks = ["frontend"]
 | F6 | **记录**。 | 测试叙述精度 |
 
 - Acceptance：L2，N/A。
-- 最终状态/风险/用户操作：status=**ACCEPTED**（L2：1 Worker → 自动检查 → 1 名独立只读 Reviewer（两轮）→ 主 Agent 汇总）。**未 MERGED**——是否合并由用户本人决定。
+- 最终状态/风险/用户操作：status=**MERGED**（L2：1 Worker → 自动检查 → 1 名独立只读 Reviewer（两轮）→ 主 Agent 汇总）。**2026-09-15 用户已合并 PR #70，merge `4edcc27`**（状态由 TASK-063 控制面顺带登记）。
 - 非阻断遗留项：1. F4/F5（→ TASK-063 顺带）；2. F3/F6 记录；3. 图片粘贴（用户选 base64 内嵌）→ TASK-063（L3，契约放宽）。
 - 日期与决定日志：
   - 2026-09-15 用户「做成心得查询即可，不用预留写心得接口」+ 图片存法选「直接内嵌进正文」；登记 `fe7be8f`；实现 `570e5cb`；写回 `10c6558` 冻结；Review 首轮 CHANGES_REQUIRED（F1）→ 修复 `014b6bf`（含 F2）→ 增量复审 PASS；主 Agent 写回并置 `ACCEPTED`；待用户合并。
+  - 2026-09-15 用户合并 PR #70（merge `4edcc27`）；MERGED 登记并入 TASK-063 控制面提交；F4/F5 已在 TASK-063 顺带处理。
 <!-- EVIDENCE:END -->

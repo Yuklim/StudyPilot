@@ -8,6 +8,15 @@ import { renderWithRouter } from '../../test/render'
 import { resourceId, sample } from '../resources/fixtures'
 import type { Note } from './api'
 import { note as boundNote } from './fixtures'
+import { NoteImageError, imageToMarkdown } from './noteImages'
+
+// 图片压缩链路（解码/canvas/编码）在 jsdom 里不存在，由 noteImages.test 用桩守；这里只换掉
+// 那一个函数，粘贴事件的识别、插入位置、状态文案与自动保存都是真的。
+vi.mock('./noteImages', async (original) => ({
+  ...(await original<typeof import('./noteImages')>()),
+  imageToMarkdown: vi.fn(),
+}))
+const convert = vi.mocked(imageToMarkdown)
 
 /** 独立心得（`resource_id` 为 null）；`getNote(null, …)` 会校验返回的绑定必须与请求一致。 */
 const note = (overrides: Partial<Note> = {}): Note => boundNote({ resource_id: null, ...overrides })
@@ -41,6 +50,123 @@ describe('note editor page', () => {
   })
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it('inserts a pasted image as its own Markdown line at the caret and autosaves it (TASK-063)', async () => {
+    const png = new File([new Uint8Array(8)], 'shot.png', { type: 'image/png' })
+    const clipboardData = {
+      items: [{ kind: 'file', getAsFile: () => png }],
+      files: [png],
+      getData: () => '',
+    }
+    let release!: (line: string) => void
+    convert.mockImplementationOnce(
+      () =>
+        new Promise<string>((done) => {
+          release = done
+        }),
+    )
+    const posts: unknown[] = []
+    mock((path, options) => {
+      if (path === '/api/v1/notes' && options?.method === 'POST') {
+        posts.push(options.body)
+        return { data: note({ content: (options.body as { content: string }).content }) }
+      }
+      return { data: [] }
+    })
+    renderWithRouter(<App />, '/notes/new')
+    type('前文')
+    const box = editor() as HTMLTextAreaElement
+    box.setSelectionRange(2, 2)
+    // 有图片的粘贴被接管（默认动作取消）；纯文本粘贴不受影响。
+    expect(fireEvent.paste(box, { clipboardData })).toBe(false)
+    expect(
+      fireEvent.paste(box, { clipboardData: { items: [], files: [], getData: () => '' } }),
+    ).toBe(true)
+    expect(convert).toHaveBeenCalledWith(png)
+    expect(status()).toHaveTextContent('正在处理图片…')
+    await act(async () => {
+      release('![图片](data:image/webp;base64,AAAA)')
+    })
+    expect(editor()).toHaveValue('前文\n![图片](data:image/webp;base64,AAAA)')
+    expect(status()).not.toHaveTextContent('正在处理图片')
+    await settle()
+    expect(posts).toEqual([{ content: '前文\n![图片](data:image/webp;base64,AAAA)' }])
+  })
+
+  it('accepts a dropped image and leaves a text-plus-image paste to the browser (Review F1/F2)', async () => {
+    const png = new File([new Uint8Array(8)], 'shot.png', { type: 'image/png' })
+    convert.mockResolvedValueOnce('![图片](data:image/webp;base64,BBBB)')
+    mock(() => ({ data: [] }))
+    renderWithRouter(<App />, '/notes/new')
+    type('正文')
+    const box = editor()
+    // dragover 阶段只有 types：必须据此 preventDefault，否则 drop 不会触发。
+    expect(
+      fireEvent.dragOver(box, {
+        dataTransfer: {
+          types: ['Files'],
+          files: [],
+          items: [{ kind: 'file', getAsFile: () => null }],
+        },
+      }),
+    ).toBe(false)
+    expect(fireEvent.dragOver(box, { dataTransfer: { types: ['text/plain'], items: [] } })).toBe(
+      true,
+    )
+    await act(async () => {
+      fireEvent.drop(box, {
+        dataTransfer: {
+          types: ['Files'],
+          files: [png],
+          items: [{ kind: 'file', getAsFile: () => png }],
+        },
+      })
+    })
+    expect(editor()).toHaveValue('正文\n![图片](data:image/webp;base64,BBBB)')
+    // 文字 + 图片一起粘贴（复制表格单元格）：不接管，浏览器按默认贴文字。
+    convert.mockClear()
+    expect(
+      fireEvent.paste(box, {
+        clipboardData: {
+          items: [{ kind: 'file', getAsFile: () => png }],
+          files: [png],
+          getData: (t: string) => (t === 'text/plain' ? '单元格文字' : ''),
+        },
+      }),
+    ).toBe(true)
+    expect(convert).not.toHaveBeenCalled()
+  })
+
+  it('explains an over-limit body in terms of its images (TASK-063)', async () => {
+    mock(() => ({ data: [] }))
+    renderWithRouter(<App />, '/notes/new')
+    type(`看图\n![图片](data:image/webp;base64,${'A'.repeat(2_000_000)})`)
+    expect(status()).toHaveTextContent(/正文过大（含图片约 1\.4 MB），删掉一些图片才会保存/)
+    type('x'.repeat(2_000_001))
+    expect(status()).toHaveTextContent('超过 2,000,000 字，删减到上限内才会保存')
+  })
+
+  it('reports an image that cannot be inserted and leaves the text untouched (TASK-063)', async () => {
+    const big = new File([new Uint8Array(8)], 'big.png', { type: 'image/png' })
+    convert.mockRejectedValueOnce(new NoteImageError('IMAGE_TOO_LARGE', '这张图太大，没有插入。'))
+    mock(() => ({ data: [] }))
+    renderWithRouter(<App />, '/notes/new')
+    type('文字')
+    await act(async () => {
+      fireEvent.paste(editor(), {
+        clipboardData: {
+          items: [{ kind: 'file', getAsFile: () => big }],
+          files: [big],
+          getData: () => '',
+        },
+      })
+    })
+    expect(status()).toHaveTextContent('这张图太大，没有插入。')
+    expect(editor()).toHaveValue('文字')
+    // 再敲字提示让位给保存状态。
+    type('文字 continued')
+    expect(status()).not.toHaveTextContent('这张图太大')
   })
 
   it('creates on the first non-empty pause, then patches with the version, and never saves unchanged text', async () => {

@@ -8,6 +8,7 @@ import { displayTime, type Resource } from '../resources/api'
 import { resourceTitle } from '../resources/resourceTitle'
 import { useResourceQuery } from '../resources/useResourceQuery'
 import {
+  MAX_CONTENT,
   attachNote,
   cleanContent,
   deleteNote,
@@ -19,6 +20,7 @@ import {
   saveNote,
   type Note,
 } from './api'
+import { displayText } from './noteTitle'
 import { ResourceAttachPicker } from './ResourceAttachPicker'
 
 export function NotesPanel({
@@ -218,8 +220,8 @@ export function NotesPanel({
     )
       return
     if (deleting && (!selected || !confirmed)) return
-    if (!deleting && (!cleanContent(draft) || [...cleanContent(draft)].length > 50000)) {
-      setError('写下一点内容再保存吧，最多 50,000 个字符。')
+    if (!deleting && (!cleanContent(draft) || [...cleanContent(draft)].length > MAX_CONTENT)) {
+      setError(`写下一点内容再保存吧，最多 ${MAX_CONTENT.toLocaleString()} 个字符。`)
       return
     }
     busy.current = true
@@ -312,7 +314,7 @@ export function NotesPanel({
                 ? '删除后无法恢复。只删除这一条独立心得。'
                 : '删除后无法恢复。只删除下面这条心得，不影响资料或其他记录。'}
             </p>
-            <p className="record-text note-delete-preview">{selected.content}</p>
+            <p className="record-text note-delete-preview">{displayText(selected.content)}</p>
           </>
         ) : (
           <label>
@@ -358,7 +360,7 @@ export function NotesPanel({
         {recovery?.verified && selected && !deleting && !recovery.missing && (
           <section aria-label="最新已保存内容">
             <h3>最新已保存内容</h3>
-            <p className="record-text">{selected.content}</p>
+            <p className="record-text">{displayText(selected.content)}</p>
           </section>
         )}
         {recovery?.verified && !selected && (
@@ -370,7 +372,7 @@ export function NotesPanel({
             {checkedNotes.length ? (
               checkedNotes.map((row) => (
                 <p className="record-text" key={row.id}>
-                  {row.content}
+                  {displayText(row.content)}
                 </p>
               ))
             ) : (
@@ -462,7 +464,8 @@ export function NotesPanel({
           <ol className="record-list" aria-label="心得列表">
             {result.data.data.map((row) => (
               <li className="note-card" key={row.id}>
-                <p className="record-text">{row.content}</p>
+                {/* 纯文本卡片：内嵌图片显示为「[图片]」占位（TASK-063），看图去「整页编辑」。 */}
+                <p className="record-text">{displayText(row.content)}</p>
                 <p className="resource-hint">
                   保存于 <time dateTime={row.created_at}>{displayTime(row.created_at)}</time>
                   {row.updated_at !== row.created_at && (

@@ -102,7 +102,7 @@ describe('quick personal notes', () => {
     type(' \n ')
     submit()
     expect(screen.getByRole('alert')).toHaveTextContent('写下一点内容')
-    type('x'.repeat(50001))
+    type('x'.repeat(2_000_001))
     submit()
     expect(request.mock.calls.some(([, init]) => init?.method)).toBe(false)
     await screen.findByText('还没有心得，写下一句话就可以开始。')
@@ -162,6 +162,18 @@ describe('quick personal notes', () => {
     expect(confirm).toHaveBeenCalledTimes(3)
     expect(screen.getByRole('textbox')).toHaveValue('未完成草稿')
     expect(screen.getByRole('form', { name: '心得编辑' })).toBeInTheDocument()
+  })
+  it('shows inline images as a placeholder in the plain-text card (TASK-063)', async () => {
+    setup([note({ content: '看这张\n![截图](data:image/webp;base64,AAAA)\n完' })])
+    const card = await screen.findByText(/看这张/)
+    expect(card).toHaveTextContent('看这张 [图片：截图] 完')
+    expect(card.textContent).not.toContain('base64')
+    // 删除确认里的预览同样不铺 base64（独立 Review F3）。
+    fireEvent.click(screen.getByRole('button', { name: '删除' }))
+    await screen.findByText('删除这条心得？')
+    expect(document.querySelector('.note-delete-preview')?.textContent).toBe(
+      '看这张\n[图片：截图]\n完',
+    )
   })
   it('keeps a conflicting draft, requires successful reload and explicit re-confirmation', async () => {
     const request = setup([note()])

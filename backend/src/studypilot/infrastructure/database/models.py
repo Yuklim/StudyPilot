@@ -356,7 +356,8 @@ class ResourceTag(Created, Base):
 class Note(Identified, Created, Versioned, Base):
     __tablename__ = "notes"
     __table_args__ = (
-        bounded_length("content", 1, 50_000),
+        # 0006 widened the CHECK from 50,000 (TASK-063: inline base64 images).
+        bounded_length("content", 1, 2_000_000),
         positive_version(),
         {"info": {"owner": "notes"}},
     )

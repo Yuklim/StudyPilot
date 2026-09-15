@@ -504,3 +504,81 @@ test('a note started from the reader is bound to that resource', async ({ page }
   await openNotes(page)
   await expect(page.getByRole('list', { name: '心得列表' })).toContainText('从阅读器按快捷键写下的')
 })
+
+test('an image pasted into the editor is embedded as base64, previewed, saved and shown on the notes page', async ({
+  page,
+}) => {
+  // TASK-063（用户 2026-09-15：「不能粘贴图片」→ 选定「直接内嵌进正文」）。真实浏览器走完整条链：
+  // 剪贴板图片 → canvas 缩放/WebP → data URI 插进正文 → 自动保存 → 预览与心得页显示。
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/notes/new')
+  const editor = page.getByRole('textbox', { name: '心得正文（Markdown）' })
+  await editor.fill('# 带图的心得\n\n下面是一张截图：\n')
+  await expect(page.getByRole('status')).toContainText('已保存', { timeout: 5000 })
+  // 在页面里画一张 2400×1500 的 PNG 当作剪贴板内容，派发真实的 paste 事件。
+  await editor.evaluate(async (element) => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 2400
+    canvas.height = 1500
+    const context = canvas.getContext('2d')!
+    context.fillStyle = '#4a6c4f'
+    context.fillRect(0, 0, 2400, 1500)
+    context.fillStyle = '#fff'
+    context.font = '200px sans-serif'
+    context.fillText('StudyPilot', 300, 800)
+    // 一条噪点带：纯色图压成 WebP 只有几 KB，要一张真截图量级（> 旧上限 50,000 字符）的才算数。
+    const noise = context.createImageData(2400, 400)
+    for (let i = 0; i < noise.data.length; i += 1) noise.data[i] = (i * 2654435761) >>> 24
+    context.putImageData(noise, 0, 1000)
+    const blob = await new Promise<Blob>((done) => canvas.toBlob((b) => done(b!), 'image/png'))
+    const transfer = new DataTransfer()
+    transfer.items.add(new File([blob], 'shot.png', { type: 'image/png' }))
+    const area = element as HTMLTextAreaElement
+    area.focus()
+    area.setSelectionRange(area.value.length, area.value.length)
+    area.dispatchEvent(new ClipboardEvent('paste', { clipboardData: transfer, bubbles: true }))
+  })
+  await expect(editor).toHaveValue(/!\[图片\]\(data:image\/webp;base64,[A-Za-z0-9+/=]+\)/, {
+    timeout: 10000,
+  })
+  const value = await editor.inputValue()
+  const dataUrl = /\((data:image\/webp;base64,[^)]+)\)/.exec(value)![1]!
+  // 缩到最长边 1600：解码出来的宽高证明缩放确实发生在浏览器里。
+  const size = await page.evaluate(
+    (url) =>
+      new Promise<{ w: number; h: number }>((done) => {
+        const img = new Image()
+        img.onload = () => done({ w: img.naturalWidth, h: img.naturalHeight })
+        img.src = url
+      }),
+    dataUrl,
+  )
+  expect(size).toEqual({ w: 1600, h: 1000 })
+  // 预览里是一张真实渲染的 <img>。
+  await page.getByRole('button', { name: '预览' }).click()
+  const img = page.getByLabel('预览').locator('img')
+  await expect(img).toHaveAttribute('src', /^data:image\/webp;base64,/)
+  await expect(img).toHaveAttribute('alt', '图片')
+  expect(await img.evaluate((node) => (node as HTMLImageElement).naturalWidth)).toBe(1600)
+  // 切换预览触发保存；服务端读回的正文含同一段 data URI（超过旧上限 50,000 字符）。
+  await expect(page).toHaveURL(/\/notes\/[0-9a-f-]{36}$/)
+  const id = page.url().split('/').pop()!
+  await expect
+    .poll(async () =>
+      ((await call(page, `/notes/${id}`)).body.data.content as string).includes(dataUrl),
+    )
+    .toBe(true)
+  expect(value.length).toBeGreaterThan(50_000)
+  // 心得页：列表摘要不带 base64，右栏预览显示图片。
+  await page.goto(`/notes?note=${id}`)
+  const list = page.getByRole('list', { name: '心得列表' })
+  await expect(list).toContainText('下面是一张截图')
+  await expect(list).not.toContainText('base64')
+  await expect(page.getByRole('article', { name: '心得预览' }).locator('img')).toHaveAttribute(
+    'src',
+    /^data:image\/webp;base64,/,
+  )
+  // 清理。
+  const current = (await call(page, `/notes/${id}`)).body.data
+  expect((await call(page, `/notes/${id}`, 'DELETE', undefined, current.version)).status).toBe(204)
+})

@@ -21,6 +21,14 @@ export const RENDERER_OPTIONS = { html: false, linkify: false, breaks: false } a
 export type ImageSource =
   | { kind: 'frozen'; url: string } // 本机那一份，blob URL
   | { kind: 'origin'; url: string } // 没冻上，按原址加载（用户 2026-09-07 决定）
+  | { kind: 'inline'; url: string } // 正文自带的 base64 data URI（心得，TASK-063）
+
+/**
+ * 心得里内嵌图片的写法（TASK-063，用户 2026-09-15 选定「直接内嵌进正文」）：只认这四种
+ * 位图的 base64 data URI——与 markdown-it `validateLink` 放行的集合一致，SVG 不在其中
+ * （SVG 可带脚本，`html:false` 挡不住 `<img src>` 里的它）。
+ */
+export const INLINE_IMAGE = /^data:image\/(?:png|jpeg|gif|webp);base64,[A-Za-z0-9+/]+=*$/
 
 /**
  * 构造渲染器。`resolve` 决定每张图片的去向：已冻结的走本机，其余按原址。
@@ -94,6 +102,9 @@ export function renderSnapshot(
     if (!absolute) return null
     const local = frozen.get(absolute)
     if (local) return { kind: 'frozen', url: local }
+    // 心得预览显式开启时，正文自带的 base64 图片直接用；资料正文快照**不开**——
+    // 抓自开放网络的正文里不该出现它，出现也照旧拒绝（TASK-063 只放行心得）。
+    if (options.inlineImages && INLINE_IMAGE.test(src)) return { kind: 'inline', url: src }
     // markdown-it 已经用 validateLink 过滤过 src；到这里的都是它放行的地址。
     // 再挡一次协议：只有 http(s) 才值得去请求。
     return /^https?:\/\//i.test(absolute) ? { kind: 'origin', url: absolute } : null
@@ -109,6 +120,11 @@ export type RenderOptions = {
    * 再出现了吧」。不给或为空则输出与以往逐字节相同。
    */
   pageTitle?: string | null
+  /**
+   * 放行正文自带的 base64 图片（`INLINE_IMAGE`）。只有心得预览传 true（TASK-063）；
+   * 不传时 `data:` 一律拒绝，与以往逐字节相同。
+   */
+  inlineImages?: boolean
 }
 
 /** 比较用的规范形式：NFC、去首尾空白、连续空白折叠、大小写折叠。 */

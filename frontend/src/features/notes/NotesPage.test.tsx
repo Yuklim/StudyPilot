@@ -240,6 +240,37 @@ describe('notes manager page', () => {
     expect(address()).toBe('')
   })
 
+  it('renders inline images in the preview and does not match search against their data (TASK-063)', async () => {
+    wide(true)
+    const data = 'data:image/webp;base64,UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA=='
+    const withImage = note({
+      id: A,
+      content: `# 看图\n\n![截图](${data})\n\n配文 zzqq`,
+      updated_at: '2026-09-15T03:00:00Z',
+    })
+    mock((path) =>
+      path.startsWith('/api/v1/notes?')
+        ? notePage([withImage, ...rows().slice(1)])
+        : samplePage([]),
+    )
+    mount(`/notes?note=${A}`)
+    const preview = await screen.findByRole('article', { name: '心得预览' })
+    const img = preview.querySelector('img')
+    expect(img?.getAttribute('src')).toBe(data)
+    expect(img?.getAttribute('alt')).toBe('截图')
+    // 列表里的摘要不带 base64。
+    expect(within(list()).getByText('截图 配文 zzqq')).toBeInTheDocument()
+    // 搜 base64 里肯定有的字母串：不能因为图片数据而命中；搜配文能命中。
+    fireEvent.change(screen.getByRole('searchbox', { name: '搜索心得' }), {
+      target: { value: 'UklGR' },
+    })
+    expect(screen.getByText(/已加载的心得里没有包含/)).toBeInTheDocument()
+    fireEvent.change(screen.getByRole('searchbox', { name: '搜索心得' }), {
+      target: { value: 'zzqq' },
+    })
+    expect(within(list()).getAllByRole('listitem')).toHaveLength(1)
+  })
+
   it('closes the delete dialog on Escape and hands focus back to the trigger (TASK-062)', async () => {
     wide(true)
     mock((path) => (path.startsWith('/api/v1/notes?') ? notePage(rows()) : samplePage([])))

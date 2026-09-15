@@ -123,7 +123,7 @@ def test_lifecycle_versions_noop_and_resource_isolation(
     assert authorized.get(f"/api/v1/resources/{item['id']}/study-records").json()["data"] == []
 
 
-@pytest.mark.parametrize("value", [None, "", " \t\n", 1, True, [], {}, "x" * 50001])
+@pytest.mark.parametrize("value", [None, "", " \t\n", 1, True, [], {}, "x" * 2_000_001])
 def test_invalid_content_and_no_side_effect(
     authorized: TestClient,
     item: dict[str, Any],
@@ -145,8 +145,17 @@ def test_content_boundary_and_immutable_fields(
 ) -> None:
     note = add(authorized, item, " 文" * 25000)
     assert len(note["content"]) == 49999
-    maximum = add(authorized, item, "文" * 50000)
-    assert len(maximum["content"]) == 50000
+    # TASK-063: the ceiling is 2,000,000 characters (inline base64 images). A note
+    # over the old 50,000 must also pass the migrated CHECK, not just pydantic.
+    maximum = add(authorized, item, "文" * 2_000_000)
+    assert len(maximum["content"]) == 2_000_000
+    error(
+        authorized.post(path(item), json={"content": "文" * 2_000_001}),
+        422,
+        "VALIDATION_ERROR",
+    )
+    inline = add(authorized, item, "看图\n\n![图片](data:image/webp;base64," + "A" * 120_000 + ")")
+    assert authorized.get(path(item, inline)).json()["data"]["content"] == inline["content"]
     for field in ["id", "resource_id", "version", "created_at", "ai_content"]:
         error(
             authorized.post(path(item), json={"content": PRIVATE, field: str(uuid4())}),
