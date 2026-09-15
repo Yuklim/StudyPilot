@@ -14,8 +14,9 @@ from studypilot.infrastructure.config import get_settings
 
 
 def set_sqlite_foreign_keys(connection: SQLiteConnection, *, enabled: bool) -> None:
-    # PRAGMA foreign_keys must be set outside a transaction, including with
-    # Python 3.13's explicit non-legacy transaction control.
+    # PRAGMA foreign_keys must be set outside a transaction. The engine now uses the
+    # legacy transaction control with isolation_level=None (TASK-058), so nothing is
+    # open at connect time; toggling `autocommit` here is kept as a harmless guard.
     previous = connection.autocommit
     connection.autocommit = True
     try:
@@ -62,9 +63,14 @@ def create_database_engine(
     """
     url = _resolve_url(database_url)
     memory = url.database in {None, "", ":memory:"}
+    # TASK-058: transactions open with an explicit BEGIN IMMEDIATE (see `_begin_immediate`),
+    # so the driver must not open its own. `isolation_level=None` under the legacy
+    # transaction control does exactly that while keeping commit()/rollback() effective.
+    # Do NOT use sqlite3's `autocommit=True` for this: in that mode commit() and
+    # rollback() are no-ops and writes would silently never land.
     engine = create_engine(
         url,
-        connect_args={"autocommit": False, "check_same_thread": False, "timeout": 5},
+        connect_args={"isolation_level": None, "check_same_thread": False, "timeout": 5},
         hide_parameters=True,
         echo=False,
         **({"poolclass": StaticPool} if memory else {}),
@@ -76,7 +82,18 @@ def create_database_engine(
             connection, entry, foreign_keys=fk
         ),
     )
+    event.listen(engine, "begin", _begin_immediate)
     return engine
+
+
+def _begin_immediate(connection: Connection) -> None:
+    # SQLite's default BEGIN (DEFERRED) takes only a SHARED lock until the first write.
+    # Two read-then-write transactions then both try to upgrade SHARED -> RESERVED, and
+    # SQLite answers the second one with SQLITE_BUSY *immediately* (waiting would
+    # deadlock), bypassing busy_timeout -- that was the "database is locked" 500 on
+    # concurrent deletion previews. BEGIN IMMEDIATE takes RESERVED up front, so the
+    # second writer waits at BEGIN for up to busy_timeout instead.
+    connection.exec_driver_sql("BEGIN IMMEDIATE")
 
 
 @contextmanager

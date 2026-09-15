@@ -34,11 +34,16 @@ NOW = datetime(2026, 9, 3, 10, 0, tzinfo=UTC)
 
 
 def test_foreign_keys_enabled_on_every_new_connection(database: Engine) -> None:
-    # Hold both connections to force separate DBAPI connections from the pool.
+    # Hold both connections to force separate DBAPI connections from the pool. Read the
+    # pragmas on the raw DBAPI connections: going through SQLAlchemy would open a
+    # transaction on each, and since TASK-058 those are BEGIN IMMEDIATE -- the second
+    # would wait on the first, which is not what this test is about.
     with database.connect() as first, database.connect() as second:
         for connection in (first, second):
-            assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one() == 1
-            assert connection.exec_driver_sql("PRAGMA busy_timeout").scalar_one() == 5000
+            raw = connection.connection.dbapi_connection
+            assert raw is not None
+            assert raw.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+            assert raw.execute("PRAGMA busy_timeout").fetchone()[0] == 5000
     with pytest.raises(IntegrityError), create_session_factory(database).begin() as session:
         session.add(Note(resource_id=uuid4(), content="No parent"))
 
@@ -104,9 +109,11 @@ def test_version_conflict_and_noop_preserve_timestamps(database: Engine) -> None
         session.add(entry)
     with factory() as stale, factory() as fresh:
         old = stale.get(Topic, entry.id)
+        stale.commit()  # End the read transaction while keeping its stale object.
+        # TASK-058: only now open the second session's transaction -- transactions are
+        # BEGIN IMMEDIATE, so overlapping them in one thread would just wait.
         current = fresh.get(Topic, entry.id)
         assert old is not None and current is not None
-        stale.commit()  # End the read transaction while keeping its stale object.
         original_time = current.updated_at
         current.name = "Original"
         fresh.commit()
