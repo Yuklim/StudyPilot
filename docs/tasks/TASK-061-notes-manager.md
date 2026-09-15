@@ -71,7 +71,20 @@ checks = ["frontend"]
 
 ## 实现与测试
 
-（实施后填写）
+- **实现 SHA**：`b61589f`（8 个前端文件，+918/−54；登记提交 `3975264` 只含本记录）。**检查绑定 `b61589f`**（候选 SHA 见 EVIDENCE 区）。
+- 改动摘要：
+  - `NotesPage.tsx` 重写：`matchMedia('(min-width: 1024px)')` 决定两栏/单栏；第一页 `listNotes(null, 1, '-updated_at', 100)` 走 `useResourceQuery`（读取中/失败/重试），「加载更多」的后续页放本地并与第一页对象绑定（刷新即作废）；搜索是对已加载项 `content` 的小写包含过滤；选中项 `?note=<id>`（`setSearchParams` 函数式 + `replace`），宽屏列表项链到 `/notes?note=<id>`、窄屏直接链到 `/notes/<id>`；右栏 `NotePreview`：`renderSnapshot(content, new Map(), null, { pageTitle })` 去重首行标题，动作「编辑」→ `/notes/:id`、「后贴到资料」复用 `ResourceAttachPicker` → `attachNote`（成功后 `role="status"` 提示 + 「打开《资料》查看」+「回到列表」）、「删除」模态一次确认 → `deleteNote(null, note)`；后贴/删除成功后清掉 `?note=` 并刷新第一页。
+  - `api.ts`：`listNotes(resourceId, number = 1, sort: NoteSort = '-created_at', pageSize = 20)`，`sort` 只接受契约四个枚举、`pageSize` 1–100 整数，否则 `INVALID_REQUEST`；默认值与请求串不变。
+  - `noteTitle.ts`：新增 `noteSnippet(content, limit = 80)`（标题行之后的正文，去掉列表/标题/引用标记与行内 Markdown，超长省略号）。
+  - `styles.css`：`.notes-manager`（两栏 grid `minmax(280px,360px) minmax(0,1fr)`）、列表工具行、列表项、预览栏；搜索框改用 `aria-label`（原 `.sr-only` 标签在真实浏览器里被 `display:none` 吞掉可访问名称——e2e 抓到）。
+  - 未动 `shell/pages.ts`（外壳 `h1` 与路由沿用，不需要改）。
+- **单测**：`NotesPage.test.tsx` 9 条（顺序与摘要 / `?note=` 选中 + 预览转义 + 不重复 h1 / 从地址恢复选中 / 前端过滤 / 加载更多 / 后贴请求体 `{resource_id, expected_version}` / 删除 `DELETE + ifMatchVersion` / 窄屏链接 / 失败重试与空态）；`noteTitle.test.ts` +4（摘要）；`api.test.ts` 在既有用例里补 `sort/pageSize` 请求串与非法值拒绝。frontend 合计 **600 = 基线 587 + 13**。
+- **e2e**：`notes-pages.spec.ts` 改写两条走旧页面 UI 的用例（顶层页：编辑器写 → 列表 → 预览 → 编辑 → 删除；后贴往返：编辑器写 → 预览「后贴到资料」→ 「打开《资料》查看」→ 原解绑流程），级联删除用例的独立心得改由 `/notes/new` 创建并先清空残留；契约断言（后端计数、后贴后独立列表为 0、解绑后回到独立、删除后 0）全部保留；编辑器用例的「写心得」链接限定到侧栏（页面上现在也有一个）。全套 **62 passed**（数量与基线相同）。
+- **判别性变红**（对 `NotesPage.tsx` 各做一处破坏后跑 `NotesPage.test.tsx`，随后恢复；9 条中各红 1 条）：① 列表项不写 `?note=`（宽屏也链到 `/notes/:id`）→ 红；② 预览不传 `pageTitle`（正文首行标题不去重）→ 红；③ 删除成功后不调 `onChanged`（列表不刷新）→ 红；④ 搜索不过滤（`shown = notes`）→ 红。
+- **检查**：`check_task.py --task … --candidate b61589f` **CHECKS PASS**（format/lint/typecheck/test 600/build）；`git diff --check b06b6e9 b61589f` exit 0。
+- 实跑抓到并已修的问题（未进独立 Review 前）：`.sr-only` 被列表工具行样式 `display:none` 吞掉可访问名称（上文）；e2e 里「写心得」链接双匹配；改写用例时漏掉的 `standaloneNote` 常量。
+- TASK-060 遗留 F7（编辑页内切换 noteId 不先 flush）：本页所有进编辑器的链接都从列表/预览进入，编辑器内没有心得间跳转入口，F7 触发路径仍不存在；随 F3 一并进 TASK-062。
+- 上报用户的后续决定：「所有心得（含绑定资料的）一页看全」需要新增契约（`GET /notes` 只列独立心得），不在本任务。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据

@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-060"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L2"
 risk_reason = "新增前端路由与页面（`/notes/new`、`/notes/:noteId`），全局键盘快捷键与侧栏入口，心得改为自动保存（防抖 + 离开前保底）。不改后端与契约：心得仍是纯文本 `content`（≤50,000 字），Markdown 只是文本；预览复用阅读器正文渲染器（`html:false`）。判 L2：触及「随手记录」这条核心路径与版本冲突保护（自动保存下冲突/离线的处理改错会静默丢字或覆盖），需独立 Reviewer 看最终 diff；不到 L3：无契约/后端/数据变更。"
 risk_flags = ["business"]
@@ -129,9 +129,10 @@ checks = ["frontend"]
 | F8 其余 | **记录**：「重新读取」一键丢弃本地改动无二次确认；冲突态点返回不提示。 | 目标未要求 |
 
 - Acceptance：L2，N/A。
-- 最终状态/风险/用户操作：status=**ACCEPTED**（L2：1 Worker → 自动检查 → 1 名独立只读 Reviewer（三轮）→ 主 Agent 汇总）。**未 MERGED**——是否合并由用户本人决定。
+- 最终状态/风险/用户操作：status=**MERGED**（L2：1 Worker → 自动检查 → 1 名独立只读 Reviewer（三轮）→ 主 Agent 汇总）。**2026-09-14 用户已合并 PR #68，merge `b06b6e9`**（状态由 TASK-061 控制面顺带登记）。
 - 非阻断遗留项：1. F3（→062）；2. F7（→061）；3. F8 其余；4. 主 Agent 假设（⌘J / 自动保存 / 侧栏保留）待用户实际使用后确认或推翻。
 - 日期与决定日志：
   - 2026-09-14 用户「先做到 B」；主 Agent 拆三步、登记假设。
   - 2026-09-14 实现 `1ccbfa3`（实跑抓到：应用无 `<Routes>` 参数由 Screen 传入；按 noteId 给 key 会在地址切换时重挂丢字；移动端两个入口叠格）；Review 三轮：F1 → `a032f02`，F9 → `7d7de7b`/`b5a35cc` → PASS；主 Agent 写回并置 `ACCEPTED`；待用户合并。
+  - 2026-09-14 用户合并 PR #68（merge `b06b6e9`）；MERGED 登记并入 TASK-061 控制面提交。
 <!-- EVIDENCE:END -->
