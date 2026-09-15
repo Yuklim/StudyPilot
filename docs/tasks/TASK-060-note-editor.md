@@ -80,7 +80,7 @@ checks = ["frontend"]
 
 ## 实现与测试
 
-- **实现 SHA**：`1ccbfa3`（实现 + 测试同一提交；9 个前端文件 +971/−3）。
+- **实现 SHA**：首版 `1ccbfa3`（9 个前端文件 +971/−3）；独立 Review 后修订 `a032f02`（F1/F2/F4/F5/F6/F8）与 **`7d7de7b`**（F9）。**检查绑定最终实现提交 `7d7de7b`**（下文与 EVIDENCE 区）。
 - **变更**：
   - `notes/noteTitle.ts`：第一个非空行当标题（去掉行首 `#` + 空格、60 字截断），空→`null`。
   - `notes/NoteEditorPage.tsx`（416 行）：路由 `/notes/new` 与 `/notes/:noteId`（`?resource=` 表示绑定资料；**路径参数由 `Screen` 用 `useMatch` 以 prop 传入**——应用没有 `<Routes>`，`useParams` 拿不到，首次实跑即撞到）。沉浸式顶栏（← 返回 / 保存状态 `role=status` / 预览·编辑 / ⋯ 删除）+ 740px 正文列；`h1` 各态恰好一个（读取中「正在打开心得」、失败「这条心得打不开」、新建「新心得」、其余取第一行）；编辑态整页 `textarea`，预览用 `renderSnapshot(draft, new Map(), null, { pageTitle })`（同 `html:false`，且 TASK-053 的去重让预览里不再重复第一行标题）；自动保存：`schedule()` 停笔 1s、失焦、切换预览时 `flush()`，首次非空 POST → 地址 `navigate(replace)` 到 `/notes/:id`（**不按 noteId 给 key**，否则地址一换就重挂、丢掉保存期间继续敲的字并重读一遍——实跑抓到）、之后 PATCH 带 `expected_version`、内容未变不发、空内容不创建；409 → `conflict` 态停止自动保存 + 「重新读取」/「覆盖为我的版本」（先取最新版本号再以我的内容 PATCH）；其他错误 → 「保存失败：…」且再改动即重排程；卸载与 `beforeunload` 前有未保存改动先 `flush()`；`latest` ref 在 effect 里同步（lint 禁止渲染期写 ref）；新建时把焦点从 h1 交给写作框（既有心得维持 h1 落点）；删除走 ⋯ → 模态确认（复用 TASK-056 样式）→ 回到来处。
@@ -89,8 +89,8 @@ checks = ["frontend"]
   - `styles.css`：编辑页样式；≤760px 顶栏网格改三列（品牌 | 添加资料 | 写心得）——首版两个入口叠在同一格，scaffold e2e 的「点添加资料」超时抓到。
 - **测试**：`noteTitle.test.ts` 4 条；`NoteEditorPage.test.tsx` 9 条（假定时器）：创建/PATCH/不变不发 + 标题跟第一行 + 写作框不被保存结果盖掉；独立与绑定两条路径与返回处；409 停止自动保存 + 覆盖（先取版本再 PATCH）；重新读取丢弃本地；离开前保底（不等 1s 直接点返回 → POST 已发）；预览转义 + 不重复标题 + 切回编辑源码不变；删除一次确认回「我的心得」；侧栏链接 + Ctrl+J/⌘J + 编辑页内无动作；阅读器内快捷键绑定资料。e2e `notes-pages.spec.ts` +2（真实后端）：⌘J → 焦点在写作框 → 沉浸式无左栏 → 自动保存换地址 → 标题 → 预览（strong/无 script/无重复 h1）→ 刷新仍在 → 列表可见 → 删除回列表；阅读器内 ⌘J 绑定资料并出现在该资料心得列表。
 - **判别性**（临时破坏后实跑 `NoteEditorPage.test.tsx`、随后恢复）：A 不排程自动保存 → 3 红；B 409 当普通失败 → 2 红；C 卸载不保底 → 1 红；D 快捷键不导航 → 2 红；（Review 后）E 去掉外壳的「可编辑控件里不接管焦点」→ 首条用例红；F 去掉保存完成后的补排程 → 「re-schedules…」红。
-- **独立 Review 处置（首轮 CHANGES_REQUIRED）**：F1 首次保存后地址切换、外壳把焦点搬到 h1 → **改在 `App.tsx` 路由焦点 effect**：活动元素是 `TEXTAREA/INPUT/contentEditable` 时不接管（点链接/按键导航时活动元素不是可编辑控件，契约照旧），用例 `editor().focus()` 后首次保存断言焦点仍在写作框；F2 保存进行中又敲字 → `.finally` 里若草稿≠已保存内容则 `schedule()`，并把保存结果**同步写进 `latest` ref**（不等下一次 commit 的 effect），用例改为既有心得 + 慢 PATCH 复现；F4 超长文案改「删减到上限内才会保存」；F5 补读取失败态用例（h1「这条心得打不开」+ 返回链接 + 无写作框）；F6「内容未变不发」改用失焦 + 切换预览触发 `flush` 断言；F8 注释改为如实说明 Ctrl+J 在 Windows/Linux 浏览器是下载页、由 `preventDefault` 覆盖。F3/F7/F8 其余登记遗留。
-- **检查**：`check_task.py --candidate 1ccbfa3` → `STATIC PASS`，`files=10`，`product_fingerprint=c43bf212…`，frontend 五项 exit 0，**586 passed**（基线 571 + 15）→ **CHECKS PASS**；`npm run test:e2e` **62 passed**（基线 60 + 2）；`git diff --check` exit 0。
+- **独立 Review 处置（首轮 CHANGES_REQUIRED）**：F1 首次保存后地址切换、外壳把焦点搬到 h1 → **改在 `App.tsx` 路由焦点 effect**：活动元素是 `TEXTAREA/INPUT/contentEditable` 时不接管（点链接/按键导航时活动元素不是可编辑控件，契约照旧），用例 `editor().focus()` 后首次保存断言焦点仍在写作框；F2 保存进行中又敲字 → `.finally` 里若草稿≠已保存内容则 `schedule()`，并把保存结果**同步写进 `latest` ref**（不等下一次 commit 的 effect），用例改为既有心得 + 慢 PATCH 复现；F4 超长文案改「删减到上限内才会保存」；F5 补读取失败态用例（h1「这条心得打不开」+ 返回链接 + 无写作框）；F6「内容未变不发」改用失焦 + 切换预览触发 `flush` 断言；F8 注释改为如实说明 Ctrl+J 在 Windows/Linux 浏览器是下载页、由 `preventDefault` 覆盖。F3/F7/F8 其余登记遗留。**第二轮 F9**：F2 的补排程在保存失败时也会触发 → 每秒一次的无限重试；改为**只在这次保存成功后**补排（失败由下一次键入重排、冲突等用户选），用例「does not retry a failed save on its own…」（失败后两个周期无重试、再键入才重试；还原为 `!== 'conflict'` 即红）。
+- **检查**：首版 `--candidate 1ccbfa3` CHECKS PASS（584）；最终见 EVIDENCE（`--candidate 7d7de7b`，587 = 基线 571 + 16；e2e 62 = 60 + 2）。
 - **已知限制**：预览与编辑不同时显示（B 的定义）；无标题字段，列表里的标题由 TASK-061 按同一规则推导；快捷键在浏览器地址栏聚焦时不生效（属浏览器）。
 
 <!-- EVIDENCE:BEGIN -->
