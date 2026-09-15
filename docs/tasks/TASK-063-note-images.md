@@ -88,7 +88,21 @@ checks = []
 
 ## 实现与测试
 
-（实施后填写）
+- **实现 SHA**：`e912fd6`（24 个文件，+745/−36；登记提交 `3846ed0` 只含本记录；实施中把 `backend/tests/test_database.py` 追加进 `allowed_paths`——它有一条 50,001 的持久化拒绝用例）。**检查绑定 `e912fd6`**（候选 SHA 见 EVIDENCE 区）。
+- 改动摘要（按目标）：
+  1. 后端：`contracts.py` `MAX_CONTENT = 2_000_000`；`models.py` `bounded_length("content", 1, 2_000_000)`；`0006_note_content_limit`：`batch_alter_table("notes")` 里 `drop_constraint("content_length", type_="check")` + `create_check_constraint`（命名约定加 `ck_notes_` 前缀；SQLite 能从 CREATE TABLE 文本反射命名 CHECK，首版误传 `table_args` 会留下第二条旧 CHECK，实跑抓到后去掉）；降级前 `SELECT count(*) … length(content) > 50000`，非零即 `RuntimeError`。`test_notes` 边界改 2,000,000 通过 / 2,000,001 → 422，并新增含 120,000 字符 data URI 的往返；参数化拒绝用例 50,001 → 2,000,001；`test_database` 同步；`test_migrations` head 改 0006，新增 `test_0006_widens_note_content_and_refuses_lossy_downgrade`（0005 下 60,000 字符 IntegrityError → 升级后可写 → 有超长行时降级被拒且 head 不动 → 删掉后可降级并再次拒绝 60,000）。`alembic check` 在新库上无差异。
+  2. 契约：4.8 `content` 行「1～2,000,000（TASK-063 起；此前 50,000）」+ 内嵌图片写法与「服务端不解析、不校验」；1.3 节追加 TASK-063 一段；`openapi-v1.json` `Note`/`NoteCreate`/`NotePatch` 三处 `maxLength` 2000000（OpenAPI 校验通过）。
+  3. 前端 `noteImages.ts`：`imageFiles(transfer)`、`imageToMarkdown(file, alt)`（`createImageBitmap` → canvas 缩到最长边 1600 → `toBlob('image/webp', 0.82)`，编出来不是 WebP 就退 JPEG 0.85；GIF 直通；压缩后 > 600 KiB 抛 `IMAGE_TOO_LARGE`；只认 png/jpeg/gif/webp）、`inlineImageBytes`。`NoteEditorPage`：textarea `onPaste/onDrop/onDragOver`，`insertImages` 顺序处理、`insertAtCursor` 前后各保证一个换行并把光标放到图后、同步写 `latest.draft` 让连续多张接续；状态栏「正在处理图片…」/ 失败原因（下一次改动清掉）。
+  4. `MAX_CONTENT` 从 `api.ts` 导出，编辑器/`NotesPanel`/校验三处引用；超限文案含图片时改「正文过大（含图片约 N MB）…」。
+  5. `snapshotMarkdown.ts`：`ImageSource` 加 `inline`，导出 `INLINE_IMAGE`（png/jpeg/gif/webp 的 base64 data URI，与 markdown-it `validateLink` 集合一致，SVG 不收）；`RenderOptions.inlineImages`；只有编辑页预览与心得页右栏传 true。
+  6. `noteTitle`：标题行的图片只留替代文字、纯图片行跳过；新增 `displayText`（内嵌图片 → 「[图片]」/「[图片：替代文字]」），心得页搜索与阅读器侧栏卡片用它。
+  7. 顺带 TASK-062 F4（`flushRef` 在 `useLayoutEffect` 里赋值）、F5（`loadError` 在 `creating` 时按渲染派生为 null——lint 禁止 effect 内无条件 setState，改为派生值）。
+- **单测**（frontend **627** = 基线 607 + 20；backend **556** = 555 + 1）：`noteImages.test.ts` 8 条（缩放到 1600 边、不放大、WebP→JPEG 回退、GIF 直通、超限/SVG 拒绝、alt 清洗、`imageFiles` 挑选、字节估算）；`snapshotMarkdown.test.ts` +5（开启时渲染 data: 且不带 referrerpolicy、默认仍拒、SVG/text-html/非 base64/夹带 `<script>` 拒）；`NoteEditorPage.test.tsx` +3（粘贴接管且纯文本粘贴不受影响、处理中文案、按光标插入并自动保存 POST；失败提示与正文不变；超限文案两种）；`NotesPage.test.tsx` +1（预览 `<img src=data:>`、摘要无 base64、搜 base64 片段不命中/搜配文命中）；`NotesPanel.test.tsx` +1（卡片占位）；`noteTitle.test.ts` +2；`api.test.ts` 三处上限值改 2,000,001 / 2,000,000。
+- **e2e**（**63** = 62 + 1）：`an image pasted into the editor…`——页内画 2400×1500 PNG（含噪点带，压后 > 50,000 字符）派发真实 `ClipboardEvent('paste')` → 正文出现 `![图片](data:image/webp;base64,…)` → 解码宽高 1600×1000 → 预览 `<img>` naturalWidth 1600 → 服务端读回含同一 data URI（证明迁移后 CHECK 放行）→ 心得页摘要无 base64、右栏显示图片 → 清理。
+- **判别性变红**（各破坏一处后跑对应测试，随后恢复）：R1 渲染器去掉 inline 分支 → `snapshotMarkdown.test` 1 红 + `NotesPage.test` 1 红；R2 渲染器无条件放行 data:（快照也放）→ 2 红；R3 编辑器 onPaste 不接管 → 2 红；R4 不缩放 → `noteImages.test` 1 红；R5 前端上限仍 50,000 → `api.test` 1 红；R6 搜索直接搜正文 → `NotesPage.test` 1 红；R7 后端迁移 `upgrade` 置空 → `test_migrations`/`test_notes` 2 红。
+- **检查**：`check_task.py --task … --candidate e912fd6` **CHECKS PASS**（profiles backend, contracts, frontend：ruff format/check、mypy、pytest 556、uv build、OpenAPI 校验、format/lint/typecheck/test 627/build）；`git diff --check 4edcc27 e912fd6` exit 0。
+- **用户本机**：运行中的后端仍是 0005 的库，粘贴大图会被旧 CHECK 拒绝（受控 500）；用启动脚本重启会自动 `alembic upgrade head`（脚本比较 current/heads），或手动执行。
+- 已知取舍（用户已接受的存法代价，如实记）：列表页一次拉 100 条正文，含图心得多了会变慢；心得的 PATCH 每次整份带图；侧栏快速心得框编辑含图心得时 textarea 里是 base64 原文（看图去「整页编辑」）。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
