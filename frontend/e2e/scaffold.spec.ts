@@ -138,6 +138,32 @@ for (const width of [390, 320]) {
           '0s',
         )
       }
+      // TASK-059：顶栏里「主要导航」与「更多能力」两组链接两两不相交、都在视口内；折叠
+      // 按钮在这一档没有意义，不显示。改前两组被放进同一网格行，文字互相盖住。
+      if (route !== '/resources/synthetic-id') {
+        const boxes: Array<{ name: string; x: number; y: number; w: number; h: number }> = []
+        for (const group of ['主要导航', '更多能力']) {
+          for (const link of await page
+            .getByRole('navigation', { name: group })
+            .getByRole('link')
+            .all()) {
+            const box = (await link.boundingBox())!
+            boxes.push({
+              name: (await link.getAttribute('aria-label')) ?? '',
+              ...{ x: box.x, y: box.y, w: box.width, h: box.height },
+            })
+            expect(box.x + box.width, `${group} 链接在视口内`).toBeLessThanOrEqual(width + 1)
+          }
+        }
+        for (let i = 0; i < boxes.length; i++)
+          for (let j = i + 1; j < boxes.length; j++) {
+            const a = boxes[i]!,
+              b = boxes[j]!
+            const overlap = a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
+            expect(overlap, `「${a.name}」与「${b.name}」不重叠`).toBe(false)
+          }
+        await expect(page.locator('.nav-toggle')).toBeHidden()
+      }
       if (route === '/') {
         await page.screenshot({
           path: testInfo.outputPath(`mobile-${width}-overview.png`),
