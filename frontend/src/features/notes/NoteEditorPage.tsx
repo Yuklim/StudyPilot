@@ -7,7 +7,13 @@ import { Icon } from '../../shell/Icon'
 import { failureText, isResourceId } from '../resources/api'
 import { renderSnapshot } from '../resources/snapshotMarkdown'
 import { MAX_CONTENT, cleanContent, deleteNote, getNote, saveNote, type Note } from './api'
-import { NoteImageError, imageFiles, imageToMarkdown, inlineImageBytes } from './noteImages'
+import {
+  NoteImageError,
+  draggingFiles,
+  imageFiles,
+  imageToMarkdown,
+  inlineImageBytes,
+} from './noteImages'
 import { noteTitle } from './noteTitle'
 
 /** 停笔多久之后自动保存。 */
@@ -271,6 +277,9 @@ export function NoteEditorPage({ noteId }: { noteId?: string }) {
   function onPaste(event: React.ClipboardEvent<HTMLTextAreaElement>) {
     const files = imageFiles(event.clipboardData)
     if (files.length === 0) return
+    // 剪贴板同时带着文字（Excel/Word 复制单元格常见）：用户要的是文字，走默认粘贴
+    // （独立 Review F2）；只有图片时才接管。
+    if (event.clipboardData.getData('text/plain').trim()) return
     event.preventDefault()
     void insertImages(files)
   }
@@ -487,7 +496,8 @@ export function NoteEditorPage({ noteId }: { noteId?: string }) {
                 onPaste={onPaste}
                 onDrop={onDrop}
                 onDragOver={(event) => {
-                  if (imageFiles(event.dataTransfer).length > 0) event.preventDefault()
+                  // dragover 阶段拿不到文件本身（protected mode），只能看 types（独立 Review F1）。
+                  if (draggingFiles(event.dataTransfer)) event.preventDefault()
                 }}
                 spellCheck={false}
               />

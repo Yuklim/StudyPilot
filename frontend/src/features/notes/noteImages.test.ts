@@ -5,6 +5,7 @@ import {
   MAX_EDGE,
   MAX_IMAGE_BYTES,
   NoteImageError,
+  draggingFiles,
   imageFiles,
   imageToMarkdown,
   inlineImageBytes,
@@ -114,6 +115,23 @@ describe('imageFiles', () => {
     expect(imageFiles(null)).toEqual([])
     // 只有 files 没有 items（部分拖放实现）也能拿到。
     expect(imageFiles({ files: [png] } as unknown as DataTransfer)).toEqual([png])
+  })
+})
+
+describe('draggingFiles', () => {
+  it('recognises a file drag from types alone, as dragover exposes nothing else', () => {
+    // dragover：files 空、getAsFile 为 null，只有 types / items.kind 可看。
+    expect(
+      draggingFiles({
+        types: ['Files'],
+        files: [],
+        items: [{ kind: 'file', type: 'image/png', getAsFile: () => null }],
+      } as unknown as DataTransfer),
+    ).toBe(true)
+    expect(draggingFiles({ types: ['text/plain'], items: [] } as unknown as DataTransfer)).toBe(
+      false,
+    )
+    expect(draggingFiles(null)).toBe(false)
   })
 })
 

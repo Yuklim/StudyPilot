@@ -314,7 +314,7 @@ export function NotesPanel({
                 ? '删除后无法恢复。只删除这一条独立心得。'
                 : '删除后无法恢复。只删除下面这条心得，不影响资料或其他记录。'}
             </p>
-            <p className="record-text note-delete-preview">{selected.content}</p>
+            <p className="record-text note-delete-preview">{displayText(selected.content)}</p>
           </>
         ) : (
           <label>
@@ -360,7 +360,7 @@ export function NotesPanel({
         {recovery?.verified && selected && !deleting && !recovery.missing && (
           <section aria-label="最新已保存内容">
             <h3>最新已保存内容</h3>
-            <p className="record-text">{selected.content}</p>
+            <p className="record-text">{displayText(selected.content)}</p>
           </section>
         )}
         {recovery?.verified && !selected && (
@@ -372,7 +372,7 @@ export function NotesPanel({
             {checkedNotes.length ? (
               checkedNotes.map((row) => (
                 <p className="record-text" key={row.id}>
-                  {row.content}
+                  {displayText(row.content)}
                 </p>
               ))
             ) : (

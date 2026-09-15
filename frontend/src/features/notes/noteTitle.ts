@@ -37,7 +37,10 @@ function plainInline(line: string): string {
 /** 列表里标题下面那行摘要：标题行之后的正文，折成一行，最多 `limit` 字。 */
 export function noteSnippet(content: string, limit = 80): string {
   const lines = content.split(/\r?\n/)
-  const start = lines.findIndex((line) => line.trim() !== '')
+  // 「标题行」与 noteTitle 同口径：纯图片行不算（独立 Review F5），否则摘要会把标题再说一遍。
+  const start = lines.findIndex(
+    (line) => line.replace(IMAGE, (_m, alt: string) => alt).trim() !== '',
+  )
   const rest = lines
     .slice(start + 1)
     // 表格行与代码围栏折成一行只剩竖线和反引号，跳过；任务列表只去掉勾选框。

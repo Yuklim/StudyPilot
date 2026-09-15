@@ -51,6 +51,10 @@ describe('noteSnippet', () => {
     expect(noteSnippet('t\n```text\n读 → 20%\n```\n所以。')).toBe('读 → 20% 所以。')
     expect(noteSnippet('周计划\n- [x] 线代\n- [ ] 英语\n* [X] 项目')).toBe('线代 英语 项目')
   })
+  it('starts the snippet after the same title line noteTitle picks, so a leading image is not repeated', () => {
+    expect(noteSnippet(`${PLAIN}\n看图说话\n正文`)).toBe('正文')
+    expect(noteSnippet(`${IMG}\n正文`)).toBe('正文')
+  })
   it('is empty when there is nothing after the title', () => {
     expect(noteSnippet('只有一行')).toBe('')
     expect(noteSnippet('')).toBe('')

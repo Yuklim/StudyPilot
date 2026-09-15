@@ -44,6 +44,17 @@ export function imageFiles(transfer: DataTransfer | null): File[] {
   return files
 }
 
+/**
+ * 拖拽经过时是否带着文件。`dragover` 阶段浏览器只暴露 `types`（protected mode），`files`
+ * 为空、`getAsFile()` 为 null——所以不能用 `imageFiles` 判定；不 `preventDefault` 的话
+ * `drop` 根本不会触发，浏览器会直接打开那张图。
+ */
+export function draggingFiles(transfer: DataTransfer | null): boolean {
+  if (!transfer) return false
+  if (Array.from(transfer.types ?? []).includes('Files')) return true
+  return Array.from(transfer.items ?? []).some((item) => item.kind === 'file')
+}
+
 /** 一张图片 → 一行 Markdown（含 data URI）。失败抛 `NoteImageError`。 */
 export async function imageToMarkdown(file: Blob, alt = '图片'): Promise<string> {
   if (!ACCEPTED.has(file.type)) {

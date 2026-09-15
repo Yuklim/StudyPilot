@@ -94,6 +94,50 @@ describe('note editor page', () => {
     expect(posts).toEqual([{ content: '前文\n![图片](data:image/webp;base64,AAAA)' }])
   })
 
+  it('accepts a dropped image and leaves a text-plus-image paste to the browser (Review F1/F2)', async () => {
+    const png = new File([new Uint8Array(8)], 'shot.png', { type: 'image/png' })
+    convert.mockResolvedValueOnce('![图片](data:image/webp;base64,BBBB)')
+    mock(() => ({ data: [] }))
+    renderWithRouter(<App />, '/notes/new')
+    type('正文')
+    const box = editor()
+    // dragover 阶段只有 types：必须据此 preventDefault，否则 drop 不会触发。
+    expect(
+      fireEvent.dragOver(box, {
+        dataTransfer: {
+          types: ['Files'],
+          files: [],
+          items: [{ kind: 'file', getAsFile: () => null }],
+        },
+      }),
+    ).toBe(false)
+    expect(fireEvent.dragOver(box, { dataTransfer: { types: ['text/plain'], items: [] } })).toBe(
+      true,
+    )
+    await act(async () => {
+      fireEvent.drop(box, {
+        dataTransfer: {
+          types: ['Files'],
+          files: [png],
+          items: [{ kind: 'file', getAsFile: () => png }],
+        },
+      })
+    })
+    expect(editor()).toHaveValue('正文\n![图片](data:image/webp;base64,BBBB)')
+    // 文字 + 图片一起粘贴（复制表格单元格）：不接管，浏览器按默认贴文字。
+    convert.mockClear()
+    expect(
+      fireEvent.paste(box, {
+        clipboardData: {
+          items: [{ kind: 'file', getAsFile: () => png }],
+          files: [png],
+          getData: (t: string) => (t === 'text/plain' ? '单元格文字' : ''),
+        },
+      }),
+    ).toBe(true)
+    expect(convert).not.toHaveBeenCalled()
+  })
+
   it('explains an over-limit body in terms of its images (TASK-063)', async () => {
     mock(() => ({ data: [] }))
     renderWithRouter(<App />, '/notes/new')
@@ -111,7 +155,11 @@ describe('note editor page', () => {
     type('文字')
     await act(async () => {
       fireEvent.paste(editor(), {
-        clipboardData: { items: [{ kind: 'file', getAsFile: () => big }], files: [big] },
+        clipboardData: {
+          items: [{ kind: 'file', getAsFile: () => big }],
+          files: [big],
+          getData: () => '',
+        },
       })
     })
     expect(status()).toHaveTextContent('这张图太大，没有插入。')
