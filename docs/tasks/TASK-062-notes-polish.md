@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-062"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L2"
 risk_reason = "只改前端：「我的心得」页去掉页内写入口并修摘要/文案；阅读器侧栏心得卡加「整页编辑」链接；补 TASK-060 F3（⌘J 绕过侧栏脏草稿确认）与 F7（编辑页切换 noteId 不先保存）、TASK-061 F2（删除模态 Esc/焦点）与 F3（`?note=` 失配提示）。动的是「写/回看心得」核心路径上的导航守卫与保存时序，需独立 Reviewer 看最终 diff；不改后端与契约，不到 L3。"
 risk_flags = ["business"]
@@ -88,5 +88,7 @@ checks = ["frontend"]
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-（实施后填写）
+- 冻结候选：**`10c6558`**（= 实现 `570e5cb` + 本记录/TASK-061 MERGED 登记/索引；产品代码与 `570e5cb` 相同）。范围 `58e4831..10c6558`，14 个文件（前端 11 + 任务记录 3），均在 `allowed_paths` 内。
+- 检查：`check_task.py --task … --candidate 10c6558` **CHECKS PASS**（format/lint/typecheck/test 606/build）；e2e 62 passed（`570e5cb` 工作区，之后只改文档）；`git diff --check 58e4831 10c6558` exit 0。
+- Review：（待写回）
 <!-- EVIDENCE:END -->
