@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-064"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L2"
 risk_reason = "只改前端两个编辑器的「显示层」：textarea 里把 base64 data URI 折叠成短占位符，预览与保存前展开回原文。存进后端的内容、契约、渲染器都不变。动的是自动保存/冲突/对比的输入源（折叠 ↔ 展开必须严格可逆，否则会把图片丢掉或把占位符存进后端），需独立 Reviewer 看最终 diff；不到 L3。"
 risk_flags = ["business"]
@@ -81,5 +81,7 @@ PR #71 若在本任务收尾前合并，`TASK-063-note-images.md` 登记 MERGED�
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-（实施后填写）
+- 冻结候选：**`3bd6274`**（= 实现 `96e9ea4` + 本记录/索引；产品代码与 `96e9ea4` 相同）。范围 `f4cd190..3bd6274`，10 个文件（前端 8 + 任务记录 2），均在 `allowed_paths` 内。
+- 检查：`check_task.py --task … --candidate 3bd6274` **CHECKS PASS**（format/lint/typecheck/test 636/build）；e2e 63 passed（`96e9ea4` 工作区，之后只改文档）；`git diff --check f4cd190 3bd6274` exit 0。
+- Review：（待写回）
 <!-- EVIDENCE:END -->
