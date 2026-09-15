@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-062"
-status = "IN_REVIEW"
+status = "ACCEPTED"
 risk = "L2"
 risk_reason = "只改前端：「我的心得」页去掉页内写入口并修摘要/文案；阅读器侧栏心得卡加「整页编辑」链接；补 TASK-060 F3（⌘J 绕过侧栏脏草稿确认）与 F7（编辑页切换 noteId 不先保存）、TASK-061 F2（删除模态 Esc/焦点）与 F3（`?note=` 失配提示）。动的是「写/回看心得」核心路径上的导航守卫与保存时序，需独立 Reviewer 看最终 diff；不改后端与契约，不到 L3。"
 risk_flags = ["business"]
@@ -88,7 +88,38 @@ checks = ["frontend"]
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 冻结候选：**`10c6558`**（= 实现 `570e5cb` + 本记录/TASK-061 MERGED 登记/索引；产品代码与 `570e5cb` 相同）。范围 `58e4831..10c6558`，14 个文件（前端 11 + 任务记录 3），均在 `allowed_paths` 内。
-- 检查：`check_task.py --task … --candidate 10c6558` **CHECKS PASS**（format/lint/typecheck/test 606/build）；e2e 62 passed（`570e5cb` 工作区，之后只改文档）；`git diff --check 58e4831 10c6558` exit 0。
-- Review：（待写回）
+- 冻结候选：首轮 **`10c6558`**（= 实现 `570e5cb` + 记录/TASK-061 MERGED 登记/索引）→ Review F1/F2 修复后**最终候选 `014b6bf`**（`fix(frontend): 侧栏「整页编辑」过脏草稿守卫；编辑页从既有心得切到新建先保存并清空`，只动 `NotesPanel.tsx`/`NoteEditorPage.tsx` 及两者测试）。范围 `58e4831..014b6bf`，14 个文件（前端 11 + 任务记录 3），均在 `allowed_paths` 内。
+- 检查（绑定 `014b6bf`）：`check_task.py --task … --candidate 014b6bf` **CHECKS PASS**（`files=14 product_fingerprint=2e7bd3b6…`；format/lint/typecheck/test **607**/build）；e2e **62 passed**（`014b6bf` 工作区）；`git diff --check 58e4831 014b6bf` exit 0。修复的判别性：R7 链接不过守卫 → `NotesPanel.test` 红；R8 既有→新建不重置 → `NoteEditorPage.test` 红；累计 7 处定向变红（R2 如实记录不红）。
+- Review（L2 独立只读 Reviewer `.claude/agents/reviewer.md`，仅 Read/Grep/Glob，自证无写工具；原文）：
+
+> **首轮**（`58e4831..10c6558`）：全部路径在 allowed_paths 内；未动后端/契约/NotesPanel 独立模式；e2e 契约断言保留。
+> - **F1（必须修复）** `NotesPanel.tsx:509` 新增「整页编辑」`<Link>` 不经 `discardAllowed()`。触发：侧栏正编辑（dirty）时点任一心得卡的「整页编辑」→ 面板卸载，草稿静默丢失。面板内其他动作全部守卫，本任务 F3 目标又恰是堵 ⌘J 绕过守卫，新增入口不应再开口子。
+> - **F2（可记录后继续，基线已有）** `NoteEditorPage.tsx:78` 读取 effect `if (creating) return` 在前：从 `/notes/A` 到 `/notes/new`（组件不重挂），`note`/`draft` 仍是 A，继续键入实际 PATCH A。修复约 3 行。
+> - **F3（可记录）** `stale()` 使旧那条保存失败/409 在切换后完全静默（改前会错误地显示在新那条上）；触发需「键入后 1s 内切换 + 请求失败」，接受。
+> - **F4（可选）** `flushRef.current = flush` 渲染期写 ref；lint 已 PASS，React 19.2 可用 `useEffectEvent`/`useLayoutEffect` 更规范。
+> - 核对：新建路径 `stale()` 恒 false；A→B→A inflight 复用正确；`dirty` 排除 `deleting` 合理；删除模态 Esc/焦点 effect 无窗口；`missing` 与 `attached` 优先级正确；R2 不红解释成立（非数据路由 `useNavigate` 依赖 pathname，保底 effect 清理确会 flush）；R1/R3–R6 变红声明与断言结构相符。
+> - **结论：CHANGES_REQUIRED**（仅 F1）。
+>
+> **增量复审**（`10c6558..014b6bf`，继承首轮其余 10 个文件的结论）：F1 `onClick` 内 `!discardAllowed()` → `preventDefault`，与面板其他动作同规矩；测试以 confirm 次数 3 判别（不守卫为 2 → 红）。F2 creating 分支先 `flushRef.current()`（闭包已捕获 A 与草稿）再清空四项状态；A 的慢返回经 `stale()` 跳过；`finally` 的 stale 补排使新键入走 POST。
+> - **F5（可记录）** creating 分支只在 `latest.current.note` 存在时重置：`/notes/A` 读取失败后转到 `/notes/new` 仍显示「这条心得打不开」（基线已有）。建议该分支无条件 `setLoadError(null)`。
+> - **F6（可选）** F1 测试的「面板仍在」断言在只渲染 NotesPanel 时不判别，判别力来自 confirm 次数。
+> - 剩余风险：A 的 PATCH 若在重置提交前返回会把 A 写回状态——需响应早于下一个宏任务，真实网络下不可能；A→B→A 服务器次序竞态基线已有。
+> - **结论：PASS（覆盖 `014b6bf`）。**
+
+- findings 处置：
+
+| # | 处置 | 依据 |
+| --- | --- | --- |
+| F1 | **已改**（`014b6bf`：链接 onClick 过 `discardAllowed`）+ 用例。 | 本任务目标 4 的同类口子 |
+| F2 | **已改**（`014b6bf`：creating 分支先 flush 再清空）+ 用例。 | 同一 effect，3 行 |
+| F3 | **记录**：切换后旧那条保存失败静默——与卸载后失败不可见一致。 | 触发窄，接受 |
+| F4 | **记录**：`flushRef` 渲染期赋值改 `useLayoutEffect`/`useEffectEvent` 可在 TASK-063 顺带。 | lint 已过，风格 |
+| F5 | **记录 → TASK-063 顺带**：creating 分支无条件 `setLoadError(null)`。 | 基线已有，1 行 |
+| F6 | **记录**。 | 测试叙述精度 |
+
+- Acceptance：L2，N/A。
+- 最终状态/风险/用户操作：status=**ACCEPTED**（L2：1 Worker → 自动检查 → 1 名独立只读 Reviewer（两轮）→ 主 Agent 汇总）。**未 MERGED**——是否合并由用户本人决定。
+- 非阻断遗留项：1. F4/F5（→ TASK-063 顺带）；2. F3/F6 记录；3. 图片粘贴（用户选 base64 内嵌）→ TASK-063（L3，契约放宽）。
+- 日期与决定日志：
+  - 2026-09-15 用户「做成心得查询即可，不用预留写心得接口」+ 图片存法选「直接内嵌进正文」；登记 `fe7be8f`；实现 `570e5cb`；写回 `10c6558` 冻结；Review 首轮 CHANGES_REQUIRED（F1）→ 修复 `014b6bf`（含 F2）→ 增量复审 PASS；主 Agent 写回并置 `ACCEPTED`；待用户合并。
 <!-- EVIDENCE:END -->
