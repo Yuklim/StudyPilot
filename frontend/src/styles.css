@@ -1351,6 +1351,15 @@ fieldset:disabled {
   margin-top: 14px;
 }
 
+/* 心得编辑器：图片占位符提示（TASK-064） */
+.note-editor-images-hint {
+  margin: 0.4rem 0 0;
+  font-size: 0.8rem;
+}
+.note-editor-images-hint code {
+  font-size: 0.78rem;
+}
+
 /* 资料库内的删除入口（TASK-056）：每份一个复选框 + 一个删除图标按钮；选中 ≥1 份时
    列表上方的选择条给出「删除所选」。 */
 .resource-selection {

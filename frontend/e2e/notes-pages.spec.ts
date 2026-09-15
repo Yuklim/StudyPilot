@@ -538,11 +538,23 @@ test('an image pasted into the editor is embedded as base64, previewed, saved an
     area.setSelectionRange(area.value.length, area.value.length)
     area.dispatchEvent(new ClipboardEvent('paste', { clipboardData: transfer, bubbles: true }))
   })
-  await expect(editor).toHaveValue(/!\[图片\]\(data:image\/webp;base64,[A-Za-z0-9+/=]+\)/, {
-    timeout: 10000,
-  })
+  // TASK-064：写作框里只显示占位符，不是那串 base64；真正的 data URI 走保存。
+  await expect(editor).toHaveValue(/!\[图片\]\(image:1\)/, { timeout: 10000 })
   const value = await editor.inputValue()
-  const dataUrl = /\((data:image\/webp;base64,[^)]+)\)/.exec(value)![1]!
+  expect(value).not.toContain('base64')
+  await expect(page.getByText(/图片在这里显示为/)).toBeVisible()
+  // 切换预览触发保存；服务端读回的正文里是完整的 data URI。
+  await expect(page.getByRole('status')).toContainText('已保存', { timeout: 5000 })
+  await expect(page).toHaveURL(/\/notes\/[0-9a-f-]{36}$/)
+  const id = page.url().split('/').pop()!
+  let stored = ''
+  await expect
+    .poll(async () => {
+      stored = (await call(page, `/notes/${id}`)).body.data.content as string
+      return /!\[图片\]\(data:image\/webp;base64,[A-Za-z0-9+/=]+\)/.test(stored)
+    })
+    .toBe(true)
+  const dataUrl = /\((data:image\/webp;base64,[^)]+)\)/.exec(stored)![1]!
   // 缩到最长边 1600：解码出来的宽高证明缩放确实发生在浏览器里。
   const size = await page.evaluate(
     (url) =>
@@ -560,15 +572,8 @@ test('an image pasted into the editor is embedded as base64, previewed, saved an
   await expect(img).toHaveAttribute('src', /^data:image\/webp;base64,/)
   await expect(img).toHaveAttribute('alt', '图片')
   expect(await img.evaluate((node) => (node as HTMLImageElement).naturalWidth)).toBe(1600)
-  // 切换预览触发保存；服务端读回的正文含同一段 data URI（超过旧上限 50,000 字符）。
-  await expect(page).toHaveURL(/\/notes\/[0-9a-f-]{36}$/)
-  const id = page.url().split('/').pop()!
-  await expect
-    .poll(async () =>
-      ((await call(page, `/notes/${id}`)).body.data.content as string).includes(dataUrl),
-    )
-    .toBe(true)
-  expect(value.length).toBeGreaterThan(50_000)
+  // 存下来的正文超过旧上限 50,000 字符（证明迁移后的 CHECK 放行）。
+  expect(stored.length).toBeGreaterThan(50_000)
   // 心得页：列表摘要不带 base64，右栏预览显示图片。
   await page.goto(`/notes?note=${id}`)
   const list = page.getByRole('list', { name: '心得列表' })

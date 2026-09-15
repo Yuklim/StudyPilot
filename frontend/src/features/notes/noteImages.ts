@@ -136,3 +136,34 @@ export function inlineImageBytes(content: string): number {
   }
   return total
 }
+
+/** 编辑框里的占位符：`![alt](image:N)`；N 从 1 起，对应 `images[N-1]`。 */
+const PLACEHOLDER = /!\[([^\]]*)\]\(image:(\d+)\)/g
+const INLINE = /!\[([^\]]*)\]\((data:image\/[a-z+]+;base64,[A-Za-z0-9+/=]+)\)/g
+
+/**
+ * 把正文里的内嵌图片折叠成短占位符（TASK-064，用户 2026-09-15「一串很长的文字很影响书写」）。
+ * 编辑框里只放 `text`；`images` 按出现顺序编号。与 `expandImages` 严格互逆：
+ * `expandImages(...collapseImages(c)) === c`。
+ */
+export function collapseImages(content: string): { text: string; images: string[] } {
+  const images: string[] = []
+  const text = content.replace(INLINE, (_match, alt: string, url: string) => {
+    images.push(url)
+    return `![${alt}](image:${images.length})`
+  })
+  return { text, images }
+}
+
+/** 把占位符换回内嵌图片；编号不存在的占位符原样保留（用户手打的、或图已被丢弃）。 */
+export function expandImages(text: string, images: readonly string[]): string {
+  return text.replace(PLACEHOLDER, (match, alt: string, index: string) => {
+    const url = images[Number(index) - 1]
+    return url === undefined ? match : `![${alt}](${url})`
+  })
+}
+
+/** 占位符的写法，给插入与提示用。 */
+export function imagePlaceholder(alt: string, index: number): string {
+  return `![${alt}](image:${index})`
+}

@@ -9,8 +9,11 @@ import { renderSnapshot } from '../resources/snapshotMarkdown'
 import { MAX_CONTENT, cleanContent, deleteNote, getNote, saveNote, type Note } from './api'
 import {
   NoteImageError,
+  collapseImages,
   draggingFiles,
+  expandImages,
   imageFiles,
+  imagePlaceholder,
   imageToMarkdown,
   inlineImageBytes,
 } from './noteImages'
@@ -53,7 +56,11 @@ export function NoteEditorPage({ noteId }: { noteId?: string }) {
   const backLabel = scope ? '返回资料' : '返回我的心得'
 
   const [note, setNote] = useState<Note | null>(null)
+  // `draft` 是**折叠后**的文本：内嵌图片在写作框里只显示 `![图片](image:N)`（TASK-064，用户
+  // 「一串很长的文字很影响书写」），真正的 data URI 在 `gallery[N-1]`；预览、比较、发送都先
+  // `expandImages`。存进后端的内容不变。
   const [draft, setDraft] = useState('')
+  const [gallery, setGallery] = useState<string[]>([])
   const [loading, setLoading] = useState(!creating)
   const [loadFailure, setLoadError] = useState<unknown>(null)
   // 上一条打不开的错误不带进「新建」（TASK-062 Review F5）：新建页没有读取这回事。
@@ -66,10 +73,18 @@ export function NoteEditorPage({ noteId }: { noteId?: string }) {
   const textarea = useRef<HTMLTextAreaElement>(null)
   const alive = useRef(true)
   // 保存要读到**最新**草稿与最新 note，而定时器/卸载回调握着的是旧闭包：走 ref。
-  const latest = useRef({ draft, note, save })
+  const latest = useRef({ draft, gallery, note, save })
   useEffect(() => {
-    latest.current = { draft, note, save }
+    latest.current = { draft, gallery, note, save }
   })
+  /** 展开后的正文（要发给后端、要与已保存内容比较的那份）。 */
+  const source = () => expandImages(latest.current.draft, latest.current.gallery)
+  function load(content: string) {
+    const { text, images } = collapseImages(content)
+    setGallery(images)
+    setDraft(text)
+    latest.current = { ...latest.current, draft: text, gallery: images }
+  }
   const timer = useRef<number | null>(null)
   const inflight = useRef<Promise<void> | null>(null)
   // 读取 effect 要在换到另一条心得前先把手里这条保下来，而 flush 定义在它后面：走 ref。
@@ -91,6 +106,7 @@ export function NoteEditorPage({ noteId }: { noteId?: string }) {
         void flushRef.current()
         setNote(null)
         setDraft('')
+        setGallery([])
         setSave({ kind: 'idle' })
         setPreview(false)
       }
@@ -111,11 +127,12 @@ export function NoteEditorPage({ noteId }: { noteId?: string }) {
     setPreview(false)
     setNote(null)
     setDraft('')
+    setGallery([])
     getNote(scope, noteId)
       .then((loaded) => {
         if (cancelled) return
         setNote(loaded)
-        setDraft(loaded.content)
+        load(loaded.content)
       })
       .catch((cause: unknown) => {
         if (!cancelled) setLoadError(cause)
@@ -135,7 +152,8 @@ export function NoteEditorPage({ noteId }: { noteId?: string }) {
       timer.current = null
     }
     if (inflight.current) return inflight.current
-    const { draft: text, note: current, save: state } = latest.current
+    const { note: current, save: state } = latest.current
+    const text = source()
     if (state.kind === 'conflict') return Promise.resolve()
     const cleaned = cleanContent(text)
     // 空内容不创建、不保存；内容与已保存的一样也不发。
@@ -172,8 +190,8 @@ export function NoteEditorPage({ noteId }: { noteId?: string }) {
         // 保存进行中又敲了字：那次停笔的 flush 撞上 inflight 直接返回了，这里补排一次
         // （独立 Review F2），否则状态显示「已保存」而最后几句其实没保存。
         if (!alive.current) return
-        const { draft: text, note: current, save: state } = latest.current
-        const cleaned = cleanContent(text)
+        const { note: current, save: state } = latest.current
+        const cleaned = cleanContent(source())
         // **只在这次保存成功后**补排。失败/冲突时草稿必然≠已保存内容，若也补排就是每秒一次的
         // 无限重试（独立 Review F9）；失败由用户下一次键入重排，冲突等用户选。
         // 已换到另一条（F7）：这次结果不算数，但新那条在旧保存占着 inflight 期间可能被敲了字，
@@ -207,8 +225,8 @@ export function NoteEditorPage({ noteId }: { noteId?: string }) {
   // 离开路由（组件卸载）前把没保存的保下来；关闭标签页时若还有未保存改动，让浏览器问一声。
   useEffect(() => {
     function onBeforeUnload(event: BeforeUnloadEvent) {
-      const { draft: text, note: current } = latest.current
-      const cleaned = cleanContent(text)
+      const { note: current } = latest.current
+      const cleaned = cleanContent(source())
       if (cleaned && cleaned !== (current?.content ?? '')) {
         void flush()
         event.preventDefault()
@@ -264,7 +282,14 @@ export function NoteEditorPage({ noteId }: { noteId?: string }) {
       try {
         const line = await imageToMarkdown(file)
         if (!alive.current) return
-        insertAtCursor(line)
+        // 写作框里只放占位符；data URI 进图片表（TASK-064）。同步写进 ref：连续几张要接着编号。
+        const { images } = collapseImages(line)
+        const url = images[0]
+        if (url === undefined) throw new NoteImageError('DECODE_FAILED', '这张图无法处理。')
+        const next = [...latest.current.gallery, url]
+        setGallery(next)
+        latest.current = { ...latest.current, gallery: next }
+        insertAtCursor(imagePlaceholder('图片', next.length))
       } catch (cause) {
         if (!alive.current) return
         const message = cause instanceof NoteImageError ? cause.message : '这张图无法处理。'
@@ -285,7 +310,13 @@ export function NoteEditorPage({ noteId }: { noteId?: string }) {
   }
   function onDrop(event: React.DragEvent<HTMLTextAreaElement>) {
     const files = imageFiles(event.dataTransfer)
-    if (files.length === 0) return
+    if (files.length === 0) {
+      // dragover 已放行了文件拖拽：不接住的话浏览器会打开那个文件（TASK-063 Review F7）。
+      if (!draggingFiles(event.dataTransfer)) return
+      event.preventDefault()
+      setImages((state) => ({ ...state, error: '只支持 PNG、JPEG、GIF 或 WebP 图片。' }))
+      return
+    }
     event.preventDefault()
     void insertImages(files)
   }
@@ -296,7 +327,7 @@ export function NoteEditorPage({ noteId }: { noteId?: string }) {
       const fresh = await getNote(scope, note.id)
       if (!alive.current) return
       setNote(fresh)
-      setDraft(fresh.content)
+      load(fresh.content)
       setSave({ kind: 'idle' })
     } catch (cause) {
       if (alive.current) setSave({ kind: 'failed', message: failureText(cause) })
@@ -324,8 +355,9 @@ export function NoteEditorPage({ noteId }: { noteId?: string }) {
       await deleteNote(scope, note)
       if (!alive.current) return
       // 已删除：卸载时的保底保存不能再把它写回去。
-      latest.current = { draft: '', note: null, save: { kind: 'idle' } }
+      latest.current = { draft: '', gallery: [], note: null, save: { kind: 'idle' } }
       setDraft('')
+      setGallery([])
       navigate(backTo)
     } catch (cause) {
       if (!alive.current) return
@@ -358,21 +390,23 @@ export function NoteEditorPage({ noteId }: { noteId?: string }) {
 
   const title = noteTitle(draft)
   const heading = title ?? (creating && !note ? '新心得' : '无标题心得')
+  // 展开后的正文：预览、长度与「含图片约 N MB」都按它算（写作框里只有占位符）。
+  const expanded = useMemo(() => expandImages(draft, gallery), [draft, gallery])
   // 预览：与正文快照同一渲染器；页面 h1 已经是第一行，正文开头同名的 `#` 标题不再渲染一遍
   // （TASK-053 的去重规则同样适用）。
   const rendered = useMemo(
     () =>
       preview
-        ? renderSnapshot(draft, new Map(), null, { pageTitle: title, inlineImages: true })
+        ? renderSnapshot(expanded, new Map(), null, { pageTitle: title, inlineImages: true })
         : '',
-    [preview, draft, title],
+    [preview, expanded, title],
   )
-  const length = [...cleanContent(draft)].length
+  const length = [...cleanContent(expanded)].length
   const tooLong = length > MAX_CHARS
 
   const status = (() => {
     if (tooLong) {
-      const imageBytes = inlineImageBytes(draft)
+      const imageBytes = inlineImageBytes(expanded)
       return imageBytes > 0
         ? `正文过大（含图片约 ${(imageBytes / 1024 / 1024).toFixed(1)} MB），删掉一些图片才会保存`
         : `超过 ${MAX_CHARS.toLocaleString()} 字，删减到上限内才会保存`
@@ -501,6 +535,12 @@ export function NoteEditorPage({ noteId }: { noteId?: string }) {
                 }}
                 spellCheck={false}
               />
+            )}
+            {!preview && gallery.length > 0 && (
+              <p className="resource-hint note-editor-images-hint">
+                图片在这里显示为 <code>![图片](image:N)</code>{' '}
+                占位，预览和保存时会还原；删掉占位符就是删掉那张图。
+              </p>
             )}
           </>
         )}

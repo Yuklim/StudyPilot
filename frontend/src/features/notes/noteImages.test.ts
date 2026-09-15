@@ -5,8 +5,11 @@ import {
   MAX_EDGE,
   MAX_IMAGE_BYTES,
   NoteImageError,
+  collapseImages,
   draggingFiles,
+  expandImages,
   imageFiles,
+  imagePlaceholder,
   imageToMarkdown,
   inlineImageBytes,
 } from './noteImages'
@@ -140,5 +143,33 @@ describe('inlineImageBytes', () => {
     const body = '文字\n![a](data:image/webp;base64,AAAAAAAA)\n![b](data:image/png;base64,AAAA)\n'
     expect(inlineImageBytes(body)).toBe(6 + 3)
     expect(inlineImageBytes('没有图')).toBe(0)
+  })
+})
+
+describe('collapseImages / expandImages (TASK-064)', () => {
+  const a = 'data:image/webp;base64,AAAA'
+  const b = 'data:image/png;base64,BBBB=='
+  const body = `# 题\n\n![截图](${a})\n文字 ![](${b}) 尾\n![外链](https://x.test/c.png)\n`
+  it('replaces each inline image with a numbered placeholder and round-trips exactly', () => {
+    const { text, images } = collapseImages(body)
+    expect(text).toBe(
+      '# 题\n\n![截图](image:1)\n文字 ![](image:2) 尾\n![外链](https://x.test/c.png)\n',
+    )
+    expect(images).toEqual([a, b])
+    expect(expandImages(text, images)).toBe(body)
+    expect(text).not.toContain('base64')
+  })
+  it('keeps a placeholder whose number is unknown, and expands duplicates to the same image', () => {
+    expect(expandImages('![x](image:3) ![y](image:1) ![y](image:1)', [a])).toBe(
+      `![x](image:3) ![y](${a}) ![y](${a})`,
+    )
+    expect(expandImages('没有图', [])).toBe('没有图')
+  })
+  it('leaves malformed data URIs alone rather than half-collapsing them', () => {
+    const odd = '![x](data:image/png;base64,AA AA) ![y](data:text/plain;base64,QQ==)'
+    expect(collapseImages(odd)).toEqual({ text: odd, images: [] })
+  })
+  it('formats the placeholder the editors insert', () => {
+    expect(imagePlaceholder('图片', 3)).toBe('![图片](image:3)')
   })
 })

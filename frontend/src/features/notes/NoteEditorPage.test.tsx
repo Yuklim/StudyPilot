@@ -88,10 +88,47 @@ describe('note editor page', () => {
     await act(async () => {
       release('![图片](data:image/webp;base64,AAAA)')
     })
-    expect(editor()).toHaveValue('前文\n![图片](data:image/webp;base64,AAAA)')
+    // 写作框里只有占位符（TASK-064）；发出去的是真正的 data URI。
+    expect(editor()).toHaveValue('前文\n![图片](image:1)')
+    expect(screen.getByText(/图片在这里显示为/)).toBeInTheDocument()
     expect(status()).not.toHaveTextContent('正在处理图片')
     await settle()
     expect(posts).toEqual([{ content: '前文\n![图片](data:image/webp;base64,AAAA)' }])
+  })
+
+  it('collapses inline images to placeholders when opening a note and expands them on save (TASK-064)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const a = 'data:image/webp;base64,AAAA'
+    const b = 'data:image/png;base64,BBBB'
+    // 服务端存的是去首尾空白后的正文：夹具不能带尾换行，否则「没改」也会因修剪而不等。
+    const content = `# 带图\n\n![截图](${a})\n中间\n![](${b})`
+    const patches: unknown[] = []
+    mock((path, options) => {
+      if (path === `/api/v1/notes/${noteId}` && options?.method === 'PATCH') {
+        patches.push(options.body)
+        return {
+          data: note({ content: (options.body as { content: string }).content, version: 2 }),
+        }
+      }
+      if (path === `/api/v1/notes/${noteId}`) return { data: note({ content }) }
+      return { data: [] }
+    })
+    renderWithRouter(<App />, `/notes/${noteId}`)
+    await screen.findByDisplayValue(/带图/)
+    expect(editor()).toHaveValue('# 带图\n\n![截图](image:1)\n中间\n![](image:2)')
+    // 没改：不发。
+    await settle()
+    expect(patches).toEqual([])
+    // 预览按展开后的正文渲染。
+    fireEvent.click(screen.getByRole('button', { name: '预览' }))
+    const imgs = screen.getByLabelText('预览').querySelectorAll('img')
+    expect([...imgs].map((img) => img.getAttribute('src'))).toEqual([a, b])
+    fireEvent.click(screen.getByRole('button', { name: '编辑' }))
+    // 删掉第一张的占位符 = 删掉那张图；第二张编号不变、仍回填。
+    type('# 带图\n\n中间\n![](image:2)')
+    await settle()
+    expect(patches).toEqual([{ content: `# 带图\n\n中间\n![](${b})`, expected_version: 1 }])
+    vi.useRealTimers()
   })
 
   it('accepts a dropped image and leaves a text-plus-image paste to the browser (Review F1/F2)', async () => {
@@ -123,7 +160,19 @@ describe('note editor page', () => {
         },
       })
     })
-    expect(editor()).toHaveValue('正文\n![图片](data:image/webp;base64,BBBB)')
+    expect(editor()).toHaveValue('正文\n![图片](image:1)')
+    // 拖入非图片文件：接住（否则浏览器会打开它）并提示。
+    const txt = new File(['x'], 'a.txt', { type: 'text/plain' })
+    expect(
+      fireEvent.drop(box, {
+        dataTransfer: {
+          types: ['Files'],
+          files: [txt],
+          items: [{ kind: 'file', getAsFile: () => txt }],
+        },
+      }),
+    ).toBe(false)
+    expect(status()).toHaveTextContent('只支持 PNG、JPEG、GIF 或 WebP 图片。')
     // 文字 + 图片一起粘贴（复制表格单元格）：不接管，浏览器按默认贴文字。
     convert.mockClear()
     expect(
