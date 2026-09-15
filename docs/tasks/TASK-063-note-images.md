@@ -8,7 +8,7 @@ risk = "L3"
 risk_reason = "放宽已批准公共契约（`Note.content` 上限 50,000 → 2,000,000 字符；`docs/contracts/**` 与 `openapi-v1.json` 同步）并新增 0006 迁移改写 `notes` 表的 CHECK；前端编辑器接受粘贴/拖入图片，压缩后以 data URI 内嵌进 Markdown，渲染器放行 `data:image/*;base64`。命中 public-api + migration + critical-data，走 L3：独立只读 Reviewer + 独立只读 Integration/Acceptance。"
 risk_flags = ["public-api", "migration", "critical-data", "business"]
 owner = "coordinator"
-base = "4edcc27143eaace84de4f07a45e6cbc37e65f415"
+base = "028a995312c87b931cd0078b204ef04db8fac0cb"
 allowed_paths = [
   "backend/src/studypilot/modules/notes/contracts.py",
   "backend/src/studypilot/infrastructure/database/models.py",
@@ -152,5 +152,6 @@ checks = []
 - 最终状态/风险/用户操作：status=**ACCEPTED**（L3：1 Worker → 自动检查 → 独立只读 Reviewer（两轮）→ 独立只读 Integration/Acceptance → 主 Agent 汇总）。**未 MERGED**——是否合并由用户本人决定。**合并后用户本机需迁移**（启动脚本自动 `alembic upgrade head`，或手动执行），否则保存含图心得会被旧 CHECK 拒绝。
 - 非阻断遗留项：1. F4 `docs/开发与运行.md:97,123` 两处 50,000（下个任务）；2. F7 非图片文件拖入的 drop 处理；3. 用户已接受的存法代价（列表页拉含图正文、PATCH 整份带图、侧栏编辑含图心得是 base64 原文）；4. 主 Agent 假设（1600px / WebP / 600 KB / 2,000,000）待用户实际使用后确认或调整。
 - 日期与决定日志：
+  - 2026-09-15 用户合并 PR #73（TASK-065）后 PR #71 与 main 在 `任务索引.md` 冲突：并入 `origin/main`（`028a995`）为 merge `d35764f`，只解索引冲突（保留本分支 062 MERGED/063 行 + main 的 065 行）；`git diff 9cb9987 d35764f -- backend frontend/src docs/contracts` 为空，产品代码与最终候选 `9cb9987` 逐字节一致，Review 与验收结论继续覆盖；`base` 前移到 `028a995` 以便 `check_task` 范围只含本任务路径。
   - 2026-09-15 用户「不能粘贴图片」→ 反问后选「直接内嵌进正文」；登记 `3846ed0`；实现 `e912fd6`（实跑抓到：batch 迁移误传 `table_args` 会留下第二条旧 CHECK；lint 禁止 effect 内无条件 setState → `loadError` 改为派生值；纯色图压成 WebP 只有几 KB，e2e 需噪点带才能超过旧上限）；写回 `bb2961b` 冻结；Review 首轮 CHANGES_REQUIRED（F1 dragover 看不到文件）→ 修复 `9cb9987`（含 F2/F3/F5/F6）→ 增量复审 PASS → 独立 Integration/Acceptance PASS；主 Agent 写回并置 `ACCEPTED`；待用户合并。
 <!-- EVIDENCE:END -->
