@@ -1696,6 +1696,12 @@ fieldset:disabled {
     grid-row: 2;
     margin: 0;
   }
+  /* TASK-059：上一条同时命中两组导航，把「后续能力」也塞进第 2 行，两组文字互相盖住
+     （`main` 上即存在）。第二组放第 3 行。折叠在这一档没有意义（宽度规则只在 ≥761px
+     生效，点了只会藏掉品牌文字与标签），按钮不显示。 */
+  .nav-section-more {
+    grid-row: 3;
+  }
   .nav-label,
   .sidebar-note,
   .sidebar-footer {
@@ -2760,6 +2766,11 @@ a.source-chip:focus-visible {
   }
   .reader-body {
     padding-top: 16px;
+  }
+  /* TASK-059：顶栏布局里折叠没有意义，按钮不显示。放在 `.nav-toggle` 基础规则之后，
+     同特异度靠顺序取胜。 */
+  .nav-toggle {
+    display: none;
   }
 }
 @media (max-width: 360px) {

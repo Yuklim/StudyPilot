@@ -183,7 +183,9 @@ test('collapsing the sidebar actually gives the space to the reading area', asyn
   // **先确认此刻确实是折叠态。** 否则折叠状态一旦丢失（比如读 localStorage 的那条路
   // 退化），侧栏本来就是满宽，这条断言会空过——「断言在非目标状态上通过」正是本任务
   // 反复出现的形态，验收在复验时点了出来。
-  await expect(page.getByRole('button', { name: '展开导航栏' })).toBeVisible()
+  // TASK-059 起折叠按钮在 ≤760px 不显示（顶栏布局里折叠没有意义），折叠态改由外壳的
+  // `nav-collapsed` 类确认——它正是那条 `width:68px` 规则的选择器。
+  await expect(page.locator('.app-shell')).toHaveClass(/nav-collapsed/)
   const narrow = (await page.locator('.sidebar').boundingBox())!
   expect(narrow.width, '窄屏折叠态下侧栏不该是 68px 的窄带').toBeGreaterThan(200)
 })

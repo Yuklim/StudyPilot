@@ -12,6 +12,7 @@ base = "881e9aeb1244af1a2885e7d8d390fb473bfd6827"
 allowed_paths = [
   "frontend/src/styles.css",
   "frontend/e2e/scaffold.spec.ts",
+  "frontend/e2e/reader-layout.spec.ts",
   "docs/tasks/TASK-059-mobile-topbar.md",
   "docs/tasks/任务索引.md",
 ]
@@ -24,6 +25,10 @@ checks = ["frontend"]
 - **根因**（读 `styles.css` ≤760px 块）：左栏在窄屏变为顶栏网格（两列），规则 `.nav-section { grid-column: 1 / -1; grid-row: 2 }` 同时命中两个 `.nav-section`（主导航与 `.nav-section-more`），两组都被放进第 2 行 → 重叠。另外折叠按钮 `.nav-toggle` 在顶栏布局里仍显示，而折叠在这一档没有意义（宽度规则只在 ≥761px 生效，点了只会隐藏品牌文字与标签）。
 - **目标**：① `.nav-section-more` 在第 3 行（`grid-row: 3`），两组导航上下排列、互不重叠；② ≤760px 隐藏 `.nav-toggle`；③ 320/390 两档不横向溢出、所有导航链接可见且两两不相交（几何断言）。
 - **非目标**：不改导航项数量/顺序/图标；不改 ≥761px 任何规则。
+
+### 实现中修订授权范围（登记后、冻结前）
+
+追加 `frontend/e2e/reader-layout.spec.ts`：既有「collapsing the sidebar…」用例在 390px 用「展开导航栏」按钮可见来确认折叠态仍在；折叠按钮按目标 ② 在 ≤760px 隐藏后，该确认改为断言外壳带 `nav-collapsed` 类（它正是那条 `width:68px` 规则的选择器，语义等价，随后的「侧栏不是 68px 窄带」断言不变）。
 
 ## 完成条件
 
