@@ -3,7 +3,7 @@ import { Link, NavLink, matchPath, useLocation, useNavigate } from 'react-router
 
 import { HeadingSlot } from './shell/heading'
 import { Icon } from './shell/Icon'
-import { moreNavigation, pageAt, primaryNavigation } from './shell/pages'
+import { LEAVE_EVENT, moreNavigation, pageAt, primaryNavigation } from './shell/pages'
 import { Screen } from './shell/Screen'
 
 /** 左栏折叠是用户自选，记在本机；读不出来就当展开。 */
@@ -77,6 +77,9 @@ function App() {
       if (!(event.metaKey || event.ctrlKey) || (event.metaKey && event.ctrlKey)) return
       if (page.path === '/notes/new' || page.path === '/notes/:noteId') return
       event.preventDefault()
+      // 先问一声页面上有没有不想丢的东西（阅读器侧栏的心得草稿，TASK-060 Review F3）：
+      // 有人 preventDefault 就不走。事件名见 LEAVE_EVENT。
+      if (!document.dispatchEvent(new CustomEvent(LEAVE_EVENT, { cancelable: true }))) return
       const reader = matchPath('/resources/:resourceId', pathname)?.params.resourceId
       navigate(reader ? `/notes/new?resource=${reader}` : '/notes/new')
     }

@@ -35,6 +35,13 @@ describe('noteSnippet', () => {
       noteSnippet('t\n**粗** 与 *斜* 与 `代码` 与 [链接](https://x.test) 与 ![图](a.png)'),
     ).toBe('粗 与 斜 与 代码 与 链接 与 图')
   })
+  it('skips table rows and code fences and drops task-list checkboxes (TASK-062)', () => {
+    expect(
+      noteSnippet('# SQL\n| 函数 | 用途 |\n| --- | --- |\n| ROW_NUMBER() | 编号 |\n分组内排序。'),
+    ).toBe('分组内排序。')
+    expect(noteSnippet('t\n```text\n读 → 20%\n```\n所以。')).toBe('读 → 20% 所以。')
+    expect(noteSnippet('周计划\n- [x] 线代\n- [ ] 英语\n* [X] 项目')).toBe('线代 英语 项目')
+  })
   it('is empty when there is nothing after the title', () => {
     expect(noteSnippet('只有一行')).toBe('')
     expect(noteSnippet('')).toBe('')

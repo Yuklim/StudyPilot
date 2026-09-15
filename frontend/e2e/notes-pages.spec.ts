@@ -242,9 +242,14 @@ test('top-level notes page manages standalone notes: write, list, preview, edit,
   await expect(page.getByRole('heading', { name: '我的心得', level: 1 })).toBeVisible()
   await expect(page.getByRole('heading', { name: '还没有独立心得' })).toBeVisible()
   await expect(page.getByRole('form', { name: '心得编辑' })).toHaveCount(0)
+  // TASK-062：页内不再有写入口（用户「做成心得查询即可」）；写走侧栏「写心得」/ ⌘J。
+  await expect(page.getByRole('main').getByRole('link', { name: /写心得|写一条/ })).toHaveCount(0)
 
-  // 写：页内「写心得」→ 整页编辑器 → 自动保存 → 返回。
-  await page.getByRole('main').getByRole('link', { name: '写心得' }).click()
+  // 写：侧栏「写心得」→ 整页编辑器 → 自动保存 → 返回。
+  await page
+    .getByRole('complementary', { name: '学习空间导航' })
+    .getByRole('link', { name: '写心得' })
+    .click()
   await expect(page).toHaveURL(/\/notes\/new$/)
   const editor = page.getByRole('textbox', { name: '心得正文（Markdown）' })
   await editor.fill('# 不先收藏资料也能记下的想法\n\n第一段正文。')
@@ -367,7 +372,10 @@ test('standalone note attaches to a resource and detaches back through the real 
   await page.reload()
   await expect(page.getByRole('heading', { name: '还没有独立心得' })).toBeVisible()
   // TASK-061：独立心得在整页编辑器里写，在「我的心得」预览里后贴。
-  await page.getByRole('main').getByRole('link', { name: '写心得' }).click()
+  await page
+    .getByRole('complementary', { name: '学习空间导航' })
+    .getByRole('link', { name: '写心得' })
+    .click()
   await page.getByRole('textbox', { name: '心得正文（Markdown）' }).fill(standaloneNote)
   await expect(page.getByRole('status')).toContainText('已保存', { timeout: 5000 })
   await page.getByRole('link', { name: '返回我的心得' }).click()
@@ -399,6 +407,16 @@ test('standalone note attaches to a resource and detaches back through the real 
   const boundList = page.getByRole('list', { name: '心得列表' })
   await expect(boundList).toContainText(standaloneNote)
   expect((await call(page, `/resources/${id}/notes`)).body.page.total_items).toBe(1)
+  // TASK-062：绑定心得卡上有「整页编辑」，去编辑页并带着这份资料作为返回处。
+  const fullPage = boundList.getByRole('link', { name: '整页编辑' })
+  await expect(fullPage).toHaveAttribute('href', new RegExp(`^/notes/[0-9a-f-]+\\?resource=${id}$`))
+  await fullPage.click()
+  await expect(page.getByRole('textbox', { name: '心得正文（Markdown）' })).toHaveValue(
+    standaloneNote,
+  )
+  await page.getByRole('link', { name: '返回资料' }).click()
+  await expect(page).toHaveURL(new RegExp(`/resources/${id}$`))
+  await openNotes(page)
 
   // Detach it back to standalone from the bound list, confirming the dialog.
   page.once('dialog', (dialog) => void dialog.accept())

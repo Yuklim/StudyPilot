@@ -84,12 +84,9 @@ describe('notes manager page', () => {
     expect(within(list()).queryByText(/\*\*/)).toBeNull()
     // 未选中：右栏提示。
     expect(screen.getByText('从左边选一条，在这里预览。')).toBeInTheDocument()
-    // 没有旧页面的写作框了：写心得走整页编辑器。
+    // 没有旧页面的写作框，页内也不放写入口（TASK-062）：写心得走侧栏按钮 / ⌘J。
     expect(screen.queryByRole('form', { name: '心得编辑' })).toBeNull()
-    expect(within(main()).getByRole('link', { name: '写心得' })).toHaveAttribute(
-      'href',
-      '/notes/new',
-    )
+    expect(within(main()).queryByRole('link', { name: /写心得|写一条/ })).toBeNull()
   })
 
   it('selecting a note writes ?note= to the address and previews it with escaping and no repeated title', async () => {
@@ -243,6 +240,38 @@ describe('notes manager page', () => {
     expect(address()).toBe('')
   })
 
+  it('closes the delete dialog on Escape and hands focus back to the trigger (TASK-062)', async () => {
+    wide(true)
+    mock((path) => (path.startsWith('/api/v1/notes?') ? notePage(rows()) : samplePage([])))
+    mount(`/notes?note=${A}`)
+    const preview = await screen.findByRole('article', { name: '心得预览' })
+    const trigger = within(preview).getByRole('button', { name: '删除' })
+    fireEvent.click(trigger)
+    const dialog = screen.getByRole('dialog', { name: '删除“甲的标题”？' })
+    expect(within(dialog).getByRole('button', { name: '取消' })).toHaveFocus()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(trigger).toHaveFocus()
+  })
+
+  it('says so when ?note= points at a note that is not in the loaded list (TASK-062)', async () => {
+    wide(true)
+    mock((path) => (path.startsWith('/api/v1/notes?') ? notePage(rows()) : samplePage([])))
+    const gone = '018f1f58-4eb2-4a0d-a716-fb81b1960aaa'
+    mount(`/notes?note=${gone}`)
+    await screen.findByText('甲的标题')
+    // `<output>`/aria-live 提示也是 status：按文字找这条。
+    const status = (await screen.findByText(/不在独立心得列表里/)).closest<HTMLElement>(
+      '[role="status"]',
+    )!
+    expect(within(status).getByRole('link', { name: '直接打开' })).toHaveAttribute(
+      'href',
+      `/notes/${gone}`,
+    )
+    expect(screen.queryByText('从左边选一条，在这里预览。')).toBeNull()
+    expect(screen.queryByRole('article', { name: '心得预览' })).toBeNull()
+  })
+
   it('links straight to the editor on a narrow screen', async () => {
     wide(false)
     mock((path) => (path.startsWith('/api/v1/notes?') ? notePage(rows()) : samplePage([])))
@@ -268,6 +297,7 @@ describe('notes manager page', () => {
     fail = false
     fireEvent.click(screen.getByRole('button', { name: '重新加载' }))
     expect(await screen.findByRole('heading', { name: '还没有独立心得' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: '写一条' })).toHaveAttribute('href', '/notes/new')
+    expect(within(main()).queryByRole('link', { name: /写心得|写一条/ })).toBeNull()
+    expect(screen.getByText(/用左侧「写心得」或快捷键记一条/)).toBeInTheDocument()
   })
 })
