@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-060"
-status = "IN_PROGRESS"
+status = "IN_REVIEW"
 risk = "L2"
 risk_reason = "新增前端路由与页面（`/notes/new`、`/notes/:noteId`），全局键盘快捷键与侧栏入口，心得改为自动保存（防抖 + 离开前保底）。不改后端与契约：心得仍是纯文本 `content`（≤50,000 字），Markdown 只是文本；预览复用阅读器正文渲染器（`html:false`）。判 L2：触及「随手记录」这条核心路径与版本冲突保护（自动保存下冲突/离线的处理改错会静默丢字或覆盖），需独立 Reviewer 看最终 diff；不到 L3：无契约/后端/数据变更。"
 risk_flags = ["business"]
@@ -80,10 +80,22 @@ checks = ["frontend"]
 
 ## 实现与测试
 
-（实施后填写）
+- **实现 SHA**：`1ccbfa3`（实现 + 测试同一提交；9 个前端文件 +971/−3）。
+- **变更**：
+  - `notes/noteTitle.ts`：第一个非空行当标题（去掉行首 `#` + 空格、60 字截断），空→`null`。
+  - `notes/NoteEditorPage.tsx`（416 行）：路由 `/notes/new` 与 `/notes/:noteId`（`?resource=` 表示绑定资料；**路径参数由 `Screen` 用 `useMatch` 以 prop 传入**——应用没有 `<Routes>`，`useParams` 拿不到，首次实跑即撞到）。沉浸式顶栏（← 返回 / 保存状态 `role=status` / 预览·编辑 / ⋯ 删除）+ 740px 正文列；`h1` 各态恰好一个（读取中「正在打开心得」、失败「这条心得打不开」、新建「新心得」、其余取第一行）；编辑态整页 `textarea`，预览用 `renderSnapshot(draft, new Map(), null, { pageTitle })`（同 `html:false`，且 TASK-053 的去重让预览里不再重复第一行标题）；自动保存：`schedule()` 停笔 1s、失焦、切换预览时 `flush()`，首次非空 POST → 地址 `navigate(replace)` 到 `/notes/:id`（**不按 noteId 给 key**，否则地址一换就重挂、丢掉保存期间继续敲的字并重读一遍——实跑抓到）、之后 PATCH 带 `expected_version`、内容未变不发、空内容不创建；409 → `conflict` 态停止自动保存 + 「重新读取」/「覆盖为我的版本」（先取最新版本号再以我的内容 PATCH）；其他错误 → 「保存失败：…」且再改动即重排程；卸载与 `beforeunload` 前有未保存改动先 `flush()`；`latest` ref 在 effect 里同步（lint 禁止渲染期写 ref）；新建时把焦点从 h1 交给写作框（既有心得维持 h1 落点）；删除走 ⋯ → 模态确认（复用 TASK-056 样式）→ 回到来处。
+  - `shell/pages.ts`：两条 `immersive + ownHeading` 页面；`navigation` 过滤掉 `/notes/*`。`shell/Screen.tsx`：分派。
+  - `App.tsx`：侧栏「写心得」链接（`Link`，左栏「恰好一个按钮」守卫不受影响）；全局 `keydown`：`⌘J`/`Ctrl+J`（两种修饰键都认，标签按平台显示），阅读器里带 `?resource=当前资料`，编辑页自身按下无动作。
+  - `styles.css`：编辑页样式；≤760px 顶栏网格改三列（品牌 | 添加资料 | 写心得）——首版两个入口叠在同一格，scaffold e2e 的「点添加资料」超时抓到。
+- **测试**：`noteTitle.test.ts` 4 条；`NoteEditorPage.test.tsx` 9 条（假定时器）：创建/PATCH/不变不发 + 标题跟第一行 + 写作框不被保存结果盖掉；独立与绑定两条路径与返回处；409 停止自动保存 + 覆盖（先取版本再 PATCH）；重新读取丢弃本地；离开前保底（不等 1s 直接点返回 → POST 已发）；预览转义 + 不重复标题 + 切回编辑源码不变；删除一次确认回「我的心得」；侧栏链接 + Ctrl+J/⌘J + 编辑页内无动作；阅读器内快捷键绑定资料。e2e `notes-pages.spec.ts` +2（真实后端）：⌘J → 焦点在写作框 → 沉浸式无左栏 → 自动保存换地址 → 标题 → 预览（strong/无 script/无重复 h1）→ 刷新仍在 → 列表可见 → 删除回列表；阅读器内 ⌘J 绑定资料并出现在该资料心得列表。
+- **判别性**（临时破坏后实跑 `NoteEditorPage.test.tsx`、随后恢复）：A 不排程自动保存 → 3 红；B 409 当普通失败 → 2 红；C 卸载不保底 → 1 红；D 快捷键不导航 → 2 红。
+- **检查**：`check_task.py --candidate 1ccbfa3` → `STATIC PASS`，`files=10`，`product_fingerprint=c43bf212…`，frontend 五项 exit 0，**584 passed**（基线 571 + 13）→ **CHECKS PASS**；`npm run test:e2e` **62 passed**（基线 60 + 2）；`git diff --check` exit 0。
+- **已知限制**：预览与编辑不同时显示（B 的定义）；无标题字段，列表里的标题由 TASK-061 按同一规则推导；快捷键在浏览器地址栏聚焦时不生效（属浏览器）。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-（实施后填写）
+- 候选 SHA：本提交之后的 HEAD 即候选（`1ccbfa3` + 本证据写回 + 状态登记），精确 SHA 在 Review 写回时补记。
+- Review：待派。Acceptance：L2，N/A。
+- 最终状态：status=**IN_REVIEW**。
 <!-- EVIDENCE:END -->
