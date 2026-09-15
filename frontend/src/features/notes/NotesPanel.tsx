@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 
+import { LEAVE_EVENT } from '../../shell/pages'
+
 import { ApiError } from '../../api/client'
 import { displayTime, type Resource } from '../resources/api'
 import { resourceTitle } from '../resources/resourceTitle'
@@ -100,6 +102,15 @@ export function NotesPanel({
   function discardAllowed() {
     return !dirty || window.confirm('这份草稿尚未保存，确定放弃当前编辑吗？')
   }
+  // 外壳的 ⌘J 会把人带去整页编辑器；草稿没保存就先问一声（TASK-060 Review F3）。
+  useEffect(() => {
+    if (!dirty) return
+    function onLeave(event: Event) {
+      if (!window.confirm('这份草稿尚未保存，确定放弃当前编辑吗？')) event.preventDefault()
+    }
+    document.addEventListener(LEAVE_EVENT, onLeave)
+    return () => document.removeEventListener(LEAVE_EVENT, onLeave)
+  }, [dirty])
   function reset() {
     setSelected(null)
     setDraft('')
@@ -486,13 +497,26 @@ export function NotesPanel({
                     删除
                   </button>
                   {!standalone && (
-                    <button
-                      className="journal-button"
-                      disabled={pending}
-                      onClick={() => void detach(row)}
-                    >
-                      解除绑定
-                    </button>
+                    <>
+                      <button
+                        className="journal-button"
+                        disabled={pending}
+                        onClick={() => void detach(row)}
+                      >
+                        解除绑定
+                      </button>
+                      {/* TASK-062：长文去整页编辑器（TASK-060），返回处仍是这份资料。 */}
+                      <Link
+                        className="journal-button"
+                        to={`/notes/${row.id}?resource=${scope}`}
+                        onClick={(event) => {
+                          // 面板里正写着的草稿不能被这一下静默丢掉（独立 Review F1）。
+                          if (!discardAllowed()) event.preventDefault()
+                        }}
+                      >
+                        整页编辑
+                      </Link>
+                    </>
                   )}
                 </div>
                 {standalone && attachFor === row.id && (

@@ -32,7 +32,13 @@ export function noteSnippet(content: string, limit = 80): string {
   const start = lines.findIndex((line) => line.trim() !== '')
   const rest = lines
     .slice(start + 1)
-    .map((line) => plainInline(line.replace(/^\s*(#{1,6}\s+|[-*+]\s+|\d+\.\s+|>\s*)/, '')).trim())
+    // 表格行与代码围栏折成一行只剩竖线和反引号，跳过；任务列表只去掉勾选框。
+    .filter((line) => !/^\s*(\||```|~~~)/.test(line))
+    .map((line) =>
+      plainInline(
+        line.replace(/^\s*(#{1,6}\s+|[-*+]\s+|\d+\.\s+|>\s*)/, '').replace(/^\[[ xX]\]\s*/, ''),
+      ).trim(),
+    )
     .filter(Boolean)
     .join(' ')
   const chars = [...rest]

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
-import { Icon } from '../../shell/Icon'
 import { displayTime, failureText, type Resource } from '../resources/api'
 import { resourceTitle } from '../resources/resourceTitle'
 import { renderSnapshot } from '../resources/snapshotMarkdown'
@@ -41,6 +40,7 @@ const UNTITLED = '无标题心得'
  *   编辑器）、后贴到资料、删除。窄屏没有右栏，点一条直接进编辑页。
  * - 选中项写进网址 `?note=<id>`：刷新、后退都还在那条上。
  * - **只有独立心得**：契约的 `GET /notes` 只列 `resource_id` 为 null 的；绑定资料的心得在资料里。
+ * - **页内不放写入口**（TASK-062，用户「做成心得查询即可」）：写新的走侧栏「写心得」或 ⌘J。
  */
 export function NotesPage() {
   const [params, setParams] = useSearchParams()
@@ -100,6 +100,9 @@ export function NotesPage() {
   const needle = query.trim().toLowerCase()
   const shown = needle ? notes.filter((row) => row.content.toLowerCase().includes(needle)) : notes
   const selected = notes.find((row) => row.id === selectedId) ?? null
+  // 地址里指着一条、但已加载的独立列表里没有：已绑定资料、已删除，或在还没加载的页里
+  // （TASK-061 Review F3）。不能静默当成「没选」。
+  const missing = selectedId !== null && !loading && error === undefined && selected === null
 
   function select(id: string | null) {
     setParams(
@@ -130,9 +133,6 @@ export function NotesPage() {
               onChange={(event) => setQuery(event.target.value)}
             />
           </div>
-          <Link className="journal-button primary" to="/notes/new">
-            <Icon name="note" /> 写心得
-          </Link>
         </div>
         <p className="resource-hint notes-list-hint" aria-live="polite">
           {total === null ? '独立心得' : `共 ${total} 条独立心得`}
@@ -154,10 +154,7 @@ export function NotesPage() {
         {!loading && error === undefined && notes.length === 0 && (
           <div className="empty-sheet notes-empty">
             <h2>还没有独立心得</h2>
-            <p>不必先收藏资料，随手记下的想法都会留在这里。</p>
-            <Link className="text-link" to="/notes/new">
-              写一条
-            </Link>
+            <p>不必先收藏资料，随手记下的想法都会留在这里。用左侧「写心得」或快捷键记一条。</p>
           </div>
         )}
         {notes.length > 0 && shown.length === 0 && (
@@ -219,6 +216,15 @@ export function NotesPage() {
                 refresh()
               }}
             />
+          ) : missing ? (
+            <div className="notes-preview-empty" role="status">
+              <p className="resource-hint">
+                这条心得不在独立心得列表里：可能已后贴到资料、已删除，或在还没加载的页里。
+              </p>
+              <Link className="text-link" to={`/notes/${selectedId}`}>
+                直接打开
+              </Link>
+            </div>
           ) : attached ? (
             <div className="notes-preview-done" role="status">
               <p>
@@ -268,6 +274,23 @@ function NotePreview({
       alive.current = false
     }
   }, [])
+  // 删除模态（TASK-061 Review F2）：打开时焦点落在「取消」，Esc 关闭，关闭后焦点还给「删除」按钮。
+  const deleteButton = useRef<HTMLButtonElement>(null)
+  const cancelButton = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (!confirmDelete) return
+    cancelButton.current?.focus()
+    const opener = deleteButton.current
+    return () => opener?.focus()
+  }, [confirmDelete])
+  useEffect(() => {
+    if (!confirmDelete) return
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape' && !pending) setConfirmDelete(false)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [confirmDelete, pending])
   const title = noteTitle(note.content)
   const html = useMemo(
     () => renderSnapshot(note.content, new Map(), null, { pageTitle: title }),
@@ -327,6 +350,7 @@ function NotePreview({
             {attaching ? '收起资料搜索' : '后贴到资料'}
           </button>
           <button
+            ref={deleteButton}
             type="button"
             className="journal-button danger"
             disabled={pending}
@@ -366,6 +390,7 @@ function NotePreview({
             </div>
             <div className="resource-actions">
               <button
+                ref={cancelButton}
                 type="button"
                 className="journal-button"
                 onClick={() => setConfirmDelete(false)}

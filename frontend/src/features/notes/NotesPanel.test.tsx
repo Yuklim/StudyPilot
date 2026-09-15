@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { api, ApiError } from '../../api/client'
+import { LEAVE_EVENT } from '../../shell/pages'
 import { renderWithRouter } from '../../test/render'
 import { sample, samplePage } from '../resources/fixtures'
 import { NotesPanel } from './NotesPanel'
@@ -136,6 +137,31 @@ describe('quick personal notes', () => {
       expected_version: 1,
     })
     await within(await screen.findByRole('list', { name: '心得列表' })).findByText('新的理解')
+  })
+  it('offers a full-page editor link per bound note and guards a dirty draft against the shell leaving (TASK-062)', async () => {
+    setup([note()])
+    await screen.findByRole('button', { name: '编辑' })
+    expect(screen.getByRole('link', { name: '整页编辑' })).toHaveAttribute(
+      'href',
+      `/notes/${note().id}?resource=${resourceId}`,
+    )
+    // 外壳的 ⌘J 先派发 studypilot:leave：草稿干净时放行，脏时按 confirm 的答案决定。
+    const leave = () => document.dispatchEvent(new CustomEvent(LEAVE_EVENT, { cancelable: true }))
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    expect(leave()).toBe(true)
+    expect(confirm).not.toHaveBeenCalled()
+    type('未完成草稿')
+    expect(leave()).toBe(false)
+    expect(confirm).toHaveBeenCalledOnce()
+    expect(screen.getByRole('textbox')).toHaveValue('未完成草稿')
+    confirm.mockReturnValue(true)
+    expect(leave()).toBe(true)
+    // 「整页编辑」链接同样过守卫（独立 Review F1）：拒绝则不导航，草稿仍在。
+    confirm.mockReturnValue(false)
+    fireEvent.click(screen.getByRole('link', { name: '整页编辑' }))
+    expect(confirm).toHaveBeenCalledTimes(3)
+    expect(screen.getByRole('textbox')).toHaveValue('未完成草稿')
+    expect(screen.getByRole('form', { name: '心得编辑' })).toBeInTheDocument()
   })
   it('keeps a conflicting draft, requires successful reload and explicit re-confirmation', async () => {
     const request = setup([note()])

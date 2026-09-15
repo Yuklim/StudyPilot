@@ -1,4 +1,5 @@
-import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { MemoryRouter, useNavigate } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from '../../App'
@@ -346,6 +347,141 @@ describe('write-note entry points', () => {
       `/resources/${resourceId}`,
     )
     expect(screen.getByText(/这条心得绑定在一份资料上/)).toBeInTheDocument()
+  })
+
+  it('asks before ⌘J leaves a dirty reader draft behind, and stays put on cancel (TASK-062)', async () => {
+    mock((path) => {
+      if (path === `/api/v1/resources/${resourceId}`) return { data: sample() }
+      if (path.startsWith(`/api/v1/resources/${resourceId}/notes?`))
+        return {
+          data: [],
+          page: { number: 1, size: 20, total_items: 0, total_pages: 0, has_more: false },
+        }
+      return { data: [] }
+    })
+    renderWithRouter(<App />, `/resources/${resourceId}`)
+    const notes = await screen.findByRole('form', { name: '心得编辑' })
+    fireEvent.change(within(notes).getByRole('textbox'), { target: { value: '侧栏里写到一半' } })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    fireEvent.keyDown(document, { key: 'j', metaKey: true })
+    expect(confirm).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('heading', { name: '新心得', level: 1 })).toBeNull()
+    expect(within(screen.getByRole('form', { name: '心得编辑' })).getByRole('textbox')).toHaveValue(
+      '侧栏里写到一半',
+    )
+    confirm.mockReturnValue(true)
+    fireEvent.keyDown(document, { key: 'j', metaKey: true })
+    expect(await screen.findByRole('heading', { name: '新心得', level: 1 })).toBeInTheDocument()
+  })
+
+  it('saves the note in hand before switching to another noteId, and a late result never lands on the new one (TASK-062)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const other = note({ id: '018f1f58-4eb2-4a0d-a716-fb81b1960bbb', content: '另一条' })
+    const calls: Array<{ path: string; method?: string; body?: unknown }> = []
+    let release!: () => void
+    const slow = new Promise<void>((done) => {
+      release = done
+    })
+    mock((path, options) => {
+      calls.push({ path, method: options?.method, body: options?.body })
+      const content = (options?.body as { content?: string } | undefined)?.content ?? ''
+      // 旧那条的 PATCH 很慢：要等到新那条已经读进来之后才返回。
+      if (path === `/api/v1/notes/${noteId}` && options?.method === 'PATCH')
+        return slow.then(() => ({ data: note({ content, version: 2 }) }))
+      if (path === `/api/v1/notes/${other.id}` && options?.method === 'PATCH')
+        return { data: { ...other, content, version: 2 } }
+      if (path === `/api/v1/notes/${noteId}`) return { data: note() }
+      if (path === `/api/v1/notes/${other.id}`) return { data: other }
+      return { data: [] }
+    })
+    let go!: (to: string) => void
+    function Probe() {
+      go = useNavigate()
+      return null
+    }
+    render(
+      <MemoryRouter initialEntries={[`/notes/${noteId}`]}>
+        <App />
+        <Probe />
+      </MemoryRouter>,
+    )
+    await screen.findByDisplayValue(note().content)
+    type('改了还没到停笔')
+    await act(async () => {
+      go(`/notes/${other.id}`)
+    })
+    await screen.findByDisplayValue('另一条')
+    // 旧那条已用旧版本号发出保存。
+    const patches = () => calls.filter((c) => c.method === 'PATCH')
+    expect(patches()).toEqual([
+      {
+        path: `/api/v1/notes/${noteId}`,
+        method: 'PATCH',
+        body: { content: '改了还没到停笔', expected_version: 1 },
+      },
+    ])
+    // 慢结果这时才回来：不能把旧那条当成手里这条。
+    await act(async () => {
+      release()
+      await Promise.resolve()
+    })
+    expect(editor()).toHaveValue('另一条')
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('另一条')
+    type('另一条 补一句')
+    await settle()
+    expect(patches()).toHaveLength(2)
+    expect(patches()[1]).toEqual({
+      path: `/api/v1/notes/${other.id}`,
+      method: 'PATCH',
+      body: { content: '另一条 补一句', expected_version: 1 },
+    })
+    vi.useRealTimers()
+  })
+
+  it('saves and clears the note in hand when the address turns into /notes/new without a remount (TASK-062)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const calls: Array<{ path: string; method?: string; body?: unknown }> = []
+    mock((path, options) => {
+      calls.push({ path, method: options?.method, body: options?.body })
+      const content = (options?.body as { content?: string } | undefined)?.content ?? ''
+      if (path === `/api/v1/notes/${noteId}` && options?.method === 'PATCH')
+        return { data: note({ content, version: 2 }) }
+      if (path === `/api/v1/notes/${noteId}`) return { data: note() }
+      if (path === '/api/v1/notes' && options?.method === 'POST')
+        return { data: note({ id: '018f1f58-4eb2-4a0d-a716-fb81b1960ccc', content, version: 1 }) }
+      return { data: [] }
+    })
+    let go!: (to: string) => void
+    function Probe() {
+      go = useNavigate()
+      return null
+    }
+    render(
+      <MemoryRouter initialEntries={[`/notes/${noteId}`]}>
+        <App />
+        <Probe />
+      </MemoryRouter>,
+    )
+    await screen.findByDisplayValue(note().content)
+    type('旧那条改了一笔')
+    await act(async () => {
+      go('/notes/new')
+    })
+    expect(editor()).toHaveValue('')
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('新心得')
+    expect(calls.filter((c) => c.method === 'PATCH')).toEqual([
+      {
+        path: `/api/v1/notes/${noteId}`,
+        method: 'PATCH',
+        body: { content: '旧那条改了一笔', expected_version: 1 },
+      },
+    ])
+    type('全新的一条')
+    await settle()
+    // 新内容走 POST 新建，而不是 PATCH 到旧那条。
+    expect(calls.filter((c) => c.method === 'PATCH')).toHaveLength(1)
+    expect(calls.find((c) => c.method === 'POST')?.body).toEqual({ content: '全新的一条' })
+    vi.useRealTimers()
   })
 
   it('offers a sidebar link and a global shortcut that binds to the open resource', async () => {

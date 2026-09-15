@@ -2,6 +2,13 @@ import { matchPath } from 'react-router-dom'
 
 import type { IconName } from './Icon'
 
+/**
+ * 外壳发起的、可取消的「要离开当前页面」事件（TASK-062）。⌘J 之类由外壳触发的导航先在
+ * `document` 上派发它；页面上握着未保存东西的组件（阅读器侧栏的心得草稿）监听并
+ * `preventDefault()` 就能拦住这次导航。用 `<Link>` 点出去的导航不经过它。
+ */
+export const LEAVE_EVENT = 'studypilot:leave'
+
 export interface ShellPage {
   path: string
   title: string
@@ -114,7 +121,7 @@ export const pages: ShellPage[] = [
   {
     path: '/notes',
     title: '我的心得',
-    caption: '独立记下此刻的理解与疑问，不先绑定资料。',
+    caption: '回看、搜索与整理独立心得；写新的用左侧「写心得」或快捷键。',
     icon: 'record',
     section: 'primary',
     emptyTitle: '还没有独立心得',

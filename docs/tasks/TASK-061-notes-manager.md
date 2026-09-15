@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-061"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L2"
 risk_reason = "重做 `/notes` 页面：由「写作框 + 列表 + 编辑 + 删除同一组件」改为备忘录式两栏（左列表可搜索，右预览与管理动作），编辑一律进 TASK-060 的整页编辑器。前端为主，只给 `listNotes` 加一个契约里已有的可选 `sort` 参数；不改后端与契约。判 L2：动了「回看 / 管理心得」这条核心路径与后贴/删除的版本化写调用，需独立 Reviewer 看最终 diff；不到 L3。"
 risk_flags = ["business"]
@@ -112,8 +112,9 @@ checks = ["frontend"]
 | F3 | **记录**：`?note=` 指向未加载/已绑定心得时给一句提示；`refresh` 与在途 `loadMore` 竞态仅影响按钮短暂可见性。 | 触发少、无数据影响 |
 
 - Acceptance：L2，N/A。
-- 最终状态/风险/用户操作：status=**ACCEPTED**（L2：1 Worker → 自动检查 → 1 名独立只读 Reviewer（两轮）→ 主 Agent 汇总）。**未 MERGED**——是否合并由用户本人决定。
+- 最终状态/风险/用户操作：status=**MERGED**（L2：1 Worker → 自动检查 → 1 名独立只读 Reviewer（两轮）→ 主 Agent 汇总）。**2026-09-15 用户已合并 PR #69，merge `58e4831`**（状态由 TASK-062 控制面顺带登记）。
 - 非阻断遗留项：1. F2/F3（→ TASK-062 顺带或单列）；2. TASK-060 F3/F7（→ TASK-062）；3. 待用户决定：「所有心得（含绑定资料的）一页看全」需要新契约。
 - 日期与决定日志：
   - 2026-09-14 登记 `3975264`；2026-09-15 实现 `b61589f`（实跑抓到 `.sr-only` 被 `display:none` 吞掉可访问名称、e2e「写心得」双匹配）；写回 `92b8cdf` 冻结；Review 首轮 PASS 附 F1 → 修复 `b86f175` → 增量复审 PASS；主 Agent 写回并置 `ACCEPTED`；待用户合并。
+  - 2026-09-15 用户合并 PR #69（merge `58e4831`）；MERGED 登记并入 TASK-062 控制面提交。用户随后反馈：心得页不要页内写入口、要能粘贴图片（→ TASK-062 / TASK-063）。
 <!-- EVIDENCE:END -->

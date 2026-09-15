@@ -63,6 +63,8 @@ export function NoteEditorPage({ noteId }: { noteId?: string }) {
   })
   const timer = useRef<number | null>(null)
   const inflight = useRef<Promise<void> | null>(null)
+  // 读取 effect 要在换到另一条心得前先把手里这条保下来，而 flush 定义在它后面：走 ref。
+  const flushRef = useRef<() => Promise<void>>(() => Promise.resolve())
 
   useEffect(() => {
     alive.current = true
@@ -73,11 +75,26 @@ export function NoteEditorPage({ noteId }: { noteId?: string }) {
 
   // --- 读取（编辑既有心得） ---
   useEffect(() => {
-    if (creating) return
+    if (creating) {
+      // 从一条既有心得直接换到「新建」而组件没重挂（独立 Review F2）：先把旧的保下来，
+      // 再把手里的东西清空，否则继续键入会 PATCH 到旧那条。
+      if (latest.current.note) {
+        void flushRef.current()
+        setNote(null)
+        setDraft('')
+        setSave({ kind: 'idle' })
+        setPreview(false)
+      }
+      return
+    }
     // 刚在本页新建、地址已换成 /notes/:id：这条就是手里这条，不再从服务端读回来盖掉
     // 用户在保存期间继续敲的字。换到**另一条**心得（noteId 变了且不是手里这条）才重读，
     // 并把保存状态与预览态归零。
     if (latest.current.note?.id === noteId) return
+    // 从一条既有心得直接换到另一条（TASK-060 Review F7）：先把旧的保下来（下面那个卸载保底
+    // effect 因 navigate 换了身份也会 flush 一次，这里显式写出意图；inflight 会把两次合成一次）。
+    // 保存回调只在「手里仍是那条」时写状态，不会把旧心得写回新地址（见 flush 的 stale）。
+    if (latest.current.note) void flushRef.current()
     let cancelled = false
     setLoading(true)
     setLoadError(null)
@@ -116,9 +133,11 @@ export function NoteEditorPage({ noteId }: { noteId?: string }) {
     if (!cleaned || [...cleaned].length > MAX_CHARS) return Promise.resolve()
     if (current && cleaned === current.content) return Promise.resolve()
     setSave({ kind: 'saving' })
+    // 保存期间可能已经换到另一条心得（F7）：那时手里的 note 不再是 current，结果只算完成，不写状态。
+    const stale = () => (latest.current.note?.id ?? null) !== (current?.id ?? null)
     const run = saveNote(scope, text, current)
       .then((saved) => {
-        if (!alive.current) return
+        if (!alive.current || stale()) return
         setNote(saved)
         setSave({ kind: 'saved', at: new Date() })
         // 同步写进 ref：紧接着的补排程/卸载保底要拿到刚保存的版本，不能等下一次 commit 的 effect。
@@ -131,7 +150,7 @@ export function NoteEditorPage({ noteId }: { noteId?: string }) {
         }
       })
       .catch((cause: unknown) => {
-        if (!alive.current) return
+        if (!alive.current || stale()) return
         const next: SaveState =
           cause instanceof ApiError && cause.code === 'VERSION_CONFLICT'
             ? { kind: 'conflict' }
@@ -148,7 +167,13 @@ export function NoteEditorPage({ noteId }: { noteId?: string }) {
         const cleaned = cleanContent(text)
         // **只在这次保存成功后**补排。失败/冲突时草稿必然≠已保存内容，若也补排就是每秒一次的
         // 无限重试（独立 Review F9）；失败由用户下一次键入重排，冲突等用户选。
-        if (state.kind === 'saved' && cleaned && cleaned !== (current?.content ?? '')) {
+        // 已换到另一条（F7）：这次结果不算数，但新那条在旧保存占着 inflight 期间可能被敲了字，
+        // 也补排一次——只此一次，不构成循环。
+        if (
+          (state.kind === 'saved' || stale()) &&
+          cleaned &&
+          cleaned !== (current?.content ?? '')
+        ) {
           schedule()
         }
       })
@@ -158,6 +183,7 @@ export function NoteEditorPage({ noteId }: { noteId?: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigate, scope])
 
+  flushRef.current = flush
   function schedule() {
     if (timer.current !== null) window.clearTimeout(timer.current)
     timer.current = window.setTimeout(() => {
