@@ -419,3 +419,60 @@ test('the reader reopens where you left off, unless the body changed', async ({ 
   await page.waitForTimeout(200)
   expect(await page.evaluate(() => window.scrollY)).toBe(0)
 })
+
+test('a selected passage becomes a blockquote in the notes draft, and the reading position can be recorded as learning progress', async ({
+  page,
+}) => {
+  // TASK-068（用户 2026-09-17 确认草图「记下这段」；学习进度选「一键写入」）。
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const { id } = await seedLong(page, 'C')
+  await page.goto(`/resources/${id}`)
+  const paragraph = page
+    .locator('.snapshot-rendered p')
+    .filter({ hasText: '第 1 段填充文字' })
+    .first()
+  await expect(paragraph).toBeVisible()
+
+  // 选中一段正文 → 胶囊出现 → 点它 → 心得草稿末尾是 `> 引文`，写作框聚焦。
+  await paragraph.evaluate((element) => {
+    const range = document.createRange()
+    range.selectNodeContents(element)
+    const selection = window.getSelection()!
+    selection.removeAllRanges()
+    selection.addRange(range)
+  })
+  const pill = page.getByRole('button', { name: '记下这段' })
+  await expect(pill).toBeVisible()
+  await pill.click()
+  const editor = page.getByRole('textbox', { name: '这次想记下什么？' })
+  await expect(editor).toBeVisible()
+  await expect(editor).toBeFocused()
+  await expect(editor).toHaveValue(/^> 第 1 段填充文字，撑出滚动距离。\n\n$/)
+  await expect(pill).toHaveCount(0)
+  await editor.type('这段很关键。')
+  await page.getByRole('button', { name: '保存心得', exact: true }).click()
+  await expect(page.getByRole('list', { name: '心得列表' })).toContainText('第 1 段填充文字')
+
+  // 滚到中段 → 顶栏出现「记为学习进度 N%」→ 表单预填 → 保存 → 徽章与进度线更新。
+  await page.evaluate(() => window.scrollTo({ top: 1200, behavior: 'instant' }))
+  const record = page.getByRole('button', { name: /^记为学习进度 \d+%$/ })
+  await expect(record).toBeVisible()
+  const percent = Number((await record.textContent())!.match(/(\d+)%/)![1])
+  expect(percent).toBeGreaterThan(0)
+  await record.click()
+  const form = page.getByRole('form', { name: '记录学习表单' })
+  await expect(form.getByLabel('学习后进度（%）')).toHaveValue(String(percent))
+  await expect(form.getByLabel('学习后状态')).toHaveValue('IN_PROGRESS')
+  await expect(form.getByLabel('本次总结（选填）')).toHaveValue(`阅读到 ${percent}%（阅读器位置）`)
+  // 还没写：徽章仍是未开始。
+  await expect(page.getByRole('button', { name: '未开始 · 0%' })).toBeVisible()
+  await form.getByRole('button', { name: '保存学习记录' }).click()
+  await expect(page.getByRole('button', { name: `学习中 · ${percent}%` })).toBeVisible()
+  const bar = page.locator('.reader-progress-bar')
+  const line = page.locator('.reader-progress')
+  await expect
+    .poll(async () => (await bar.boundingBox())!.width / (await line.boundingBox())!.width)
+    .toBeCloseTo(percent / 100, 1)
+  // 阅读位置不再领先，按钮消失。
+  await expect(record).toHaveCount(0)
+})

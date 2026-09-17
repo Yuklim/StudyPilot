@@ -14,6 +14,7 @@ allowed_paths = [
   "frontend/src/features/resources/ResourceToolbar.tsx",
   "frontend/src/features/resources/ReaderQuote.tsx",
   "frontend/src/features/resources/ReaderQuote.test.tsx",
+  "frontend/src/features/resources/quoteSelection.ts",
   "frontend/src/features/resources/readerPosition.ts",
   "frontend/src/features/resources/ResourceToolbar.test.tsx",
   "frontend/src/features/resources/ReaderOutline.test.tsx",
@@ -73,8 +74,17 @@ TASK-067 登记为 MERGED（用户 2026-09-17 已合并 PR #75，merge `0e954c6`
 
 ## 实现与测试
 
-- 实现 SHA/变更摘要：（待填）
-- 命令、真实退出结果：（待填）
+- **实现**（SHA 见 EVIDENCE）：
+  - `quoteSelection.ts`：`readSelection`（选区锚点/焦点都在 `.snapshot-rendered` 内、非空、≤2000 字）、`toQuote`（逐行 `> `）。`ReaderQuote.tsx`：监听 `selectionchange`/scroll/resize/Esc，视口定位胶囊「✎ 记下这段」，`mousedown` 阻止默认以保住选区，点击 → `onQuote` + 清选区。
+  - `NotesPanel.tsx`：新 prop `quoteRequest {token, quote}`，**渲染期**消费（与 `shown` 同一模式，避免 effect 内 setState）：草稿去尾空白 + 空行 + 引文 + 空行；`deleting/pending` 时作废、`available=false` 留待；effect 里聚焦并把光标放末尾。
+  - `LearningPanel.tsx`：新 prop `prefillPercent` → `RecordForm` 初值：进度 = N、未开始→学习中、总结「阅读到 N%（阅读器位置）」；归档态不预填。校验/确认/保存链路不变。
+  - `ResourceToolbar.tsx`：`readingPercent` prop；> 学习进度且非归档时在徽章旁渲染「记为学习进度 N%」，点击 `openPrefilled` → 学习面板（key 含 prefill 以重新初始化）。
+  - `ResourceDetail.tsx`：`takeQuote`（切心得 Tab、开右栏、token+1）；`readingPercent` 随位置记忆的恢复/滚动更新（整数变化才 setState，cleanup 置 null）；F1 目录显隐写存储移到事件处理器；F3 `afterDeletion` 先 `clearPosition`。
+  - `styles.css`：胶囊样式；`.reader-record-progress` 仅 ≥1280px 显示（见下）。
+- **测试**：新 `ReaderQuote.test.tsx` 7 例（胶囊只对正文内非空选区出现/标题选区不出/Esc 与空选区收起；引文追加、切 Tab、聚焦、光标末尾、清选区、连续两段；`toQuote` 多行与 >2000 忽略；「记为学习进度」仅在领先时出现、预填、未写入、用户保存后请求体 progress_after=N 且按钮消失；学习进度已领先不出；恢复位置后立即用记住的百分比；删除资料清位置键）。e2e 新增 1 条（选中段落 → 胶囊 → 草稿 `> …` 并聚焦 → 保存进列表；滚到 1200 → 「记为学习进度 N%」→ 表单预填 → 保存 → 徽章「学习中 · N%」、进度线比例 ≈ N/100、按钮消失）。
+- 本地（`frontend/`，2026-09-17）：`format:check` / `lint` / `typecheck` exit 0；`vitest run` **654 passed**（29 文件）；`playwright test` 全套 **66 passed**（原 65 + 1）。
+- **实测发现并修正**：首轮全套 e2e 2 条 `reader-immersive` 变红——窄屏（320/390px）顶栏加了「记为学习进度」文字按钮后随首次滚动折成三行（57→151px），触发布局位移，浮层态心得区聚焦把阅读位置拽走 749px。修正：该按钮只在 ≥1280px 显示（草图与用法本就是桌面场景；阅读位置照记，回到宽屏再写）。
+- 已知限制：引文不带回原文锚点（草图的「点击回到原文」未做）；窄屏无「记为学习进度」入口。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据

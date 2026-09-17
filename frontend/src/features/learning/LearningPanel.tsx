@@ -12,18 +12,30 @@ function RecordForm({
   saved,
   reloaded,
   started,
+  prefillPercent,
 }: {
   resource: Resource
   saved: (value: Progress) => void
   reloaded: (value: Resource) => void
   started: () => void
+  prefillPercent?: number
 }) {
   const current = resource.progress
+  // TASK-068「记为学习进度」：阅读器把本机阅读位置百分比预填进来——进度 = N，未开始的
+  // 顺手变成学习中，总结写明来源。**只是预填**：校验、冲突确认、按「保存学习记录」都不变。
+  const prefilled =
+    prefillPercent !== undefined && current.status !== 'ARCHIVED' ? prefillPercent : undefined
   const [when, setWhen] = useState(() => localTime())
   const [seconds, setSeconds] = useState('0')
-  const [after, setAfter] = useState<Status>(current.status)
-  const [percent, setPercent] = useState(String(current.progress_percent))
-  const [summary, setSummary] = useState('')
+  const [after, setAfter] = useState<Status>(
+    prefilled !== undefined && current.status === 'UNREAD' ? 'IN_PROGRESS' : current.status,
+  )
+  const [percent, setPercent] = useState(
+    String(prefilled !== undefined ? prefilled : current.progress_percent),
+  )
+  const [summary, setSummary] = useState(
+    prefilled !== undefined ? `阅读到 ${prefilled}%（阅读器位置）` : '',
+  )
   const [questions, setQuestions] = useState('')
   const [error, setError] = useState('')
   const [pending, setPending] = useState(false)
@@ -282,8 +294,11 @@ export function LearningPanel({
   resource,
   initialView = 'collapsed',
   changed,
+  prefillPercent,
 }: {
   resource: Resource
+  /** TASK-068：由阅读器「记为学习进度 N%」带入的进度，预填进状态表单。 */
+  prefillPercent?: number
   /**
    * 进度写成功后通知调用方重新读取这份资料。
    *
@@ -337,6 +352,7 @@ export function LearningPanel({
             <RecordForm
               key={'form-' + savedCount}
               resource={snapshot}
+              prefillPercent={prefillPercent}
               started={() => setSavedNotice(false)}
               saved={(value) => {
                 setSavedNotice(true)

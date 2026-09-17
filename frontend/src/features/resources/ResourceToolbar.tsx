@@ -51,6 +51,7 @@ export function ResourceToolbar({
   outlineAvailable = false,
   outlineOpen = true,
   onToggleOutline,
+  readingPercent = null,
 }: {
   resource: Resource
   /** 元数据被改动后重新读取这份资料。 */
@@ -72,6 +73,11 @@ export function ResourceToolbar({
   outlineAvailable?: boolean
   outlineOpen?: boolean
   onToggleOutline?: () => void
+  /**
+   * TASK-068：本机记住的阅读位置百分比（TASK-067 位置记忆）。比学习进度大时给「记为学习
+   * 进度 N%」按钮——点开学习面板并预填，写入仍要用户按保存（用户选定「一键写入」而非自动同步）。
+   */
+  readingPercent?: number | null
   /**
    * 这份资料有没有正文快照；`null` = 还没读到。菜单据此在「替换正文/粘贴正文」之间取
    * 文案，并决定「删除正文…」出不出现——**没有正文时不该有一个删除它的入口**。
@@ -101,7 +107,15 @@ export function ResourceToolbar({
   // 留在第一屏。开面板时同时关掉菜单，反之亦然。
   function openPanel(key: PanelKey) {
     setMenuOpen(false)
+    setPrefill(undefined)
     setPanel((current) => (current === key ? null : key))
+  }
+  // 「记为学习进度」：带着百分比打开学习面板。已开着也重开（prefill 变了要重新初始化表单）。
+  const [prefill, setPrefill] = useState<number | undefined>(undefined)
+  function openPrefilled(percent: number) {
+    setMenuOpen(false)
+    setPrefill(percent)
+    setPanel('learning')
   }
   function openMenu() {
     setPanel(null)
@@ -177,6 +191,19 @@ export function ResourceToolbar({
             >
               {statusLabels[progress.status]} · {progress.progress_percent}%
             </button>
+            {/* TASK-068：读得比学习进度远时，一键把阅读位置带进学习表单。归档态不给。 */}
+            {readingPercent !== null &&
+              readingPercent > progress.progress_percent &&
+              progress.status !== 'ARCHIVED' && (
+                <button
+                  type="button"
+                  className="journal-button reader-record-progress"
+                  title="打开学习状态表单并预填这个进度，按保存后才写入"
+                  onClick={() => openPrefilled(readingPercent)}
+                >
+                  记为学习进度 {readingPercent}%
+                </button>
+              )}
             {/* **图标按钮一律不留文字节点**：`textContent` 因此为空，用例可以直接断言
               「文字确实拿掉了」；名字由 `aria-label` 提供，鼠标用户由 `title` 兜底。
               本仓所有测试都按可访问名称查控件，所以只断言名称是抓不到图标化退化的
@@ -348,10 +375,11 @@ export function ResourceToolbar({
             // 用户选「常驻工具条，点开即改」。`initialView="manage"` 让状态表单直接展开，
             // 否则要再点两层（查看旧学习历史 → 更多：状态与归档管理）才够得着。
             <LearningPanel
-              key={'learning-' + resource.id}
+              key={'learning-' + resource.id + '-' + (prefill ?? 'none')}
               resource={resource}
               initialView="manage"
               changed={refreshed}
+              prefillPercent={prefill}
             />
           )}
           {panel === 'edit' && (
