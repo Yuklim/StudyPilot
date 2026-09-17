@@ -92,11 +92,12 @@ TASK-067 登记为 MERGED（用户 2026-09-17 已合并 PR #75，merge `0e954c6`
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：**`8586ea7`**（范围 `0e954c6..8586ea7`；前序候选 `958de89` → `64ec6f6`）；本次写回仅 docs，Review 结论直接继承。
+- 候选 SHA：**`e889d67`**（范围 `0e954c6..e889d67`；前序候选 `958de89` → `64ec6f6` → `8586ea7`）；本次写回仅 docs，Review 结论直接继承。
 - Review（独立只读 `.claude/agents/reviewer.md`，声明仅持 Read/Grep/Glob）：首轮 `958de89` **CHANGES_REQUIRED**——F1（必须）「保存成功后 RecordForm 以 key 重建仍带预填，绕过『未变化需填总结』守卫，再点保存会写出 before=after 的重复记录」→ 修正 `64ec6f6`（预填只给首张表单 + 回归断言）→ 增量复审 **PASS**：「预填仅给 savedCount===0 的首张表单，保存后父级重读不重置 savedCount，守卫有效；用例有判别性；No new findings」。已核对：引文只经 selection.toString() 进 textarea、渲染器未动、2000 上限有测；渲染期 setState 同一 token 只消费一次无循环；删除态不误聚焦；dirty/LEAVE 生效；UNREAD→IN_PROGRESS 在 options 内、ARCHIVED 不预填；事件监听均 cleanup；Esc 不冲突；F1/F3 落实。
 - 第二次增量复审（`64ec6f6..8586ea7`，面板滚动/回滚）：**PASS**——「删除路径 navigate 后组件卸载不误滚；A→B 切换 returnTo 保持首次值；同键再点关闭与 openMenu 关面板均回滚；焦点归还与 taxonomy 流程不受影响。No new findings」。
+- 第三次增量复审（`8586ea7..e889d67`，改为直写）：**PASS**——「createRecord 前置校验三项取自同一 resource.progress 恒成立；status_after 保持自身均在 options() 集合内，ARCHIVED 已排除；recordBusy + disabled 防重入有效；refreshed 到新数据前再点由后端乐观锁 409 拦住并就地提示、不重复写（可记录）；用户明确点击且明确要求免二次确认，按钮文案直述写入含义，不违反『AI 修改数据需确认』。No new findings」。
 - 非阻断遗留项：F2（可记录）`available=false` 瞬态窗口内连点两次胶囊只保留最后一段引文；F3（可选）用例的 `vi.spyOn(window,'getSelection')` 依赖 vitest 隔离未显式 restore。Reviewer 另记：REVIEW_DUE 态预填改进度沿用既有前端校验（非本任务引入）。观察：一次全套 vitest 中 `ResourceDeleteDialog.test` 一例偶发红，同文件 3×、全套 2×、check_task 均绿，与本 diff 无关。
 - Acceptance：L2 N/A。
 - 最终状态：**ACCEPTED**，待用户合并。
-- 日期与决定日志：2026-09-17 用户「开始」；「记为学习进度」实现为预填既有表单 + 用户按保存（主 Agent 判断：既有表单的时长/总结/冲突确认校验不宜绕过，仍是"点一下"进入、一次保存写入）。
+- 日期与决定日志：2026-09-17 用户「开始」；初版「记为学习进度」实现为预填既有表单 + 用户按保存（主 Agent 判断）→ 用户试用后「点了保存进度直接保存就可以，不要再返回确认」→ 改为**点击即写入**：用户明确免二次确认，按钮本身即确认动作（Reviewer 建议记录）；同日用户实测「点了没反应」→ 面板滚动到位/回滚。
 <!-- EVIDENCE:END -->
