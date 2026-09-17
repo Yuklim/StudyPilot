@@ -88,8 +88,9 @@ describe('reader toolbar', () => {
     expect(heading.compareDocumentPosition(notes) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
-  it('keeps both toolbar layers visible without any click', async () => {
-    // 上下文层常驻是一个产品决定：「我当初为什么收下这一页」不该藏进按钮。
+  it('keeps the action layer visible, and moves tags + save reason into the 信息 tab', async () => {
+    // TASK-046 时上下文层常驻正文顶部；TASK-067 起（用户 2026-09-17 按 Pencil 草图选定）
+    // 它在右栏「信息」Tab 里——正文紧接标题，元信息点一下 Tab 就有。
     mount(sample({ save_reason: '想搞清双指针', tags: [{ id: resourceId, name: '算法' }] }))
     await screen.findByRole('button', { name: '更多操作' })
     expect(screen.getByRole('link', { name: '返回资料库' })).toBeVisible()
@@ -98,11 +99,26 @@ describe('reader toolbar', () => {
     expect(screen.getByRole('button', { name: '心得' })).toBeVisible()
     expect(screen.getByRole('link', { name: /原网页/ })).toBeVisible()
     expect(more()).toBeVisible()
-    // 第二层：标签与保存原因，不需要任何点击。
+    // 正文列里不再有标签/保存原因。
+    expect(document.querySelector('.reader-main .reader-context')).toBeNull()
+    // 打开右栏 → 默认「心得」Tab；切到「信息」才看到标签与保存原因。
+    fireEvent.click(screen.getByRole('button', { name: '心得' }))
+    expect(screen.getByRole('tab', { name: '心得' })).toHaveAttribute('aria-selected', 'true')
+    fireEvent.click(screen.getByRole('tab', { name: '信息' }))
+    expect(screen.getByRole('tab', { name: '信息' })).toHaveAttribute('aria-selected', 'true')
     expect(
       within(screen.getByRole('navigation', { name: '资料标签' })).getByText('算法'),
     ).toBeVisible()
     expect(screen.getByText(/想搞清双指针/)).toBeVisible()
+    // 信息 Tab 还汇总来源、学习进度与收藏时间。
+    const info = screen.getByRole('tabpanel', { name: '信息' })
+    expect(within(info).getByText('来源')).toBeInTheDocument()
+    expect(within(info).getByText('学习进度')).toBeInTheDocument()
+    expect(within(info).getByText('收藏时间')).toBeInTheDocument()
+    // 心得写作框仍然挂载着（只是隐藏）：切 Tab 不能丢草稿。
+    const notesPanel = document.getElementById('reader-tabpanel-notes')!
+    expect(notesPanel).not.toBeVisible()
+    expect(within(notesPanel).getByRole('textbox', { hidden: true })).toBeInTheDocument()
   })
 
   it('makes the resource title the only h1, and the page heading block is gone', async () => {
@@ -133,9 +149,23 @@ describe('reader toolbar', () => {
     expect(screen.getByRole('link', { name: '返回资料库' })).toBeInTheDocument()
   })
 
+  it('draws the learning progress as a line under the toolbar (TASK-067)', async () => {
+    mount(
+      sample({ progress: { ...sample().progress, status: 'IN_PROGRESS', progress_percent: 38 } }),
+    )
+    await screen.findByRole('button', { name: '更多操作' })
+    const line = document.querySelector('.reader-toolbar .reader-progress')!
+    // 只是徽章的另一种呈现：aria-hidden，数值仍由徽章读出。
+    expect(line).toHaveAttribute('aria-hidden', 'true')
+    expect(line.querySelector('.reader-progress-bar')).toHaveStyle({ width: '38%' })
+    expect(screen.getByRole('button', { name: `${statusLabels.IN_PROGRESS} · 38%` })).toBeVisible()
+  })
+
   it('says so plainly when there is neither a tag nor a save reason', async () => {
     mount(sample({ save_reason: '', tags: [] }))
     await screen.findByRole('button', { name: '更多操作' })
+    fireEvent.click(screen.getByRole('button', { name: '心得' }))
+    fireEvent.click(screen.getByRole('tab', { name: '信息' }))
     expect(screen.getByText('暂无标签')).toBeVisible()
     expect(screen.getByText(/还没有填写保存原因/)).toBeVisible()
   })
@@ -336,10 +366,8 @@ describe('reader toolbar', () => {
     const [title] = headings
     expect(title.closest('.reader-toolbar')).toBeNull()
     expect(title.closest('.reader-main')).not.toBeNull()
-    // 标题在标签/保存原因之前，在正文快照之前。
-    const context = screen.getByRole('navigation', { name: '资料标签' })
+    // 标题在正文快照之前（标签/保存原因 TASK-067 起在右栏，不在正文列）。
     const body = screen.getByRole('region', { name: '正文快照' })
-    expect(title.compareDocumentPosition(context) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(title.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     // 来源徽章：顶栏里没有，文章头里有。
     const toolbar = document.querySelector('.reader-toolbar')!

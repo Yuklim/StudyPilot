@@ -472,6 +472,9 @@ describe('resource library filters in the address bar', () => {
       return samplePage([])
     })
     renderWithRouter(<App />, `/resources/${resourceId}`)
+    // TASK-067 起标签在右栏「信息」Tab。
+    fireEvent.click(await screen.findByRole('button', { name: '心得' }))
+    fireEvent.click(screen.getByRole('tab', { name: '信息' }))
     expect(await screen.findByRole('link', { name: '详情页标签' })).toHaveAttribute(
       'href',
       `/resources?tag_id=${tagId}`,

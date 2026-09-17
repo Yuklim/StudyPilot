@@ -335,6 +335,9 @@ describe('classification selection and resource integration', () => {
     // 的证据。**TASK-043 起面板不再被这次刷新掀掉**：旧版这里断言的是「标签管理折叠回
     // 按钮」，而那个折叠其实是刷新期间整块被卸载再挂载的副作用，不是有意的行为。
     // 用户正开着面板改标签，改一个就被关掉一次是退化，所以改成断言面板仍然开着。
+    // TASK-067 起标签行在右栏「信息」Tab 里：打开右栏、切到「信息」再看。
+    fireEvent.click(screen.getByRole('button', { name: '心得' }))
+    fireEvent.click(screen.getByRole('tab', { name: '信息' }))
     await waitFor(() =>
       expect(
         within(screen.getByRole('navigation', { name: '资料标签' })).getByText('合成标签'),
