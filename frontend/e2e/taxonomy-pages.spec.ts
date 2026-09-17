@@ -78,11 +78,15 @@ test('classification UI manages real data and organizes resources with combined 
   ).toBeVisible()
   const detailUrl = page.url()
   await page.reload()
+  // TASK-067 起标签行在右栏「信息」Tab。
+  await page.getByRole('button', { name: '心得' }).click()
+  await page.getByRole('tab', { name: '信息' }).click()
   await expect(
     page.getByRole('navigation', { name: '资料标签' }).getByText('分类页面 · 待读', {
       exact: true,
     }),
   ).toBeVisible()
+  await page.getByRole('button', { name: '收起' }).click()
   await page.getByRole('link', { name: '返回资料库' }).click()
   // TASK-057：主题/标签是筛选行里的芯片，点选即生效（不再有「按主题与标签筛选」面板与
   // 「应用」按钮）。主题多选=任一，可与「未分配」并列；标签多选=含任一。
@@ -124,13 +128,16 @@ test('classification UI manages real data and organizes resources with combined 
   await button(page, '更多操作').click()
   await page.getByRole('menuitem', { name: '编辑标签' }).click()
   await button(page, '管理这份资料的标签').click()
+  await page.getByRole('button', { name: '心得' }).click()
+  await page.getByRole('tab', { name: '信息' }).click()
   const tagRow = page.getByRole('navigation', { name: '资料标签' })
   await button(page, '解除标签 分类页面 · 待读').click()
   await expect(tagRow.getByText('分类页面 · 待读', { exact: true })).toHaveCount(0)
   await button(page, '添加标签 分类页面 · 待读').click()
   await expect(tagRow.getByText('分类页面 · 待读', { exact: true })).toBeVisible()
   await expect(button(page, '收起标签管理')).toBeVisible()
-  await expect(page.getByText('未开始 · 0%', { exact: true })).toBeVisible()
+  // 「未开始 · 0%」TASK-067 起在信息 Tab 里也出现一次，这里只看顶栏徽章。
+  await expect(page.getByRole('button', { name: '未开始 · 0%' })).toBeVisible()
   await page.screenshot({ path: info.outputPath('classified-detail.png'), fullPage: true })
   expect(await page.evaluate(() => localStorage.length + sessionStorage.length)).toBe(0)
   expect(await page.context().cookies()).toEqual([])

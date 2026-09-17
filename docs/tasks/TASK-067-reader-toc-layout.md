@@ -14,13 +14,19 @@ allowed_paths = [
   "frontend/src/features/resources/ResourceToolbar.tsx",
   "frontend/src/features/resources/ReaderOutline.tsx",
   "frontend/src/features/resources/ReaderOutline.test.tsx",
+  "frontend/src/features/resources/outline.ts",
   "frontend/src/features/resources/readerPosition.ts",
-  "frontend/src/features/resources/readerPosition.test.ts",
   "frontend/src/features/resources/ResourcePages.test.tsx",
   "frontend/src/features/resources/ResourceToolbar.test.tsx",
+  "frontend/src/features/taxonomy/ClassificationPages.test.tsx",
   "frontend/src/styles.css",
   "frontend/e2e/reader-layout.spec.ts",
   "frontend/e2e/reader-notes-sidebar.spec.ts",
+  "frontend/e2e/notes-pages.spec.ts",
+  "frontend/e2e/taxonomy.spec.ts",
+  "frontend/e2e/taxonomy-pages.spec.ts",
+  "frontend/e2e/file-pages.spec.ts",
+  "frontend/e2e/resource-edit-pages.spec.ts",
   "docs/tasks/TASK-067-reader-toc-layout.md",
   "docs/tasks/TASK-066-collapsed-rail-width.md",
   "docs/tasks/任务索引.md",
@@ -42,13 +48,17 @@ checks = ["frontend"]
 
 1. **左侧目录栏**（新组件 `ReaderOutline`）：正文渲染完成后从 `.snapshot-rendered` 的 `h2`/`h3` 生成目录（无标题时整栏不渲染）；点击平滑滚动到对应标题（标题无 id 时用元素引用滚动，不改渲染器）；随滚动高亮当前节（IntersectionObserver 或 scroll 计算，±1 节容差）；`⌘\`（Ctrl+\）切换显隐，工具条「⋯」菜单里也有「目录」开关；显隐状态存 `localStorage`（与导航折叠同一做法）。仅 `min-width: 1280px` 显示为左栏；以下不渲染（不做浮层，留给后续）。
 2. **阅读进度线**：`.reader-toolbar` 底部 3px 线，绿色宽度 = `progress.progress_percent`%；`aria-hidden`，进度按钮文字不变（仍显示状态 · 百分比）。
-3. **右栏 Tab**：既有「记录与理解」侧栏头部改为两个 Tab「心得」「信息」（`role="tablist"`）；「心得」= 现 `NotesPanel`；「信息」= 来源、标签、保存原因、进度、收藏时间（内容来自现 `ReaderContext` + `ReaderHeader` 的元信息）；`ReaderContext` 从正文列移除（标签/保存原因不再占正文顶部）。心得角标（已有 `notesCount`）显示在「心得」Tab 上。默认 Tab = 心得；`⌘J` 行为不变。
+3. **右栏 Tab**：既有「记录与理解」侧栏头部改为两个 Tab「心得」「信息」（`role="tablist"`）；「心得」= 现 `NotesPanel`；「信息」= 来源、标签、保存原因、进度、收藏时间（内容来自现 `ReaderContext` + `ReaderHeader` 的元信息）；`ReaderContext` 从正文列移除（标签/保存原因不再占正文顶部）。**推翻 TASK-046 的「上下文层留在正文顶部」决定**：主 Agent 2026-09-17 指出冲突后，用户选定「按草图移入信息 Tab」。心得角标（已有 `notesCount`）显示在「心得」Tab 上。默认 Tab = 心得；`⌘J` 行为不变。
 4. **记住阅读位置**：滚动时（节流）把 `scrollY` 相对正文高度的百分比与位置写入 `localStorage`（键含资料 id 与快照 sha256，快照变化即失效）；再次打开同一资料且正文渲染完成后恢复到该位置（图片未加载导致的偏差可接受，取整节容差）；顶部 `?` 之外新增小字「上次读到 62%」不在本任务，位置恢复本身不需要 UI。进度线仍显示学习进度 `progress_percent`；**不自动写学习进度**（用户 2026-09-17 选定「一键写入」，在 TASK-068 做「记为学习进度」按钮，走既有 study-records 接口）。
 5. 三栏尺寸：`.reader-body` 在 ≥1280px 为 `240px minmax(0,1fr) [320px]` 网格（右栏仅 notes-open 时占列，沿用 TASK-045 挤压逻辑）；正文列内 `.resource-snapshot` 仍 `--reader-measure` 居中。
 
 ### 非目标
 
 不改 `snapshotMarkdown.ts`、不改契约与后端、不做移动端目录浮层、不做引文写心得、`?` 面板、「记为学习进度」按钮（均 TASK-068）；不自动写学习进度（契约语义：进度只由学习记录推进）、不改心得整页编辑器 `/notes/*`、不动资料库页。
+
+### allowed_paths 修订（登记后、冻结前）
+
+实现中发现：标签行移入「信息」Tab 后，5 个既有 e2e（notes-pages / taxonomy / taxonomy-pages / file-pages / resource-edit-pages）与 1 个单测（taxonomy/ClassificationPages）按「标签行常驻可见」断言，必须改为先开右栏、切「信息」（不降低断言：仍验标签真的写进去了）；目录逻辑拆出 `outline.ts`（react-refresh 规则要求组件文件只导出组件；`readerOutline.ts` 与 `ReaderOutline.tsx` 在 macOS 上只差大小写会撞）。`readerPosition.test.ts` 未单独建，位置记忆用例并入 `ReaderOutline.test.tsx`。
 
 ### 禁止范围
 
@@ -76,8 +86,17 @@ TASK-066 登记为 MERGED（用户 2026-09-16 已合并 PR #74，merge `d1fa5e5`
 
 ## 实现与测试
 
-- 实现 SHA/变更摘要：（待填）
-- 命令、真实退出结果：（待填）
+- **实现**（待提交 SHA 见 EVIDENCE）：
+  - `outline.ts`：`collectOutline`（`.snapshot-rendered` 内 h2/h3 → 项）、`useOutline`（MutationObserver 盯正文列，rAF 合并）、`currentIndex`（视口顶 80px 线之上最后一个标题）。
+  - `ReaderOutline.tsx`：`<nav aria-label="目录">`，标题行「目录 · N 节 · 隐藏」、`<ol>` 项按钮（`aria-current="location"`）、底部提示；点击 `scrollIntoView({smooth,start})`。
+  - `readerPosition.ts`：`localStorage` 键 `studypilot.reader.position.<id>`，值 `{top, percent, fingerprint(渲染文本长度), savedAt}`，读时校验形状；`percentOf` 供 TASK-068 显示「上次读到 N%」。
+  - `ResourceDetail.tsx`：`readerMain` 进 state（callback ref）→ `useOutline`；`outlineOpen`（`studypilot.reader.outline`，默认显示）+ ⌘\/Ctrl+\；`.reader-body.outline-open` 第一列渲染目录（仅 ≥1280px 且有标题）；位置恢复（正文出现后一次，指纹相符才 `scrollTo`）与按帧节流写回；右栏 `role=tablist` 两 Tab「心得（角标）」「信息」，两个 `tabpanel` 用 `hidden` 切换、NotesPanel 保持挂载；`ReaderContext` 从正文列移除。
+  - `ResourceToolbar.tsx`：`.reader-progress` 进度线（`aria-hidden`，宽 = progress_percent%）；⋯ 菜单「显示/隐藏目录」（有目录时）；新 `ReaderInfo`（ReaderContext + 来源/学习进度/收藏时间）。
+  - `styles.css`：进度线、`.reader-side-tabs`、`.reader-outline*`、`h2/h3 { scroll-margin-top: 72px }`、≥1280px 网格 `240px 1fr [340px]` 四种组合；`.reader-context` 改为侧栏内的纵向布局 + `.reader-info-list`。
+- **测试**：新增 `ReaderOutline.test.tsx` 10 例（目录顺序/层级、无标题不渲染且菜单无开关、点击滚动、滚动高亮切换、隐藏按钮/⌘\/Ctrl+\/Shift 不算/菜单文案与 localStorage、上次隐藏则启动隐藏、源码容器不收集、位置保存+指纹+重开恢复、指纹不符不恢复、坏存储忽略）；`ResourceToolbar.test.tsx` 改 3 例 + 新增进度线 1 例；`ResourcePages.test.tsx`、`ClassificationPages.test.tsx` 各改 1 例；e2e 新增 2 条（`reader-layout.spec.ts`：目录在正文左、宽 ≈240、开心得三栏并存且正文 ≥740、点目录项当前项切换且标题在顶栏下、⌘\ 隐藏正文变宽、刷新后仍隐藏、菜单显示；位置记忆：滚到 1200 → 存储 1200 → 重开 scrollY≈1200 → 替换正文后 0）；既有 e2e 6 处按「信息 Tab」改定位（`getByText('未开始 · 0%')` 因信息 Tab 也显示一次而双命中 → 改顶栏按钮）。
+- 本地（`frontend/`，2026-09-17）：`format:check` / `lint` / `typecheck` exit 0；`vitest run` **647 passed**（28 文件）；`playwright test` 全套 **65 passed**（原 63 + 2）。
+- 真实浏览器：Pencil 内置浏览器视口 1046px（<1280）按设计不显示目录列；三栏与位置记忆由 1440×900 的 e2e 实测覆盖。
+- 已知限制：目录当前节按几何位置判定（最后一个滚过 80px 线的标题），不用 IntersectionObserver；窄屏（<1280px）无目录（非目标）；位置指纹用渲染文本长度，同长度不同内容的替换（极少）会恢复到旧位置。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据

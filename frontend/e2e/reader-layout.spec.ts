@@ -74,11 +74,17 @@ test('the reader puts the body first and keeps its context in view', async ({ pa
   const viewport = page.viewportSize()!
   expect(box!.y).toBeLessThan(viewport.height)
 
-  // 上下文层不需要任何点击。
+  // 上下文层（标签 + 保存原因）TASK-067 起在右栏「信息」Tab（用户 2026-09-17 选定）：
+  // 正文列里没有它，正文紧接标题；打开右栏、切到「信息」才看到。
+  await expect(page.locator('.reader-main .reader-context')).toHaveCount(0)
+  await page.getByRole('button', { name: '心得' }).click()
+  await expect(page.getByRole('tab', { name: '心得' })).toHaveAttribute('aria-selected', 'true')
+  await page.getByRole('tab', { name: '信息' }).click()
   await expect(page.getByRole('navigation', { name: '资料标签' })).toContainText(
     '阅读器改版 · 算法',
   )
   await expect(page.getByText('想搞清双指针')).toBeVisible()
+  await page.getByRole('button', { name: '收起' }).click()
 
   // 低频动作在 ⋯ 里，且能真的走到编辑资料。
   await page.getByRole('button', { name: '更多操作' }).click()
@@ -274,4 +280,137 @@ test('the sidebar toggle spans the rail width and collapsed icons sit centered',
   for (const { name, offset } of offsets) {
     expect(Math.abs(offset), `收起态「${name}」图标居中（改前偏左 6.5px）`).toBeLessThanOrEqual(1)
   }
+})
+
+/** 一篇带章节的长文：目录、滚动高亮与阅读位置记忆都要它。 */
+async function seedLong(page: Page, suffix: string) {
+  await page.goto('/resources')
+  const created = await call(page, '/resources', 'POST', {
+    source_type: 'WEB',
+    title: `阅读器目录 · 神经网络 ${suffix}`,
+    source_url: `https://example.test/reader-outline-${suffix}`,
+    save_reason: '目录与位置记忆',
+  })
+  const id = created.data.id as string
+  const filler = Array.from(
+    { length: 12 },
+    (_, i) => `第 ${i + 1} 段填充文字，撑出滚动距离。`,
+  ).join('\n\n')
+  const content = [
+    '# 神经网络',
+    '',
+    '开头。',
+    '',
+    '## 1 什么是神经网络',
+    '',
+    filler,
+    '',
+    '### 1.1 神经元模型',
+    '',
+    filler,
+    '',
+    '## 2 目标函数',
+    '',
+    filler,
+    '',
+    '## 3 优化算法',
+    '',
+    filler,
+    '',
+  ].join('\n')
+  await call(page, `/resources/${id}/snapshot`, 'PUT', { content })
+  return { id }
+}
+
+test('the outline sits left of the body, follows scrolling, and the three columns coexist', async ({
+  page,
+}) => {
+  // TASK-067（用户 2026-09-17 参考 Readwise Reader，指定目录「放在页面左边」）。
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const { id } = await seedLong(page, 'A')
+  await page.goto(`/resources/${id}`)
+  const outline = page.getByRole('navigation', { name: '目录' })
+  await expect(outline).toBeVisible()
+  const items = outline.getByRole('listitem')
+  await expect(items).toHaveText(['1 什么是神经网络', '1.1 神经元模型', '2 目标函数', '3 优化算法'])
+
+  // 位置：目录在正文列左边，宽 ≈240。
+  const main = page.locator('.reader-main')
+  const outlineBox = (await outline.boundingBox())!
+  const mainBox = (await main.boundingBox())!
+  expect(outlineBox.width).toBeCloseTo(240, 0)
+  expect(outlineBox.x + outlineBox.width).toBeLessThanOrEqual(mainBox.x)
+
+  // 进度线：学习进度 0% → 绿色部分宽 0；写一条学习记录后变宽。
+  const bar = page.locator('.reader-progress-bar')
+  expect((await bar.boundingBox())!.width).toBeCloseTo(0, 0)
+
+  // 打开心得：三栏并存，正文列仍放得下 740px 的行宽。
+  await page.getByRole('button', { name: '心得' }).click()
+  await expect(page.getByRole('region', { name: '记录与理解' })).toBeVisible()
+  await expect(outline).toBeVisible()
+  const squeezed = (await main.boundingBox())!
+  expect(squeezed.width).toBeGreaterThanOrEqual(740)
+  const notesBox = (await page.locator('.reader-notes').boundingBox())!
+  expect(notesBox.x).toBeGreaterThanOrEqual(squeezed.x + squeezed.width)
+  await page.getByRole('button', { name: '收起' }).click()
+
+  // 滚动高亮：点「2 目标函数」→ 滚到那节 → 当前项变成它。
+  await items.nth(2).getByRole('button').click()
+  await expect(items.nth(2).getByRole('button')).toHaveAttribute('aria-current', 'location')
+  await expect(items.nth(0).getByRole('button')).not.toHaveAttribute('aria-current', 'location')
+  const heading = page.getByRole('heading', { name: '2 目标函数', level: 2 })
+  // 标题落在顶栏之下（scroll-margin 让开了 sticky 顶栏）。
+  expect((await heading.boundingBox())!.y).toBeGreaterThanOrEqual(57)
+
+  // ⌘\ 隐藏 → 正文列拿到空间；刷新后仍隐藏（记在本机）；再显示。
+  const before = (await main.boundingBox())!.width
+  await page.keyboard.press('Meta+\\')
+  await expect(outline).toHaveCount(0)
+  expect((await main.boundingBox())!.width).toBeGreaterThan(before)
+  await page.reload()
+  await expect(page.getByRole('heading', { name: '3 优化算法', level: 2 })).toBeVisible()
+  await expect(page.getByRole('navigation', { name: '目录' })).toHaveCount(0)
+  await page.getByRole('button', { name: '更多操作' }).click()
+  await page.getByRole('menuitem', { name: '显示目录' }).click()
+  await expect(page.getByRole('navigation', { name: '目录' })).toBeVisible()
+})
+
+test('the reader reopens where you left off, unless the body changed', async ({ page }) => {
+  // TASK-067（用户 2026-09-17：「下一次看的时候默认从上次结束位置开始」）。只记本机位置，
+  // 不写学习进度——那要用户点一下（TASK-068）。
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const { id } = await seedLong(page, 'B')
+  await page.goto(`/resources/${id}`)
+  await expect(page.getByRole('heading', { name: '3 优化算法', level: 2 })).toBeVisible()
+  // 用瞬时滚动到一个确定的位置，避免平滑滚动还没停就取值。
+  const left = 1200
+  await page.evaluate((top) => window.scrollTo({ top, behavior: 'instant' }), left)
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(left)
+  // 位置记在本机存储里（只有数字，没有正文）。
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (key) => JSON.parse(localStorage.getItem(key) ?? 'null')?.top ?? null,
+        `studypilot.reader.position.${id}`,
+      ),
+    )
+    .toBe(left)
+
+  await page.goto('/resources')
+  await page.goto(`/resources/${id}`)
+  await expect(page.getByRole('heading', { name: '3 优化算法', level: 2 })).toBeAttached()
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeCloseTo(left, -2)
+
+  // 正文换了 → 指纹对不上 → 从头开始。
+  const replaced = await call(page, `/resources/${id}/snapshot`, 'PUT', {
+    content: '# 换了正文\n\n## 只有一节\n\n很短。\n',
+    expected_version: 1,
+  })
+  expect(replaced.status).toBe(200)
+  await page.goto('/resources')
+  await page.goto(`/resources/${id}`)
+  await expect(page.getByRole('heading', { name: '只有一节', level: 2 })).toBeVisible()
+  await page.waitForTimeout(200)
+  expect(await page.evaluate(() => window.scrollY)).toBe(0)
 })

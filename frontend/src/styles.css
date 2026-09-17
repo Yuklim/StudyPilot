@@ -2583,6 +2583,22 @@ a.source-chip:focus-visible {
   flex-wrap: wrap;
   gap: 10px;
 }
+/* 阅读进度线（TASK-067）：贴在顶栏底边（盖住 1px 边线的位置之上），绿色 = 学习进度。 */
+.reader-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 3px;
+  background: #e5e5da;
+  overflow: hidden;
+}
+.reader-progress-bar {
+  display: block;
+  height: 100%;
+  background: var(--green);
+  transition: width 0.3s ease;
+}
 .reader-back {
   white-space: nowrap;
 }
@@ -2628,17 +2644,30 @@ a.source-chip:focus-visible {
   font-size: 1.1rem;
   line-height: 1;
 }
-/* 上下文层（标签 + 收下它是因为）。TASK-046 起它在**正文列内**、正文之上：它是这篇
-   文章的元信息，要与 740px 的正文左右对齐，并随正文一起滚走——顶栏只装动作。 */
+/* 上下文层（标签 + 收下它是因为）。TASK-046 时它在正文列顶部；TASK-067 起（用户
+   2026-09-17 选定）在右栏「信息」Tab 里，正文紧接标题。 */
 .reader-context {
   display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 8px 14px;
-  max-width: var(--reader-measure);
-  margin: 0 auto 18px;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0 0 14px;
   padding-bottom: 14px;
   border-bottom: 1px solid var(--line);
+}
+.reader-info-list {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 8px 14px;
+  margin: 0;
+  font-size: 13px;
+}
+.reader-info-list dt {
+  color: var(--muted);
+}
+.reader-info-list dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .reader-tags {
   display: flex;
@@ -2887,11 +2916,131 @@ a.source-chip:focus-visible {
   border-radius: 0;
   background: transparent;
 }
+/* 右栏 Tab 行（TASK-067）：「心得 ②」「信息」。角标复用 `.notes-badge` 的配色，但在
+   Tab 里是行内的，不再绝对定位到角上。 */
+.reader-side-tabs {
+  display: flex;
+  gap: 4px;
+}
+.reader-side-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 1px;
+  cursor: pointer;
+}
+.reader-side-tab[aria-selected='true'] {
+  background: #eaf0e2;
+  color: #506446;
+  font-weight: 600;
+}
+.reader-side-tab .notes-badge {
+  position: static;
+}
+/* 左侧目录栏（TASK-067）。宽屏（≥1280px）才存在：`.reader-body.outline-open` 多出第一列。
+   钉在可视区内跟正文走，超高在列内滚。 */
+.reader-outline {
+  position: sticky;
+  top: 70px;
+  max-height: calc(100vh - 84px);
+  overflow-y: auto;
+  padding: 4px 4px 8px 0;
+  font-size: 13px;
+}
+.reader-outline-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0 8px 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.reader-outline-heading .note-tab {
+  letter-spacing: 2px;
+}
+.reader-outline-hide {
+  margin: 0 0 0 auto;
+  min-height: 0;
+  padding: 0;
+  font-size: 11px;
+}
+.reader-outline-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.reader-outline-item button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #303a32;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.reader-outline-item button::before {
+  content: '';
+  flex: 0 0 3px;
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: transparent;
+}
+.reader-outline-item.level-3 button {
+  padding-left: 22px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: normal;
+}
+.reader-outline-item button:hover {
+  background: #f3f4ec;
+}
+.reader-outline-item.current button {
+  background: #eaf0e2;
+  color: #506446;
+}
+.reader-outline-item.current button::before {
+  background: var(--green);
+}
+.reader-outline-hint {
+  margin: 10px 8px 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 10px;
+}
+/* 目录跳转要让开 sticky 顶栏，否则标题落在顶栏底下。 */
+.snapshot-rendered h2,
+.snapshot-rendered h3 {
+  scroll-margin-top: 72px;
+}
 @media (min-width: 1280px) {
   /* 挤压式两栏：正文让出 340px 心得列 + 24px 缝隙。 */
   .resource-sheet.reader.notes-open .reader-body {
     grid-template-columns: minmax(0, 1fr) 340px;
     gap: 24px;
+  }
+  /* 三栏（TASK-067）：左目录 240px。目录与心得各自可开可关，四种组合都由这几条覆盖。 */
+  .reader-body.outline-open {
+    grid-template-columns: 240px minmax(0, 1fr);
+    gap: 24px;
+  }
+  .resource-sheet.reader.notes-open .reader-body.outline-open {
+    grid-template-columns: 240px minmax(0, 1fr) 340px;
   }
   /* 心得列随正文滚动时钉在可视区内，写作框始终够得着；内容超高在列内滚。 */
   .resource-sheet.reader.notes-open .reader-notes {

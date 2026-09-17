@@ -219,9 +219,12 @@ test('real note pages keep drafts when paging, and legacy history remains reacha
   await page.getByRole('menuitem', { name: '编辑标签' }).click()
   await page.getByRole('button', { name: '管理这份资料的标签' }).click()
   await page.getByRole('button', { name: '添加标签 000心得草稿保全' }).click()
+  // TASK-067 起标签行在右栏「信息」Tab；心得侧栏此时已开着（草稿正在里面）。
+  await page.getByRole('tab', { name: '信息' }).click()
   await expect(
     page.getByRole('navigation', { name: '资料标签' }).getByText('000心得草稿保全'),
   ).toBeVisible()
+  await page.getByRole('tab', { name: '心得' }).click()
   // 这才是本条要守的东西：改标签这一串操作不能把心得草稿冲掉。
   await expect(page.getByRole('textbox', { name: '这次想记下什么？' })).toHaveValue(
     '翻页也要留着的草稿',

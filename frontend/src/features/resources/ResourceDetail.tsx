@@ -5,7 +5,10 @@ import { getResource, type Source } from './api'
 import { ContentSnapshot, type SnapshotState } from './ContentSnapshot'
 import { ResourceDeleteDialog } from './ResourceDeleteDialog'
 import { ResourceError } from './ResourceState'
-import { ReaderContext, ReaderHeader, ResourceToolbar } from './ResourceToolbar'
+import { ReaderOutline } from './ReaderOutline'
+import { useOutline } from './outline'
+import { fingerprintOf, percentOf, readPosition, writePosition } from './readerPosition'
+import { ReaderHeader, ReaderInfo, ResourceToolbar } from './ResourceToolbar'
 import { NotesPanel } from '../notes/NotesPanel'
 import { resourceTitle } from './resourceTitle'
 import { useResourceQuery } from './useResourceQuery'
@@ -22,6 +25,16 @@ import { useHeadingSlot } from '../../shell/heading'
 // 点工具条「心得」才展开为挤压两栏），窄屏展开为盖在正文上的浮层。心得区一旦资料读
 // 到就**保持挂载、用 CSS 显隐**，而不是卸载——否则收起会丢掉未保存草稿。
 const READER_BREAKPOINT = '(min-width: 1280px)'
+
+// TASK-067：左侧目录栏的显隐是用户自选，记在本机（与外壳左栏折叠同一做法）；读不出来就当显示。
+const OUTLINE_KEY = 'studypilot.reader.outline'
+function readOutlineOpen(): boolean {
+  try {
+    return localStorage.getItem(OUTLINE_KEY) !== '0'
+  } catch {
+    return true
+  }
+}
 
 // 正文这一子树只在资料/快照自己的数据变化时才有内容变化；心得区开合、角标数量这类
 // 只影响工具条的父级状态，**不该让正文重新渲染**——否则角标到位的那一下重渲染，正好撞上
@@ -127,12 +140,9 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
   const squeeze = useSqueezeLayout()
   const opening = notesOpen && !squeeze // 窄屏浮层态：正文要让位，禁止焦点进入
   const askEditorFocus = useCallback(() => setFocusRequest((value) => value + 1), [])
-  function onNotesClick() {
-    // 开合 + 聚焦一体（用户 2026-09-08 选定）：收起态点击 = 展开并聚焦写作框；
-    // 展开态点击 = 把焦点带回写作框。收起另有心得区自带的「收起」按钮与 Esc。
-    setNotesOpen(true)
-    askEditorFocus()
-  }
+  // 开合 + 聚焦一体（用户 2026-09-08 选定）：收起态点击 = 展开并聚焦写作框；
+  // 展开态点击 = 把焦点带回写作框。收起另有心得区自带的「收起」按钮与 Esc。
+  // TASK-067 起入口是 `openNotesTab`（下文）：同样的行为，外加把右栏切到「心得」Tab。
   const closeNotes = useCallback(() => {
     setNotesOpen(false)
     notesButton.current?.focus()
@@ -167,6 +177,92 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [notesOpen, closeNotes])
   const receiveCount = useCallback((total: number) => setNotesCount(total), [])
+  // 右栏两个 Tab（TASK-067）：「心得」= NotesPanel，「信息」= 标签 / 保存原因 / 来源 / 进度。
+  // 标签与保存原因从正文顶部移进来（用户 2026-09-17 选定「按草图移入信息 Tab」，推翻
+  // TASK-046 的「上下文层留在正文顶部」）。⌘J / 心得按钮总是落到「心得」Tab。
+  const [sideTab, setSideTab] = useState<'notes' | 'info'>('notes')
+  function openNotesTab() {
+    setSideTab('notes')
+    setNotesOpen(true)
+    askEditorFocus()
+  }
+
+  // --- TASK-067：左侧目录栏 ---
+  // 目录从渲染后的正文 DOM 收集（见 ReaderOutline）：正文列元素进 state 而不是 ref，
+  // 因为它只在资料读到之后才渲染，ref 的变化不会触发重新收集。
+  const [readerMain, setReaderMain] = useState<HTMLDivElement | null>(null)
+  const outline = useOutline(readerMain)
+  const [outlineOpen, setOutlineOpen] = useState(readOutlineOpen)
+  const toggleOutline = useCallback(() => {
+    setOutlineOpen((open) => {
+      const next = !open
+      try {
+        localStorage.setItem(OUTLINE_KEY, next ? '1' : '0')
+      } catch {
+        // 存不下只影响下次打开。
+      }
+      return next
+    })
+  }, [])
+  const hideOutline = useCallback(() => {
+    if (outlineOpen) toggleOutline()
+  }, [outlineOpen, toggleOutline])
+  // 目录只在宽屏（≥1280px）作为左栏存在；窄屏不渲染（浮层形态留给后续任务）。
+  const outlineShown = squeeze && outlineOpen && outline.length > 0
+  useEffect(() => {
+    if (!toolbarItem) return
+    function onKeyDown(event: KeyboardEvent) {
+      // ⌘\ / Ctrl+\ 切换目录：与外壳 ⌘J 同一套判定（只认一个修饰键、不吃 Alt/Shift）。
+      if (event.key !== '\\' || event.altKey || event.shiftKey) return
+      if (!(event.metaKey || event.ctrlKey) || (event.metaKey && event.ctrlKey)) return
+      event.preventDefault()
+      toggleOutline()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [toolbarItem, toggleOutline])
+
+  // --- TASK-067：记住阅读位置（本机、只记位置，不写学习进度）---
+  // 正文渲染完成的时机与目录同源：盯着正文列，`.snapshot-rendered` 出现后恢复一次；
+  // 之后滚动就（按帧节流）把位置写回。换资料重来。
+  const restoredFor = useRef<string | null>(null)
+  useEffect(() => {
+    if (!readerMain) return
+    const resource = resourceId
+    let frame = 0
+    const rendered = () => readerMain.querySelector('.snapshot-rendered')
+    const restore = () => {
+      const body = rendered()
+      if (!body || restoredFor.current === resource) return
+      restoredFor.current = resource
+      const saved = readPosition(resource)
+      if (!saved || saved.fingerprint !== fingerprintOf(body) || saved.top <= 0) return
+      window.scrollTo({ top: saved.top })
+    }
+    const observer = new MutationObserver(restore)
+    observer.observe(readerMain, { childList: true, subtree: true })
+    restore()
+    const onScroll = () => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        const body = rendered()
+        if (!body || restoredFor.current !== resource) return
+        writePosition(resource, {
+          top: Math.round(window.scrollY),
+          percent: percentOf(body, window.scrollY, window.innerHeight),
+          fingerprint: fingerprintOf(body),
+          savedAt: new Date().toISOString(),
+        })
+      })
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      observer.disconnect()
+      cancelAnimationFrame(frame)
+      window.removeEventListener('scroll', onScroll)
+      if (restoredFor.current === resource) restoredFor.current = null
+    }
+  }, [readerMain, resourceId])
 
   // --- TASK-056：删除资料的确认是模态弹窗，挂在菜单与面板之外 ---
   const [deleting, setDeleting] = useState(false)
@@ -231,8 +327,11 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
           onDeleteResource={askDeleteResource}
           notesOpen={notesOpen}
           notesCount={notesCount}
-          onNotesClick={onNotesClick}
+          onNotesClick={openNotesTab}
           notesButtonRef={notesButton}
+          outlineAvailable={squeeze && outline.length > 0}
+          outlineOpen={outlineOpen}
+          onToggleOutline={toggleOutline}
           snapshotExists={snapshotExists}
           snapshotUnreadable={snapshotUnreadable}
           showSource={showSource}
@@ -244,16 +343,17 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
       {toolbarItem && (
         // 正文 + 心得区。TASK-045 起这一页是**两栏容器**：默认只有正文列（心得区
         // `display:none`），展开才让出右侧一列（宽屏挤压 / 窄屏浮层）。
-        <div className="reader-body">
+        <div className={`reader-body${outlineShown ? ' outline-open' : ''}`}>
+          {/* 左侧目录栏（TASK-067）：宽屏、用户未隐藏、正文里有标题时才占一列。 */}
+          {outlineShown && <ReaderOutline items={outline} onHide={hideOutline} />}
           {/* 窄屏浮层展开时正文 `inert`：被浮层盖住的内容不该还能被 Tab 或辅助技术
               进入。宽屏挤压态两边都可见、都可读，不 inert。 */}
-          <div className="reader-main" inert={opening}>
+          <div className="reader-main" inert={opening} ref={setReaderMain}>
             {/* 标题进正文列（TASK-052）：页面 `h1` 就是文章的标题，位置与正文列对齐、
                 随正文滚走；路由焦点仍落在它上（`headingSlot`）。 */}
             <ReaderHeader resource={toolbarItem} headingSlot={headingSlot} />
-            {/* 标签与「收下它是因为」进正文列（TASK-046）：它们是这篇文章的元信息，
-                位置要与正文列对齐，并随正文一起滚走——sticky 顶栏只装动作。 */}
-            <ReaderContext resource={toolbarItem} />
+            {/* 标签与「收下它是因为」TASK-067 起在右栏「信息」Tab（用户 2026-09-17 选定），
+                不再占正文顶部；正文紧接标题。 */}
             {/* 正文**紧接着上下文层**、默认占满——这是「正文优先」的全部意义。
                 快照的安全形态（`html: false`、无消毒器、图片三条去向）全部落在
                 `snapshotMarkdown.ts` 里，**本任务不进那个文件一个字符**。 */}
@@ -273,18 +373,63 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
               section 祖先里会被映射成 generic，region 查询会落空。 */}
           <section className="reader-notes" aria-label="记录与理解" ref={notesOverlay}>
             <div className="reader-notes-heading">
-              <span className="note-tab">记录与理解</span>
+              {/* 两个 Tab（TASK-067）。NotesPanel **保持挂载**（草稿与角标数量都在它里面），
+                  「信息」选中时只是 CSS 显隐，不卸载。 */}
+              <div className="reader-side-tabs" role="tablist" aria-label="右栏">
+                <button
+                  type="button"
+                  role="tab"
+                  id="reader-tab-notes"
+                  aria-selected={sideTab === 'notes'}
+                  aria-controls="reader-tabpanel-notes"
+                  className="reader-side-tab"
+                  onClick={() => setSideTab('notes')}
+                >
+                  心得
+                  {notesCount !== null && notesCount > 0 && (
+                    <span className="notes-badge" aria-hidden="true">
+                      {notesCount}
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  id="reader-tab-info"
+                  aria-selected={sideTab === 'info'}
+                  aria-controls="reader-tabpanel-info"
+                  className="reader-side-tab"
+                  onClick={() => setSideTab('info')}
+                >
+                  信息
+                </button>
+              </div>
               <button type="button" className="journal-button" onClick={closeNotes}>
                 收起
               </button>
             </div>
-            <NotesPanel
-              key={resourceId}
-              resourceId={resourceId}
-              available={!!item}
-              focusRequest={focusRequest}
-              onCount={receiveCount}
-            />
+            <div
+              role="tabpanel"
+              id="reader-tabpanel-notes"
+              aria-labelledby="reader-tab-notes"
+              hidden={sideTab !== 'notes'}
+            >
+              <NotesPanel
+                key={resourceId}
+                resourceId={resourceId}
+                available={!!item}
+                focusRequest={focusRequest}
+                onCount={receiveCount}
+              />
+            </div>
+            <div
+              role="tabpanel"
+              id="reader-tabpanel-info"
+              aria-labelledby="reader-tab-info"
+              hidden={sideTab !== 'info'}
+            >
+              <ReaderInfo resource={toolbarItem} />
+            </div>
           </section>
         </div>
       )}

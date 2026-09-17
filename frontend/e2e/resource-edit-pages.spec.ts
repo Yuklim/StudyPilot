@@ -283,6 +283,9 @@ test('tags can be filled in later from the edit page, as a whole replacement set
   expect(after.version).toBe(before.version + 1)
   expect((await call(page, '/tags/' + dropped.id)).data).toMatchObject({ name: dropped.name })
   await page.reload()
+  // TASK-067 起标签行在右栏「信息」Tab。
+  await page.getByRole('button', { name: '心得' }).click()
+  await page.getByRole('tab', { name: '信息' }).click()
   await expect(page.getByText('后补标签 · 新增')).toBeVisible()
   expect(errors).toEqual([])
 })

@@ -60,7 +60,8 @@ test('file page saves an original, filters it and downloads identical bytes afte
   await page.reload()
   await openOriginal(page)
   await expect(page.getByText(fileName, { exact: true })).toBeVisible()
-  await expect(page.getByText('未开始 · 0%', { exact: true })).toBeVisible()
+  // TASK-067 起「未开始 · 0%」在信息 Tab 里也出现一次，这里看顶栏徽章。
+  await expect(page.getByRole('button', { name: '未开始 · 0%' })).toBeVisible()
   for (const width of [320, 390, 1440]) {
     await page.setViewportSize({ width, height: width === 1440 ? 1100 : 844 })
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)

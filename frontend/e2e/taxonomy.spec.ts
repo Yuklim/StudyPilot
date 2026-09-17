@@ -105,6 +105,9 @@ test('real taxonomy client lifecycle integrates with resource pages without expo
   expect(result).toEqual({ topics: 1, tags: 1, resourceIds: [ids.resource] })
   await page.goto('/resources/' + ids.resource)
   await expect(page.getByRole('heading', { name: '分类浏览器合成资料', level: 1 })).toBeVisible()
+  // TASK-067 起标签行在右栏「信息」Tab。
+  await page.getByRole('button', { name: '心得' }).click()
+  await page.getByRole('tab', { name: '信息' }).click()
   await expect(page.getByText('分类浏览器合成标签', { exact: true })).toBeVisible()
   const removed = await page.evaluate(async (ids) => {
     const modulePath = '/src/api/client.ts'
@@ -122,6 +125,8 @@ test('real taxonomy client lifecycle integrates with resource pages without expo
   }, ids)
   expect(removed).toEqual({ count: 0, topic: ids.topic, version: 1, status: 'UNREAD' })
   await page.reload()
+  await page.getByRole('button', { name: '心得' }).click()
+  await page.getByRole('tab', { name: '信息' }).click()
   await expect(page.getByText('暂无标签', { exact: true })).toBeVisible()
   expect(await page.evaluate(() => localStorage.length + sessionStorage.length)).toBe(0)
   expect(await page.context().cookies()).toEqual([])

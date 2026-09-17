@@ -48,6 +48,9 @@ export function ResourceToolbar({
   onToggleSource,
   onEditSnapshot,
   onDeleteSnapshot,
+  outlineAvailable = false,
+  outlineOpen = true,
+  onToggleOutline,
 }: {
   resource: Resource
   /** 元数据被改动后重新读取这份资料。 */
@@ -65,6 +68,10 @@ export function ResourceToolbar({
   onNotesClick: () => void
   /** 心得按钮本体：`Esc` /「收起」把焦点还给它（TASK-045）。 */
   notesButtonRef: RefObject<HTMLButtonElement | null>
+  /** 左侧目录栏（TASK-067）：正文有标题且宽屏时菜单里给「显示/隐藏目录」。 */
+  outlineAvailable?: boolean
+  outlineOpen?: boolean
+  onToggleOutline?: () => void
   /**
    * 这份资料有没有正文快照；`null` = 还没读到。菜单据此在「替换正文/粘贴正文」之间取
    * 文案，并决定「删除正文…」出不出现——**没有正文时不该有一个删除它的入口**。
@@ -242,6 +249,17 @@ export function ResourceToolbar({
             >
               资料信息
             </button>
+            {/* 目录开关（TASK-067）：快捷键 ⌘\ 之外的鼠标入口。没有目录可显示时不出现。 */}
+            {outlineAvailable && onToggleOutline && (
+              <button
+                type="button"
+                role="menuitem"
+                className="reader-menu-item"
+                onClick={() => runFromMenu(onToggleOutline)}
+              >
+                {outlineOpen ? '隐藏目录' : '显示目录'}
+              </button>
+            )}
             {/* 正文的三个动作（TASK-046，用户 2026-09-08 选定）。它们此前在正文底下，沉浸式
               阅读页里那是文章末尾——读到最后才看得见，而且与正文之间没有分界。收进这里
               **功能一个不少**：文案随状态变（源码/渲染、替换/粘贴），删除进下面的销毁区。 */}
@@ -306,6 +324,15 @@ export function ResourceToolbar({
             </button>
           </div>
         )}
+        {/* 阅读进度线（TASK-067，Pencil 草图）：顶栏底边一条 3px 线，绿色 = 学习进度百分比。
+            它只是学习状态徽章的另一种呈现（`aria-hidden`，数值仍由徽章读出）；**显示的是
+            学习进度，不是滚动位置**——滚动位置只记在本机，写不写进学习进度由用户决定。 */}
+        <div className="reader-progress" aria-hidden="true">
+          <span
+            className="reader-progress-bar"
+            style={{ width: `${progress.progress_percent}%` }}
+          />
+        </div>
       </div>
 
       {panel && (
@@ -389,6 +416,43 @@ export function ReaderContext({ resource }: { resource: Resource }) {
         <span className="note-tab">收下它是因为</span>
         {resource.save_reason || '还没有填写保存原因。'}
       </p>
+    </div>
+  )
+}
+
+/**
+ * 右栏「信息」Tab（TASK-067）：标签与「收下它是因为」（原 `ReaderContext`，从正文顶部
+ * 移来）+ 来源、学习进度、收藏时间。`⋯ → 资料信息` 那个面板仍在（它有编辑入口的语境），
+ * 这里是阅读时一眼扫过的只读汇总。
+ */
+export function ReaderInfo({ resource }: { resource: Resource }) {
+  const link = resource.source_url ? safeWebUrl(resource.source_url) : null
+  return (
+    <div className="reader-info">
+      <ReaderContext resource={resource} />
+      <dl className="reader-info-list">
+        <dt>来源</dt>
+        <dd>
+          <span className={`source-chip ${resource.source_type.toLowerCase()}`}>
+            {sourceLabels[resource.source_type]}
+          </span>{' '}
+          {link ? (
+            <a className="text-link" href={link} target="_blank" rel="noreferrer noopener">
+              {resource.source_name || link}
+            </a>
+          ) : (
+            (resource.source_name ?? '未填写来源名称')
+          )}
+        </dd>
+        <dt>学习进度</dt>
+        <dd>
+          {statusLabels[resource.progress.status]} · {resource.progress.progress_percent}%
+        </dd>
+        <dt>收藏时间</dt>
+        <dd>
+          <time dateTime={resource.created_at}>{displayTime(resource.created_at)}</time>
+        </dd>
+      </dl>
     </div>
   )
 }
