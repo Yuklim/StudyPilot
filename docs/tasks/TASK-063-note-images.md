@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-063"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "放宽已批准公共契约（`Note.content` 上限 50,000 → 2,000,000 字符；`docs/contracts/**` 与 `openapi-v1.json` 同步）并新增 0006 迁移改写 `notes` 表的 CHECK；前端编辑器接受粘贴/拖入图片，压缩后以 data URI 内嵌进 Markdown，渲染器放行 `data:image/*;base64`。命中 public-api + migration + critical-data，走 L3：独立只读 Reviewer + 独立只读 Integration/Acceptance。"
 risk_flags = ["public-api", "migration", "critical-data", "business"]
@@ -154,4 +154,5 @@ checks = []
 - 日期与决定日志：
   - 2026-09-15 用户合并 PR #73（TASK-065）后 PR #71 与 main 在 `任务索引.md` 冲突：并入 `origin/main`（`028a995`）为 merge `d35764f`，只解索引冲突（保留本分支 062 MERGED/063 行 + main 的 065 行）；`git diff 9cb9987 d35764f -- backend frontend/src docs/contracts` 为空，产品代码与最终候选 `9cb9987` 逐字节一致，Review 与验收结论继续覆盖；`base` 前移到 `028a995` 以便 `check_task` 范围只含本任务路径。
   - 2026-09-15 用户「不能粘贴图片」→ 反问后选「直接内嵌进正文」；登记 `3846ed0`；实现 `e912fd6`（实跑抓到：batch 迁移误传 `table_args` 会留下第二条旧 CHECK；lint 禁止 effect 内无条件 setState → `loadError` 改为派生值；纯色图压成 WebP 只有几 KB，e2e 需噪点带才能超过旧上限）；写回 `bb2961b` 冻结；Review 首轮 CHANGES_REQUIRED（F1 dragover 看不到文件）→ 修复 `9cb9987`（含 F2/F3/F5/F6）→ 增量复审 PASS → 独立 Integration/Acceptance PASS；主 Agent 写回并置 `ACCEPTED`；待用户合并。
+- 2026-09-15 用户已合并 PR #71，merge `8b58f39`；status=**MERGED**（登记并入 TASK-066 控制面提交）。
 <!-- EVIDENCE:END -->

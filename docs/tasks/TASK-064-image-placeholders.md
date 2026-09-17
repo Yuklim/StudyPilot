@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-064"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L2"
 risk_reason = "只改前端两个编辑器的「显示层」：textarea 里把 base64 data URI 折叠成短占位符，预览与保存前展开回原文。存进后端的内容、契约、渲染器都不变。动的是自动保存/冲突/对比的输入源（折叠 ↔ 展开必须严格可逆，否则会把图片丢掉或把占位符存进后端），需独立 Reviewer 看最终 diff；不到 L3。"
 risk_flags = ["business"]
@@ -109,4 +109,5 @@ PR #71 若在本任务收尾前合并，`TASK-063-note-images.md` 登记 MERGED�
 - 日期与决定日志：
   - 2026-09-15 PR #73 合并后 TASK-063 分支并入 main（`7768d7d`）；本分支并入 `7768d7d` 为 merge `8f830b9`，只解索引冲突（064 行排到 065 行之后）；`git diff 3bd6274 8f830b9 -- frontend/src frontend/e2e/notes-pages.spec.ts` 为空，产品代码与候选 `3bd6274` 逐字节一致，Review 结论继续覆盖；`base` 前移到 `7768d7d`。
   - 2026-09-15 用户试用后「一串很长的文字很影响书写」→ 主 Agent 提出占位符方案并开做；登记 `b5d11b1`；实现 `96e9ea4`；写回 `3bd6274` 冻结；Review PASS（F1–F5 记录）；主 Agent 写回并置 `ACCEPTED`；待用户合并（先 #71）。
+- 2026-09-15 用户已合并 PR #72，merge `50cfdd5`；status=**MERGED**（登记并入 TASK-066 控制面提交）。
 <!-- EVIDENCE:END -->

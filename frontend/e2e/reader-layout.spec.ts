@@ -226,34 +226,51 @@ test('a body that opens with the resource title itself shows that title only onc
   await expect(page.locator('.snapshot-body')).toContainText(`# ${title}`)
 })
 
-test('the sidebar toggle keeps its size and collapsed icons sit centered', async ({ page }) => {
+test('the sidebar toggle spans the rail width and collapsed icons sit centered', async ({
+  page,
+}) => {
   // TASK-055（用户 2026-09-12：「切换图标收起与展开状态下大小不一样；我的学习四个功能的
   // 图标也不在中央」）。改前实测：展开态按钮被 flex 列压成 32×18（收起态 32×32）；收起态
   // 图标中心比链接中心偏左 6.5px（`.nav-dot` 与 13px gap 仍在占位）。**只能在真实浏览器里量。**
+  // TASK-066（用户 2026-09-16 按 Pencil 设计稿选定「两态都撑满侧栏内宽」）：按钮宽度不再是
+  // 固定 32，而是两态都与同侧栏的「添加资料」入口同宽；高度仍固定 32、两态相等。收起态 logo
+  // `.brand-mark` 同样撑满（42→47）。
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/resources')
   const toggleBox = () => page.locator('.nav-toggle').boundingBox()
+  const addBox = () => page.getByRole('link', { name: '添加资料' }).boundingBox()
   const expanded = (await toggleBox())!
-  expect(expanded.width, '展开态按钮宽').toBeCloseTo(32, 0)
   expect(expanded.height, '展开态按钮高（改前被压成 18）').toBeCloseTo(32, 0)
+  expect(expanded.width, '展开态按钮与「添加资料」同宽').toBeCloseTo((await addBox())!.width, 0)
+  expect(expanded.width, '展开态按钮撑满 228px 侧栏内宽（改前固定 32）').toBeGreaterThan(100)
   await page.getByRole('button', { name: '收起导航栏' }).click()
   await expect(page.getByRole('button', { name: '展开导航栏' })).toBeVisible()
   const collapsed = (await toggleBox())!
-  expect(collapsed.width).toBeCloseTo(expanded.width, 0)
+  const collapsedAdd = (await addBox())!
   expect(collapsed.height).toBeCloseTo(expanded.height, 0)
-  // 收起态每个入口（含「添加资料」）的图标中心与入口中心重合（±1px）。
-  const offsets = await page.evaluate(() =>
-    [...document.querySelectorAll<HTMLElement>('.primary-nav a, .add-link')].map((link) => {
-      const icon = link.querySelector('.icon')!
-      const l = link.getBoundingClientRect()
-      const i = icon.getBoundingClientRect()
-      return {
-        name: link.getAttribute('aria-label'),
-        offset: i.x + i.width / 2 - (l.x + l.width / 2),
-      }
-    }),
+  expect(collapsed.width, '收起态按钮与「添加资料」同宽').toBeCloseTo(collapsedAdd.width, 0)
+  expect(collapsed.width, '收起态按钮撑满 68px 侧栏内宽（改前固定 32）').toBeGreaterThan(40)
+  const brand = (await page.locator('.brand-mark').boundingBox())!
+  expect(brand.width, '收起态 logo 与「添加资料」同宽（改前 42）').toBeCloseTo(
+    collapsedAdd.width,
+    0,
   )
-  expect(offsets.length).toBeGreaterThanOrEqual(4)
+  expect(brand.height, '收起态 logo 高不变').toBeCloseTo(44, 0)
+  // 收起态每个入口（含「添加资料」与折叠按钮）的图标中心与入口中心重合（±1px）。
+  const offsets = await page.evaluate(() =>
+    [...document.querySelectorAll<HTMLElement>('.primary-nav a, .add-link, .nav-toggle')].map(
+      (link) => {
+        const icon = link.querySelector('.icon')!
+        const l = link.getBoundingClientRect()
+        const i = icon.getBoundingClientRect()
+        return {
+          name: link.getAttribute('aria-label'),
+          offset: i.x + i.width / 2 - (l.x + l.width / 2),
+        }
+      },
+    ),
+  )
+  expect(offsets.length).toBeGreaterThanOrEqual(5)
   for (const { name, offset } of offsets) {
     expect(Math.abs(offset), `收起态「${name}」图标居中（改前偏左 6.5px）`).toBeLessThanOrEqual(1)
   }
