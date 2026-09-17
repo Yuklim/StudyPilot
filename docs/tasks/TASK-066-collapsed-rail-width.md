@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-066"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L2"
 risk_reason = "只改侧栏两处 CSS 宽度（small-ui），但要改写 TASK-055 那条用户确认过的 e2e 断言（收起/展开态按钮尺寸相等 → 高度相等 + 宽度与侧栏其他入口一致）。改断言含义而非仅定位方式，按 tests 归 L2：独立只读 Review；验收 N/A。"
 risk_flags = ["small-ui", "tests"]
@@ -81,4 +81,5 @@ checks = ["frontend"]
 - Acceptance：L2 N/A。
 - 最终状态：**ACCEPTED**，待用户合并。合并后 Pencil 文档里「资料库 /resources（原稿）」应重新从页面导入以对齐新基线（用户操作）。
 - 日期与决定日志：2026-09-16 用户「做一下同步」；主 Agent 指出与 TASK-055 断言冲突，用户选「两态都撑满侧栏内宽」；实现 `57d4f4e`；Review PASS → 写回并置 ACCEPTED。
+- 2026-09-16 用户已合并 PR #74，merge `d1fa5e5`；status=**MERGED**（登记并入 TASK-067 控制面提交）。
 <!-- EVIDENCE:END -->
