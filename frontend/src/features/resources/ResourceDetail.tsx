@@ -204,9 +204,6 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
       return next
     })
   }, [])
-  const hideOutline = useCallback(() => {
-    if (outlineOpen) toggleOutline()
-  }, [outlineOpen, toggleOutline])
   // 目录只在宽屏（≥1280px）作为左栏存在；窄屏不渲染（浮层形态留给后续任务）。
   const outlineShown = squeeze && outlineOpen && outline.length > 0
   // 没有快捷键（用户 2026-09-17：「快捷键我觉得可以先不做」）：开关只在顶栏按钮与目录栏的「隐藏」。
@@ -334,7 +331,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
         // `display:none`），展开才让出右侧一列（宽屏挤压 / 窄屏浮层）。
         <div className={`reader-body${outlineShown ? ' outline-open' : ''}`}>
           {/* 左侧目录栏（TASK-067）：宽屏、用户未隐藏、正文里有标题时才占一列。 */}
-          {outlineShown && <ReaderOutline items={outline} onHide={hideOutline} />}
+          {outlineShown && <ReaderOutline items={outline} />}
           {/* 窄屏浮层展开时正文 `inert`：被浮层盖住的内容不该还能被 Tab 或辅助技术
               进入。宽屏挤压态两边都可见、都可读，不 inert。 */}
           <div className="reader-main" inert={opening} ref={setReaderMain}>

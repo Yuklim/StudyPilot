@@ -146,14 +146,16 @@ describe('reader outline', () => {
     expect(outlineItems()[0].closest('li')).not.toHaveClass('current')
   })
 
-  it('hides with the 隐藏 button, comes back with the toolbar 目录 button, and remembers', async () => {
-    // 用户 2026-09-17 实测：藏在 ⋯ 菜单里的「显示目录」找不回来 → 顶栏常驻按钮；不做快捷键。
+  it('toggles with the toolbar 目录 button only, and remembers the choice', async () => {
+    // 用户 2026-09-17 实测：藏在 ⋯ 菜单里的「显示目录」找不回来 → 顶栏常驻按钮；不做快捷键；
+    // 栏内也不放「隐藏」——一个入口开关。
     mount()
     await waitFor(() => expect(outline()).not.toBeNull())
     const toggle = () => screen.getByRole('button', { name: '目录' })
     expect(toggle()).toHaveAttribute('aria-expanded', 'true')
     expect(toggle()).toHaveTextContent('') // 图标按钮，名字由 aria-label 提供
-    fireEvent.click(within(outline()!).getByRole('button', { name: '隐藏' }))
+    expect(within(outline()!).queryByRole('button', { name: '隐藏' })).toBeNull()
+    fireEvent.click(toggle())
     expect(outline()).toBeNull()
     expect(toggle()).toHaveAttribute('aria-expanded', 'false')
     expect(localStorage.getItem('studypilot.reader.outline')).toBe('0')

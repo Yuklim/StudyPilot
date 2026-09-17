@@ -2965,12 +2965,6 @@ a.source-chip:focus-visible {
 .reader-outline-heading .note-tab {
   letter-spacing: 2px;
 }
-.reader-outline-hide {
-  margin: 0 0 0 auto;
-  min-height: 0;
-  padding: 0;
-  font-size: 11px;
-}
 .reader-outline-list {
   margin: 0;
   padding: 0;

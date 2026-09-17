@@ -363,16 +363,17 @@ test('the outline sits left of the body, follows scrolling, and the three column
   // 标题落在顶栏之下（scroll-margin 让开了 sticky 顶栏）。
   expect((await heading.boundingBox())!.y).toBeGreaterThanOrEqual(57)
 
-  // 「隐藏」→ 正文列拿到空间；刷新后仍隐藏（记在本机）；顶栏「目录」按钮找回来
-  // （用户 2026-09-17 实测：藏在 ⋯ 菜单里找不回；不做快捷键）。
+  // 顶栏「目录」按钮是唯一开关（用户 2026-09-17：菜单里的找不回；不做快捷键；栏内不放
+  // 「隐藏」）：按一下收起 → 正文列拿到空间；刷新后仍隐藏（记在本机）；再按一下回来。
   const before = (await main.boundingBox())!.width
-  await outline.getByRole('button', { name: '隐藏' }).click()
+  const toggle = page.getByRole('button', { name: '目录' })
+  await expect(outline.getByRole('button', { name: '隐藏' })).toHaveCount(0)
+  await toggle.click()
   await expect(outline).toHaveCount(0)
   expect((await main.boundingBox())!.width).toBeGreaterThan(before)
   await page.reload()
   await expect(page.getByRole('heading', { name: '3 优化算法', level: 2 })).toBeVisible()
   await expect(page.getByRole('navigation', { name: '目录' })).toHaveCount(0)
-  const toggle = page.getByRole('button', { name: '目录' })
   await expect(toggle).toBeVisible()
   await expect(toggle).toHaveAttribute('aria-expanded', 'false')
   await toggle.click()

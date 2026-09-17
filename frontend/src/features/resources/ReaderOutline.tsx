@@ -17,16 +17,12 @@ import { currentIndex, type OutlineItem } from './outline'
  *
  * 当前节 = 视口顶（让开 sticky 顶栏后）之上最后一个标题，滚动时更新；
  * 点击目录项平滑滚到标题（`scrollIntoView` 在 jsdom 里是空函数，用例只断言它被调用）。
+ *
+ * 开关只有顶栏的「目录」按钮（`ResourceToolbar`）：栏内不放「隐藏」（用户 2026-09-17 要求
+ * 去掉），一个入口开、同一个入口关，焦点也不会因为栏被卸载而丢。
  */
 
-export function ReaderOutline({
-  items,
-  onHide,
-}: {
-  items: OutlineItem[]
-  /** 「隐藏」按钮；再显示走顶栏的「目录」按钮（`ResourceToolbar`）。 */
-  onHide: () => void
-}) {
+export function ReaderOutline({ items }: { items: OutlineItem[] }) {
   const [current, setCurrent] = useState(-1)
   useEffect(() => {
     const update = () => setCurrent(currentIndex(items))
@@ -45,14 +41,6 @@ export function ReaderOutline({
       <div className="reader-outline-heading">
         <span className="note-tab">目录</span>
         <span className="reader-outline-count">{items.length} 节</span>
-        <button
-          type="button"
-          className="text-link reader-outline-hide"
-          onClick={onHide}
-          title="隐藏目录（顶栏「目录」按钮可再显示）"
-        >
-          隐藏
-        </button>
       </div>
       <ol className="reader-outline-list">
         {items.map((item, index) => (

@@ -47,7 +47,7 @@ checks = ["frontend"]
 
 ### 目标
 
-1. **左侧目录栏**（新组件 `ReaderOutline`）：正文渲染完成后从 `.snapshot-rendered` 的 `h2`/`h3` 生成目录（无标题时整栏不渲染）；点击平滑滚动到对应标题（标题无 id 时用元素引用滚动，不改渲染器）；随滚动高亮当前节（IntersectionObserver 或 scroll 计算，±1 节容差）；顶栏常驻「目录」图标按钮（`aria-expanded`）切换显隐，目录栏内有「隐藏」；**不做快捷键**（用户 2026-09-17 实测反馈后修订：原「⋯ 菜单里的显示目录 + ⌘\」隐藏后找不回来，且用户「快捷键先不做」）；显隐状态存 `localStorage`（与导航折叠同一做法）。仅 `min-width: 1280px` 显示为左栏；以下不渲染（不做浮层，留给后续）。
+1. **左侧目录栏**（新组件 `ReaderOutline`）：正文渲染完成后从 `.snapshot-rendered` 的 `h2`/`h3` 生成目录（无标题时整栏不渲染）；点击平滑滚动到对应标题（标题无 id 时用元素引用滚动，不改渲染器）；随滚动高亮当前节（IntersectionObserver 或 scroll 计算，±1 节容差）；顶栏常驻「目录」图标按钮（`aria-expanded`）是**唯一**开关（目录栏内的「隐藏」按用户 2026-09-17 要求去掉）；**不做快捷键**（用户 2026-09-17 实测反馈后修订：原「⋯ 菜单里的显示目录 + ⌘\」隐藏后找不回来，且用户「快捷键先不做」）；显隐状态存 `localStorage`（与导航折叠同一做法）。仅 `min-width: 1280px` 显示为左栏；以下不渲染（不做浮层，留给后续）。
 2. **阅读进度线**：`.reader-toolbar` 底部 3px 线，绿色宽度 = `progress.progress_percent`%；`aria-hidden`，进度按钮文字不变（仍显示状态 · 百分比）。
 3. **右栏 Tab**：既有「记录与理解」侧栏头部改为两个 Tab「心得」「信息」（`role="tablist"`）；「心得」= 现 `NotesPanel`；「信息」= 来源、标签、保存原因、进度、收藏时间（内容来自现 `ReaderContext` + `ReaderHeader` 的元信息）；`ReaderContext` 从正文列移除（标签/保存原因不再占正文顶部）。**推翻 TASK-046 的「上下文层留在正文顶部」决定**：主 Agent 2026-09-17 指出冲突后，用户选定「按草图移入信息 Tab」。心得角标（已有 `notesCount`）显示在「心得」Tab 上。默认 Tab = 心得；`⌘J` 行为不变。
 4. **记住阅读位置**：滚动时（节流）把 `scrollY` 相对正文高度的百分比与位置写入 `localStorage`（键含资料 id 与快照 sha256，快照变化即失效）；再次打开同一资料且正文渲染完成后恢复到该位置（图片未加载导致的偏差可接受，取整节容差）；顶部 `?` 之外新增小字「上次读到 62%」不在本任务，位置恢复本身不需要 UI。进度线仍显示学习进度 `progress_percent`；**不自动写学习进度**（用户 2026-09-17 选定「一键写入」，在 TASK-068 做「记为学习进度」按钮，走既有 study-records 接口）。
@@ -98,6 +98,7 @@ TASK-066 登记为 MERGED（用户 2026-09-16 已合并 PR #74，merge `d1fa5e5`
 - 本地（`frontend/`，2026-09-17）：`format:check` / `lint` / `typecheck` exit 0；`vitest run` **647 passed**（28 文件）；`playwright test` 全套 **65 passed**（原 63 + 2）。
 - 真实浏览器：Pencil 内置浏览器视口 1046px（<1280）按设计不显示目录列；三栏与位置记忆由 1440×900 的 e2e 实测覆盖。
 - **修订 `2b`（用户实测反馈）**：去掉 ⌘\ 与 ⋯ 菜单项，改为顶栏「目录」图标按钮（`Icon` 新增 `outline`）；`ReaderOutline.test.tsx` 隐藏/显示用例改为按钮 + 断言 ⌘\ 无效 + 菜单无目录项；e2e 同步改为点按钮。重跑：lint/format/typecheck 0、vitest 647、e2e 65。
+- **修订 `2c`（用户「把隐藏那个按钮去掉吧」）**：删除目录栏内「隐藏」按钮与 `onHide`/`hideOutline`/`.reader-outline-hide`，顶栏按钮为唯一开关；单测/e2e 改为顶栏按钮收起再展开，并断言栏内无「隐藏」。重跑：lint/format/typecheck 0、vitest 647、e2e 65。Review F5（隐藏后焦点丢失）随之消失。
 - 已知限制：目录当前节按几何位置判定（最后一个滚过 80px 线的标题），不用 IntersectionObserver；窄屏（<1280px）无目录（非目标）；位置指纹用渲染文本长度，同长度不同内容的替换（极少）会恢复到旧位置。
 
 <!-- EVIDENCE:BEGIN -->
