@@ -5,6 +5,7 @@ import { displayTime, safeWebUrl, sourceLabels, statusLabels, type Resource } fr
 import { resourceTitle } from './resourceTitle'
 import { ResourceEditor } from './ResourceEditor'
 import { FileOriginal } from './FileOriginal'
+import { createRecord, learningError } from '../learning/api'
 import { LearningPanel } from '../learning/LearningPanel'
 import { ResourceTagEditor } from '../taxonomy/ResourceTagEditor'
 import { Icon } from '../../shell/Icon'
@@ -121,17 +122,41 @@ export function ResourceToolbar({
   }, [panel])
   function openPanel(key: PanelKey) {
     setMenuOpen(false)
-    setPrefill(undefined)
     remember()
     setPanel((current) => (current === key ? null : key))
   }
-  // 「记为学习进度」：带着百分比打开学习面板。已开着也重开（prefill 变了要重新初始化表单）。
-  const [prefill, setPrefill] = useState<number | undefined>(undefined)
-  function openPrefilled(percent: number) {
-    setMenuOpen(false)
-    setPrefill(percent)
-    remember()
-    setPanel('learning')
+  // 「记为学习进度 N%」（TASK-068）：**点一下直接写**（用户 2026-09-17：「点了保存进度直接保存
+  // 就可以，不要再返回确认」——推翻了同日「预填表单再按保存」的初版）。走既有 `createRecord`
+  // 与它的乐观锁（expected_progress_version），时长 0、总结注明来源；未开始 → 学习中，其它
+  // 状态保持。失败（冲突 / 网络）就地提示、不重试，让用户读最新进度后再点。
+  const [recording, setRecording] = useState(false)
+  const [recordError, setRecordError] = useState('')
+  const recordBusy = useRef(false)
+  async function recordReading(percent: number) {
+    if (recordBusy.current) return
+    recordBusy.current = true
+    setRecording(true)
+    setRecordError('')
+    const current = resource.progress
+    try {
+      await createRecord(resource, {
+        expected_progress_version: current.version,
+        started_at: new Date().toISOString(),
+        duration_seconds: 0,
+        progress_before: current.progress_percent,
+        progress_after: percent,
+        status_before: current.status,
+        status_after: current.status === 'UNREAD' ? 'IN_PROGRESS' : current.status,
+        summary: `阅读到 ${percent}%（阅读器位置）`,
+        questions_next: null,
+      })
+      refreshed()
+    } catch (cause) {
+      setRecordError(learningError(cause))
+    } finally {
+      recordBusy.current = false
+      setRecording(false)
+    }
   }
   function openMenu() {
     setPanel(null)
@@ -207,19 +232,25 @@ export function ResourceToolbar({
             >
               {statusLabels[progress.status]} · {progress.progress_percent}%
             </button>
-            {/* TASK-068：读得比学习进度远时，一键把阅读位置带进学习表单。归档态不给。 */}
+            {/* TASK-068：读得比学习进度远时，一键把阅读位置写成一条学习记录。归档态不给。 */}
             {readingPercent !== null &&
               readingPercent > progress.progress_percent &&
               progress.status !== 'ARCHIVED' && (
                 <button
                   type="button"
                   className="journal-button reader-record-progress"
-                  title="打开学习状态表单并预填这个进度，按保存后才写入"
-                  onClick={() => openPrefilled(readingPercent)}
+                  title="直接写入一条学习记录：进度记为这个百分比"
+                  disabled={recording}
+                  onClick={() => recordReading(readingPercent)}
                 >
-                  记为学习进度 {readingPercent}%
+                  {recording ? '正在记录…' : `记为学习进度 ${readingPercent}%`}
                 </button>
               )}
+            {recordError && (
+              <span className="reader-record-error" role="alert">
+                {recordError}
+              </span>
+            )}
             {/* **图标按钮一律不留文字节点**：`textContent` 因此为空，用例可以直接断言
               「文字确实拿掉了」；名字由 `aria-label` 提供，鼠标用户由 `title` 兜底。
               本仓所有测试都按可访问名称查控件，所以只断言名称是抓不到图标化退化的
@@ -391,11 +422,10 @@ export function ResourceToolbar({
             // 用户选「常驻工具条，点开即改」。`initialView="manage"` 让状态表单直接展开，
             // 否则要再点两层（查看旧学习历史 → 更多：状态与归档管理）才够得着。
             <LearningPanel
-              key={'learning-' + resource.id + '-' + (prefill ?? 'none')}
+              key={'learning-' + resource.id}
               resource={resource}
               initialView="manage"
               changed={refreshed}
-              prefillPercent={prefill}
             />
           )}
           {panel === 'edit' && (

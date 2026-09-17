@@ -453,34 +453,32 @@ test('a selected passage becomes a blockquote in the notes draft, and the readin
   await page.getByRole('button', { name: '保存心得', exact: true }).click()
   await expect(page.getByRole('list', { name: '心得列表' })).toContainText('第 1 段填充文字')
 
-  // 滚到中段 → 顶栏出现「记为学习进度 N%」→ 表单预填 → 保存 → 徽章与进度线更新。
+  // 滚到中段 → 顶栏出现「记为学习进度 N%」→ 点一下直接写（用户 2026-09-17：「不要再返回确认」）
+  // → 徽章与进度线更新、按钮消失、阅读位置不动。
   await page.evaluate(() => window.scrollTo({ top: 1200, behavior: 'instant' }))
   const record = page.getByRole('button', { name: /^记为学习进度 \d+%$/ })
   await expect(record).toBeVisible()
   const percent = Number((await record.textContent())!.match(/(\d+)%/)![1])
   expect(percent).toBeGreaterThan(0)
   await record.click()
-  const form = page.getByRole('form', { name: '记录学习表单' })
-  // 面板在顶栏之下的文档流里：从文章中部点开必须滚到它（用户 2026-09-17 实测「没有反应」
-  // 就是面板开在了视口上方几千像素处），且顶边让开 sticky 顶栏。
-  const formBox = (await form.boundingBox())!
-  expect(formBox.y).toBeGreaterThanOrEqual(57)
-  expect(formBox.y).toBeLessThan(900)
-  await expect(form.getByLabel('学习后进度（%）')).toHaveValue(String(percent))
-  await expect(form.getByLabel('学习后状态')).toHaveValue('IN_PROGRESS')
-  await expect(form.getByLabel('本次总结（选填）')).toHaveValue(`阅读到 ${percent}%（阅读器位置）`)
-  // 还没写：徽章仍是未开始。
-  await expect(page.getByRole('button', { name: '未开始 · 0%' })).toBeVisible()
-  await form.getByRole('button', { name: '保存学习记录' }).click()
   await expect(page.getByRole('button', { name: `学习中 · ${percent}%` })).toBeVisible()
+  await expect(page.getByRole('form', { name: '记录学习表单' })).toHaveCount(0)
   const bar = page.locator('.reader-progress-bar')
   const line = page.locator('.reader-progress')
   await expect
     .poll(async () => (await bar.boundingBox())!.width / (await line.boundingBox())!.width)
     .toBeCloseTo(percent / 100, 1)
-  // 阅读位置不再领先，按钮消失。
   await expect(record).toHaveCount(0)
+  expect(await page.evaluate(() => window.scrollY)).toBe(1200)
+  // 写进去的是一条真实学习记录：状态徽章打开学习面板，历史里有这条、总结注明来源。
+  await page.getByRole('button', { name: `学习中 · ${percent}%` }).click()
+  const panel = page.locator('.reader-panel')
+  await expect(panel).toBeVisible()
+  expect((await panel.boundingBox())!.y).toBeGreaterThanOrEqual(57)
+  // 顶栏打开的面板是 manage 形态，历史已展开。
+  await expect(panel.getByText(`阅读到 ${percent}%（阅读器位置）`)).toBeVisible()
+  await expect(panel.getByText(`未开始 0% → 学习中 ${percent}%`)).toBeVisible()
   // 收起面板 → 回到打开前的阅读位置。
-  await page.locator('.reader-panel').getByRole('button', { name: '收起', exact: true }).click()
+  await panel.getByRole('button', { name: '收起', exact: true }).click()
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeCloseTo(1200, -2)
 })

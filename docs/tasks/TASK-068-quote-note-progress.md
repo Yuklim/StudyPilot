@@ -41,7 +41,7 @@ checks = ["frontend"]
 ### 目标
 
 1. **记下这段**（新 `ReaderQuote`）：在 `.snapshot-rendered` 内选中文字（非空、≤2000 字）时，在选区上方浮出胶囊「✎ 记下这段」；点击 → 打开右栏「心得」Tab，把 `> 引文（按行加 > ）` + 空行 追加到心得写作框草稿末尾（草稿非空时先空一行），并聚焦写作框、光标在末尾；选区清除。不存高亮、不改渲染器、不给正文加锚点（草图的「点击回到原文」不做）。窄屏（<1280px）同样可用（浮层态心得区）。Esc 或点别处收起胶囊。
-2. **记为学习进度**：阅读器从 TASK-067 的位置记忆里得到当前阅读百分比（滚动时更新）；当它 > 当前学习进度 `progress_percent` 时，顶栏状态徽章旁出现按钮「记为学习进度 N%」；点击 = 打开既有「学习状态与进度」面板并**预填**：学习后进度 = N，状态 = 未开始→学习中（其它状态保持），本次总结 = 「阅读到 N%（阅读器位置）」；**写入仍由用户按「保存学习记录」**，校验与冲突确认不变。用户点保存后徽章与进度线随既有 `changed` 刷新。
+2. **记为学习进度**：阅读器从 TASK-067 的位置记忆里得到当前阅读百分比（滚动时更新）；当它 > 当前学习进度 `progress_percent` 且非归档时，顶栏状态徽章旁出现按钮「记为学习进度 N%」；**点击即写入一条学习记录**（用户 2026-09-17 试用后：「点了保存进度直接保存就可以，不要再返回确认」，推翻初版"预填表单再按保存"）：走既有 `createRecord`（乐观锁 `expected_progress_version`），`started_at` = 现在、`duration_seconds` = 0、进度 → N、状态 未开始→学习中（其它保持）、总结「阅读到 N%（阅读器位置）」；成功后 `refreshed()` 刷新徽章与进度线；失败（409 冲突/网络）就地 `role=alert` 提示、不自动重试。按钮写入中禁用。
 3. TASK-067 遗留：F1 目录显隐的 `localStorage` 写移到事件处理器（与 `App.tsx` 约定一致）；F3 删除资料成功后 `clearPosition(resourceId)`。
 
 ### 非目标
@@ -59,9 +59,9 @@ TASK-067 登记为 MERGED（用户 2026-09-17 已合并 PR #75，merge `0e954c6`
 ## 完成条件
 
 1. RTL：正文里 `getSelection` 命中非空文本 → 胶囊出现；点击 → 右栏心得 Tab 打开、写作框值末尾为 `> 引文` 段、写作框获得焦点；正文外的选区不出胶囊；空选区/清除后胶囊消失；草稿已有内容时引文以空行分隔追加。
-2. RTL：阅读百分比 > 学习进度时出现「记为学习进度 N%」，点击后学习面板展开且「学习后进度」= N、状态 = 学习中（自未开始）、总结预填；百分比 ≤ 学习进度时按钮不出现；用户按保存后走既有 `createRecord`（用例断言请求体 progress_after=N）。
+2. RTL：阅读百分比 > 学习进度时出现「记为学习进度 N%」，点击立即 POST study-records（断言请求体：version/时长 0/before/after/状态/总结），不弹表单，重读后徽章更新、按钮消失；学习中态保持状态；409 → alert 文案、POST 仅 1 次、按钮可再点；百分比 ≤ 学习进度时不出现。
 3. RTL：删除资料成功后本机位置键被清；目录显隐写存储不在 updater 内（读代码 + 既有用例仍过）。
-4. e2e（1440×900）：选中正文一段 → 点「记下这段」→ 侧栏心得框含 `> ` 引文并聚焦 → 保存 → 心得列表出现；滚到 60% → 「记为学习进度」→ 面板预填 → 保存 → 徽章变「学习中 · N%」、进度线变宽。
+4. e2e（1440×900）：选中正文一段 → 点「记下这段」→ 侧栏心得框含 `> ` 引文并聚焦 → 保存 → 心得列表出现；滚到中段 → 「记为学习进度」→ 徽章变「学习中 · N%」、进度线变宽、按钮消失、阅读位置不动；学习面板历史里有这条记录。
 5. 既有单测/e2e 全过；`check_task` frontend PASS；`git diff --check` 0。
 6. L2：独立只读 Reviewer 审最终 diff → PASS。
 
@@ -77,8 +77,7 @@ TASK-067 登记为 MERGED（用户 2026-09-17 已合并 PR #75，merge `0e954c6`
 - **实现**（SHA 见 EVIDENCE）：
   - `quoteSelection.ts`：`readSelection`（选区锚点/焦点都在 `.snapshot-rendered` 内、非空、≤2000 字）、`toQuote`（逐行 `> `）。`ReaderQuote.tsx`：监听 `selectionchange`/scroll/resize/Esc，视口定位胶囊「✎ 记下这段」，`mousedown` 阻止默认以保住选区，点击 → `onQuote` + 清选区。
   - `NotesPanel.tsx`：新 prop `quoteRequest {token, quote}`，**渲染期**消费（与 `shown` 同一模式，避免 effect 内 setState）：草稿去尾空白 + 空行 + 引文 + 空行；`deleting/pending` 时作废、`available=false` 留待；effect 里聚焦并把光标放末尾。
-  - `LearningPanel.tsx`：新 prop `prefillPercent` → `RecordForm` 初值：进度 = N、未开始→学习中、总结「阅读到 N%（阅读器位置）」；归档态不预填。校验/确认/保存链路不变。
-  - `ResourceToolbar.tsx`：`readingPercent` prop；> 学习进度且非归档时在徽章旁渲染「记为学习进度 N%」，点击 `openPrefilled` → 学习面板（key 含 prefill 以重新初始化）。
+  - `ResourceToolbar.tsx`：`readingPercent` prop；> 学习进度且非归档时在徽章旁渲染「记为学习进度 N%」；点击 `recordReading` 直接 `createRecord`（见目标 2），成功 `refreshed()`，失败 `learningError` 进 `role=alert`；`recordBusy` 防重入。`LearningPanel.tsx` **不再改动**（初版预填已撤，与 main 一致）。
   - `ResourceDetail.tsx`：`takeQuote`（切心得 Tab、开右栏、token+1）；`readingPercent` 随位置记忆的恢复/滚动更新（整数变化才 setState，cleanup 置 null）；F1 目录显隐写存储移到事件处理器；F3 `afterDeletion` 先 `clearPosition`。
   - `styles.css`：胶囊样式；`.reader-record-progress` 仅 ≥1280px 显示（见下）。
 - **测试**：新 `ReaderQuote.test.tsx` 7 例（胶囊只对正文内非空选区出现/标题选区不出/Esc 与空选区收起；引文追加、切 Tab、聚焦、光标末尾、清选区、连续两段；`toQuote` 多行与 >2000 忽略；「记为学习进度」仅在领先时出现、预填、未写入、用户保存后请求体 progress_after=N 且按钮消失；学习进度已领先不出；恢复位置后立即用记住的百分比；删除资料清位置键）。e2e 新增 1 条（选中段落 → 胶囊 → 草稿 `> …` 并聚焦 → 保存进列表；滚到 1200 → 「记为学习进度 N%」→ 表单预填 → 保存 → 徽章「学习中 · N%」、进度线比例 ≈ N/100、按钮消失）。
@@ -87,6 +86,7 @@ TASK-067 登记为 MERGED（用户 2026-09-17 已合并 PR #75，merge `0e954c6`
 - **Review F1 修正**：`LearningPanel` 只给第一张表单预填（`savedCount === 0`）；用例补「保存后再提交被『未变化需填总结』拦住、POST 仍 1 次」。重跑：lint/format/typecheck 0、vitest 655、e2e reader-layout 9/9。
 - **用户实测「点击保存进度没有反应」→ 修正**：真实浏览器复现（1440×900，文章中部 scrollY≈6000 点「记为学习进度」）：面板渲染在顶栏之下的文档流顶部，落在视口 y=−7486，且插入触发滚动锚定把页面再顶下 1700px——用户看不到任何变化。既有「状态徽章」在中部点开同样如此。修正：`ToolbarPanel` 挂载时 `scrollIntoView`（`.reader-panel` `scroll-margin-top: 70px` 让开顶栏；jsdom 可选调用），`ResourceToolbar` 在**点击时**记下 `returnTo = scrollY`，面板关闭后 `scrollTo` 回去。复现脚本再跑：表单落在视口 y=326，收起后 scrollY 回到 6097（=点击时值）。e2e 补断言：表单 y∈[57,900)、收起后 scrollY≈1200。重跑：lint/format/typecheck 0、vitest 654、e2e 66。
 - **副作用声明**：主 Agent 的首次复现脚本在用户真实数据上点了「保存学习记录」，为资料 `47ed715b…`（神经网络）写入一条学习记录（未开始 0% → 学习中 5%，总结「阅读到 5%（阅读器位置）」）。已当面告知用户，删除与否由用户决定。
+- **用户试用后改为直写（`2` 版）**：撤掉 LearningPanel 预填与 Review F1 的守卫（不再需要），改为点击即 `createRecord`；单测重写 4 例（直写请求体/无表单/徽章更新/按钮消失；学习中态保持 + 409 提示不重试；已领先不出；恢复位置即出），e2e 改为点一下 → 徽章/进度线/历史记录 → 面板收起回滚。重跑：lint/format/typecheck 0、vitest 655、e2e 66。
 - 已知限制：引文不带回原文锚点（草图的「点击回到原文」未做）；窄屏无「记为学习进度」入口。
 
 <!-- EVIDENCE:BEGIN -->

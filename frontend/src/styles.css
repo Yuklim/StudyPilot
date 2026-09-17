@@ -3056,6 +3056,10 @@ a.source-chip:focus-visible {
     display: inline-flex;
   }
 }
+.reader-record-error {
+  color: #9a5a44;
+  font-size: 12px;
+}
 /* 目录跳转要让开 sticky 顶栏，否则标题落在顶栏底下。 */
 .snapshot-rendered h2,
 .snapshot-rendered h3 {

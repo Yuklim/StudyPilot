@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { api } from '../../api/client'
+import { api, ApiError } from '../../api/client'
 import App from '../../App'
 import { renderWithRouter } from '../../test/render'
 import { resourceId, sample, samplePage } from './fixtures'
@@ -187,7 +187,8 @@ describe('记下这段', () => {
 })
 
 describe('记为学习进度', () => {
-  it('offers the button only when the reading position is ahead of the learning progress, prefills the form, and the user still saves', async () => {
+  it('writes a study record on one click when the reading position is ahead, then the button goes away', async () => {
+    // 用户 2026-09-17：「点了保存进度直接保存就可以，不要再返回确认」。
     const request = mount()
     await screen.findByRole('heading', { name: '2 目标函数', level: 2 })
     // 还没滚动：没有阅读百分比，不给按钮。
@@ -196,43 +197,68 @@ describe('记为学习进度', () => {
     fireEvent.scroll(window)
     const button = await screen.findByRole('button', { name: '记为学习进度 100%' })
     await waitFor(() => expect(readPosition(resourceId)?.percent).toBe(100))
-    fireEvent.click(button)
-    // 既有学习表单展开并预填；未开始 → 学习中。
-    const form = await screen.findByRole('form', { name: '记录学习表单' })
-    expect(within(form).getByLabelText('学习后进度（%）')).toHaveValue('100')
-    expect(within(form).getByLabelText('学习后状态')).toHaveValue('IN_PROGRESS')
-    expect(within(form).getByLabelText('本次总结（选填）')).toHaveValue('阅读到 100%（阅读器位置）')
-    // 没写入：只是预填。
     expect(request.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false)
-    // 用户按保存 → 走既有接口，progress_after = 100。
-    fireEvent.change(within(form).getByLabelText('学习开始时间'), {
-      target: { value: '2026-09-17T12:00:00' },
-    })
-    fireEvent.submit(form)
+    fireEvent.click(button)
+    // 立刻写：走既有 createRecord，未开始 → 学习中，时长 0，总结注明来源。
     await waitFor(() =>
       expect(request.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1),
     )
-    const body = request.mock.calls.find(([, init]) => init?.method === 'POST')![1]!.body as Record<
-      string,
-      unknown
-    >
-    expect(body).toMatchObject({
+    const [path, init] = request.mock.calls.find(([, init]) => init?.method === 'POST')!
+    expect(path).toBe(`${detailPath}/study-records`)
+    expect(init!.body).toMatchObject({
+      expected_progress_version: 1,
+      duration_seconds: 0,
       progress_before: 0,
       progress_after: 100,
       status_before: 'UNREAD',
       status_after: 'IN_PROGRESS',
       summary: '阅读到 100%（阅读器位置）',
+      questions_next: null,
     })
-    // 写入后阅读位置不再领先，按钮消失；徽章刷新由既有 `changed` 链路负责。
+    // 没有弹表单。
+    expect(screen.queryByRole('form', { name: '记录学习表单' })).toBeNull()
+    // 资料重读 → 徽章更新、阅读位置不再领先、按钮消失。
+    expect(await screen.findByRole('button', { name: '学习中 · 100%' })).toBeVisible()
     await waitFor(() => expect(screen.queryByRole('button', { name: /记为学习进度/ })).toBeNull())
-    // 保存后重建的表单**不再预填**（Review F1）：进度回到当前值、总结为空；再点保存被
-    // 「未变化需填总结」拦住，不会写第二条记录。
-    const again = screen.getByRole('form', { name: '记录学习表单' })
-    expect(within(again).getByLabelText('学习后进度（%）')).toHaveValue('100')
-    expect(within(again).getByLabelText('本次总结（选填）')).toHaveValue('')
-    fireEvent.submit(again)
-    expect(await within(again).findByRole('alert')).toHaveTextContent('请至少填写本次总结')
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('keeps the status when already 学习中, and shows the conflict message instead of retrying', async () => {
+    const item = sample({
+      progress: { ...sample().progress, status: 'IN_PROGRESS', progress_percent: 20 },
+    })
+    const request = mount(item)
+    await screen.findByRole('heading', { name: '2 目标函数', level: 2 })
+    // 这次让后端报 409（别处刚改过进度）。
+    request.mockImplementation(async (path: string, init) => {
+      if (path === `${detailPath}/study-records` && init?.method === 'POST')
+        throw new ApiError('VERSION_CONFLICT', 409)
+      if (path === `${detailPath}/snapshot`) return { data: snapshotOf(article) }
+      if (path === `${detailPath}/snapshot/assets`) return { data: [] }
+      if (path.startsWith(`${detailPath}/notes?`))
+        return {
+          data: [],
+          page: { number: 1, size: 20, total_items: 0, total_pages: 0, has_more: false },
+        }
+      if (path === detailPath) return { data: item }
+      return samplePage([])
+    })
+    fireEvent.scroll(window)
+    fireEvent.click(await screen.findByRole('button', { name: '记为学习进度 100%' }))
+    const post = await waitFor(() => {
+      const call = request.mock.calls.find(([, init]) => init?.method === 'POST')
+      expect(call).toBeDefined()
+      return call!
+    })
+    expect(post[1]!.body).toMatchObject({
+      status_before: 'IN_PROGRESS',
+      status_after: 'IN_PROGRESS',
+      progress_before: 20,
+    })
+    expect(await screen.findByRole('alert')).toHaveTextContent('进度或状态已变化')
+    // 不自动重试：仍只有 1 次 POST；按钮还在，用户可读最新进度后再点。
     expect(request.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1)
+    expect(screen.getByRole('button', { name: '记为学习进度 100%' })).toBeEnabled()
   })
 
   it('does not offer the button when the learning progress is already ahead', async () => {
