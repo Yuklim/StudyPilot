@@ -110,7 +110,8 @@ function selectText(text: string, node: Node | null) {
 }
 
 const pill = () => screen.queryByRole('button', { name: '记下这段' })
-const editor = () => screen.getByRole('textbox', { name: '这次想记下什么？' })
+const editor = () =>
+  screen.getByRole('textbox', { name: '这次想记下什么？' }) as HTMLTextAreaElement
 
 beforeEach(() => {
   localStorage.clear()
