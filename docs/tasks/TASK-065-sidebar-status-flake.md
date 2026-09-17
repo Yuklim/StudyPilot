@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-065"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L1"
 risk_reason = "只改一条既有 e2e 用例的定位方式（裸 `getByRole('status')` → 按文字定位），不改产品代码、不降低断言（仍断言「心得已保存」可见 + 角标变 3 + 后端计数）。L1（risk-policy 里 tests 属 L2 起步，本次是一条既有用例的定位修正，按 local-fix 归类）：Review/验收 N/A。"
 risk_flags = ["local-fix"]
@@ -49,4 +49,5 @@ checks = ["frontend"]
 - Review / Acceptance：L1，N/A（主 Agent 自检：不改产品代码，断言未降低）。
 - status=**ACCEPTED**；待用户合并。合并后 PR #71 / #72 的 CI 重跑即包含本修复（pull_request 事件在与 main 的合并结果上跑）。
 - 2026-09-15：用户「两个 pr 的端到端测试都失败了」→ 定位为旧用例偶发 → 单开本任务修 → 待合并。
+- 2026-09-15 用户已合并 PR #73，merge `028a995`；status=**MERGED**（登记并入 TASK-066 控制面提交）。
 <!-- EVIDENCE:END -->
