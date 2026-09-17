@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-067"
-status = "READY"
+status = "ACCEPTED"
 risk = "L2"
 risk_reason = "阅读器页面布局与导航的普通业务实现：目录从已渲染 DOM 的 h2/h3 生成（不改 snapshotMarkdown.ts 的安全渲染配置、不改契约、不改后端）；进度线只读已有 progress_percent；右栏 Tab 只是把既有 ReaderContext 元信息挪进侧栏。用户可见行为变化多、涉及既有 e2e（TASK-045/049/052 的阅读器布局断言），按 business 归 L2：独立只读 Review；验收 N/A。"
 risk_flags = ["business", "small-ui"]
@@ -86,7 +86,7 @@ TASK-066 登记为 MERGED（用户 2026-09-16 已合并 PR #74，merge `d1fa5e5`
 
 ## 实现与测试
 
-- **实现**（待提交 SHA 见 EVIDENCE）：
+- **实现 SHA**：`af5ef2f`（登记 `df170e1`）。
   - `outline.ts`：`collectOutline`（`.snapshot-rendered` 内 h2/h3 → 项）、`useOutline`（MutationObserver 盯正文列，rAF 合并）、`currentIndex`（视口顶 80px 线之上最后一个标题）。
   - `ReaderOutline.tsx`：`<nav aria-label="目录">`，标题行「目录 · N 节 · 隐藏」、`<ol>` 项按钮（`aria-current="location"`）、底部提示；点击 `scrollIntoView({smooth,start})`。
   - `readerPosition.ts`：`localStorage` 键 `studypilot.reader.position.<id>`，值 `{top, percent, fingerprint(渲染文本长度), savedAt}`，读时校验形状；`percentOf` 供 TASK-068 显示「上次读到 N%」。
@@ -101,9 +101,10 @@ TASK-066 登记为 MERGED（用户 2026-09-16 已合并 PR #74，merge `d1fa5e5`
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：
-- Review：
+- 候选 SHA：`af5ef2f`（范围 `d1fa5e5..af5ef2f`，17 个文件，均在 allowed_paths 内）；本次写回仅 docs，Review 结论直接继承。
+- Review（独立只读 `.claude/agents/reviewer.md`，声明仅持 Read/Grep/Glob）：**PASS**。原文摘录：「安全边界：snapshotMarkdown.ts、ContentSnapshot.tsx 无改动；目录只 textContent → React 文本节点，无 XSS 面。位置记忆：仅存 top/percent/fingerprint/savedAt，readPosition 形状校验完整；restoredFor 在 cleanup 按 resource 重置，同资料重进可恢复；observer/scroll/rAF 均卸掉；恢复前不写 0 成立。⌘\ 判定与 App.tsx 同套；CSS 四种组合特异性正确，<1280 由 squeeze 守卫。右栏：NotesPanel 常驻挂载；Esc closest('.reader-notes') 仍成立；两处角标均 aria-hidden。测试：既有 e2e/单测改后仍断言标签写入/读回；新用例判别性足够。」
+- 非阻断遗留项（Review F1–F4，均「可选」）：F1 `ResourceDetail.tsx:197-205` 目录显隐的 localStorage 写在 setState 更新函数内（StrictMode 双调用幂等，无后果）；F2 `outline.ts:43` container 变 null 时不清空 items（元素已脱离 DOM，无功能影响）；F3 `clearPosition` 未被调用，删除资料后键残留（只有数字）；F4 来源链接 `rel=noreferrer` 已足够、未加 `referrerPolicy`。F1/F3 并入 TASK-068（同文件）；F2/F4 记录。Reviewer 另记：Tab 无方向键导航；指纹同长度误恢复（已在已知限制）。
 - Acceptance：L2 N/A。
-- 最终状态/风险/用户操作：
+- 最终状态：**ACCEPTED**，待用户合并。
 - 日期与决定日志：2026-09-17 用户确认三栏草图「可以」；主 Agent 拆为 067（布局/导航/位置记忆）+ 068（引文写心得 / ? 面板 / 记为学习进度）；用户追加「记住位置 + 同步学习进度」，同步方式选「一键写入」。
 <!-- EVIDENCE:END -->
