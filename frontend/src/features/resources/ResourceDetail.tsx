@@ -206,7 +206,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
   }, [])
   // 目录只在宽屏（≥1280px）作为左栏存在；窄屏不渲染（浮层形态留给后续任务）。
   const outlineShown = squeeze && outlineOpen && outline.length > 0
-  // 没有快捷键（用户 2026-09-17：「快捷键我觉得可以先不做」）：开关只在顶栏按钮与目录栏的「隐藏」。
+  // 没有快捷键（用户 2026-09-17：「快捷键我觉得可以先不做」）：开关只有顶栏的「目录」按钮。
 
   // --- TASK-067：记住阅读位置（本机、只记位置，不写学习进度）---
   // 正文渲染完成的时机与目录同源：盯着正文列，`.snapshot-rendered` 出现后恢复一次；

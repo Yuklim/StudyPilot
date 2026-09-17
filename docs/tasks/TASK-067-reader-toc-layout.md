@@ -104,9 +104,9 @@ TASK-066 登记为 MERGED（用户 2026-09-16 已合并 PR #74，merge `d1fa5e5`
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：**`80b4d87`**（范围 `d1fa5e5..80b4d87`，18 个文件，均在 allowed_paths 内；前一候选 `af5ef2f`）；本次写回仅 docs，Review 结论直接继承。
+- 候选 SHA：**`f018812` + 注释更正（见下一提交）**（范围 `d1fa5e5..HEAD`，18 个文件，均在 allowed_paths 内；前序候选 `af5ef2f` → `80b4d87`）；最后一提交仅 docs + 一行注释，Review 结论直接继承。
 - Review（独立只读 `.claude/agents/reviewer.md`，声明仅持 Read/Grep/Glob）：**PASS**。原文摘录：「安全边界：snapshotMarkdown.ts、ContentSnapshot.tsx 无改动；目录只 textContent → React 文本节点，无 XSS 面。位置记忆：仅存 top/percent/fingerprint/savedAt，readPosition 形状校验完整；restoredFor 在 cleanup 按 resource 重置，同资料重进可恢复；observer/scroll/rAF 均卸掉；恢复前不写 0 成立。⌘\ 判定与 App.tsx 同套；CSS 四种组合特异性正确，<1280 由 squeeze 守卫。右栏：NotesPanel 常驻挂载；Esc closest('.reader-notes') 仍成立；两处角标均 aria-hidden。测试：既有 e2e/单测改后仍断言标签写入/读回；新用例判别性足够。」
-- 增量复审（同一 Reviewer，`af5ef2f..80b4d87`，覆盖新候选并继承前次范围）：**PASS**。原文摘录：「图标按钮符合约定：无文字节点、aria-label=目录、title 随态；aria-expanded 与心得按钮同款。ResourceDetail 已无 \\ keydown 监听。隐藏目录只改 outlineOpen，outlineAvailable 不变，顶栏按钮常驻，不会丢焦点。」F5（可选）：目录栏「隐藏」后 nav 卸载、键盘焦点掉到 body，建议归还给顶栏「目录」按钮——并入 TASK-068。
+- 增量复审（同一 Reviewer，`af5ef2f..80b4d87`，覆盖新候选并继承前次范围）：**PASS**。原文摘录：「图标按钮符合约定：无文字节点、aria-label=目录、title 随态；aria-expanded 与心得按钮同款。ResourceDetail 已无 \\ keydown 监听。隐藏目录只改 outlineOpen，outlineAvailable 不变，顶栏按钮常驻，不会丢焦点。」F5（可选）：目录栏「隐藏」后焦点掉到 body——随修订 2c 去掉该按钮而消失。第二次增量复审（`80b4d87..f018812`）：**PASS**，「顶栏『目录』按钮为唯一开关，焦点始终留在按钮上，F5 消失」；可选：`ResourceDetail.tsx:209` 注释过时 → 已在本次写回顺带更正（一行注释，不改行为）。
 - 非阻断遗留项（Review F1–F4，均「可选」）：F1 `ResourceDetail.tsx:197-205` 目录显隐的 localStorage 写在 setState 更新函数内（StrictMode 双调用幂等，无后果）；F2 `outline.ts:43` container 变 null 时不清空 items（元素已脱离 DOM，无功能影响）；F3 `clearPosition` 未被调用，删除资料后键残留（只有数字）；F4 来源链接 `rel=noreferrer` 已足够、未加 `referrerPolicy`。F1/F3 并入 TASK-068（同文件）；F2/F4 记录。Reviewer 另记：Tab 无方向键导航；指纹同长度误恢复（已在已知限制）。
 - Acceptance：L2 N/A。
 - 最终状态：**ACCEPTED**，待用户合并。
