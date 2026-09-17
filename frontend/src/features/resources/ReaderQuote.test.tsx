@@ -225,6 +225,14 @@ describe('记为学习进度', () => {
     })
     // 写入后阅读位置不再领先，按钮消失；徽章刷新由既有 `changed` 链路负责。
     await waitFor(() => expect(screen.queryByRole('button', { name: /记为学习进度/ })).toBeNull())
+    // 保存后重建的表单**不再预填**（Review F1）：进度回到当前值、总结为空；再点保存被
+    // 「未变化需填总结」拦住，不会写第二条记录。
+    const again = screen.getByRole('form', { name: '记录学习表单' })
+    expect(within(again).getByLabelText('学习后进度（%）')).toHaveValue('100')
+    expect(within(again).getByLabelText('本次总结（选填）')).toHaveValue('')
+    fireEvent.submit(again)
+    expect(await within(again).findByRole('alert')).toHaveTextContent('请至少填写本次总结')
+    expect(request.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1)
   })
 
   it('does not offer the button when the learning progress is already ahead', async () => {

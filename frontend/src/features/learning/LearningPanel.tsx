@@ -352,7 +352,10 @@ export function LearningPanel({
             <RecordForm
               key={'form-' + savedCount}
               resource={snapshot}
-              prefillPercent={prefillPercent}
+              // 预填只给**第一张**表单：保存成功后重建的表单若再预填同一进度 + 总结，会绕过
+              // 「状态和进度未变化时请至少填写总结」的守卫，再点一次保存就写出一条 before=after
+              // 的重复记录（TASK-068 Review F1）。
+              prefillPercent={savedCount === 0 ? prefillPercent : undefined}
               started={() => setSavedNotice(false)}
               saved={(value) => {
                 setSavedNotice(true)
