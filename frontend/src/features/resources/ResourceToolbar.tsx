@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { Link } from 'react-router-dom'
 
 import { displayTime, safeWebUrl, sourceLabels, statusLabels, type Resource } from './api'
 import { resourceTitle } from './resourceTitle'
 import { ResourceEditor } from './ResourceEditor'
 import { FileOriginal } from './FileOriginal'
+import { createRecord, learningError } from '../learning/api'
 import { LearningPanel } from '../learning/LearningPanel'
 import { ResourceTagEditor } from '../taxonomy/ResourceTagEditor'
 import { Icon } from '../../shell/Icon'
@@ -51,6 +52,7 @@ export function ResourceToolbar({
   outlineAvailable = false,
   outlineOpen = true,
   onToggleOutline,
+  readingPercent = null,
 }: {
   resource: Resource
   /** 元数据被改动后重新读取这份资料。 */
@@ -72,6 +74,11 @@ export function ResourceToolbar({
   outlineAvailable?: boolean
   outlineOpen?: boolean
   onToggleOutline?: () => void
+  /**
+   * TASK-068：本机记住的阅读位置百分比（TASK-067 位置记忆）。比学习进度大时给「记为学习
+   * 进度 N%」按钮——点开学习面板并预填，写入仍要用户按保存（用户选定「一键写入」而非自动同步）。
+   */
+  readingPercent?: number | null
   /**
    * 这份资料有没有正文快照；`null` = 还没读到。菜单据此在「替换正文/粘贴正文」之间取
    * 文案，并决定「删除正文…」出不出现——**没有正文时不该有一个删除它的入口**。
@@ -99,9 +106,57 @@ export function ResourceToolbar({
 
   // 一次只开一个面板：两个面板同时展开会把正文推到屏幕外，而工具条的意义正是让正文
   // 留在第一屏。开面板时同时关掉菜单，反之亦然。
+  // 面板在文档流里、顶栏之下，而顶栏是 sticky 的：读到文章中部点「记为学习进度」/状态徽章，
+  // 面板开在几千像素之上，屏幕上什么都不变（用户 2026-09-17 实测「点击保存进度没有反应」；
+  // 真实浏览器复现：面板落在视口 y=-7486）。所以打开时滚到面板（`ToolbarPanel` 挂载时
+  // scrollIntoView，`scroll-margin-top` 让开顶栏），关闭时滚回打开前的位置。位置在**点击时**
+  // 记（面板插入会触发浏览器的滚动锚定，之后再读 scrollY 已经不是原值）。
+  const returnTo = useRef<number | null>(null)
+  function remember() {
+    if (panel === null) returnTo.current = window.scrollY
+  }
+  useEffect(() => {
+    if (panel !== null || returnTo.current === null) return
+    window.scrollTo({ top: returnTo.current })
+    returnTo.current = null
+  }, [panel])
   function openPanel(key: PanelKey) {
     setMenuOpen(false)
+    remember()
     setPanel((current) => (current === key ? null : key))
+  }
+  // 「记为学习进度 N%」（TASK-068）：**点一下直接写**（用户 2026-09-17：「点了保存进度直接保存
+  // 就可以，不要再返回确认」——推翻了同日「预填表单再按保存」的初版）。走既有 `createRecord`
+  // 与它的乐观锁（expected_progress_version），时长 0、总结注明来源；未开始 → 学习中，其它
+  // 状态保持。失败（冲突 / 网络）就地提示、不重试，让用户读最新进度后再点。
+  const [recording, setRecording] = useState(false)
+  const [recordError, setRecordError] = useState('')
+  const recordBusy = useRef(false)
+  async function recordReading(percent: number) {
+    if (recordBusy.current) return
+    recordBusy.current = true
+    setRecording(true)
+    setRecordError('')
+    const current = resource.progress
+    try {
+      await createRecord(resource, {
+        expected_progress_version: current.version,
+        started_at: new Date().toISOString(),
+        duration_seconds: 0,
+        progress_before: current.progress_percent,
+        progress_after: percent,
+        status_before: current.status,
+        status_after: current.status === 'UNREAD' ? 'IN_PROGRESS' : current.status,
+        summary: `阅读到 ${percent}%（阅读器位置）`,
+        questions_next: null,
+      })
+      refreshed()
+    } catch (cause) {
+      setRecordError(learningError(cause))
+    } finally {
+      recordBusy.current = false
+      setRecording(false)
+    }
   }
   function openMenu() {
     setPanel(null)
@@ -177,6 +232,25 @@ export function ResourceToolbar({
             >
               {statusLabels[progress.status]} · {progress.progress_percent}%
             </button>
+            {/* TASK-068：读得比学习进度远时，一键把阅读位置写成一条学习记录。归档态不给。 */}
+            {readingPercent !== null &&
+              readingPercent > progress.progress_percent &&
+              progress.status !== 'ARCHIVED' && (
+                <button
+                  type="button"
+                  className="journal-button reader-record-progress"
+                  title="直接写入一条学习记录：进度记为这个百分比"
+                  disabled={recording}
+                  onClick={() => recordReading(readingPercent)}
+                >
+                  {recording ? '正在记录…' : `记为学习进度 ${readingPercent}%`}
+                </button>
+              )}
+            {recordError && (
+              <span className="reader-record-error" role="alert">
+                {recordError}
+              </span>
+            )}
             {/* **图标按钮一律不留文字节点**：`textContent` 因此为空，用例可以直接断言
               「文字确实拿掉了」；名字由 `aria-label` 提供，鼠标用户由 `title` 兜底。
               本仓所有测试都按可访问名称查控件，所以只断言名称是抓不到图标化退化的
@@ -483,8 +557,14 @@ function ToolbarPanel({
   onClose: () => void
   children: ReactNode
 }) {
+  // 挂载即滚到面板（理由见 `ResourceToolbar` 里 `returnTo` 的注释）；滚回由那边做。
+  const panel = useRef<HTMLElement>(null)
+  useLayoutEffect(() => {
+    // jsdom 没有 scrollIntoView，可选调用。
+    panel.current?.scrollIntoView?.({ block: 'start' })
+  }, [])
   return (
-    <section className="reader-panel" aria-label={label}>
+    <section className="reader-panel" aria-label={label} ref={panel}>
       <div className="reader-panel-heading">
         <span className="note-tab">{label}</span>
         <button type="button" className="journal-button" onClick={onClose}>

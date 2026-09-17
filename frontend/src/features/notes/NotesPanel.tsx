@@ -28,6 +28,7 @@ export function NotesPanel({
   resourceId,
   available = true,
   focusRequest = 0,
+  quoteRequest,
   onCount,
 }: {
   /** 绑定资料的心得传资源 id；独立心得(顶层「我的心得」页)传 null 或不传。 */
@@ -39,6 +40,12 @@ export function NotesPanel({
    * 独立用法不传，行为完全不变。
    */
   focusRequest?: number
+  /**
+   * TASK-068「记下这段」：阅读器把正文选区做成 Markdown 引用送进来。`token` 单调递增、
+   * 同一 token 只消费一次（与 `focusRequest` 同一套约定）；`quote` 追加到草稿末尾（草稿
+   * 非空时先空一行），然后聚焦写作框、光标落在末尾。正在删除时不消费。
+   */
+  quoteRequest?: { token: number; quote: string }
   /**
    * TASK-045：读到心得总数（`result.data.page.total_items`）后回传给入口按钮做角标。
    * 只在心得区挂载、`scope` 有资料时才有意义，由 `ResourceDetail` 传入；独立用法不传。
@@ -93,6 +100,26 @@ export function NotesPanel({
     if (deleting || pending) return
     input.current?.focus()
   }, [focusRequest, available, deleting, pending])
+  // 引文在**渲染期**消费（与上面 `shown` 的写法同类：随 prop 变化调整 state，不进 effect）；
+  // 正在删除/保存时这个 token 作废，`available=false` 的瞬态则留着等下一次渲染。
+  const [quoteConsumed, setQuoteConsumed] = useState(0)
+  if (quoteRequest && quoteRequest.token !== quoteConsumed && available) {
+    setQuoteConsumed(quoteRequest.token)
+    if (!deleting && !pending) {
+      const head = draft.replace(/\s+$/, '')
+      setDraft((head ? head + '\n\n' : '') + quoteRequest.quote + '\n\n')
+      setNotice('')
+      setConfirmed(false)
+    }
+  }
+  useEffect(() => {
+    if (!quoteConsumed) return
+    // 值已进 textarea；把焦点放进去、光标落在末尾。
+    const box = input.current
+    if (!box) return
+    box.focus()
+    box.setSelectionRange(box.value.length, box.value.length)
+  }, [quoteConsumed])
   const load = useCallback(() => listNotes(scope, page), [scope, page])
   const { result, retry } = useResourceQuery(
     (scope ?? 'standalone') + ':' + page + ':' + revision,

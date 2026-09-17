@@ -7,7 +7,14 @@ import { ResourceDeleteDialog } from './ResourceDeleteDialog'
 import { ResourceError } from './ResourceState'
 import { ReaderOutline } from './ReaderOutline'
 import { useOutline } from './outline'
-import { fingerprintOf, percentOf, readPosition, writePosition } from './readerPosition'
+import { ReaderQuote } from './ReaderQuote'
+import {
+  clearPosition,
+  fingerprintOf,
+  percentOf,
+  readPosition,
+  writePosition,
+} from './readerPosition'
 import { ReaderHeader, ReaderInfo, ResourceToolbar } from './ResourceToolbar'
 import { NotesPanel } from '../notes/NotesPanel'
 import { resourceTitle } from './resourceTitle'
@@ -194,19 +201,29 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
   const outline = useOutline(readerMain)
   const [outlineOpen, setOutlineOpen] = useState(readOutlineOpen)
   const toggleOutline = useCallback(() => {
-    setOutlineOpen((open) => {
-      const next = !open
-      try {
-        localStorage.setItem(OUTLINE_KEY, next ? '1' : '0')
-      } catch {
-        // 存不下只影响下次打开。
-      }
-      return next
-    })
-  }, [])
+    // 写存储放在事件处理器里、不放 setState 更新函数里（更新函数应当是纯的，StrictMode
+    // 会调两次）——与外壳 `toggleNav` 同一约定（TASK-067 Review F1）。
+    const next = !outlineOpen
+    setOutlineOpen(next)
+    try {
+      localStorage.setItem(OUTLINE_KEY, next ? '1' : '0')
+    } catch {
+      // 存不下只影响下次打开。
+    }
+  }, [outlineOpen])
   // 目录只在宽屏（≥1280px）作为左栏存在；窄屏不渲染（浮层形态留给后续任务）。
   const outlineShown = squeeze && outlineOpen && outline.length > 0
   // 没有快捷键（用户 2026-09-17：「快捷键我觉得可以先不做」）：开关只有顶栏的「目录」按钮。
+
+  // --- TASK-068：「记下这段」→ 心得草稿；「记为学习进度」用的阅读百分比 ---
+  const [quoteRequest, setQuoteRequest] = useState<{ token: number; quote: string }>()
+  const takeQuote = useCallback((quote: string) => {
+    setSideTab('notes')
+    setNotesOpen(true)
+    setQuoteRequest((current) => ({ token: (current?.token ?? 0) + 1, quote }))
+  }, [])
+  // 本机阅读位置的百分比：恢复时取存的值，滚动时随位置写回一起更新（只在整数变化时 setState）。
+  const [readingPercent, setReadingPercent] = useState<number | null>(null)
 
   // --- TASK-067：记住阅读位置（本机、只记位置，不写学习进度）---
   // 正文渲染完成的时机与目录同源：盯着正文列，`.snapshot-rendered` 出现后恢复一次；
@@ -223,6 +240,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
       restoredFor.current = resource
       const saved = readPosition(resource)
       if (!saved || saved.fingerprint !== fingerprintOf(body) || saved.top <= 0) return
+      setReadingPercent(saved.percent)
       window.scrollTo({ top: saved.top })
     }
     const observer = new MutationObserver(restore)
@@ -233,9 +251,11 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
       frame = requestAnimationFrame(() => {
         const body = rendered()
         if (!body || restoredFor.current !== resource) return
+        const percent = percentOf(body, window.scrollY, window.innerHeight)
+        setReadingPercent((current) => (current === percent ? current : percent))
         writePosition(resource, {
           top: Math.round(window.scrollY),
-          percent: percentOf(body, window.scrollY, window.innerHeight),
+          percent,
           fingerprint: fingerprintOf(body),
           savedAt: new Date().toISOString(),
         })
@@ -247,6 +267,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
       cancelAnimationFrame(frame)
       window.removeEventListener('scroll', onScroll)
       if (restoredFor.current === resource) restoredFor.current = null
+      setReadingPercent(null)
     }
   }, [readerMain, resourceId])
 
@@ -254,7 +275,11 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
   const [deleting, setDeleting] = useState(false)
   const askDeleteResource = useCallback(() => setDeleting(true), [])
   const closeDeletion = useCallback(() => setDeleting(false), [])
-  const afterDeletion = useCallback(() => navigate('/resources'), [navigate])
+  const afterDeletion = useCallback(() => {
+    // 资料没了，本机记的阅读位置也没用了（TASK-067 Review F3）。
+    clearPosition(resourceId)
+    navigate('/resources')
+  }, [navigate, resourceId])
 
   // --- TASK-049：窄屏浮层要让开 sticky 顶栏，而顶栏高度不是常数 ---
   // 浮层改用视口定位后，它的 `top` 必须是顶栏的**实际**高度：≤640px 顶栏会因按钮换行
@@ -318,6 +343,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
           outlineAvailable={squeeze && outline.length > 0}
           outlineOpen={outlineOpen}
           onToggleOutline={toggleOutline}
+          readingPercent={readingPercent}
           snapshotExists={snapshotExists}
           snapshotUnreadable={snapshotUnreadable}
           showSource={showSource}
@@ -338,6 +364,8 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
             {/* 标题进正文列（TASK-052）：页面 `h1` 就是文章的标题，位置与正文列对齐、
                 随正文滚走；路由焦点仍落在它上（`headingSlot`）。 */}
             <ReaderHeader resource={toolbarItem} headingSlot={headingSlot} />
+            {/* 「记下这段」浮动胶囊（TASK-068）：读正文里的选区，送进右栏心得草稿。 */}
+            <ReaderQuote container={readerMain} onQuote={takeQuote} />
             {/* 标签与「收下它是因为」TASK-067 起在右栏「信息」Tab（用户 2026-09-17 选定），
                 不再占正文顶部；正文紧接标题。 */}
             {/* 正文**紧接着上下文层**、默认占满——这是「正文优先」的全部意义。
@@ -405,6 +433,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
                 resourceId={resourceId}
                 available={!!item}
                 focusRequest={focusRequest}
+                quoteRequest={quoteRequest}
                 onCount={receiveCount}
               />
             </div>

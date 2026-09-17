@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-067"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L2"
 risk_reason = "阅读器页面布局与导航的普通业务实现：目录从已渲染 DOM 的 h2/h3 生成（不改 snapshotMarkdown.ts 的安全渲染配置、不改契约、不改后端）；进度线只读已有 progress_percent；右栏 Tab 只是把既有 ReaderContext 元信息挪进侧栏。用户可见行为变化多、涉及既有 e2e（TASK-045/049/052 的阅读器布局断言），按 business 归 L2：独立只读 Review；验收 N/A。"
 risk_flags = ["business", "small-ui"]
@@ -111,4 +111,5 @@ TASK-066 登记为 MERGED（用户 2026-09-16 已合并 PR #74，merge `d1fa5e5`
 - Acceptance：L2 N/A。
 - 最终状态：**ACCEPTED**，待用户合并。
 - 日期与决定日志：2026-09-17 用户确认三栏草图「可以」；主 Agent 拆为 067（布局/导航/位置记忆）+ 068（引文写心得 / ? 面板 / 记为学习进度）；用户追加「记住位置 + 同步学习进度」，同步方式选「一键写入」。
+- 2026-09-17 用户已合并 PR #75，merge `0e954c6`；status=**MERGED**（登记并入 TASK-068 控制面提交）。
 <!-- EVIDENCE:END -->

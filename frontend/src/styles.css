@@ -2732,6 +2732,8 @@ a.source-chip:focus-visible {
 .reader-panel {
   max-width: var(--reader-measure);
   margin: 12px auto 0;
+  /* 打开时 scrollIntoView 要让开 57px 的 sticky 顶栏（TASK-068）。 */
+  scroll-margin-top: 70px;
   padding: 16px 18px 18px;
   border: 1px solid #e5e5da;
   border-radius: 6px 16px 16px 16px;
@@ -3016,6 +3018,47 @@ a.source-chip:focus-visible {
   border-top: 1px solid var(--line);
   color: var(--muted);
   font-size: 10px;
+}
+/* 「记下这段」胶囊（TASK-068）：视口定位、跟着选区走，居中锚点在 left 上。 */
+.reader-quote {
+  position: fixed;
+  z-index: 7;
+  transform: translate(-50%, -100%);
+}
+.reader-quote-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--green);
+  color: var(--paper);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: 0 4px 14px rgba(48, 58, 50, 0.22);
+  cursor: pointer;
+}
+.reader-quote-button:hover {
+  background: #45593f;
+}
+/* 「记为学习进度 N%」：与状态徽章并排的次级按钮。**只在宽屏（≥1280px）显示**：窄屏顶栏本就
+   一行排满，多一个文字按钮会折成三行（320px 实测 57→151px），随滚动出现的这次增高还会把
+   浮层态心得区的聚焦拽走阅读位置（reader-immersive e2e 抓到）。阅读位置本身照记，回到宽屏
+   再写。 */
+.reader-record-progress {
+  display: none;
+  border-style: dashed;
+}
+@media (min-width: 1280px) {
+  .reader-record-progress {
+    display: inline-flex;
+  }
+}
+.reader-record-error {
+  color: #9a5a44;
+  font-size: 12px;
 }
 /* 目录跳转要让开 sticky 顶栏，否则标题落在顶栏底下。 */
 .snapshot-rendered h2,
