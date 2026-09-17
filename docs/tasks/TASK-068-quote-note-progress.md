@@ -8,7 +8,7 @@ risk = "L2"
 risk_reason = "阅读器交互的普通业务实现：选中正文→引文进心得草稿（纯前端文本拼接，不存高亮、不改渲染器）；「记为学习进度」只是把本机阅读位置百分比预填进既有学习状态表单，写入仍走用户按「保存学习记录」的既有链路（契约不变、校验不变）；两个 TASK-067 可选项修正。跨 resources/notes/learning 三个 feature 目录但都是前端内部调用，按 business 归 L2：独立只读 Review；验收 N/A。"
 risk_flags = ["business"]
 owner = "coordinator"
-base = "0e954c6d41f4a6ff8b1e55b5ecb17bb2e0d4c4ea"
+base = "0e954c676530706635b59c7ba9ecdc38df0ee130"
 allowed_paths = [
   "frontend/src/features/resources/ResourceDetail.tsx",
   "frontend/src/features/resources/ResourceToolbar.tsx",
