@@ -109,9 +109,8 @@ describe('reader outline', () => {
     await screen.findByText('没有任何标题的一段正文。')
     expect(outline()).toBeNull()
     expect(document.querySelector('.reader-body')).not.toHaveClass('outline-open')
-    // 菜单里也没有目录开关：没有目录可显示。
-    fireEvent.click(screen.getByRole('button', { name: '更多操作' }))
-    expect(screen.queryByRole('menuitem', { name: /目录/ })).toBeNull()
+    // 顶栏也没有目录按钮：没有目录可显示。
+    expect(screen.queryByRole('button', { name: '目录' })).toBeNull()
   })
 
   it('scrolls the heading into view when an item is clicked', async () => {
@@ -147,26 +146,28 @@ describe('reader outline', () => {
     expect(outlineItems()[0].closest('li')).not.toHaveClass('current')
   })
 
-  it('hides with the 隐藏 button, ⌘\\ or the menu, and remembers the choice', async () => {
+  it('hides with the 隐藏 button, comes back with the toolbar 目录 button, and remembers', async () => {
+    // 用户 2026-09-17 实测：藏在 ⋯ 菜单里的「显示目录」找不回来 → 顶栏常驻按钮；不做快捷键。
     mount()
     await waitFor(() => expect(outline()).not.toBeNull())
+    const toggle = () => screen.getByRole('button', { name: '目录' })
+    expect(toggle()).toHaveAttribute('aria-expanded', 'true')
+    expect(toggle()).toHaveTextContent('') // 图标按钮，名字由 aria-label 提供
     fireEvent.click(within(outline()!).getByRole('button', { name: '隐藏' }))
     expect(outline()).toBeNull()
+    expect(toggle()).toHaveAttribute('aria-expanded', 'false')
     expect(localStorage.getItem('studypilot.reader.outline')).toBe('0')
-    // ⌘\ 再显示；Ctrl+\ 同样有效，带 Shift 的不算。
+    // 隐藏后按钮还在顶栏上——这就是找回目录的入口。
+    fireEvent.click(toggle())
+    expect(outline()).not.toBeNull()
+    expect(toggle()).toHaveAttribute('aria-expanded', 'true')
+    expect(localStorage.getItem('studypilot.reader.outline')).toBe('1')
+    // 没有快捷键：⌘\ 什么都不做。
     fireEvent.keyDown(document, { key: '\\', metaKey: true })
     expect(outline()).not.toBeNull()
-    fireEvent.keyDown(document, { key: '\\', metaKey: true, shiftKey: true })
-    expect(outline()).not.toBeNull()
-    fireEvent.keyDown(document, { key: '\\', ctrlKey: true })
-    expect(outline()).toBeNull()
-    // 菜单项文案随状态变。
+    // ⋯ 菜单里不再有目录项。
     fireEvent.click(screen.getByRole('button', { name: '更多操作' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: '显示目录' }))
-    expect(outline()).not.toBeNull()
-    expect(localStorage.getItem('studypilot.reader.outline')).toBe('1')
-    fireEvent.click(screen.getByRole('button', { name: '更多操作' }))
-    expect(screen.getByRole('menuitem', { name: '隐藏目录' })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: /目录/ })).toBeNull()
   })
 
   it('starts hidden when the user hid it last time', async () => {
@@ -174,6 +175,13 @@ describe('reader outline', () => {
     mount()
     await screen.findByRole('heading', { name: '2 目标函数', level: 2 })
     expect(outline()).toBeNull()
+    // 但顶栏按钮在，且是收起态。
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '目录' })).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      ),
+    )
   })
 
   it('collects nothing from a container without a rendered body', () => {

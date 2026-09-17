@@ -68,7 +68,7 @@ export function ResourceToolbar({
   onNotesClick: () => void
   /** 心得按钮本体：`Esc` /「收起」把焦点还给它（TASK-045）。 */
   notesButtonRef: RefObject<HTMLButtonElement | null>
-  /** 左侧目录栏（TASK-067）：正文有标题且宽屏时菜单里给「显示/隐藏目录」。 */
+  /** 左侧目录栏（TASK-067）：正文有标题且宽屏时顶栏给一个常驻的「目录」开关按钮。 */
   outlineAvailable?: boolean
   outlineOpen?: boolean
   onToggleOutline?: () => void
@@ -186,6 +186,21 @@ export function ResourceToolbar({
               角标显示的是值、不是动作（与学习状态徽章同类），且 `aria-hidden`——
               可访问名称仍由 `aria-label` 提供，`textContent` 只在数量为 0（角标隐藏）
               时为空，因此那条图标化守卫对**其余**图标按钮仍然成对成立。 */}
+            {/* 目录开关（TASK-067）。用户 2026-09-17 实测反馈：藏在 ⋯ 菜单里的「显示目录」
+                等于没有——隐藏后找不回来。改为顶栏常驻按钮，按下态 = 目录开着；没有目录
+                可显示（正文无标题 / 窄屏）时不出现。用户明确「快捷键先不做」，没有 ⌘\。 */}
+            {outlineAvailable && onToggleOutline && (
+              <button
+                type="button"
+                className="journal-button icon-button reader-outline-toggle"
+                aria-expanded={outlineOpen}
+                aria-label="目录"
+                title={outlineOpen ? '隐藏目录' : '显示目录'}
+                onClick={onToggleOutline}
+              >
+                <Icon name="outline" />
+              </button>
+            )}
             <button
               type="button"
               ref={notesButtonRef}
@@ -249,17 +264,6 @@ export function ResourceToolbar({
             >
               资料信息
             </button>
-            {/* 目录开关（TASK-067）：快捷键 ⌘\ 之外的鼠标入口。没有目录可显示时不出现。 */}
-            {outlineAvailable && onToggleOutline && (
-              <button
-                type="button"
-                role="menuitem"
-                className="reader-menu-item"
-                onClick={() => runFromMenu(onToggleOutline)}
-              >
-                {outlineOpen ? '隐藏目录' : '显示目录'}
-              </button>
-            )}
             {/* 正文的三个动作（TASK-046，用户 2026-09-08 选定）。它们此前在正文底下，沉浸式
               阅读页里那是文章末尾——读到最后才看得见，而且与正文之间没有分界。收进这里
               **功能一个不少**：文案随状态变（源码/渲染、替换/粘贴），删除进下面的销毁区。 */}

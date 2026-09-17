@@ -24,7 +24,7 @@ export function ReaderOutline({
   onHide,
 }: {
   items: OutlineItem[]
-  /** 「隐藏」按钮；快捷键 ⌘\ 在 `ResourceDetail` 里，与 ⌘J 同一处。 */
+  /** 「隐藏」按钮；再显示走顶栏的「目录」按钮（`ResourceToolbar`）。 */
   onHide: () => void
 }) {
   const [current, setCurrent] = useState(-1)
@@ -49,7 +49,7 @@ export function ReaderOutline({
           type="button"
           className="text-link reader-outline-hide"
           onClick={onHide}
-          title="隐藏目录（⌘\）"
+          title="隐藏目录（顶栏「目录」按钮可再显示）"
         >
           隐藏
         </button>
