@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-068"
-status = "READY"
+status = "ACCEPTED"
 risk = "L2"
 risk_reason = "阅读器交互的普通业务实现：选中正文→引文进心得草稿（纯前端文本拼接，不存高亮、不改渲染器）；「记为学习进度」只是把本机阅读位置百分比预填进既有学习状态表单，写入仍走用户按「保存学习记录」的既有链路（契约不变、校验不变）；两个 TASK-067 可选项修正。跨 resources/notes/learning 三个 feature 目录但都是前端内部调用，按 business 归 L2：独立只读 Review；验收 N/A。"
 risk_flags = ["business"]
@@ -90,9 +90,10 @@ TASK-067 登记为 MERGED（用户 2026-09-17 已合并 PR #75，merge `0e954c6`
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：
-- Review：
+- 候选 SHA：**`64ec6f6`**（范围 `0e954c6..64ec6f6`，源码 8 文件 + docs；前序候选 `958de89`，登记 `9505daf`/`958de89`）；本次写回仅 docs，Review 结论直接继承。
+- Review（独立只读 `.claude/agents/reviewer.md`，声明仅持 Read/Grep/Glob）：首轮 `958de89` **CHANGES_REQUIRED**——F1（必须）「保存成功后 RecordForm 以 key 重建仍带预填，绕过『未变化需填总结』守卫，再点保存会写出 before=after 的重复记录」→ 修正 `64ec6f6`（预填只给首张表单 + 回归断言）→ 增量复审 **PASS**：「预填仅给 savedCount===0 的首张表单，保存后父级重读不重置 savedCount，守卫有效；用例有判别性；No new findings」。已核对：引文只经 selection.toString() 进 textarea、渲染器未动、2000 上限有测；渲染期 setState 同一 token 只消费一次无循环；删除态不误聚焦；dirty/LEAVE 生效；UNREAD→IN_PROGRESS 在 options 内、ARCHIVED 不预填；事件监听均 cleanup；Esc 不冲突；F1/F3 落实。
+- 非阻断遗留项：F2（可记录）`available=false` 瞬态窗口内连点两次胶囊只保留最后一段引文；F3（可选）用例的 `vi.spyOn(window,'getSelection')` 依赖 vitest 隔离未显式 restore。Reviewer 另记：REVIEW_DUE 态预填改进度沿用既有前端校验（非本任务引入）。观察：一次全套 vitest 中 `ResourceDeleteDialog.test` 一例偶发红，同文件 3×、全套 2×、check_task 均绿，与本 diff 无关。
 - Acceptance：L2 N/A。
-- 最终状态/风险/用户操作：
+- 最终状态：**ACCEPTED**，待用户合并。
 - 日期与决定日志：2026-09-17 用户「开始」；「记为学习进度」实现为预填既有表单 + 用户按保存（主 Agent 判断：既有表单的时长/总结/冲突确认校验不宜绕过，仍是"点一下"进入、一次保存写入）。
 <!-- EVIDENCE:END -->
