@@ -85,6 +85,8 @@ TASK-067 登记为 MERGED（用户 2026-09-17 已合并 PR #75，merge `0e954c6`
 - 本地（`frontend/`，2026-09-17）：`format:check` / `lint` / `typecheck` exit 0；`vitest run` **654 passed**（29 文件）；`playwright test` 全套 **66 passed**（原 65 + 1）。
 - **实测发现并修正**：首轮全套 e2e 2 条 `reader-immersive` 变红——窄屏（320/390px）顶栏加了「记为学习进度」文字按钮后随首次滚动折成三行（57→151px），触发布局位移，浮层态心得区聚焦把阅读位置拽走 749px。修正：该按钮只在 ≥1280px 显示（草图与用法本就是桌面场景；阅读位置照记，回到宽屏再写）。
 - **Review F1 修正**：`LearningPanel` 只给第一张表单预填（`savedCount === 0`）；用例补「保存后再提交被『未变化需填总结』拦住、POST 仍 1 次」。重跑：lint/format/typecheck 0、vitest 655、e2e reader-layout 9/9。
+- **用户实测「点击保存进度没有反应」→ 修正**：真实浏览器复现（1440×900，文章中部 scrollY≈6000 点「记为学习进度」）：面板渲染在顶栏之下的文档流顶部，落在视口 y=−7486，且插入触发滚动锚定把页面再顶下 1700px——用户看不到任何变化。既有「状态徽章」在中部点开同样如此。修正：`ToolbarPanel` 挂载时 `scrollIntoView`（`.reader-panel` `scroll-margin-top: 70px` 让开顶栏；jsdom 可选调用），`ResourceToolbar` 在**点击时**记下 `returnTo = scrollY`，面板关闭后 `scrollTo` 回去。复现脚本再跑：表单落在视口 y=326，收起后 scrollY 回到 6097（=点击时值）。e2e 补断言：表单 y∈[57,900)、收起后 scrollY≈1200。重跑：lint/format/typecheck 0、vitest 654、e2e 66。
+- **副作用声明**：主 Agent 的首次复现脚本在用户真实数据上点了「保存学习记录」，为资料 `47ed715b…`（神经网络）写入一条学习记录（未开始 0% → 学习中 5%，总结「阅读到 5%（阅读器位置）」）。已当面告知用户，删除与否由用户决定。
 - 已知限制：引文不带回原文锚点（草图的「点击回到原文」未做）；窄屏无「记为学习进度」入口。
 
 <!-- EVIDENCE:BEGIN -->

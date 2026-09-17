@@ -461,6 +461,11 @@ test('a selected passage becomes a blockquote in the notes draft, and the readin
   expect(percent).toBeGreaterThan(0)
   await record.click()
   const form = page.getByRole('form', { name: '记录学习表单' })
+  // 面板在顶栏之下的文档流里：从文章中部点开必须滚到它（用户 2026-09-17 实测「没有反应」
+  // 就是面板开在了视口上方几千像素处），且顶边让开 sticky 顶栏。
+  const formBox = (await form.boundingBox())!
+  expect(formBox.y).toBeGreaterThanOrEqual(57)
+  expect(formBox.y).toBeLessThan(900)
   await expect(form.getByLabel('学习后进度（%）')).toHaveValue(String(percent))
   await expect(form.getByLabel('学习后状态')).toHaveValue('IN_PROGRESS')
   await expect(form.getByLabel('本次总结（选填）')).toHaveValue(`阅读到 ${percent}%（阅读器位置）`)
@@ -475,4 +480,7 @@ test('a selected passage becomes a blockquote in the notes draft, and the readin
     .toBeCloseTo(percent / 100, 1)
   // 阅读位置不再领先，按钮消失。
   await expect(record).toHaveCount(0)
+  // 收起面板 → 回到打开前的阅读位置。
+  await page.locator('.reader-panel').getByRole('button', { name: '收起', exact: true }).click()
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeCloseTo(1200, -2)
 })

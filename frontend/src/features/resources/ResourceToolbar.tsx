@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { Link } from 'react-router-dom'
 
 import { displayTime, safeWebUrl, sourceLabels, statusLabels, type Resource } from './api'
@@ -105,9 +105,24 @@ export function ResourceToolbar({
 
   // 一次只开一个面板：两个面板同时展开会把正文推到屏幕外，而工具条的意义正是让正文
   // 留在第一屏。开面板时同时关掉菜单，反之亦然。
+  // 面板在文档流里、顶栏之下，而顶栏是 sticky 的：读到文章中部点「记为学习进度」/状态徽章，
+  // 面板开在几千像素之上，屏幕上什么都不变（用户 2026-09-17 实测「点击保存进度没有反应」；
+  // 真实浏览器复现：面板落在视口 y=-7486）。所以打开时滚到面板（`ToolbarPanel` 挂载时
+  // scrollIntoView，`scroll-margin-top` 让开顶栏），关闭时滚回打开前的位置。位置在**点击时**
+  // 记（面板插入会触发浏览器的滚动锚定，之后再读 scrollY 已经不是原值）。
+  const returnTo = useRef<number | null>(null)
+  function remember() {
+    if (panel === null) returnTo.current = window.scrollY
+  }
+  useEffect(() => {
+    if (panel !== null || returnTo.current === null) return
+    window.scrollTo({ top: returnTo.current })
+    returnTo.current = null
+  }, [panel])
   function openPanel(key: PanelKey) {
     setMenuOpen(false)
     setPrefill(undefined)
+    remember()
     setPanel((current) => (current === key ? null : key))
   }
   // 「记为学习进度」：带着百分比打开学习面板。已开着也重开（prefill 变了要重新初始化表单）。
@@ -115,6 +130,7 @@ export function ResourceToolbar({
   function openPrefilled(percent: number) {
     setMenuOpen(false)
     setPrefill(percent)
+    remember()
     setPanel('learning')
   }
   function openMenu() {
@@ -511,8 +527,14 @@ function ToolbarPanel({
   onClose: () => void
   children: ReactNode
 }) {
+  // 挂载即滚到面板（理由见 `ResourceToolbar` 里 `returnTo` 的注释）；滚回由那边做。
+  const panel = useRef<HTMLElement>(null)
+  useLayoutEffect(() => {
+    // jsdom 没有 scrollIntoView，可选调用。
+    panel.current?.scrollIntoView?.({ block: 'start' })
+  }, [])
   return (
-    <section className="reader-panel" aria-label={label}>
+    <section className="reader-panel" aria-label={label} ref={panel}>
       <div className="reader-panel-heading">
         <span className="note-tab">{label}</span>
         <button type="button" className="journal-button" onClick={onClose}>

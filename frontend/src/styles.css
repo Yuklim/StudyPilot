@@ -2732,6 +2732,8 @@ a.source-chip:focus-visible {
 .reader-panel {
   max-width: var(--reader-measure);
   margin: 12px auto 0;
+  /* 打开时 scrollIntoView 要让开 57px 的 sticky 顶栏（TASK-068）。 */
+  scroll-margin-top: 70px;
   padding: 16px 18px 18px;
   border: 1px solid #e5e5da;
   border-radius: 6px 16px 16px 16px;
