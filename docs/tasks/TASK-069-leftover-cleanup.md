@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-069"
-status = "READY"
+status = "IN_REVIEW"
 risk = "L2"
 risk_reason = "唯一有行为变化的是 TASK-068 F2：`quoteRequest` 从单槽位改成待消费队列，让 `available=false` 瞬态窗口内的连续两次「记下这段」都进草稿，不再被后一次覆盖。改的是既有前端组件间的 prop 形状与消费逻辑（ResourceDetail ↔ NotesPanel），不碰接口、契约、数据含义，按 business 归 L2：独立只读 Review；验收 N/A。其余为文档数字、提示文案、ref 赋值、useMemo、测试清理与注释，单独看是 L1，取最高级按 L2 走一次 Review。"
 risk_flags = ["business"]
@@ -70,9 +70,21 @@ checks = ["frontend"]
 
 ## 实现与测试
 
-- 实现 SHA/变更摘要：待填
-- 命令、真实退出结果、product_fingerprint、环境、未运行原因：待填
-- 已知限制/未完成项：待填
+- 实现 SHA：`fbaedd9`（控制面登记 `66e7f04`）。变更摘要：
+  - **F2（行为）** `ResourceDetail.tsx`：`quoteRequest` 由 `{token, quote}` 改为 `{token, quotes: string[]}`，`takeQuote` 每次追加一段、`token` 即队列长度；组件按 `resourceId` 在 `Screen.tsx:118` 重挂，换资料队列自然清空。`NotesPanel.tsx`：渲染期消费改为 `quotes.slice(quoteConsumed)`，把未消费的按点击顺序一次追加（段间空一行），`deleting/pending` 仍整批作废（与旧单段语义一致），空批不改草稿。
+  - **F3（068）** 不需要改代码：spy 由全局 `src/test/setup.ts` 的 `afterEach → vi.restoreAllMocks()` 统一还原；在 `ReaderQuote.test.tsx` 头部注明这条约定，避免下次复审再提。
+  - **063 F4** `docs/开发与运行.md:97,123` 两处上限 50,000 → 2,000,000，并点明含内嵌图片的 base64 数据。
+  - **064 F2** 编辑页占位符说明补「复制到另一条心得不带图，只显示字面文本」。
+  - **064 F3** `NoteEditorPage.load()` 改签名收 `Note`，把 `note` 与草稿/图片表**一起**写进 `latest.current`；两处调用（读取 effect、`reload()`）不再各自 `setNote`，消掉 `.then`→commit 窗口内 `beforeunload` 以 `note=null` 重复 POST 的路径。
+  - **064 F5** `NotesPanel` 的 `expanded` 改 `useMemo(…, [draft, gallery])`。
+  - **064 F4** `frontend/e2e/notes-pages.spec.ts:549` 注释改为「停笔 1s 的自动保存把这条写出去（不是切换预览触发）」。
+- 新测试：`NotesPanel.test.tsx` 新增 1 例「刷新窗口内连点两次引文，按点击顺序全部保留，且同一 token 不重复消费」。**判别性已验**：把消费改回 `quotes.slice(-1)`（等价旧单槽位）→ 该例红（`expected '> 当隐藏层…\n\n' to be '> 神经网络…\n\n> 当隐藏层…\n\n'`），改回队列后绿。
+- 命令与结果（本机 macOS 25.5.0，Node 项目内 devDependencies，均在 `fbaedd9` 的工作区）：
+  - `npx prettier --write …` 6 个文件 → 仅 `NotesPanel.test.tsx` 重排；`npm run lint`（eslint .）exit=0；`npx tsc --noEmit` exit=0。
+  - `npx vitest run` → **29 文件 / 656 用例全绿**（TASK-068 时为 655，+1 即本次新用例）。
+  - `npx playwright test` → **66 passed**（与 TASK-068 持平；改动只有一条注释）。
+  - `python3 scripts/governance/check_task.py --task docs/tasks/TASK-069-leftover-cleanup.md --worktree` → **CHECKS PASS**（含 lint/format/typecheck/vitest/e2e/build，末条 `npm run build` exit=0）。
+- 已知限制/未完成项：队列只在内存里，刷新页面前未消费的引文不保留（与原本单槽位一致，未变差）；`NoteEditorPage` F3 是理论窗口，无法在 jsdom 稳定复现，未新增定向用例，靠既有编辑页用例（读取→自动保存→切换心得→409 覆盖）保持绿作为回归界面。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
