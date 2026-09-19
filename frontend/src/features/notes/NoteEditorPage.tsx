@@ -79,11 +79,15 @@ export function NoteEditorPage({ noteId }: { noteId?: string }) {
   })
   /** 展开后的正文（要发给后端、要与已保存内容比较的那份）。 */
   const source = () => expandImages(latest.current.draft, latest.current.gallery)
-  function load(content: string) {
-    const { text, images } = collapseImages(content)
+  // 读到一条心得就整份换进来：`note` 与草稿/图片表**一起**写进 ref，不留「ref 里 draft 已是
+  // 新的、note 还是 null」的窗口——那个窗口里 `beforeunload` 的保底会当成新建再 POST 一份
+  // （TASK-064 F3）。state 照旧由 React 提交。
+  function load(loaded: Note) {
+    const { text, images } = collapseImages(loaded.content)
     setGallery(images)
     setDraft(text)
-    latest.current = { ...latest.current, draft: text, gallery: images }
+    setNote(loaded)
+    latest.current = { ...latest.current, draft: text, gallery: images, note: loaded }
   }
   const timer = useRef<number | null>(null)
   const inflight = useRef<Promise<void> | null>(null)
@@ -131,8 +135,7 @@ export function NoteEditorPage({ noteId }: { noteId?: string }) {
     getNote(scope, noteId)
       .then((loaded) => {
         if (cancelled) return
-        setNote(loaded)
-        load(loaded.content)
+        load(loaded)
       })
       .catch((cause: unknown) => {
         if (!cancelled) setLoadError(cause)
@@ -326,8 +329,7 @@ export function NoteEditorPage({ noteId }: { noteId?: string }) {
     try {
       const fresh = await getNote(scope, note.id)
       if (!alive.current) return
-      setNote(fresh)
-      load(fresh.content)
+      load(fresh)
       setSave({ kind: 'idle' })
     } catch (cause) {
       if (alive.current) setSave({ kind: 'failed', message: failureText(cause) })
@@ -539,7 +541,8 @@ export function NoteEditorPage({ noteId }: { noteId?: string }) {
             {!preview && gallery.length > 0 && (
               <p className="resource-hint note-editor-images-hint">
                 图片在这里显示为 <code>![图片](image:N)</code>{' '}
-                占位，预览和保存时会还原；删掉占位符就是删掉那张图。
+                占位，预览和保存时会还原；删掉占位符就是删掉那张图。把占位符复制到另一条心得里不会带上图片，
+                那边只显示这行字面文本。
               </p>
             )}
           </>

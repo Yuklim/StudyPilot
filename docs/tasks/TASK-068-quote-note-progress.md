@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-068"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L2"
 risk_reason = "阅读器交互的普通业务实现：选中正文→引文进心得草稿（纯前端文本拼接，不存高亮、不改渲染器）；「记为学习进度」只是把本机阅读位置百分比预填进既有学习状态表单，写入仍走用户按「保存学习记录」的既有链路（契约不变、校验不变）；两个 TASK-067 可选项修正。跨 resources/notes/learning 三个 feature 目录但都是前端内部调用，按 business 归 L2：独立只读 Review；验收 N/A。"
 risk_flags = ["business"]
@@ -98,6 +98,6 @@ TASK-067 登记为 MERGED（用户 2026-09-17 已合并 PR #75，merge `0e954c6`
 - 第三次增量复审（`8586ea7..e889d67`，改为直写）：**PASS**——「createRecord 前置校验三项取自同一 resource.progress 恒成立；status_after 保持自身均在 options() 集合内，ARCHIVED 已排除；recordBusy + disabled 防重入有效；refreshed 到新数据前再点由后端乐观锁 409 拦住并就地提示、不重复写（可记录）；用户明确点击且明确要求免二次确认，按钮文案直述写入含义，不违反『AI 修改数据需确认』。No new findings」。
 - 非阻断遗留项：F2（可记录）`available=false` 瞬态窗口内连点两次胶囊只保留最后一段引文；F3（可选）用例的 `vi.spyOn(window,'getSelection')` 依赖 vitest 隔离未显式 restore。Reviewer 另记：REVIEW_DUE 态预填改进度沿用既有前端校验（非本任务引入）。观察：一次全套 vitest 中 `ResourceDeleteDialog.test` 一例偶发红，同文件 3×、全套 2×、check_task 均绿，与本 diff 无关。
 - Acceptance：L2 N/A。
-- 最终状态：**ACCEPTED**，待用户合并。
-- 日期与决定日志：2026-09-17 用户「开始」；初版「记为学习进度」实现为预填既有表单 + 用户按保存（主 Agent 判断）→ 用户试用后「点了保存进度直接保存就可以，不要再返回确认」→ 改为**点击即写入**：用户明确免二次确认，按钮本身即确认动作（Reviewer 建议记录）；同日用户实测「点了没反应」→ 面板滚动到位/回滚。
+- 最终状态：**MERGED**——2026-09-18 用户已合并 PR #76，merge commit `63ab98f`（登记并入 TASK-069 控制面）。非阻断遗留 F2/F3 由 TASK-069 处理。
+- 日期与决定日志：2026-09-17 用户「开始」；初版「记为学习进度」实现为预填既有表单 + 用户按保存（主 Agent 判断）→ 用户试用后「点了保存进度直接保存就可以，不要再返回确认」→ 改为**点击即写入**：用户明确免二次确认，按钮本身即确认动作（Reviewer 建议记录）；同日用户实测「点了没反应」→ 面板滚动到位/回滚；2026-09-18 用户合并 PR #76。
 <!-- EVIDENCE:END -->

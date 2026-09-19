@@ -546,7 +546,7 @@ test('an image pasted into the editor is embedded as base64, previewed, saved an
   const value = await editor.inputValue()
   expect(value).not.toContain('base64')
   await expect(page.getByText(/图片在这里显示为/)).toBeVisible()
-  // 切换预览触发保存；服务端读回的正文里是完整的 data URI。
+  // 停笔 1s 的自动保存把这条写出去（不是切换预览触发）；服务端读回的正文里是完整的 data URI。
   await expect(page.getByRole('status')).toContainText('已保存', { timeout: 5000 })
   await expect(page).toHaveURL(/\/notes\/[0-9a-f-]{36}$/)
   const id = page.url().split('/').pop()!

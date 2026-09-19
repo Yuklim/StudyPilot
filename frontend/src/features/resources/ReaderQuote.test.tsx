@@ -10,6 +10,8 @@ import { readSelection, toQuote } from './quoteSelection'
 
 // TASK-068：「记下这段」（正文选区 → 心得草稿）与「记为学习进度」（阅读位置 → 学习表单预填）。
 // 都走整页（App + 路由 + 真正的 markdown 渲染），选区用 mock 的 `window.getSelection`。
+// 这些 spy 由全局 `src/test/setup.ts` 的 `afterEach` 统一 `vi.restoreAllMocks()` 还原（TASK-068
+// 复审 F3：这里不再各自 restore 一遍，单点还原比散落的 restore 更难漏）。
 
 const detailPath = `/api/v1/resources/${resourceId}`
 const article =

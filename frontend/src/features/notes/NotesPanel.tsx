@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from 'react'
 import { Link } from 'react-router-dom'
 
 import { LEAVE_EVENT } from '../../shell/pages'
@@ -42,10 +50,12 @@ export function NotesPanel({
   focusRequest?: number
   /**
    * TASK-068「记下这段」：阅读器把正文选区做成 Markdown 引用送进来。`token` 单调递增、
-   * 同一 token 只消费一次（与 `focusRequest` 同一套约定）；`quote` 追加到草稿末尾（草稿
-   * 非空时先空一行），然后聚焦写作框、光标落在末尾。正在删除时不消费。
+   * `quotes` 是**待消费队列**（`token` 即队列长度）：从上次消费的下标起，把还没进过草稿的
+   * 引文按点击顺序一次全部追加到草稿末尾（草稿非空时先空一行，段间空一行），然后聚焦写作
+   * 框、光标落在末尾。正在删除/保存时这一批作废（与旧单段行为一致）。队列而不是单值，是
+   * 因为 `available=false` 的瞬态窗口内连点两次会被覆盖、只剩最后一段（TASK-068 F2）。
    */
-  quoteRequest?: { token: number; quote: string }
+  quoteRequest?: { token: number; quotes: string[] }
   /**
    * TASK-045：读到心得总数（`result.data.page.total_items`）后回传给入口按钮做角标。
    * 只在心得区挂载、`scope` 有资料时才有意义，由 `ResourceDetail` 传入；独立用法不传。
@@ -58,7 +68,7 @@ export function NotesPanel({
   // （TASK-064）；比较、校验、保存都先展开。侧栏不接粘贴图片，图片表只来自读到的心得。
   const [draft, setDraft] = useState('')
   const [gallery, setGallery] = useState<string[]>([])
-  const expanded = expandImages(draft, gallery)
+  const expanded = useMemo(() => expandImages(draft, gallery), [draft, gallery])
   const [selected, setSelected] = useState<Note | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [page, setPage] = useState(1)
@@ -104,10 +114,11 @@ export function NotesPanel({
   // 正在删除/保存时这个 token 作废，`available=false` 的瞬态则留着等下一次渲染。
   const [quoteConsumed, setQuoteConsumed] = useState(0)
   if (quoteRequest && quoteRequest.token !== quoteConsumed && available) {
+    const fresh = quoteRequest.quotes.slice(quoteConsumed)
     setQuoteConsumed(quoteRequest.token)
-    if (!deleting && !pending) {
+    if (!deleting && !pending && fresh.length) {
       const head = draft.replace(/\s+$/, '')
-      setDraft((head ? head + '\n\n' : '') + quoteRequest.quote + '\n\n')
+      setDraft((head ? head + '\n\n' : '') + fresh.join('\n\n') + '\n\n')
       setNotice('')
       setConfirmed(false)
     }

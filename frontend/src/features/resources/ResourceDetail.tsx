@@ -216,11 +216,19 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
   // 没有快捷键（用户 2026-09-17：「快捷键我觉得可以先不做」）：开关只有顶栏的「目录」按钮。
 
   // --- TASK-068：「记下这段」→ 心得草稿；「记为学习进度」用的阅读百分比 ---
-  const [quoteRequest, setQuoteRequest] = useState<{ token: number; quote: string }>()
+  // 引文是**待消费队列**而不是单个槽位：`NotesPanel` 在 `available=false`（父级正在刷新
+  // 资料）的瞬态里留着 token 不消费，这段窗口内连点两次「记下这段」时，单槽位会被后一次
+  // 覆盖、前一段引文丢掉（TASK-068 Review F2）。队列里每点一次追加一段，`token` 即长度，
+  // 面板按已消费下标一次把未消费的都追加进草稿。组件按 `resourceId` 重挂（`Screen.tsx`），
+  // 换资料时队列跟着清空。
+  const [quoteRequest, setQuoteRequest] = useState<{ token: number; quotes: string[] }>()
   const takeQuote = useCallback((quote: string) => {
     setSideTab('notes')
     setNotesOpen(true)
-    setQuoteRequest((current) => ({ token: (current?.token ?? 0) + 1, quote }))
+    setQuoteRequest((current) => {
+      const quotes = [...(current?.quotes ?? []), quote]
+      return { token: quotes.length, quotes }
+    })
   }, [])
   // 本机阅读位置的百分比：恢复时取存的值，滚动时随位置写回一起更新（只在整数变化时 setState）。
   const [readingPercent, setReadingPercent] = useState<number | null>(null)
