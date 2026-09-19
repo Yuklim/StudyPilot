@@ -357,6 +357,70 @@ describe('quick personal notes', () => {
     view.rerender(<NotesPanel resourceId={resourceId} focusRequest={1} available />)
     expect(screen.getByRole('textbox')).not.toHaveFocus()
   })
+
+  it('keeps every quote taken while the resource is being re-read, in click order (TASK-068 F2)', async () => {
+    // 引文原本是**一个槽位**：`available=false`（父级刷新资料）的瞬态里点两次「记下这段」，
+    // 第二段直接覆盖第一段，`available` 回来只有最后那段进草稿——第一段无声丢了。改成待
+    // 消费队列后，两段都要进、且保持点击顺序。
+    // 判别性：把 `ResourceDetail` 的队列改回单槽位（只留最后一段）时，本例必红。
+    // 同一棵树全程 `render`/`rerender`（理由见上一条用例）。
+    vi.spyOn(api, 'request').mockResolvedValue(notePage())
+    const view = render(
+      <NotesPanel
+        resourceId={resourceId}
+        available={false}
+        quoteRequest={{ token: 0, quotes: [] }}
+      />,
+    )
+    await screen.findByText('还没有心得，写下一句话就可以开始。')
+    // 刷新窗口里连点两次胶囊：父级把两段都排进队列，面板一段都不消费。
+    const first = '> 神经网络主要由输入层构成。'
+    const second = '> 当隐藏层只有一层时叫两层网络。'
+    view.rerender(
+      <NotesPanel
+        resourceId={resourceId}
+        available={false}
+        quoteRequest={{ token: 1, quotes: [first] }}
+      />,
+    )
+    view.rerender(
+      <NotesPanel
+        resourceId={resourceId}
+        available={false}
+        quoteRequest={{ token: 2, quotes: [first, second] }}
+      />,
+    )
+    expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('')
+    // 资料回来：两段按点击顺序一次补进草稿，段间空一行。
+    view.rerender(
+      <NotesPanel
+        resourceId={resourceId}
+        available
+        quoteRequest={{ token: 2, quotes: [first, second] }}
+      />,
+    )
+    const box = screen.getByRole('textbox') as HTMLTextAreaElement
+    expect(box.value).toBe(first + '\n\n' + second + '\n\n')
+    expect(box).toHaveFocus()
+    // 同一 token 不再消费第二次：又一轮刷新翻转不会把引文重复追加。
+    view.rerender(
+      <NotesPanel
+        resourceId={resourceId}
+        available={false}
+        quoteRequest={{ token: 2, quotes: [first, second] }}
+      />,
+    )
+    view.rerender(
+      <NotesPanel
+        resourceId={resourceId}
+        available
+        quoteRequest={{ token: 2, quotes: [first, second] }}
+      />,
+    )
+    expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe(
+      first + '\n\n' + second + '\n\n',
+    )
+  })
 })
 
 describe('attach/detach note binding', () => {

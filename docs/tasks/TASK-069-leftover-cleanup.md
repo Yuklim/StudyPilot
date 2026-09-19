@@ -16,7 +16,7 @@ allowed_paths = [
   "frontend/src/features/notes/NotesPanel.test.tsx",
   "frontend/src/features/notes/NoteEditorPage.tsx",
   "frontend/src/features/notes/NoteEditorPage.test.tsx",
-  "frontend/e2e/note-images.spec.ts",
+  "frontend/e2e/notes-pages.spec.ts",
   "docs/开发与运行.md",
   "docs/tasks/TASK-069-leftover-cleanup.md",
   "docs/tasks/TASK-068-quote-note-progress.md",
@@ -38,7 +38,7 @@ checks = ["frontend"]
 3. **TASK-063 F4（记录项）**：`docs/开发与运行.md` 两处心得正文上限 `50,000` → `2,000,000`（TASK-063 已改契约与实现，文档漏改，当时越 allowed_paths）。
 4. **TASK-064 F2（记录项）**：编辑页图片占位符说明补一句——跨心得复制占位符文本不带图。
 5. **TASK-064 F3（记录项）**：`NoteEditorPage` 的 `load()` 一并把 `note` 写进 `latest.current`，消掉 `.then`→commit 宏任务窗口内 `beforeunload` 以 `note=null` 重复 POST 的理论路径。
-6. **TASK-064 F4（记录项）**：`frontend/e2e/note-images.spec.ts` 里已不成立的注释（「切换预览触发保存」，实际守卫是轮询）改成实际证明链。
+6. **TASK-064 F4（记录项）**：`frontend/e2e/notes-pages.spec.ts` 里已不成立的注释（「切换预览触发保存」，实际守卫是轮询）改成实际证明链。
 7. **TASK-064 F5（记录项）**：`NotesPanel` 的 `expanded` 用 `useMemo`。
 8. 顺带把 **TASK-068 登记为 MERGED**（用户 2026-09-18 合并 PR #76，merge `63ab98f`）并更新索引行。
 
