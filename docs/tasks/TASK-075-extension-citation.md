@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-075"
-status = "READY"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "要给 CapturePayload 增加字段，而它是契约第 14 节定义的**非 HTTP 公共契约**（扩展与 /capture 页面之间的 postMessage 消息），两份平行实现还有一道逐字比对的机器守卫。改动落在 docs/contracts/** —— risk-policy.json 的 high_risk_paths 命中，且属「公共契约 + 跨模块（extension 与 frontend 各一份实现）」，取最高定 L3：1 Worker → 自动检查 → 独立只读 Reviewer → 独立只读 Integration/Acceptance。登记前主 Agent 曾对用户说「只动 extension/**、与前端不相交」，核对契约第 14 节后发现该说法错误，已当面更正并按 L3 登记。"
 risk_flags = ["public-api", "architecture"]
@@ -90,9 +90,29 @@ checks = ["frontend", "contracts"]
 
 ## 实现与测试
 
-- 实现 SHA：待填。
-- 命令与结果：待填。
-- 已知限制/未完成项：待填。
+- 实现 SHA：`55dc0f5`（控制面登记 `5d8abee` + `b1f6a0e`）。变更摘要：
+  - **`extension/src/injected/extract.ts`**：新增 `extractCitation(doc, url)`。只读这一页自己声明的东西——`citation_*`（Highwire）→ `DC.*` → JSON-LD 的 schema.org `@type`（含 `@graph`，坏 JSON 块跳过不放弃整页）。`metaValues` 同时看 `name` 与 `property`；`bounded` 去空白并按契约上限截断，空串折 `null`。
+  - **识别门槛**：DOI／期刊会议名／schema.org 明说是论文书学位论文报告，三者有一即认，否则返回 `null`。
+  - **类型推断**：book → BOOK；thesis 或 `citation_dissertation_name` → THESIS；report → REPORT；有会议名 → CONFERENCE_PAPER；`scholarlyarticle` 或有期刊名或有 DOI → arXiv 域名且无期刊名时 PREPRINT，否则 JOURNAL_ARTICLE；都不是 → OTHER。
+  - **`CapturePayload.citation`**：契约第 14 节新增 `CapturedCitation`（字段、上限、门槛、「作者只认结构化来源」的理由都写进去了）；两份平行实现同步新增 `isCapturedCitation` 并**加进扩展侧的逐字比对名单**；前端那份按契约分工把规则钉成 24 条行为断言。
+  - **`CapturePage.tsx`**：识别到时显示只读卡片（类型/作者/年份/出处/DOI）+ 默认勾选；保存资料与正文成功后写文献信息；写失败**停在本页**如实说明并给「打开这份资料」的入口，不回滚、不重试、不重复新建。
+- **实施中改掉的两处自己的设计**：
+  1. **schema.org 说是论文却判成 OTHER**（写用例时发现）：原实现用 `scholarlyarticle` 当门槛放行，却没把它算进类型推断——既然信它到显示卡片，就该信它到定类型。已改，并顺带补上 `report → REPORT`。
+  2. **`citation` 由必填改为可选**：扩展里另外两个不在本任务授权路径内的测试文件构造 `CapturePayload` 时会因必填字段编译失败。改成可选**更符合已写进契约的那句「缺这个字段等同 null」**（旧版本扩展留下的暂存确实没有它），而不是为了绕过编译。
+- 新测试与判别性：
+  - `extract.test.ts` 6 例：Highwire 全字段；arXiv 判预印本而**同样标签换个域名就不判**；只在 JSON-LD 里声明也认、且相邻的坏 JSON 块不影响；**普通博客（有作者有日期）必须返回 null**；超限值按上限截断（出处 500／卷 50／ISBN 32／作者 100 位）且年份越界折 `null`；随 `CapturePayload` 带回、非文献时为 `null`。
+  - `frontend/.../protocol.test.ts` 新增「citation 连同 authors 数组一起复制」（上一次漏掉的是 `images`，同一类错误的新面孔）+ `isCapturedCitation` 的 7 条接受与 17 条拒收，逐条对应后端 `contracts.py` 的约束。
+  - `CapturePage.test.tsx` 4 例：识别到则显示并默认勾选、保存时整份写入且首次不带 `expected_version`；**取消勾选就不发那一次请求**；非文献时页面不多出任何节点；文献写失败时资料仍在、提示指向「信息」、且**不重复新建资料**。
+  - **变异实测**：只改前端那一份校验（把 isbn 上限放宽成 200），扩展侧的逐字比对守卫**当场变红**——契约第 14 节说的那道「两份一模一样」的保证在本次改动上真实生效。
+- 命令与结果（本机 macOS 25.5.0，工作区在 `55dc0f5`）：
+  - `python3 scripts/governance/check_task.py --task docs/tasks/TASK-075-extension-citation.md --worktree` → **CHECKS PASS**（profiles=contracts,extension,frontend；`product_fingerprint=51540c26…`；extension **151 passed**（145 → 151）、frontend **744 passed**（715 → 744）、两侧 lint/typecheck/format/build 全过、OpenAPI 模型校验通过）。
+  - `npx playwright test`（全量，不在自动检查组内）→ **75 passed**，无新增（本任务没有新的 e2e：采集链路的端到端需要真实扩展，仓库既有的 e2e 同样不覆盖它，见已知限制）。
+- 已知限制/未完成项：
+  - **没有覆盖真实扩展的端到端验证**：Playwright 跑的是应用页面，装载真实扩展、在真实网页上点图标这条链路仓库里一直没有自动化（TASK-038/040 也是如此）。本任务的确认页一侧有组件级用例，扩展一侧有 jsdom 用例，但「真扩展 → 真页面 → 真确认页」只能人工试。
+  - **识别只看页面自己声明的元数据**：没有 `citation_*`/DC/JSON-LD 的学术站点（有些老期刊站）认不出来，用户仍可在资料的「信息」里手填。
+  - **不解析自由格式的作者字符串**：Defuddle 给的 `author` 不拆，认不准就不填（理由见契约第 14 节）。
+  - **PDF 页面不识别**：扩展的注入只处理 HTML 文档。
+  - 确认页的卡片只显示 5 项（类型/作者/年份/出处/DOI），而载荷里还带着卷期页、出版方、ISBN、出版日期——它们会一并存下，只是不在这一屏上列出，以免把确认页变成表格。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
