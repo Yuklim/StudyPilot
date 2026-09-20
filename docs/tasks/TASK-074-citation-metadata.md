@@ -77,7 +77,53 @@ checks = ["backend", "contracts"]
 
 ## 实现与测试
 
-（由你填写：实现 SHA、变更摘要、命令与真实退出结果、已知限制。）
+### 实现 SHA
+
+- 登记：`344dcdf`（任务记录 + 索引行）
+- 实现：`690849f`（后端 + 契约 + openapi + 测试）
+
+### 变更摘要
+
+- 新模块 `modules/citations/contracts.py`：`ITEM_TYPES` 九种、`CitationError`、`CitationPut`（`extra="forbid"`、`strict=True`；所有可写字符串去首尾空白且 1～上限，清空用显式 `null`；`authors` 至多 100 个、单个 1～200、`[]` 经校验器归一为 `None`；`issued_year` 1000～2200；`expected_version` 可空 ≥1）。
+- 新表模型 `ResourceCitation`（`models.py`）：`UNIQUE(resource_id)` + FK `ON DELETE CASCADE`，`item_type` CHECK 九值默认 `OTHER`，各字符串/年份 CHECK，`authors` 为 `JSON(none_as_null=True)`，沿用 `Identified`/`Created`/`Versioned`。
+- 新迁移 `0008_resource_citations`（down_revision `0007_highlights`）：建表；降级直接 drop（同 0004/0005/0007 形态）。
+- 新存储 `citation_store.py`：`require_resource` 复用 note_store 的可读规则；`put` 为**整份替换**（`model_dump(exclude={"expected_version"})` 逐字段赋值，值相同不赋值以免空推版本）；首次写带 `expected_version` → 404 `CITATION_NOT_FOUND`，已有不带 → 428，不符 → 409（`details.current_version`）。
+- 新应用层 `application/citations.py`：单事务、`StaleDataError` 不回放，改用新事务重读分类为 409。
+- 新 API `api/citations.py`：照抄 `api/snapshots.py` 的 `failure/guarded/respond/identity/command_body/version_header`；GET/PUT/DELETE 三个端点，`main.py` 注册路由。
+- 删除确认协议：`DELETION_IMPACT_KEYS` 增 `citation_count`（位于 `snapshot_asset_count` 之后），`_deletion_snapshot` 增 `citations` 清单条目（id + version），因此文献信息一增一改都会改变 `impact_revision`。
+- 契约文档同步：1.3 交付说明段追加一句 + 「当前可用操作」新增一行；2.2 新增 `CITATION_NOT_FOUND`；4.12 关系表新增 LearningResource—ResourceCitation 行；新增 **4.16 Citation（resources 所有）**；第 9 节第 2 条绑定集合写入 Citation；第 10 节新增三行；10.1 错误码矩阵新增三行。
+- `openapi-v1.json`：新增 `Citation`/`CitationWrite`/`CitationEnvelope` schema、`citations` tag、`ResourceOrCitationNotFound` 响应、一个 path 三个 operation；`x-delivery-profile.available_operations` 40 → 43；`DeletionImpact` 增 `citation_count`。
+- 测试：新增 `tests/test_citations.py`（23 例）；`test_resource_deletion.py` 夹具加一条文献信息并断言 `citation_count` 与级联清零；`test_migrations.py` head/表数同步（`0008_resource_citations`、16）并新增 0008 升降级用例；`test_taxonomy.py` 交付目录计数 40 → 43 并新增三项集合断言（未放宽任何既有断言）。
+
+### 命令与真实退出结果
+
+于 `690849f` 的工作树（内容与该提交一致）：
+
+- `cd backend && uv run ruff format --check .` → `93 files already formatted`，exit 0
+- `uv run ruff check .` → `All checks passed!`，exit 0
+- `uv run mypy` → `Success: no issues found in 83 source files`，exit 0
+- `uv run pytest -q` → `593 passed in 16.86s`（基线 569 → 593，新增 24 例），exit 0
+- `python3 scripts/governance/check_task.py --task docs/tasks/TASK-074-citation-metadata.md --worktree` → backend 五项（format/check/mypy/pytest/`uv build --offline`）与 contracts（OpenAPI 模型校验）全部 exit 0，末行 **CHECKS PASS**
+
+### 判别性验证（各撤销一次实现，确认用例变红后已还原）
+
+1. **整份替换而非字段合并**：`citation_store.put` 改为 `model_dump(..., exclude_unset=True)` → `test_writing_again_replaces_the_whole_record_instead_of_merging` FAILED（`item_type` 仍是 `JOURNAL_ARTICLE`）。
+2. **`authors` 空数组存 NULL**：`drop_empty` 改为 `return value` → `test_authors_keep_their_printed_order_and_an_empty_list_means_unfilled` FAILED（读回 `[]`）。
+3. **影响计数**：删掉 `citation_count=0 if citation is None else 1` → `test_citation_change_invalidates_a_pending_deletion_token` 与 `test_preview_and_delete_cascades_resource_data_but_keeps_taxonomy` 双双 FAILED。
+4. **级联删除**：0008 的 FK 改 `ondelete="RESTRICT"` → `test_deleting_the_citation_or_the_resource_leaves_the_other_side_intact` 与上述删除用例 FAILED。
+
+四处改动均已还原，还原后全套 593 passed。
+
+### 已知限制与偏离登记
+
+- **`owner` 字段**：intake 写的是 `backend_worker`，但 `scripts/governance/validate_governance.py` 的 `AGENTS` 白名单没有这个角色，`check_task.py` 会以 `unknown task writer` 直接失败。按《角色与模块边界》第 27 行「资料、主题、标签…相关功能」改为 `resource_worker`（本表 owner 为 `resources`），索引行同步。目标、路径、风险、完成条件一字未改。
+- **空串语义**：可写字符串字段的清空只接受显式 `null`，`""` 与纯空白返回 422——与既有 `LearningResource.title` 同一条规则，避免「没填」出现两种写法；`authors` 的 `[]` 是任务明确要求的例外（归一为 NULL）。已写入 4.16。
+- **`authors` 无数据库层 CHECK**：数元素个数要靠方言相关的 JSON 函数，按字节长度近似则既误伤合法姓名（转义膨胀）又管不住个数；形状由唯一写入者 `modules/citations/contracts.py` 把守。理由已写入 4.16 与模型 docstring。
+- **契约改了八处而非六处**：除 intake 列的五处（2.3 确认不需要，见下）外，另加 2.2 错误码表（新增稳定码 `CITATION_NOT_FOUND` 必须登记）、4.12 关系/删除语义表（快照当年也加了行）、10.1 逐 operation 错误码矩阵（该节声明「每个 operation」都有行）。
+- **2.3 白名单确认不加行**：文献信息没有列表接口，不接受 `page`/`sort`/`q`，2.3 是分页/搜索/排序白名单，加行会凭空承诺一个不存在的列表。
+- **openapi 的 `previewResourceDeletion` 示例**：该示例自 TASK-071 起就缺 `highlight_count`，与 `DeletionImpact` 的 `required` 对不上；本次在同一处补 `citation_count` 时一并补齐 `highlight_count`，使示例可校验。属最小修正，如判定越界可回退这一处。
+- **10.1 开头「上一张 40 行操作表」的行数是旧数**（本次改动前第 10 节已有 56 行，现 59 行），非本次引入，未改动，记录于此。
+- 本次未动前端与扩展，未做引文导出、按作者/DOI 检索，服务端仍不出网（`test_snapshots.py::test_backend_makes_no_outbound_network_calls` 覆盖全部 `src/**`，含新模块）。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
