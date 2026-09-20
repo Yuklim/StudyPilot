@@ -128,6 +128,16 @@ checks = ["backend", "contracts"]
   - 服务端不校验 `exact` 是否仍能在快照正文里找到，也不做重定位；坏锚点（前端传错偏移、正文已整份替换）要到阅读器渲染时才暴露。这是契约 4.15 明写的分工，不是遗漏。
   - `highlight_count` 已进影响预览，但前端删除对话框目前只显示 `note_count`，要等 TASK-072 才会把高亮数摆出来。在前端能创建高亮之前，这个差距对用户不可见。
 
+### Review 必修与采纳项的修正（第二候选）
+
+- **F1（必须）** `openapi-v1.json` 的 `updateResourceHighlight`：`x-error-codes` 补上实现确实会返回的 `RESOURCE_NOT_FOUND`（坏 UUID 与资料不可读两条路径），并把 404 从 `HighlightTargetNotFound` 换成新增的 `HighlightOrNoteNotFound`——`rebind` 不调 `require_snapshot`，原组件里的 `SNAPSHOT_NOT_FOUND` 示例在 PATCH 永不出现。
+- **F2（必须）** 契约第 1 节「当前可用操作」表补高亮一行（此前只在 `x-delivery-profile` 与第 10 节出现，与快照、资产、attach/detach 等历次新增的体例不一致）。
+- **F3（必须）** 4.15 节「本阶段的边界」里的「四个接口」改为「五个接口（列表/新增/详情/改绑解绑/删除）」，与 10 节五行、openapi 五 operation 一致。
+- **F4（可记录→采纳，改了代码）** `HighlightPatch.note_id` 由「默认 None」改为**必填可空**：`null` 是解绑，省略是 `422`。原写法下 TASK-072 一个漏字段的 PATCH 会静默解开用户配好的心得；前端还没写，现在定死最便宜。契约 4.15 字段表与「锚点不可变」段、openapi `HighlightPatch.required` 同步。
+- **F8（测试缺口→已补）** 三处：`exact` 首尾空白原样保留（空白是选区的一部分，去掉会移动锚点）；快照为 FAILED 时写入同样 `SNAPSHOT_NOT_FOUND`（用 session 置成捕获失败该有的字段组合，写入 API 不接受该状态）；PATCH 省略 `note_id` 为 422 且绑定不变。**判别性已验**：`note_id` 改回带默认值 → 第三例红；`require_snapshot` 去掉 READY 条件 → 第二例红。
+- 第二候选重跑：`ruff`/`mypy` 0、`pytest -q` **569 passed**、`check_task.py --worktree` **CHECKS PASS**（backend + contracts）。
+- **未改、按建议记录的 Review 项**见下方非阻断遗留项。
+
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
