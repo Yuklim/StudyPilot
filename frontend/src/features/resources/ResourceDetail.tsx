@@ -3,6 +3,9 @@ import { Link, useNavigate } from 'react-router-dom'
 
 import { failureText, getResource, type Source } from './api'
 import { ContentSnapshot, type SnapshotState } from './ContentSnapshot'
+import { PdfReader } from './PdfReader'
+import { clearPdfPosition } from './pdfPosition'
+import { isPdfOriginal, type OriginalFile } from './files'
 import { ResourceDeleteDialog } from './ResourceDeleteDialog'
 import { ResourceError } from './ResourceState'
 import { ReaderOutline } from './ReaderOutline'
@@ -59,6 +62,7 @@ const ReaderContent = memo(function ReaderContent({
   editRequest,
   deleteRequest,
   onSnapshotState,
+  pdf,
 }: {
   resourceId: string
   sourceType: Source
@@ -67,7 +71,12 @@ const ReaderContent = memo(function ReaderContent({
   editRequest: number
   deleteRequest: number
   onSnapshotState: (state: SnapshotState) => void
+  /** TASK-073：FILE 资料的原件是 PDF 时，正文区放站内阅读器而不是快照空态。 */
+  pdf: OriginalFile | null
 }) {
+  // PDF 自己就是正文：这时不渲染快照区（那里只会显示「还没有保存正文」的引导，对一份
+  // 已经能在站内读的 PDF 没有意义）。其他格式的原件保持现状，走快照那条路。
+  if (pdf) return <PdfReader key={pdf.id} resourceId={resourceId} file={pdf} />
   return (
     <ContentSnapshot
       resourceId={resourceId}
@@ -320,6 +329,9 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
     [askEditorFocus],
   )
   const receiveHighlightCount = useCallback((total: number) => setHighlightCount(total), [])
+
+  // --- TASK-073：FILE 资料的原件是 PDF 时，站内直接读 ---
+  const pdfOriginal = isPdfOriginal(item?.original_file ?? null) ? item!.original_file! : null
   // 本机阅读位置的百分比：恢复时取存的值，滚动时随位置写回一起更新（只在整数变化时 setState）。
   const [readingPercent, setReadingPercent] = useState<number | null>(null)
 
@@ -376,6 +388,8 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
   const afterDeletion = useCallback(() => {
     // 资料没了，本机记的阅读位置也没用了（TASK-067 Review F3）。
     clearPosition(resourceId)
+    // PDF 的位置是另一把钥匙，删资料时一起清（Review F5：TASK-067 的同一处置没平移过来）。
+    clearPdfPosition(resourceId)
     navigate('/resources')
   }, [navigate, resourceId])
 
@@ -478,6 +492,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
               editRequest={editRequest}
               deleteRequest={deleteRequest}
               onSnapshotState={receiveSnapshotState}
+              pdf={pdfOriginal}
             />
           </div>
           {/* 用心得 `<section aria-label>` 而不是 `<aside>`：section + 名字 = region，
@@ -488,22 +503,27 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
               {/* 两个 Tab（TASK-067）。NotesPanel **保持挂载**（草稿与角标数量都在它里面），
                   「信息」选中时只是 CSS 显隐，不卸载。 */}
               <div className="reader-side-tabs" role="tablist" aria-label="右栏">
-                <button
-                  type="button"
-                  role="tab"
-                  id="reader-tab-highlights"
-                  aria-selected={sideTab === 'highlights'}
-                  aria-controls="reader-tabpanel-highlights"
-                  className="reader-side-tab"
-                  onClick={() => setSideTab('highlights')}
-                >
-                  高亮
-                  {highlightCount !== null && highlightCount > 0 && (
-                    <span className="notes-badge" aria-hidden="true">
-                      {highlightCount}
-                    </span>
-                  )}
-                </button>
+                {/* TASK-073：PDF 资料没有「高亮」Tab——高亮锚点是快照正文的字符偏移，PDF
+                    是另一套坐标；显示一个点不动的空 Tab 比不显示更糟（用户 2026-09-20
+                    看草图后确认）。 */}
+                {!pdfOriginal && (
+                  <button
+                    type="button"
+                    role="tab"
+                    id="reader-tab-highlights"
+                    aria-selected={sideTab === 'highlights'}
+                    aria-controls="reader-tabpanel-highlights"
+                    className="reader-side-tab"
+                    onClick={() => setSideTab('highlights')}
+                  >
+                    高亮
+                    {highlightCount !== null && highlightCount > 0 && (
+                      <span className="notes-badge" aria-hidden="true">
+                        {highlightCount}
+                      </span>
+                    )}
+                  </button>
+                )}
                 <button
                   type="button"
                   role="tab"
@@ -541,22 +561,24 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
                 {markError}
               </p>
             )}
-            <div
-              role="tabpanel"
-              id="reader-tabpanel-highlights"
-              aria-labelledby="reader-tab-highlights"
-              hidden={sideTab !== 'highlights'}
-            >
-              <ReaderHighlights
-                key={resourceId}
-                resourceId={resourceId}
-                rendered={readerMain?.querySelector('.snapshot-rendered') ?? null}
-                revision={highlightRevision}
-                onWriteNote={writeNoteForHighlight}
-                onOpenNote={openNoteFromHighlight}
-                onCount={receiveHighlightCount}
-              />
-            </div>
+            {!pdfOriginal && (
+              <div
+                role="tabpanel"
+                id="reader-tabpanel-highlights"
+                aria-labelledby="reader-tab-highlights"
+                hidden={sideTab !== 'highlights'}
+              >
+                <ReaderHighlights
+                  key={resourceId}
+                  resourceId={resourceId}
+                  rendered={readerMain?.querySelector('.snapshot-rendered') ?? null}
+                  revision={highlightRevision}
+                  onWriteNote={writeNoteForHighlight}
+                  onOpenNote={openNoteFromHighlight}
+                  onCount={receiveHighlightCount}
+                />
+              </div>
+            )}
             <div
               role="tabpanel"
               id="reader-tabpanel-notes"
