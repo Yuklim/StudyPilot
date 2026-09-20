@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-074"
-status = "READY"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "新增一张用户数据表与三个公共接口，并改动删除确认协议的影响集合：命中架构/公共 API/迁移/关键数据模型多项高风险标志，取最高按 L3 走。执行链：Worker → 自动检查 → 独立只读 Reviewer → 独立只读 Integration/Acceptance。"
 risk_flags = ["architecture", "public-api", "migration", "critical-data"]
@@ -128,10 +128,24 @@ checks = ["backend", "contracts"]
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：待填
-- Review：待填
-- Acceptance：待填
-- 最终状态/风险/用户操作：待填
-- 非阻断遗留项：待填
+- 候选 SHA：**`f81e3c3`**（登记 `344dcdf` → 实现 `690849f` → 证据 `f81e3c3`；`f81e3c3` 相对 `690849f` 只多一次任务记录写回，故 `690849f` 上跑出的检查覆盖候选的全部代码与契约内容）。
+- Review：L3 独立只读 Reviewer（`.claude/agents/reviewer.md`），**PASS**。权限证据：声明「仅持有 `Read`/`Grep`/`Glob`，无 Write/Edit/Bash，运行器层面真实只读」。核对方式：读 `.git/worktrees/agent-.../logs/HEAD` 确认分支自 `92a4764` 起只有三个提交、范围与任务单一致，再逐文件读 worktree 最终内容，并用主仓目录的 `backend/**`（并行任务 TASK-073 不碰后端）作 base 代理逐行比对。原文要点：
+  > 模型↔迁移逐项一致：17 列、12 条 CHECK（含 `item_type` 九值、年份 1000–2200、各长度）、FK `ON DELETE CASCADE`、`UNIQUE(resource_id)`、`op.f` 命名均对齐；降级只 drop 新表；`learning_resources` 及其余表与 base 逐字节相同。
+  > PUT 确为整份替换（全字段赋值，等值不赋值以免空推版本，符合契约 2.4「无变化不加版本」）；428/409/`If-Match`/`StaleDataError` 新事务重读不回放，与快照同语义。
+  > 删除协议自洽：`citation_count`、manifest `citations`、契约第 9 节绑定集合、openapi `DeletionImpact` 四处一致；级联经「FK 改 RESTRICT」的判别性验证证实真实发生。
+  > 契约四方说法一致；2.3 不加行的理由成立（无列表接口）。`test_taxonomy` 仅 40→43 + 新增集合断言，`test_migrations` 仅 head/表数 15→16 + 新增 0008 升降级用例，**未放宽任何断言**。无 `frontend/**`、`extension/**` 改动，未越 `allowed_paths`。
+  > findings（均可记录）：`authors` 无 DB 层形状 CHECK（store 是唯一写入方，已写入 4.16 与 docstring）；首写并发撞唯一约束会 500 而非 409（与既有快照同款，非本任务引入）；未测原件非 READY 时 404（同代码在 note/highlight 处已覆盖）。
+- Acceptance：L3 独立只读 Integration/Acceptance（另一实例，独立于 Worker 与 Reviewer，无前序上下文），**PASS**（1 项非阻断）。权限证据同上（仅三个只读工具，未写入任何文件）。原文要点：
+  > 完成条件八条逐条对账全部满足并给出行号：三接口状态码与前置条件、24 组字段校验 422 + 12 组 DB CHECK、**整份替换非合并**（只发 `doi` 时其余字段全清、`item_type` 回 `OTHER`）、**`authors` 空数组存 NULL**（`JSON(none_as_null=True)` + 校验器 + 用例）、**级联删除与影响计数**、迁移升降级与 `compare_metadata==[]`、交付目录 40→43（与主目录基线逐行比对，原有断言一字未放宽）、测试文件无 `skip`/`xfail`/注释断言且 569→593 与 24 例自洽。
+  > 跨模块：contracts/store/API/models/迁移/openapi 的九种 `item_type`、各字段长度、409/428/404 语义完全一致；契约八处与 openapi 六处互相吻合。
+  > 需求对账：字段覆盖 作者（有序）/年份/日期/期刊书名/卷期页/DOI/ISBN/出版者/摘要，足以支撑 Zotero 式复刻；`backend/src` 内仅 allowed 文件提及 citation，未动前端/扩展/既有接口语义；`test_snapshots.py` 的「整个 `src/**` 不出网」扫描对新模块同样成立。
+  > 三处偏离逐条核实属实且可接受：`owner` 改 `resource_worker`（`validate_governance.py` 的 AGENTS 白名单确无 `backend_worker`，且与《角色与模块边界》及表 owner `resources` 相符，目标/路径/风险未动）；契约实改八处（已逐条定位）；顺手补 openapi 一处示例缺失字段（同文件同段的最小修正）。
+- 最终状态/风险/用户操作：**ACCEPTED**，等用户合并 PR。风险低：新增一张 1:1 表与三个新端点，既有接口与表一字未动；服务端仍不出网。用户操作：合并 PR，合并后本机库由启动脚本升到 0008。**界面上看不到变化**——文献字段的显示与编辑、浏览器连接器都在后续任务。
+- 非阻断遗留项：
+  - **（验收 findings，交下个碰契约的任务）** `docs/contracts/openapi-v1.json` 的 `deleteResource` 409 `impactChanged` 示例里，`impact` 仍只有 7 个键，缺本次新增的 `citation_count` 与 TASK-071 的 `highlight_count`；而 `DeletionImpact` 要求 9 键且 `additionalProperties: false`。只影响照示例编码的读者，运行时返回是正确的（有用例断言）。机器检查发现不了（contracts 检查只做 OpenAPI 模型校验，不校验 example）。Reviewer 与验收都判断「不值得为此重新冻结」，随 TASK-075（扩展连接器，必碰契约）补上。
+  - **（记录）** `authors` 在数据库层没有元素个数/长度 CHECK，依赖 `modules/citations/contracts.py` 作为唯一写入方（已写入 4.16 与模型 docstring）。重评触发：出现第二个写入路径。
+  - **（记录）** 首次 PUT 的并发竞争会撞 `UNIQUE(resource_id)` 得到 500 而不是 409；与既有快照同款，本机单用户下概率可忽略。
+  - **（记录）** 分支名 `agent/backend_worker/...` 与改后的 `owner = resource_worker` 不一致（脚本不校验分支名，不影响检查与合并）。
+  - **（记录）** 任务索引里本任务的摘要写「契约六处」，实为八处；正文已如实登记。
 - 日期与决定日志：2026-09-20 用户「元数据进契约，开始吧」→ 登记 TASK-074（与 TASK-073 并行）。
 <!-- EVIDENCE:END -->
