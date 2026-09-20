@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-070"
-status = "IN_REVIEW"
+status = "IN_ACCEPTANCE"
 risk = "L3"
 risk_reason = "给已冻结的公共契约新增查询能力：顶层 `GET /api/v1/notes` 增加可选 `q`（只搜标题），需同步《API与数据契约基线》2.3 搜索白名单、10 节操作行、4.8 节笔记说明与 openapi-v1.json。按第 4 节「架构、公共 API」归 L3，与 TASK-027/032/034/057 同类（均为契约放宽，全部定 L3）。无数据迁移、无模型字段变化、不改写任何既有语义：资料内心得列表仍不接受 q（传了 422），/notes 仍只列独立心得。执行链：Worker → 自动检查 → 独立只读 Reviewer → 独立只读 Integration/Acceptance。"
 risk_flags = ["public-api", "architecture"]
@@ -127,10 +127,16 @@ checks = ["backend", "frontend", "contracts"]
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：待填
-- Review：待填
+- 候选 SHA：**`99799b1`**（代码 `c1199e2`；`99799b1` 只写本记录）。演进：实现 `776e9ba` → 首轮候选 `fdaf45a` → Review F1/F2/F3 修正 `f0d60d5`/第二候选 `099b5ef` → 第二轮残留修正 `c1199e2`/最终候选 `99799b1`。三个候选各自跑过完整检查。
+- Review：L3 独立只读 Reviewer（`.claude/agents/reviewer.md`），三轮，最终 **PASS**。权限证据：三轮均声明「仅持有 `Read`/`Grep`/`Glob`，无 Write/Edit/Bash，运行器层面只读」；因无 Bash 不能跑 `git diff`，改为逐个读取 allowed_paths 内文件的最终状态并交叉比对调用方，另用全仓 Grep `TASK-070` 反查越界（命中 12 文件，均在 allowed_paths 内）；候选与工作树的字节级一致性由主 Agent 核对（见下）。
+  - **首轮**（`44eb28a..fdaf45a`）**CHANGES_REQUIRED**：F1（必须）「`moreHasMore` 不随 `needle` 变化作废——翻过页再搜索会带上一批的 `false`，命中几百条也不给『加载更多』，且是本次 diff 新引入」；F2（可记录）「`q` 规范化后为空未拒绝，`?q=%20` 会变成『所有有标题的心得』并漏掉无标题的」；F3/F4（可选）「`splitlines()` 与前端 `split(/\r?\n/)` 不同口径」「回源是逐条全量读，应写进已知限制」。同轮确认：契约四方（openapi/2.3 表/10 节行/4.8 与交付说明）与后端校验、前端前置校验一致；`/notes` 仍只列 `resource_id IS NULL`；资料下列表仍 `NoteQuery`+`extra="forbid"`；排序白名单/错误码/分页字段含义未被动改变；`q is None` 分支与旧实现一字不差；后端 5 例与 e2e 有判别性；删掉的 TASK-063 前端过滤断言由后端标题派生用例接手，无净缺口。
+  - **第二轮增量**（`fdaf45a..099b5ef`）**PASS**：「F1 已解决——`pages/hasMore/failure` 并入 `extra` 统一按 `carried` 作废，失败分支不丢页不续接，在途请求撞换词会作废，三处读取均被 `carried` 包住无残留；`loadingMore` 挡住并发点击，不存在旧失败覆盖新 extra 的竞态；回归用例真实。F2 已解决（与资料 `q` 同形）。F3 基本解决。」新 findings 两条（下一行）。
+  - **第三轮增量**（`099b5ef..99799b1`）**PASS**：「`LINE` 跨模块导入合适（同源规则，无层级倒置）；两分支自洽——丢掉可能被截断的末段最坏只多一次回源，不会给错标题，回源与短正文走同一条 `\r?\n` 规则；新用例确实落在前缀分支（正文约 5009 字 → prefix 4001 走截断分支，`splitlines()` 下会退化成『带』而漏命中，判别性成立）；openapi 第 226 行解析后已是字面文本。**无新 findings**。」
+  - 主 Agent 核对 Reviewer 无法执行的部分：`git diff --stat fdaf45a..099b5ef`、`099b5ef..99799b1` 与工作树状态均已核；最终候选与工作树无差异。
 - Acceptance：待填
 - 最终状态/风险/用户操作：待填
-- 非阻断遗留项：待填
+- 非阻断遗留项：
+  - **F4（可选，记录）** 首行是大图片的心得会触发「回源读完整正文」：这类心得有 N 条，一次 `q` 请求就多 N 次单条全量读。个人本机数据量下可接受；重评触发：心得上千条或含图心得很多导致搜索变慢，届时的正确解法是持久化标题列 + SQL 过滤。责任角色：coordinator。
+  - **（记录）** 标题派生规则在前后端各一份实现（`noteTitle.ts` / `note_title()` + `LINE`），靠两侧测试固定口径；规则要改必须两边同改。重评触发：任一侧改动标题派生。
 - 日期与决定日志：2026-09-19 用户选定「先做心得搜索」，并确认只搜独立心得、只按标题、只升级 /notes 搜索框 → 登记 TASK-070。
 <!-- EVIDENCE:END -->
