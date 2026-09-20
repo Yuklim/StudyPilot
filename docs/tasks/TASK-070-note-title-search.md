@@ -116,6 +116,12 @@ checks = ["backend", "frontend", "contracts"]
 - **F2（可记录→已修）** `StandaloneNoteQuery` 补 `q` 规范化后为空即 `422` 的校验，与资料搜索同形；否则 `?q=%20`、`?q=　` 会被当成「所有有标题的心得」，把无标题心得从 `total_items` 里悄悄漏掉。用例覆盖半角空格、全角空格、`\t \n`。
 - **F3（可选→已修）** `note_title()` 由 `splitlines()` 改为按 `\r?\n` 切行，与前端 `noteTitle.ts` 完全同口径（`splitlines()` 还会在 `\r`、`\x0b`、`\u2028` 处断行，可能让「页面显示的标题」搜不到）。契约 2.3 与 openapi 描述同步写明「行以 `\r?\n` 分隔」与空白 `q` 的 422。
 - **F4（可选）** 记录为已知限制（见上），不改实现。
+### 第二轮复审残留的两条修正（第三候选）
+
+- **可选→已修** `note_store.py:_search_title`：从前缀派生标题时仍用 `splitlines()` 再以 `\n` 拼回，F3 只改了 `note_title()` 本身。于是「正文超过 4000 字符、标题行落在窗口内且含孤立 `\r`」的心得会派生出更短的标题而漏命中。改为 `LINE.split(prefix[:TITLE_PREFIX])[:-1]`，与切行口径统一。新增定向用例（标题行含 `\r` + 5000 字正文），**判别性已验**：改回 `splitlines()` 即红。首轮加的那条「图片后标题」用例走的是回源分支，覆盖不到这里——这正是 Reviewer 指出的缺口。
+- **可记录→已修** `openapi-v1.json`：描述里的 `\r?\n` 在 JSON 源码中是转义序列，解析后变成真正的回车换行控制符，规则表述被破坏（OpenAPI 结构校验发现不了）。改为双反斜杠，解析后是字面 `\r?\n`；已用 `json.load` 复核解析结果。
+- 第三候选重跑：`check_task.py --worktree` **CHECKS PASS**（backend 561 passed、frontend 658 passed、OpenAPI 校验 exit=0），`playwright test` 全量 **67 passed**。
+
 - 修正后重跑：backend `ruff`/`mypy` 0、`pytest` **561 passed**（新断言并入既有用例，条数不变，判别性已验：撤销 F2/F3 各自变红）；frontend lint/format/typecheck 0、`vitest` **658 passed**（+1 回归用例）、`playwright notes-pages` 11 passed；`check_task.py --worktree` **CHECKS PASS**。
 
 <!-- EVIDENCE:BEGIN -->
