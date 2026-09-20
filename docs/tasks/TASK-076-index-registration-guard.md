@@ -165,6 +165,15 @@ checks = ["governance"]
     > **对 074 登记安排的判断**：拦得住「只做一半」——`validate_governance.py:301-303` 在 074 被标 MERGED 而无行时必报 `never registered`，哨兵证明这条真的接进了 `validate()`。**拦不住「既没人标 MERGED、也没人补行」**——074 此刻正处在这个无界窗口。记录已如实承认，不算隐瞒，但确实存在被永远遗忘的可能；唯一低成本兜底是把「下一个任务补 074 行并标 MERGED」写进 EVIDENCE 的下一步。
     > **剩余风险**：本分支没有 TASK-074 的记录，我无法验证它在 main 上的 `status`。若它在 main 上已是 `MERGED`，076 一合并，main 的治理检查会立刻 FAIL。合并前请确认 main 上该记录为 ACCEPTED。
 
+  **验收复核后最终结论：PASS，无 findings**（原文要点）：
+
+    > F1 已补：最终候选 `fbaa1a4` 上的 CHECKS PASS 带 base/input/files/指纹/29 tests，并如实写明「先前的 PASS 标的是第二候选、口径不足」；29 与我独立点数的 20+9 相符。机械证据我无法重跑，但口径已绑定到被测 SHA，**不再是旧 SHA 充数**。
+    > F2 已补：三个候选 SHA 齐全，第三轮为报告原文，且原文自报了「不能重跑机械证据」这一限制——**没有把 NOT_RUN 说成 PASS**。
+    > F3 已如实登记，并把 074 补行 + 标 MERGED 指派给下一个已授权任务；无界窗口另列为遗留 4。
+    > **写回越界检查**：正文 1–128 行与上轮读到的逐字一致，目标/非目标/风险/allowed_paths/checks/完成条件/上下文包/实现与测试全部未动；改动只有 toml `status` 与 EVIDENCE 区——符合第 6 节。索引行已同步 ACCEPTED，新门禁对本仓库自身仍自洽。
+    > **剩余风险（已从阻断降为知情项）**：① main 上 074 为 ACCEPTED、索引无其行是主 Agent 用 `git show` 核的，我无 Bash 无法复核——若核错，后果是合并后 CI 即刻 FAIL 且错误可定位（`never registered`），可回退可修。② **074 的登记仍靠人**：门禁只在有人把它标 MERGED 时才咬，「下一步」是唯一兜底，合并后请优先执行。③ 转义管道误报与非持有者无法自救均有触发条件、未发生。
+    > **可以按 ACCEPTED 交用户合并。**
+
   主 Agent 对验收三条的处置：**F1 已补**（最终候选上重跑，指纹见上）；**F2 已补**（本次写回）；**F3 已如实登记**（见下方非阻断遗留 3）。验收提的剩余风险已核实并消除：`git show origin/main:docs/tasks/TASK-074-citation-metadata.md` 为 `status = "ACCEPTED"`，且 main 的索引里没有 `^| [TASK-074` 行——并行窗口合法，076 合并后 main 的治理检查不会因此 FAIL。
 - 最终状态/风险/用户操作：**ACCEPTED**。L3 执行链走完：1 Worker → 自动检查 → 独立只读 Reviewer（三轮 PASS）→ 独立只读 Integration/Acceptance（一轮 CHANGES_REQUIRED，三条证据口径已全部补齐）。风险：改的是会 FAIL 的 CI 门禁，误报会拦住无辜 PR——已用「现仓库 0 误报」「逐条反例对上原因」「8 个变异全部被抓」三重证据约束。**需要用户操作：合并 PR。** 合并后这条门禁对之后每个 PR 生效；**下一个任务必须先补 TASK-074 的索引行并把它标为 MERGED**（见下）。
 - 非阻断遗留项：
