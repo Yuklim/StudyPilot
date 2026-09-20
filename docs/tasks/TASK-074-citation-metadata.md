@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-074"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "新增一张用户数据表与三个公共接口，并改动删除确认协议的影响集合：命中架构/公共 API/迁移/关键数据模型多项高风险标志，取最高按 L3 走。执行链：Worker → 自动检查 → 独立只读 Reviewer → 独立只读 Integration/Acceptance。"
 risk_flags = ["architecture", "public-api", "migration", "critical-data"]
@@ -140,7 +140,7 @@ checks = ["backend", "contracts"]
   > 跨模块：contracts/store/API/models/迁移/openapi 的九种 `item_type`、各字段长度、409/428/404 语义完全一致；契约八处与 openapi 六处互相吻合。
   > 需求对账：字段覆盖 作者（有序）/年份/日期/期刊书名/卷期页/DOI/ISBN/出版者/摘要，足以支撑 Zotero 式复刻；`backend/src` 内仅 allowed 文件提及 citation，未动前端/扩展/既有接口语义；`test_snapshots.py` 的「整个 `src/**` 不出网」扫描对新模块同样成立。
   > 三处偏离逐条核实属实且可接受：`owner` 改 `resource_worker`（`validate_governance.py` 的 AGENTS 白名单确无 `backend_worker`，且与《角色与模块边界》及表 owner `resources` 相符，目标/路径/风险未动）；契约实改八处（已逐条定位）；顺手补 openapi 一处示例缺失字段（同文件同段的最小修正）。
-- 最终状态/风险/用户操作：**ACCEPTED**，等用户合并 PR。风险低：新增一张 1:1 表与三个新端点，既有接口与表一字未动；服务端仍不出网。用户操作：合并 PR，合并后本机库由启动脚本升到 0008。**界面上看不到变化**——文献字段的显示与编辑、浏览器连接器都在后续任务。
+- 最终状态/风险/用户操作：**MERGED**——2026-09-20 用户已合并 PR #81，merge `48f232e`。索引行因 TASK-073/074 并行时让出索引持有权而延后，由 TASK-077 的控制面提交补上（状态登记同）。此前为 ACCEPTED，等用户合并 PR。风险低：新增一张 1:1 表与三个新端点，既有接口与表一字未动；服务端仍不出网。用户操作：合并 PR，合并后本机库由启动脚本升到 0008。**界面上看不到变化**——文献字段的显示与编辑、浏览器连接器都在后续任务。
 - 非阻断遗留项：
   - **（验收 findings，交下个碰契约的任务）** `docs/contracts/openapi-v1.json` 的 `deleteResource` 409 `impactChanged` 示例里，`impact` 仍只有 7 个键，缺本次新增的 `citation_count` 与 TASK-071 的 `highlight_count`；而 `DeletionImpact` 要求 9 键且 `additionalProperties: false`。只影响照示例编码的读者，运行时返回是正确的（有用例断言）。机器检查发现不了（contracts 检查只做 OpenAPI 模型校验，不校验 example）。Reviewer 与验收都判断「不值得为此重新冻结」，随 TASK-075（扩展连接器，必碰契约）补上。
   - **（记录）** `authors` 在数据库层没有元素个数/长度 CHECK，依赖 `modules/citations/contracts.py` 作为唯一写入方（已写入 4.16 与模型 docstring）。重评触发：出现第二个写入路径。

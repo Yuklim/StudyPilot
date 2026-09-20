@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-076"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "改根规则 AGENTS.md 与 scripts/governance/ 下的校验脚本：前者是协作底线正文，后者在 CI 的「仓库治理检查」里每个 PR 都跑、失败即拦住合并，属第 4 节的「治理权限/门禁」。risk-policy.json 的 high_risk_paths 也把 AGENTS.md 与 scripts/governance/** 列为高风险路径，命中即取最高级。定 L3：1 Worker → 自动检查 → 独立只读 Reviewer → 独立只读 Integration/Acceptance。新增的是会 FAIL 的门禁，误判会拦住无辜的 PR，因此判别性用例与「现仓库必须 PASS」是硬完成条件。"
 risk_flags = ["governance"]
@@ -175,7 +175,7 @@ checks = ["governance"]
     > **可以按 ACCEPTED 交用户合并。**
 
   主 Agent 对验收三条的处置：**F1 已补**（最终候选上重跑，指纹见上）；**F2 已补**（本次写回）；**F3 已如实登记**（见下方非阻断遗留 3）。验收提的剩余风险已核实并消除：`git show origin/main:docs/tasks/TASK-074-citation-metadata.md` 为 `status = "ACCEPTED"`，且 main 的索引里没有 `^| [TASK-074` 行——并行窗口合法，076 合并后 main 的治理检查不会因此 FAIL。
-- 最终状态/风险/用户操作：**ACCEPTED**。L3 执行链走完：1 Worker → 自动检查 → 独立只读 Reviewer（三轮 PASS）→ 独立只读 Integration/Acceptance（一轮 CHANGES_REQUIRED，三条证据口径已全部补齐）。风险：改的是会 FAIL 的 CI 门禁，误报会拦住无辜 PR——已用「现仓库 0 误报」「逐条反例对上原因」「8 个变异全部被抓」三重证据约束。**需要用户操作：合并 PR。** 合并后这条门禁对之后每个 PR 生效；**下一个任务必须先补 TASK-074 的索引行并把它标为 MERGED**（见下）。
+- 最终状态/风险/用户操作：**MERGED**——2026-09-20 用户已合并 PR #83，merge `9204025`（状态登记并入 TASK-077 控制面提交）。此前为 ACCEPTED：L3 执行链走完：1 Worker → 自动检查 → 独立只读 Reviewer（三轮 PASS）→ 独立只读 Integration/Acceptance（一轮 CHANGES_REQUIRED，三条证据口径已全部补齐）。风险：改的是会 FAIL 的 CI 门禁，误报会拦住无辜 PR——已用「现仓库 0 误报」「逐条反例对上原因」「8 个变异全部被抓」三重证据约束。**需要用户操作：合并 PR。** 合并后这条门禁对之后每个 PR 生效；**下一个任务必须先补 TASK-074 的索引行并把它标为 MERGED**（见下）。
 - 非阻断遗留项：
   1. **（第一轮 Review F1，记录）** 「行状态必须等于记录 status」在「某任务已有索引行、却在后续并行窗口里成了非持有者」时无合规解法。**重评触发**：真的出现暂停后重启、且已有行的任务成为非持有者——届时要么把索引给它，要么把该条收紧为「任一侧为 MERGED 时才比对」（代价是放过 ACCEPTED ↔ IN_REVIEW 的漂移）。
   2. **（第一轮 Review F4，记录）** 首列里若出现转义管道 `\|`，`split(" | ")` 会让列错位、状态列误报 `invalid index status`。现有 74 行无此写法，失败可定位、改回即好。**重评触发**：有人在任务标题里用了转义管道。
