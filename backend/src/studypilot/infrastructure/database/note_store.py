@@ -15,6 +15,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from studypilot.modules.notes.contracts import (
+    LINE,
     NoteError,
     NoteQuery,
     StandaloneNoteQuery,
@@ -184,7 +185,7 @@ class NoteStore:
         """
         if len(prefix) <= TITLE_PREFIX:
             return note_title(prefix)
-        complete = prefix[:TITLE_PREFIX].splitlines()[:-1]
+        complete = LINE.split(prefix[:TITLE_PREFIX])[:-1]
         title = note_title("\n".join(complete))
         if title is not None:
             return title

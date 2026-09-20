@@ -956,6 +956,12 @@ def test_standalone_title_search_reads_past_a_leading_image(
     buried = add_standalone(authorized, f"{image}\n图片后面的标题\n正文")
     page = authorized.get(standalone_path(), params={"q": "图片后面"}).json()
     assert [row["id"] for row in page["data"]] == [buried["id"]]
+    # The same line rule holds for the title read out of the prefix window: a note
+    # long enough to be truncated, whose title line sits inside the window and
+    # carries a lone \r, must still match as one line (second-round Review).
+    carriage = add_standalone(authorized, "带\r回车的标题\n" + "正" * 5000)
+    whole = authorized.get(standalone_path(), params={"q": "带\r回车的标题"}).json()
+    assert [row["id"] for row in whole["data"]] == [carriage["id"]]
     # The alt text of an image is a title, and is searchable as one.
     labelled = add_standalone(authorized, "![会议白板](data:image/webp;base64,AAAA)\n正文")
     alt = authorized.get(standalone_path(), params={"q": "会议白板"}).json()
