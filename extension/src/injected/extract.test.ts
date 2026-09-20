@@ -238,6 +238,26 @@ describe('extractCitation', () => {
     expect(found?.issued_date).toBe('2019-06')
   })
 
+  it('does not let a DC-declaring CMS page pass as a journal article', () => {
+    // `dc.source` 在 DC 规范里常是站点名甚至一段网址。把它当「期刊名」的话，任何声明了
+    // DC 的普通页面都会被判成期刊论文、出处显示成一段地址（Review F3）。
+    const cms = `
+      <meta name="dc.title" content="公司新闻">
+      <meta name="dc.source" content="https://news.example.com">
+      <meta name="dc.creator" content="编辑部">
+      <p>正文</p>`
+    expect(extractCitation(pageWith(cms), 'https://news.example.com/a')).toBeNull()
+  })
+
+  it('calls a chapter a chapter, since the contract has a type for it', () => {
+    const chapter = `
+      <meta name="citation_inbook_title" content="深度学习导论">
+      <meta name="citation_author" content="李维">
+      <p>正文</p>`
+    const found = extractCitation(pageWith(chapter), 'https://books.example.com/c/3')
+    expect(found).toMatchObject({ item_type: 'BOOK_CHAPTER', container_title: '深度学习导论' })
+  })
+
   it('leaves an ordinary blog alone, even when it has an author and a date', () => {
     // 门槛就在这里：没有 DOI、没有期刊名、schema.org 也没说它是论文。多数网页是这样，
     // 给它们摆一块空卡片只会让用户学会无视这一块。

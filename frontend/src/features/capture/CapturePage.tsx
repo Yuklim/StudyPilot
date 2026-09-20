@@ -91,6 +91,7 @@ export function CapturePage() {
     setPending(true)
     setError('')
     setPartial(null)
+    setCitationMiss(null)
     setImages(null)
     let created: { id: string } | null = null
     try {
@@ -100,6 +101,19 @@ export function CapturePage() {
         source_url: captured.url,
       })
       const snapshot = await putResourceSnapshot(created.id, markdown)
+      // 文献信息与图片是两件互不相干的附加物，**谁失败都不该把另一件跳过**。
+      // 先写文献（一次小请求），失败只记下来继续冻图片，末尾一起如实汇报
+      // （Review F5：原先文献写在图片之后，图片部分失败时直接 return，勾了
+      // 「一并存下来」的文献既没写也没提，提示里只讲图片）。
+      let citationFailure: string | null = null
+      if (captured.citation && saveCitation) {
+        try {
+          await putCitation(created.id, { ...EMPTY_DRAFT, ...captured.citation }, null)
+        } catch (cause) {
+          citationFailure = failureText(cause)
+        }
+      }
+      if (!alive.current) return
       // 图片必须在正文写成之后：上传资产要带**快照**版本作前置条件。
       if (captured.images.length > 0) {
         if (alive.current) setFreezing({ done: 0, total: captured.images.length })
@@ -116,19 +130,13 @@ export function CapturePage() {
         // 这件事咽掉，而用户此刻还能重新采集。全部成功才走。
         if (result.failed > 0) {
           setImages({ id: created.id, ...result })
+          if (citationFailure) setCitationMiss({ id: created.id, reason: citationFailure })
           return
         }
       }
-      // 文献信息放在最后写：资料与正文才是这一页的正事，文献没存上不该连累它们。
-      // 失败就**停在这一页**如实说清（与图片没冻上同一条口径），不自动重试、不回滚。
-      if (captured.citation && saveCitation) {
-        try {
-          await putCitation(created.id, { ...EMPTY_DRAFT, ...captured.citation }, null)
-        } catch (cause) {
-          if (!alive.current) return
-          setCitationMiss({ id: created.id, reason: failureText(cause) })
-          return
-        }
+      if (citationFailure) {
+        setCitationMiss({ id: created.id, reason: citationFailure })
+        return
       }
       if (alive.current) navigate(`/resources/${created.id}`)
     } catch (cause) {
@@ -216,7 +224,7 @@ export function CapturePage() {
           还没有收到扩展发来的内容。请在想保存的网页上点一次 StudyPilot 扩展图标；
           这一页会等着接收。直接关掉也不会保存任何东西。
         </p>
-      ) : images ? null : (
+      ) : images || citationMiss ? null : (
         // 图片部分失败时**不再渲染表单**：留着它，用户看完「2 张里 1 张没保存」
         // 再点一次「保存为资料」，会静默新建第二份资料 + 第二份快照并重下全部图片。
         // 同页的 partial 分支早就是这么处理的（替换掉表单），这里补齐同样的处置。

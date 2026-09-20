@@ -161,13 +161,12 @@ export function extractCitation(doc: Document, url: string): CapturedCitation | 
     return undefined
   }
   const doi = bounded(first('citation_doi', 'dc.identifier.doi'), MAX_CITATION_NAME)
+  // **不认 `dc.source`**：DC 规范里它常是站点名甚至一段网址，把它算成「期刊名」会让
+  // 任何声明了 DC 的普通 CMS 页面被判成期刊论文、出处显示成一段地址（Review F3）。
+  // 契约第 14 节写的门槛就是「期刊或会议名」，实现不该比契约宽。
+  const inbook = first('citation_inbook_title')
   const container = bounded(
-    first(
-      'citation_journal_title',
-      'citation_conference_title',
-      'citation_inbook_title',
-      'dc.source',
-    ),
+    first('citation_journal_title', 'citation_conference_title') ?? inbook,
     MAX_CITATION_CONTAINER,
   )
   const types = schemaTypes(doc)
@@ -197,13 +196,15 @@ export function extractCitation(doc: Document, url: string): CapturedCitation | 
         ? 'REPORT'
         : conference
           ? 'CONFERENCE_PAPER'
-          : says('scholarlyarticle') || container || doi
-            ? // arXiv 这类预印本站点也给 DOI，但没有期刊名：有 DOI 无期刊 + 域名是
-              // arxiv 就按预印本算，别的一律按期刊论文。
-              !container && /(^|\.)arxiv\.org$/i.test(hostOf(url))
-              ? 'PREPRINT'
-              : 'JOURNAL_ARTICLE'
-            : 'OTHER'
+          : inbook
+            ? 'BOOK_CHAPTER'
+            : says('scholarlyarticle') || container || doi
+              ? // arXiv 这类预印本站点也给 DOI，但没有期刊名：有 DOI 无期刊 + 域名是
+                // arxiv 就按预印本算，别的一律按期刊论文。
+                !container && /(^|\.)arxiv\.org$/i.test(hostOf(url))
+                ? 'PREPRINT'
+                : 'JOURNAL_ARTICLE'
+              : 'OTHER'
   return {
     item_type,
     authors,

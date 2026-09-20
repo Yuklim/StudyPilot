@@ -339,8 +339,18 @@ describe('capture page · citation', () => {
   }
   const paper = { ...captured, citation }
 
+  /** 后端真的会回的那一份文献（`citationAt` 会逐字校验，随便回个 `{}` 会被判不合格）。 */
+  const storedCitation = {
+    resource_id: sample().id,
+    ...citation,
+    abstract: null,
+    version: 1,
+    created_at: '2026-09-20T02:00:00Z',
+    updated_at: '2026-09-20T02:00:00Z',
+  }
+
   /** 资料与正文都成功；文献那一次由调用方决定怎么回。 */
-  function backend(onCitation: () => unknown = () => ({ data: {} })) {
+  function backend(onCitation: () => unknown = () => ({ data: storedCitation })) {
     return vi.spyOn(api, 'request').mockImplementation(async (path, options) => {
       if (path === '/api/v1/resources' && options?.method === 'POST') return { data: sample() }
       if (path.endsWith('/citation')) return onCitation()
@@ -368,6 +378,10 @@ describe('capture page · citation', () => {
         ),
       ).toBe(true),
     )
+    // 写成功就该离开这一页去资料页——上一版这里的假响应通不过 `citationAt` 校验，
+    // 这条用例实际落在失败分支上，名不副实（Review F2）。
+    await waitFor(() => expect(screen.queryByRole('form', { name: '确认采集内容' })).toBeNull())
+    expect(screen.queryByText(/只有文献信息没存上/)).toBeNull()
     const [, options] = request.mock.calls.find(([path]) => path.endsWith('/citation'))!
     // 整份写入、首次不带 expected_version；空字段不出现。
     expect(options!.body).toEqual({
@@ -417,6 +431,10 @@ describe('capture page · citation', () => {
     fireEvent.click(await screen.findByRole('button', { name: '保存为资料' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/只有文献信息没存上/)
     expect(screen.getByRole('link', { name: '打开这份资料' })).toBeInTheDocument()
+    // **表单必须消失**：留着它，用户再点一次「保存为资料」会静默新建第二份资料 +
+    // 第二份快照 + 重下全部图片。图片分支当初就是为这个缺陷改的，这里不能再犯（Review F1）。
+    expect(screen.queryByRole('form', { name: '确认采集内容' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '保存为资料' })).toBeNull()
     // 不因为这次失败重新建一份资料。
     expect(
       request.mock.calls.filter(
