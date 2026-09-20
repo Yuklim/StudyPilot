@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-078"
-status = "READY"
+status = "IN_REVIEW"
 risk = "L2"
 risk_reason = "已批准契约之下的前端实现：文献元数据的表、三个接口与校验都已由 TASK-074 交付并合并，本任务只是把它们接到界面上。不改后端、不改契约、不做迁移、不新增接口。按第 4 节属「不改变已批准公共契约和关键数据含义的普通业务实现」，定 L2：1 Worker → 自动检查 → 1 独立只读 Reviewer；独立验收 N/A。若发现必须改契约或后端，停止并重新定级。"
 risk_flags = ["business"]
@@ -110,9 +110,31 @@ e2e 跑真实后端时，前端把文献接口的响应判成「格式不正确�
 
 ## 实现与测试
 
-- 实现 SHA：待填。
-- 命令与结果：待填。
-- 已知限制/未完成项：待填。
+- 实现 SHA：`6405987`（控制面登记 `eddebb1`）。变更摘要：
+  - **`citation.ts`（新）**：受控客户端 + 纯函数。`getCitation` 把 **404 `CITATION_NOT_FOUND` 折成 `null`**（「还没填」是正常状态，不是错误）；`putCitation` 整份写入、只把有值的字段放进请求体（契约要求清空用「省略」而不是空串）、首次不带 `expected_version`；`deleteCitation` 带 `If-Match`。`draftProblems` 按**与后端同一组边界**在本地判并定位到字段；`normalizeDraft` 把空格子折成 `null`、丢掉空作者行；`doiUrl` 与 `containerLine` 负责两处易错的拼接。
+  - **`ReaderCitation.tsx`（新）**：空态（写清楚填了有什么用）／编辑态（整块表单：类型九选一、作者一行一位可增删、年份、出处、卷期页、DOI、出版方）／已填态（类型徽章 + 年份、作者、出处、出版方、可点开的 DOI）。清空走二次确认；**保存失败不关表单**（关掉等于替用户丢掉刚填的内容）。
+  - **`ResourceToolbar.tsx`**：`ReaderInfo` 在既有三行下面挂上文献区块。**不新开 Tab**。
+  - **`styles.css`**：文献区块与资料信息之间一条细线；作者行的输入框吃掉剩余宽度、删除键固定在右侧。
+- **实施中修掉的三个真问题**（都不是原计划内的，按登记的范围修订执行）：
+  1. **后端时间戳违约（范围修订二，用户授权）**：`api/citations.py` 缺 datetime 编码器，返回 `+00:00` 而非契约第 533 节要求的 `Z`，是全 API 唯一一个。补上别处现成的编码器。**既有后端用例拦不住**——它用 `datetime.fromisoformat(...).tzinfo == UTC`，两种写法都认；新增 `endswith("Z")` 断言，**变异实测**：把编码器去掉，该用例即红。
+  2. **共享客户端的删除白名单**：`versionedDeleteTarget` 只放行 topics/tags/notes/snapshot，文献路径不在内，`DELETE` 在发请求前就被自己拒掉。按 snapshot 的同款写法放行 `resources/{id}/citation`，并补一条「正确路径放行、相近路径（`/citations`）仍拒」的正反用例。这道白名单是有意的安全网，所以是逐个放行而不是放宽规则。
+  3. **读取失败不该喊 alert**：最初把读取失败也渲染成 `role="alert"`，结果任何渲染阅读器的用例都多出一个断言级报警，**撞红了 `ClassificationPages` 的一条既有用例**。改成读取失败只给一行安静提示 + 「重新读取」，`role="alert"` 只留给用户刚点过保存/清空的失败。
+  - 另外 **`isbn` 与 `abstract` 原样带回**（范围修订三）：`PUT` 是整份替换，界面不认识的字段若不带回去，一条带 ISBN 的文献（将来由扩展写入）按一次保存就被抹掉。有用例守着。
+- **登记时口径修正的落实**：422 只回一个不带明细的 `VALIDATION_ERROR`，所以字段级提示由前端按契约边界判（年份 1000–2200、作者至多 100 位且单个至多 200 字、各字符串上限）；服务端真回 422 时给一句整体提示并保留已填内容。
+- 新测试 16 条（前端 699 → **715**）与判别性：
+  - `citation.test.ts` 8 例：404 折成 null 且别的失败不吞；请求体省略空字段、首次不带 `expected_version`、替换时带；DELETE 带版本且拒绝无效版本；**六种坏响应各自被拒**；本地边界逐字段；空格子折 null；**DOI 的斜杠不许编成 `%2F`**（写这条时我自己先写错成 `encodeURIComponent`，用例把它锁住了才发现）；`containerLine` 缺块不留孤标点。
+  - `ReaderCitation.test.tsx` 7 例：空态文案与无 alert；一次保存回到只读且请求体正确；替换带 `expected_version` 且冲突时提示「刚在别处改过」**并且表单不关**；本地拦住坏年份且**没白跑一趟服务端**；清空必须先确认；**ISBN 不被悄悄丢掉**；读取失败安静且可重读。
+  - `client.test.ts` 1 例：文献路径的 If-Match 删除放行、相近路径仍拒。
+  - `e2e/citation.spec.ts` 2 例（真实 Chromium + 真实后端）：填一份 → 刷新仍在 → **把出处清空后保存，它真的消失**（证明是整份替换不是逐字段合并）→ 清空确认 → 回到空态；坏年份停在字段上且上方三行资料信息不受影响。
+  - **e2e 是唯一能抓到后端违约的一层**：单元测试里接口是替身，返回的是用例自己造的 `Z`。
+- 命令与结果（本机 macOS 25.5.0，工作区在 `6405987`）：
+  - `python3 scripts/governance/check_task.py --task docs/tasks/TASK-078-citation-ui.md --worktree` → **CHECKS PASS**（profiles=backend,frontend；`product_fingerprint=e898e7e6…`；backend pytest **593 passed**、ruff/mypy/build 全过；frontend format/lint/typecheck 0、vitest **715 passed**、build 通过）。
+  - `npx playwright test`（全量，不在自动检查组内，单独跑）→ **75 passed**（73 → 75）。
+- 已知限制/未完成项：
+  - **资料库列表里不显示文献信息**（非目标，原因见上：要改契约）。
+  - **摘要与 ISBN 没有输入框**：两者都原样带回、不会丢，但界面上改不了。摘要是用户确认过不做；ISBN 是登记后才发现后端有、而草图里没有，加字段属扩需求，留给下一次。
+  - 每打开一个资料详情页就多一次文献 GET（右栏三个 tabpanel 都会挂载，即使停在「心得」）。一次请求换来切到「信息」时即时可见，本机应用这个代价可接受；真要省可以改成首次切到该 Tab 才读。
+  - 文献信息只读到本地库，不联网解析 DOI/ISBN（本机应用不出网）。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
