@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-075"
-status = "IN_REVIEW"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "要给 CapturePayload 增加字段，而它是契约第 14 节定义的**非 HTTP 公共契约**（扩展与 /capture 页面之间的 postMessage 消息），两份平行实现还有一道逐字比对的机器守卫。改动落在 docs/contracts/** —— risk-policy.json 的 high_risk_paths 命中，且属「公共契约 + 跨模块（extension 与 frontend 各一份实现）」，取最高定 L3：1 Worker → 自动检查 → 独立只读 Reviewer → 独立只读 Integration/Acceptance。登记前主 Agent 曾对用户说「只动 extension/**、与前端不相交」，核对契约第 14 节后发现该说法错误，已当面更正并按 L3 登记。"
 risk_flags = ["public-api", "architecture"]
@@ -139,10 +139,26 @@ checks = ["frontend", "contracts"]
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：待填
-- Review：待填
-- Acceptance：待填
-- 最终状态/风险/用户操作：待填
-- 非阻断遗留项：待填
+- 候选 SHA：第一候选 `b192d52`；第二候选 `953396a`；**最终候选 `773e7a1`**。
+- 最终候选上的机械检查：`check_task.py --task … --worktree` → **CHECKS PASS**（profiles=contracts,extension,frontend；`product_fingerprint=faca7273c187d076a9e75f83c720120106c00ba43a7f63c2f175cc6735fdf6d9`；extension **161 passed**、frontend **745 passed**、两侧 lint/typecheck/format/build 全过、OpenAPI 模型校验通过）；全量 `npx playwright test` → **75 passed**（无新增 e2e，理由见已知限制）。`git diff --stat 75067e1..773e7a1` = 13 个文件，已交独立验收核对授权路径。
+- Review：独立只读 Reviewer（仅 Read/Grep/Glob），**三轮**：
+  - 第一轮（`75067e1..b192d52`）**CHANGES_REQUIRED**：F1 必须修（文献写失败时表单还在，再点一次会静默新建第二份资料）、F2–F5 可记录/建议。逐条处置见正文。安全面（恶意页面能否让提取器抛异常/死循环/产出通不过校验的值）给 **No findings**，并核过代理对截断、arXiv 域名正则不被绕过。
+  - 第二轮（`b192d52..953396a`）**PASS**，3 条可选：组合失败状态的「只有」措辞为假、已知限制没跟上 F3、F2 的判别性归属记错了地方。
+  - 第三轮（`953396a..773e7a1`，结论覆盖 `75067e1..773e7a1`）**PASS，No findings**。原文要点：
+    > 新用例不恒真……用例真实走通了组合路径（假中转脚本答 `{ok:false}` → `result.failed>0` → `setImages`+`setCitationMiss`），不是靠构造状态绕过去的。
+    > 如实声明方法学边界：我没有 Bash，无法跑 `git diff --stat` 机械证明文件集，这一条属间接证据，应由独立验收用真实 diff 兜住。
+- Acceptance：独立只读 Integration/Acceptance（**全新实例，无前序上下文，独立于实现者与 Reviewer**；自述权限证据：工具白名单仅 Read/Grep/Glob，无 Write/Edit/Bash）。结论 **PASS**。要点原文：
+    > **四处一致性对照（我逐字核过）**：`citations/contracts.py` 的九种类型（顺序一致）、100/200/1000/2200/32/50/200/500，与 `extension/src/shared/protocol.ts`、`frontend/.../capture/protocol.ts`、契约 4.16 与 14 节**完全一致**，字段→上限映射无一错位；第五处 `resources/citation.ts` 亦一致。扩展产出恒可过接收端校验。**无一处对不上。**
+    > 检查口径可信：工作区干净、`--worktree` 跑在最终候选；`product_fingerprint` 随候选变化（a676…→faca…），非旧 SHA 复用；测试数与三次候选增量自洽；未见 NOT_RUN 充 PASS。
+    > 文件集：13 个文件全在 `allowed_paths` 内，无越界；TASK-078 已登记 MERGED。「citation 改可选」的理由可核（那两个文件未被修改且构造无 citation），三段修正记述未见超出实际。
+  这次五处对照正是 Reviewer 自己指出「两份一起错只能靠人与后端对照」的那件事——交给独立验收做了，结论是没有对不上的地方。
+- 最终状态/风险/用户操作：**ACCEPTED**。L3 执行链走完（1 Worker → 自动检查 → 独立只读 Reviewer 三轮 → 独立只读 Integration/Acceptance）。风险：本任务改的是**写进契约的非 HTTP 公共契约**，但只增字段、不改既有语义，且新字段可缺省（旧暂存兼容）；扩展侧新增的是纯读取逻辑，不发任何网络请求。**需要用户操作：① 合并 PR；② 合并后在真网页上人工试一次**（找一篇 arXiv 或期刊论文页点扩展图标）——真扩展链路仓库里一直没有自动化，这一条只能人工兜住。
+- 非阻断遗留项：
+  1. **（验收 N2，守卫缺口）** `CITATION_ITEM_TYPES` 的九个值既不在数值镜像名单、也不在函数体逐字比对范围内：前端那份若少一种类型，合法载荷会被**静默丢弃**而两侧全绿。同 F4 那一族的剩余缺口。**重评触发**：下次动两份 protocol 中的任何一份时顺手把枚举也纳入比对。
+  2. **（验收 N1，完成条件的覆盖缺口）** 完成条件第 6 条括号里举了「`citation_doi` 是一段脚本」，但**没有对应用例**（超长作者名也只在接收端有断言，提取端靠截断）。实际风险低（纯文本、React 转义、长度已收口），但这是我写的条件而没写的用例，如实登记。**重评触发**：下次动提取器时补上。
+  3. **（验收 N3，措辞）** 契约 `:826` 仍写「两个校验函数的函数体」，实际比对六个（低估非高估）；`:875` 的门槛写「期刊/会议名」，而实现把 `citation_inbook_title`（书章节的书名）也计入 container 门槛——验收判为良性（它是 Highwire 学术标签，不会放行普通 CMS 页），但契约该说实现做的事。**重评触发**：下次碰契约第 14 节时一并改。
+  4. **无真实扩展的端到端验证**：`真扩展 → 真网页 → 真确认页`这条链路仓库里一直没有自动化（TASK-038/040 同此）。
+  5. **arXiv 的 PREPRINT 分支可能在真实站点从不触发**：若 arXiv abs 页实际不发 `citation_doi`/JSON-LD，该分支只在用例内成立。合并后人工试一次即可确认。
+  6. **TASK-075 自己的 MERGED 登记**留给下一个任务（按用户 2026-09-20 的要求，登记类小活不单开 PR）。
 - 日期与决定日志：2026-09-20 用户合并 PR #85 后「进行下一个任务」→ Pencil 草图 → 用户「开始」→ 登记 TASK-075；登记时核对契约第 14 节，发现必然碰契约，**由 L2 升为 L3** 并当面向用户更正。
 <!-- EVIDENCE:END -->
