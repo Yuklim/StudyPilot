@@ -242,7 +242,8 @@ def index_rows(text: str) -> list[dict]:
 
     任务标题里可以出现 Markdown 链接和嵌套方括号（TASK-064 的标题就含 `![图片](image:N)`），
     所以不能用一条跨列的大正则去抓「第一个 ] 之前」的内容——那会在这种标题上截错。
-    解析不出任务号或记录文件名的行会带着 `ok=False` 返回，由调用方报错，不是静默跳过。
+    首列里连任务号都没有的行按表头/说明行跳过（见下面的注释）；首列有任务号、却取不出链接的
+    行会带着 `ok=False` 返回，由调用方报错，不静默放过。
     """
     rows = []
     for number, line in enumerate(text.splitlines(), 1):
@@ -274,8 +275,9 @@ def index_errors(text: str, records: dict[str, str], files: set[str]) -> list[st
     `records` 是 {任务号: 记录里的 status}，`files` 是 docs/tasks 下实际存在的记录文件名。
 
     **允许「记录在册而索引暂无行」**：并行任务里只有一个持有索引，其余任务的行由后续已授权
-    任务的控制面提交补登记（AGENTS.md 第 3/5 节）。但标 MERGED 时必须补齐——每个任务最终都会
-    MERGED，所以这一条最终覆盖全部任务，又不会把并行期间的正常窗口判成错误。
+    任务的控制面提交补登记（AGENTS.md 第 3/5 节）。但标 MERGED 时必须补齐：这一条管的是
+    **「登记只做了一半」**（记录标了 MERGED、索引没补），管不住「合并后既没人标 MERGED、也没人
+    补行」——那个窗口无界，要管得读 git 历史另立不变量。好处是不会把并行期间的正常窗口判成错误。
     """
     errors = []
     seen: set[str] = set()

@@ -164,8 +164,9 @@ class GovernanceTests(unittest.TestCase):
     def test_index_survives_a_renamed_header_and_a_second_table(self):
         # 表头按「首列没有任务号」认：改表头名或另起一张表都不该把整片行报成 unparsable。
         renamed = "| 编号 | 状态 | 角色 | 范围 | 依赖 |\n| --- | --- | --- | --- | --- |\n"
-        row = "| [TASK-101：x](./TASK-101-x.md) | MERGED | `coordinator` | 范围 | 依赖 |"
-        errors = gov.index_errors(renamed + row, {"TASK-101": "MERGED"}, {"TASK-101-x.md"})
+        row = "| [TASK-101：x](./TASK-101-x.md) | MERGED | `coordinator` | 范围 | 依赖 |\n"
+        second = "\n| 阶段 | 说明 |\n| --- | --- |\n| 第一阶段 | 资料与心得 |\n"
+        errors = gov.index_errors(renamed + row + second, {"TASK-101": "MERGED"}, {"TASK-101-x.md"})
         self.assertEqual([], errors)
 
     def test_index_rejects_broken_rows(self):
