@@ -236,6 +236,7 @@ describe('memory-only local API client', () => {
       original_file_count: 1,
       snapshot_asset_count: 0,
       note_count: 2,
+      highlight_count: 1,
       study_record_count: 3,
       active_review_plan_count: 0,
       review_record_count: 1,

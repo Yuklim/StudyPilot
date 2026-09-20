@@ -1,13 +1,16 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
-import { getResource, type Source } from './api'
+import { failureText, getResource, type Source } from './api'
 import { ContentSnapshot, type SnapshotState } from './ContentSnapshot'
 import { ResourceDeleteDialog } from './ResourceDeleteDialog'
 import { ResourceError } from './ResourceState'
 import { ReaderOutline } from './ReaderOutline'
 import { useOutline } from './outline'
 import { ReaderQuote } from './ReaderQuote'
+import { ReaderHighlights } from './ReaderHighlights'
+import { anchorFrom } from './highlightAnchor'
+import { bindHighlightNote, createHighlight, type Highlight } from './highlights'
 import {
   clearPosition,
   fingerprintOf,
@@ -17,6 +20,7 @@ import {
 } from './readerPosition'
 import { ReaderHeader, ReaderInfo, ResourceToolbar } from './ResourceToolbar'
 import { NotesPanel } from '../notes/NotesPanel'
+import type { Note } from '../notes/api'
 import { resourceTitle } from './resourceTitle'
 import { useResourceQuery } from './useResourceQuery'
 import { useHeadingSlot } from '../../shell/heading'
@@ -187,7 +191,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
   // 右栏两个 Tab（TASK-067）：「心得」= NotesPanel，「信息」= 标签 / 保存原因 / 来源 / 进度。
   // 标签与保存原因从正文顶部移进来（用户 2026-09-17 选定「按草图移入信息 Tab」，推翻
   // TASK-046 的「上下文层留在正文顶部」）。⌘J / 心得按钮总是落到「心得」Tab。
-  const [sideTab, setSideTab] = useState<'notes' | 'info'>('notes')
+  const [sideTab, setSideTab] = useState<'highlights' | 'notes' | 'info'>('notes')
   function openNotesTab() {
     setSideTab('notes')
     setNotesOpen(true)
@@ -230,6 +234,80 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
       return { token: quotes.length, quotes }
     })
   }, [])
+
+  // --- TASK-072：高亮 ---
+  // 每标下一条就让「高亮」Tab 重读列表；`pendingNote` 记住「这条高亮在等一条心得」，
+  // 心得一保存就配上去。一次只挂一条：连点两次「记下这段」而心得还没保存时，配对目标
+  // 是最后一次，先前那条留作没配心得的高亮（不丢数据，已记录在任务里）。
+  const [highlightRevision, setHighlightRevision] = useState(0)
+  const [highlightCount, setHighlightCount] = useState<number | null>(null)
+  const pendingNote = useRef<Highlight | null>(null)
+  const [markError, setMarkError] = useState<string | null>(null)
+  const mark = useCallback(
+    async (range: Range, keep: (highlight: Highlight) => void) => {
+      const rendered = readerMain?.querySelector('.snapshot-rendered')
+      if (!rendered) return
+      const anchor = anchorFrom(rendered, range)
+      if (!anchor) return
+      setMarkError(null)
+      try {
+        const created = await createHighlight(resourceId, anchor)
+        keep(created)
+        setHighlightRevision((value) => value + 1)
+      } catch (cause) {
+        setMarkError(failureText(cause))
+      }
+    },
+    [readerMain, resourceId],
+  )
+  const takeMark = useCallback(
+    (range: Range) => {
+      setSideTab('highlights')
+      setNotesOpen(true)
+      void mark(range, () => {})
+    },
+    [mark],
+  )
+  const takeQuoteAndMark = useCallback(
+    (quote: string, range: Range | null) => {
+      takeQuote(quote)
+      // 取不到选区时只进草稿、不标高亮：引文是用户已经看见的动作，不该被上色失败连累。
+      if (range)
+        void mark(range, (created) => {
+          pendingNote.current = created
+        })
+    },
+    [mark, takeQuote],
+  )
+  // 心得保存成功：若有在等的高亮，就把它配上去（契约：`note_id` 必须显式给出）。
+  const bindSavedNote = useCallback(
+    async (note: Note) => {
+      const waiting = pendingNote.current
+      if (!waiting || note.resource_id !== resourceId) return
+      pendingNote.current = null
+      try {
+        await bindHighlightNote(resourceId, waiting, note.id)
+        setHighlightRevision((value) => value + 1)
+      } catch (cause) {
+        setMarkError(failureText(cause))
+      }
+    },
+    [resourceId],
+  )
+  const openNoteFromHighlight = useCallback(() => {
+    setSideTab('notes')
+    setNotesOpen(true)
+  }, [])
+  const writeNoteForHighlight = useCallback(
+    (highlight: Highlight) => {
+      pendingNote.current = highlight
+      setSideTab('notes')
+      setNotesOpen(true)
+      askEditorFocus()
+    },
+    [askEditorFocus],
+  )
+  const receiveHighlightCount = useCallback((total: number) => setHighlightCount(total), [])
   // 本机阅读位置的百分比：恢复时取存的值，滚动时随位置写回一起更新（只在整数变化时 setState）。
   const [readingPercent, setReadingPercent] = useState<number | null>(null)
 
@@ -373,7 +451,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
                 随正文滚走；路由焦点仍落在它上（`headingSlot`）。 */}
             <ReaderHeader resource={toolbarItem} headingSlot={headingSlot} />
             {/* 「记下这段」浮动胶囊（TASK-068）：读正文里的选区，送进右栏心得草稿。 */}
-            <ReaderQuote container={readerMain} onQuote={takeQuote} />
+            <ReaderQuote container={readerMain} onQuote={takeQuoteAndMark} onMark={takeMark} />
             {/* 标签与「收下它是因为」TASK-067 起在右栏「信息」Tab（用户 2026-09-17 选定），
                 不再占正文顶部；正文紧接标题。 */}
             {/* 正文**紧接着上下文层**、默认占满——这是「正文优先」的全部意义。
@@ -398,6 +476,22 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
               {/* 两个 Tab（TASK-067）。NotesPanel **保持挂载**（草稿与角标数量都在它里面），
                   「信息」选中时只是 CSS 显隐，不卸载。 */}
               <div className="reader-side-tabs" role="tablist" aria-label="右栏">
+                <button
+                  type="button"
+                  role="tab"
+                  id="reader-tab-highlights"
+                  aria-selected={sideTab === 'highlights'}
+                  aria-controls="reader-tabpanel-highlights"
+                  className="reader-side-tab"
+                  onClick={() => setSideTab('highlights')}
+                >
+                  高亮
+                  {highlightCount !== null && highlightCount > 0 && (
+                    <span className="notes-badge" aria-hidden="true">
+                      {highlightCount}
+                    </span>
+                  )}
+                </button>
                 <button
                   type="button"
                   role="tab"
@@ -430,6 +524,27 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
                 收起
               </button>
             </div>
+            {markError !== null && (
+              <p className="resource-error" role="alert">
+                {markError}
+              </p>
+            )}
+            <div
+              role="tabpanel"
+              id="reader-tabpanel-highlights"
+              aria-labelledby="reader-tab-highlights"
+              hidden={sideTab !== 'highlights'}
+            >
+              <ReaderHighlights
+                key={resourceId}
+                resourceId={resourceId}
+                rendered={readerMain?.querySelector('.snapshot-rendered') ?? null}
+                revision={highlightRevision}
+                onWriteNote={writeNoteForHighlight}
+                onOpenNote={openNoteFromHighlight}
+                onCount={receiveHighlightCount}
+              />
+            </div>
             <div
               role="tabpanel"
               id="reader-tabpanel-notes"
@@ -443,6 +558,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
                 focusRequest={focusRequest}
                 quoteRequest={quoteRequest}
                 onCount={receiveCount}
+                onSaved={bindSavedNote}
               />
             </div>
             <div

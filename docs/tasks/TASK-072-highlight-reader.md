@@ -8,7 +8,7 @@ risk = "L2"
 risk_reason = "在 TASK-071 已合并、已审的契约之下做前端实现：不改后端、不改契约、不做迁移，新增的只有前端文件与既有阅读器组件的接入。按第 4 节属「不改变已批准公共契约和关键数据含义的普通业务实现」，与 TASK-068（阅读器交互）同级，定 L2：1 Worker → 自动检查 → 1 独立只读 Reviewer 检查最终 diff；独立验收 N/A。两点自觉升级注意：① 本任务会创建与删除用户数据（高亮），删除走一次确认、不做静默删除；② 重定位逻辑错误会让用户看见「标过的段落不见了」，因此纯函数部分必须有成规模的定向用例与判别性验证。若实施中发现需要改契约或后端，立即停止并重新定级。"
 risk_flags = ["business"]
 owner = "coordinator"
-base = "0522381"
+base = "052238164abd430be7fc39b5d140443a78342b9b"
 allowed_paths = [
   "frontend/src/features/resources/highlightAnchor.ts",
   "frontend/src/features/resources/highlightAnchor.test.ts",
@@ -26,6 +26,7 @@ allowed_paths = [
   "frontend/src/features/resources/api.test.ts",
   "frontend/src/features/resources/fixtures.ts",
   "frontend/src/api/client.ts",
+  "frontend/src/api/client.test.ts",
   "frontend/src/features/notes/NotesPanel.tsx",
   "frontend/src/features/notes/NotesPanel.test.tsx",
   "frontend/src/styles.css",
@@ -76,6 +77,10 @@ TASK-071 已合并（契约 4.15 与五个接口在 main 上）。基线 `052238
 - **模糊匹配的范围有界**：偏移附近 ±2000 字符内找最接近的一处 `exact` 前缀匹配；找不到就判孤立，不做全文编辑距离扫描（正文可达百万字符，代价与收益不成比例）。
 - **一次只挂一条待配对的高亮**：「记下这段」连点两次而心得还没保存时，配对目标是最后一次；先前那条留作没配心得的高亮（不丢数据）。
 - **悬挂绑定按「未配对」展示**：读一页本资料的心得（`page_size=100`）做匹配，匹配不上即视为没配心得。超过 100 条心得的资料可能把在第二页的心得误判为悬挂——代价只是多显示一个「写心得」入口，记录在案。
+
+### 登记后的路径修订（实施中，写入前记录）
+
+`frontend/src/api/client.test.ts` 追加进 `allowed_paths`：该文件里有一条删除影响的夹具，按固定键构造 `impact`。`DeletionImpact` 新增 `highlight_count` 后，那条夹具不补字段就会让既有用例红。改动限于夹具补一个字段，不放宽任何断言。
 
 ## 完成条件
 

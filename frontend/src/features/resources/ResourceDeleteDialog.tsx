@@ -14,10 +14,10 @@ export interface DeleteTarget {
 // 令牌只在这里、只在内存里，绝不进 DOM。
 type Row =
   | { id: string; title: string; phase: 'previewing' }
-  | { id: string; title: string; phase: 'ready'; token: string; notes: number }
-  | { id: string; title: string; phase: 'deleting'; token: string; notes: number }
-  | { id: string; title: string; phase: 'deleted'; notes: number }
-  | { id: string; title: string; phase: 'failed'; notes: number; reason: string }
+  | { id: string; title: string; phase: 'ready'; token: string; notes: number; marks: number }
+  | { id: string; title: string; phase: 'deleting'; token: string; notes: number; marks: number }
+  | { id: string; title: string; phase: 'deleted'; notes: number; marks: number }
+  | { id: string; title: string; phase: 'failed'; notes: number; marks: number; reason: string }
 
 /**
  * 删除资料的确认弹窗（TASK-056，用户 2026-09-12 选定）。
@@ -135,6 +135,7 @@ export function ResourceDeleteDialog({
                   phase: 'ready',
                   token: next.confirmation_token,
                   notes: next.impact.note_count,
+                  marks: next.impact.highlight_count,
                 }
               : r,
           ),
@@ -150,6 +151,7 @@ export function ResourceDeleteDialog({
                   title: r.title,
                   phase: 'failed',
                   notes: 'notes' in r ? r.notes : 0,
+                  marks: 'marks' in r ? r.marks : 0,
                   reason,
                 }
               : r,
@@ -193,7 +195,9 @@ export function ResourceDeleteDialog({
         done.push(row.id)
         setRows((current) =>
           current.map((r) =>
-            r.id === row.id ? { id: r.id, title: r.title, phase: 'deleted', notes: row.notes } : r,
+            r.id === row.id
+              ? { id: r.id, title: r.title, phase: 'deleted', notes: row.notes, marks: row.marks }
+              : r,
           ),
         )
       } catch (cause) {
@@ -217,6 +221,7 @@ export function ResourceDeleteDialog({
                   title: r.title,
                   phase: 'failed',
                   notes: row.notes,
+                  marks: row.marks,
                   reason: failureText(cause),
                 }
               : r,
@@ -251,6 +256,8 @@ export function ResourceDeleteDialog({
   const ready = rows.filter((r) => r.phase === 'ready')
   const previewing = rows.some((r) => r.phase === 'previewing')
   const notes = remaining.reduce((sum, r) => sum + ('notes' in r ? r.notes : 0), 0)
+  // TASK-072：高亮也是用户亲手标的内容，删资料前要一并说清会带走几条（后端 TASK-071 起返回）。
+  const marks = remaining.reduce((sum, r) => sum + ('marks' in r ? r.marks : 0), 0)
   const single = targets.length === 1
   const title = single ? `删除“${targets[0]!.title}”？` : `删除 ${remaining.length} 份资料？`
 
@@ -273,9 +280,14 @@ export function ResourceDeleteDialog({
         <div id="deletion-dialog-body" className="deletion-dialog-body">
           <p className="deletion-warning">删除后不可恢复。</p>
           {previewing && <p role="status">正在核对…</p>}
-          {!previewing && notes > 0 && (
+          {!previewing && (notes > 0 || marks > 0) && (
             <p>
-              {single ? '这份资料' : '这些资料'}的 {notes} 条心得会一起删除。
+              {`${single ? '这份资料' : '这些资料'}的 ${[
+                notes > 0 ? `${notes} 条心得` : '',
+                marks > 0 ? `${marks} 条高亮` : '',
+              ]
+                .filter(Boolean)
+                .join('、')}会一起删除。`}
             </p>
           )}
           {reconfirm && <p role="alert">内容有变化，请再确认一次。</p>}

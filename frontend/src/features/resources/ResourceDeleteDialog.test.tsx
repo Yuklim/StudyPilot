@@ -20,6 +20,7 @@ const impact = {
   original_file_count: 1,
   snapshot_asset_count: 0,
   note_count: 2,
+  highlight_count: 0,
   study_record_count: 3,
   active_review_plan_count: 1,
   review_record_count: 4,
@@ -101,14 +102,35 @@ describe('deleting from the reader page', () => {
     expect(request).toHaveBeenCalledTimes(before)
   })
 
-  it('omits the note line when there are no notes', async () => {
-    detailMock(sample(), { preview: preview(resourceId, { note_count: 0 }) })
+  it('says how many highlights go with the notes (TASK-072)', async () => {
+    // 高亮是用户亲手标的内容，删资料前要一并说清（后端 TASK-071 起返回 highlight_count）。
+    detailMock(sample(), { preview: preview(resourceId, { note_count: 2, highlight_count: 3 }) })
     renderWithRouter(<App />, `/resources/${resourceId}`)
     await screen.findByRole('heading', { name: '合成阅读资料', level: 1 })
     openFromMenu()
     const box = await dialog()
     await waitFor(() => expect(deleteButton(box)).toBeEnabled())
-    expect(within(box).queryByText(/心得会一起删除/)).toBeNull()
+    expect(within(box).getByText('这份资料的 2 条心得、3 条高亮会一起删除。')).toBeInTheDocument()
+  })
+
+  it('keeps the sentence to what there is: highlights only, no notes', async () => {
+    detailMock(sample(), { preview: preview(resourceId, { note_count: 0, highlight_count: 1 }) })
+    renderWithRouter(<App />, `/resources/${resourceId}`)
+    await screen.findByRole('heading', { name: '合成阅读资料', level: 1 })
+    openFromMenu()
+    const box = await dialog()
+    await waitFor(() => expect(deleteButton(box)).toBeEnabled())
+    expect(within(box).getByText('这份资料的 1 条高亮会一起删除。')).toBeInTheDocument()
+  })
+
+  it('omits the note line when there are no notes', async () => {
+    detailMock(sample(), { preview: preview(resourceId, { note_count: 0, highlight_count: 0 }) })
+    renderWithRouter(<App />, `/resources/${resourceId}`)
+    await screen.findByRole('heading', { name: '合成阅读资料', level: 1 })
+    openFromMenu()
+    const box = await dialog()
+    await waitFor(() => expect(deleteButton(box)).toBeEnabled())
+    expect(within(box).queryByText(/会一起删除/)).toBeNull()
     expect(within(box).getByText('删除后不可恢复。')).toBeInTheDocument()
   })
 
