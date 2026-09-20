@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-071"
-status = "IN_REVIEW"
+status = "IN_ACCEPTANCE"
 risk = "L3"
 risk_reason = "新增一张用户数据表 `highlights`（0007 迁移）、一个新后端模块与四个公共接口，并给资料删除的影响预览新增 `highlight_count` 与清单条目。命中架构/公共 API/迁移/关键数据模型四项高风险标志中的多项，取最高按 L3 走：Worker → 自动检查 → 独立只读 Reviewer → 独立只读 Integration/Acceptance。这是用户数据（用户读文章时亲手标的段落），删除与级联语义必须一次定准。"
 risk_flags = ["architecture", "public-api", "migration", "critical-data"]
@@ -141,10 +141,17 @@ checks = ["backend", "contracts"]
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：待填
-- Review：待填
+- 候选 SHA：**`45f2495`**（代码 `7ccccb8`；`45f2495` 只写本记录，`git diff --stat 7ccccb8 45f2495` 仅该文件 10 行增补，工作树与候选无差异，主 Agent 已核）。演进：实现 `a66639b`/首轮候选 `2908f9d` → Review 必修与采纳项 `7ccccb8`/最终候选 `45f2495`。
+- Review：L3 独立只读 Reviewer（`.claude/agents/reviewer.md`），两轮，最终 **PASS**。权限证据：两轮均声明「只有 `Read`/`Grep`/`Glob`，无写工具、无 Bash，运行器层面真实只读」；无法跑 `git diff`，首轮按 `allowed_paths` 逐个通读工作树最终状态，把 `Highlight` 与 `0007_highlights` 按 `Base.metadata.naming_convention` 逐条对名核算，并用全仓 `grep -i highlight` 圈定改动半径（17 个文件，无前端、未越 `allowed_paths`）。
+  - **首轮**（`b10fa92..2908f9d`）**CHANGES_REQUIRED**，三条必修全在契约文档层、代码无需改动：openapi 的 `updateResourceHighlight` 漏 `RESOURCE_NOT_FOUND` 且其 404 组件含 PATCH 永不出现的 `SNAPSHOT_NOT_FOUND`；契约第 1 节「当前可用操作」表缺高亮行；4.15 的「四个接口」与实际五个矛盾。另有 F4（`PATCH` 省略 `note_id` 等于静默解绑）等五条可记录/可选项。同轮确认通过：模型↔迁移逐项一致（5 个 CHECK、唯一约束、两个 FK 与 `SET NULL`/`CASCADE`、复合索引、PK/版本约定）、降级干净、未动 `notes`/`learning_resources`、`compare_metadata` 仍为空、表数 14→15；删除语义自洽（影响键、manifest、`impact_revision`、9 节令牌绑定集合，级联与解绑各有判别性用例）；并发/版本与 notes 同语义；跨资料取 id 与坏 UUID 均 404。
+  - **第二轮增量**（`2908f9d..45f2495`）**PASS，No findings**：「PATCH 的 `x-error-codes` 已含 `RESOURCE_NOT_FOUND`，404 改指新 `HighlightOrNoteNotFound`（资料/高亮/笔记三例，无 `SNAPSHOT_NOT_FOUND`）；POST 仍用 `HighlightTargetNotFound`、GET/DELETE 仍用 `ResourceOrHighlightNotFound`，三者各自正确。契约能力行与『五个接口』措辞已补。`note_id: UUID | None` 无默认＝必填可空，契约字段表、4.15 正文与 `HighlightPatch.required` 三方一致；`command_body` 仍先判 `expected_version` 缺失为 428，故 `{}` 是 428、`{"expected_version":n}` 是 422，与 notes 同语义。F8 三例均有判别性，省略 `note_id` 那例还断言了随后 GET 的绑定未变，不是只看状态码。」
+  - Reviewer 明确同意 F5/F6/F7 只记录不改：F5 要改 `notes` 语义（本任务非目标）且只造成可恢复的悬挂绑定；F6 契约已写明；F7 本机单用户下概率可忽略。
 - Acceptance：待填
 - 最终状态/风险/用户操作：待填
-- 非阻断遗留项：待填
+- 非阻断遗留项：
+  - **F5（记录 → 交 TASK-072）** `attachNote`/`detachNote` 能把一条已被高亮绑定的心得移出该资料，留下违反 4.15「`note_id` 须同资料」的**悬挂绑定**。修它要改 notes 的移动语义（本任务非目标），且后果可恢复（重新绑回即可，不丢数据）。TASK-072 需处理：读取高亮时若其 `note_id` 指向的心得已不在本资料，按「没有配心得」展示并允许重新配。重评触发：TASK-072 落地时一并处理。
+  - **F6（记录）** 删除心得由数据库的 `SET NULL` 触发，**不推进** `highlight.version`（4.15 已写明）。旧版本客户端手里的高亮仍显示原 `note_id`，直到它重新读取。单用户本机下无实际影响。
+  - **F7（记录）** `require_note` 的占用检查是 SELECT-then-INSERT，两个并发请求抢同一条心得时靠 `UNIQUE(note_id)` 兜底，会得到 500 而不是 409。本机单用户、且需同一毫秒内两次写才触发。重评触发：出现多写入方（如扩展与页面同时写）时改为捕获 `IntegrityError` 转 409。
+  - **（记录）** `highlight_count` 已进删除影响预览，但前端删除对话框目前只显示 `note_count`；在 TASK-072 让用户能创建高亮之前，这个差距对用户不可见。
 - 日期与决定日志：2026-09-19 用户选定第三部分＝高亮能存住，形态＝高亮可单独存在、可选配心得 → 登记 TASK-071（后端）；前端为 TASK-072。
 <!-- EVIDENCE:END -->
