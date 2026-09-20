@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-073"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L2"
 risk_reason = "在既有契约之下做前端实现：FILE 资料的原件读取、上传、校验与下载都已交付（TASK-013/014），本任务只是把已经能下载的字节在站内渲染出来。不改后端、不改契约、不做迁移、不新增接口。新增一个第三方前端依赖（pdf.js）并在本机打包，不引入运行时外网依赖。按第 4 节属「已批准契约下的普通业务实现」，定 L2：1 Worker → 自动检查 → 1 独立只读 Reviewer；独立验收 N/A。若发现必须改契约或后端，停止并重新定级。"
 risk_flags = ["business"]
@@ -201,7 +201,7 @@ checks = ["frontend"]
     >
     > **剩余风险**：缩放后 `pinned.top` 是旧尺度坐标，仅在缩放导致容器夹取且新旧位置差 <2px 的巧合下会存下偏一页的页码，下一次滚动即自愈；大文档渲染队列未实测；PDF 无高亮/文本层为已登记非目标。
 - Acceptance：L2，N/A。
-- 最终状态/风险/用户操作：**ACCEPTED**。L2 执行链走完（1 Worker → 自动检查 → 独立只读 Reviewer；独立验收 N/A）。
+- 最终状态/风险/用户操作：**MERGED**——2026-09-20 用户已合并 PR #82，merge `eeb4399`（状态登记并入 TASK-076 控制面提交）。此前为 ACCEPTED：L2 执行链走完（1 Worker → 自动检查 → 独立只读 Reviewer；独立验收 N/A）。
   三轮审查：第一轮 F1–F5、第二轮 F7（必须修，真缺陷）、第三轮 PASS。最终候选 `eb598f0` 上的检查：
   lint / typecheck / format 0，`vitest run` **699 passed**，`playwright test` **73 passed**，`check_task.py --worktree` **CHECKS PASS**。
   剩余风险都是已登记的非目标或非阻断遗留，没有未决的产品决定。**需要用户操作：合并 PR**（本任务交付站内 PDF 阅读；

@@ -7,6 +7,8 @@ import unittest
 
 from scripts.governance import validate_governance as gov
 
+INDEX_HEAD = "| 任务 | 状态 | 角色 | 范围 | 依赖 |\n| --- | --- | --- | --- | --- |\n"
+
 
 class GovernanceTests(unittest.TestCase):
     def setUp(self):
@@ -140,6 +142,65 @@ class GovernanceTests(unittest.TestCase):
                 gov.frozen_task_text(self.text),
                 gov.frozen_task_text(self.text.replace(before, after)),
             )
+
+    def test_validate_actually_runs_the_index_check(self):
+        # 仓库本身是干净的，所以「校验被写好了」和「校验被接进 validate()」是两件事：
+        # 把索引校验换成哨兵，validate() 必须把它的结论带出来，否则接线断了也没人知道。
+        original = gov.index_errors
+        gov.index_errors = lambda *args, **kwargs: ["sentinel index failure"]
+        try:
+            self.assertIn("sentinel index failure", gov.validate())
+        finally:
+            gov.index_errors = original
+
+    def test_index_parses_titles_with_nested_brackets(self):
+        rows = gov.index_rows((gov.ROOT / gov.INDEX_PATH).read_text())
+        self.assertTrue(all(row["ok"] for row in rows), [r for r in rows if not r["ok"]])
+        # TASK-064 的标题里带 `![图片](image:N)`：嵌套方括号会骗过「抓第一个 ] 之前」的朴素正则。
+        nested = next(row for row in rows if row["id"] == "TASK-064")
+        self.assertEqual("TASK-064-image-placeholders.md", nested["file"])
+        self.assertIn(nested["status"], gov.STATES)
+
+    def test_index_survives_a_renamed_header_and_a_second_table(self):
+        # 表头按「首列没有任务号」认：改表头名或另起一张表都不该把整片行报成 unparsable。
+        renamed = "| 编号 | 状态 | 角色 | 范围 | 依赖 |\n| --- | --- | --- | --- | --- |\n"
+        row = "| [TASK-101：x](./TASK-101-x.md) | MERGED | `coordinator` | 范围 | 依赖 |\n"
+        second = "\n| 阶段 | 说明 |\n| --- | --- |\n| 第一阶段 | 资料与心得 |\n"
+        errors = gov.index_errors(renamed + row + second, {"TASK-101": "MERGED"}, {"TASK-101-x.md"})
+        self.assertEqual([], errors)
+
+    def test_index_rejects_broken_rows(self):
+        good = "| [TASK-101：x](./TASK-101-x.md) | MERGED | `coordinator` | 范围 | 依赖 |"
+        files = {"TASK-101-x.md", "TASK-102-y.md"}
+        records = {"TASK-101": "MERGED"}
+        self.assertEqual([], gov.index_errors(INDEX_HEAD + good, records, files))
+        # 每条逐一对上原因：某条校验被删掉时，这里就会红在那一条上，而不是被别的错误掩盖。
+        for broken, reason in (
+            (good + "\n" + good, "duplicate"),
+            (good.replace("./TASK-101-x.md", "./TASK-102-y.md"), "unrelated record"),
+            (good.replace("./TASK-101-x.md", "./TASK-101-gone.md"), "missing record"),
+            (good.replace("| MERGED |", "| DONE |"), "invalid index status"),
+            ("| TASK-101 没有链接 | MERGED | `coordinator` | 范围 | 依赖 |", "unparsable"),
+        ):
+            errors = gov.index_errors(INDEX_HEAD + broken, records, files)
+            self.assertTrue(any(reason in e for e in errors), (reason, errors))
+
+    def test_index_allows_a_deferred_row_only_until_merged(self):
+        # 并行时只有一个任务持有索引，其余的行延后补登记：还没 MERGED 就不算失真。
+        files = {"TASK-101-x.md"}
+        self.assertEqual([], gov.index_errors(INDEX_HEAD, {"TASK-101": "ACCEPTED"}, files))
+        # 标成 MERGED 却始终没人补行，正是要兜住的「忘了登记」。
+        errors = gov.index_errors(INDEX_HEAD, {"TASK-101": "MERGED"}, files)
+        self.assertTrue(any("never registered" in e for e in errors), errors)
+
+    def test_index_status_must_match_the_record(self):
+        row = "| [TASK-101：x](./TASK-101-x.md) | ACCEPTED | `coordinator` | 范围 | 依赖 |"
+        files = {"TASK-101-x.md"}
+        self.assertEqual([], gov.index_errors(INDEX_HEAD + row, {"TASK-101": "ACCEPTED"}, files))
+        errors = gov.index_errors(INDEX_HEAD + row, {"TASK-101": "MERGED"}, files)
+        self.assertTrue(any("record says MERGED" in e for e in errors), errors)
+        # 索引里有行、记录却不存在（记录被删或改名）时不报状态不一致，只由链接检查负责。
+        self.assertEqual([], gov.index_errors(INDEX_HEAD + row, {}, files))
 
     def test_malformed_evidence_region_rejected(self):
         for text in (self.text.replace(gov.END, ""), self.text + gov.BEGIN):

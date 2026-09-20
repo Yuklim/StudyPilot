@@ -66,6 +66,7 @@ REQUIRED = [
     "docs/tasks/任务索引.md",
     "scripts/governance/check_task.py",
 ]
+INDEX_PATH = "docs/tasks/任务索引.md"
 TASK_BLOCK = re.compile(r"(?ms)^\x60\x60\x60toml\n(.*?)^\x60\x60\x60\s*$")
 BEGIN = "<!-- EVIDENCE:BEGIN -->"
 END = "<!-- EVIDENCE:END -->"
@@ -236,6 +237,73 @@ def validate_task(task: dict, policy: dict) -> list[str]:
     return errors
 
 
+def index_rows(text: str) -> list[dict]:
+    """解析任务索引的数据行：先切列再取链接。
+
+    任务标题里可以出现 Markdown 链接和嵌套方括号（TASK-064 的标题就含 `![图片](image:N)`），
+    所以不能用一条跨列的大正则去抓「第一个 ] 之前」的内容——那会在这种标题上截错。
+    首列里连任务号都没有的行按表头/说明行跳过（见下面的注释）；首列有任务号、却取不出链接的
+    行会带着 `ok=False` 返回，由调用方报错，不静默放过。
+    """
+    rows = []
+    for number, line in enumerate(text.splitlines(), 1):
+        if not line.startswith("| ") or line.startswith("| ---"):
+            continue
+        cells = [cell.strip() for cell in line.split(" | ")]
+        # 表头按「首列里没有任务号」认，不按写死的表头文案认：索引将来改表头名或多出一张表时，
+        # 写死文案会把那些行整片报成 unparsable，拦住一个跟索引毫无关系的 PR（第一轮 Review）。
+        # 反过来，首列里有 TASK- 却取不出链接的行仍然会被报出来，不会因此被放过。
+        if "TASK-" not in cells[0]:
+            continue
+        task = re.match(r"\| \[(TASK-\d{3,})", cells[0])
+        link = re.search(r"\]\(\./(TASK-[^)]+\.md)\)", cells[0])
+        rows.append(
+            {
+                "line": number,
+                "id": task.group(1) if task else "",
+                "file": link.group(1) if link else "",
+                "status": cells[1] if len(cells) > 1 else "",
+                "ok": bool(task and link),
+            }
+        )
+    return rows
+
+
+def index_errors(text: str, records: dict[str, str], files: set[str]) -> list[str]:
+    """索引是控制面，必须和任务记录对得上。
+
+    `records` 是 {任务号: 记录里的 status}，`files` 是 docs/tasks 下实际存在的记录文件名。
+
+    **允许「记录在册而索引暂无行」**：并行任务里只有一个持有索引，其余任务的行由后续已授权
+    任务的控制面提交补登记（AGENTS.md 第 3/5 节）。但标 MERGED 时必须补齐：这一条管的是
+    **「登记只做了一半」**（记录标了 MERGED、索引没补），管不住「合并后既没人标 MERGED、也没人
+    补行」——那个窗口无界，要管得读 git 历史另立不变量。好处是不会把并行期间的正常窗口判成错误。
+    """
+    errors = []
+    seen: set[str] = set()
+    for row in index_rows(text):
+        where = f"{INDEX_PATH}:{row['line']}"
+        if not row["ok"]:
+            errors.append(f"{where}: unparsable index row")
+            continue
+        if row["id"] in seen:
+            errors.append(f"{where}: duplicate index row for {row['id']}")
+        seen.add(row["id"])
+        if not row["file"].startswith(row["id"] + "-"):
+            errors.append(f"{where}: {row['id']} links unrelated record {row['file']}")
+        elif row["file"] not in files:
+            errors.append(f"{where}: {row['id']} links missing record {row['file']}")
+        if row["status"] not in STATES:
+            errors.append(f"{where}: invalid index status {row['status']!r}")
+        recorded = records.get(row["id"])
+        if recorded is not None and recorded != row["status"]:
+            errors.append(f"{where}: index says {row['status']}, record says {recorded}")
+    for task_id, status in sorted(records.items()):
+        if status == "MERGED" and task_id not in seen:
+            errors.append(f"{INDEX_PATH}: {task_id} is MERGED but was never registered")
+    return errors
+
+
 def frozen_task_text(text: str) -> str:
     """Ignore only task status and the single explicit evidence region."""
     parse_task(text)
@@ -294,13 +362,18 @@ def validate(root: Path = ROOT, *, allow_unborn: bool = False) -> list[str]:
                 or not re.search(r"(?m)^description: .+", front.group(1))
             ):
                 errors.append(f"invalid skill metadata: {name}")
+        records: dict[str, str] = {}
+        files = set()
         for path in (root / "docs/tasks").glob("TASK-*.md"):
+            files.add(path.name)
             text = path.read_text()
             if re.search(r"(?m)^schema_version = 2$", text):
                 task = parse_task(text)
                 errors.extend(f"{path.name}: {e}" for e in validate_task(task, policy))
                 if not path.name.startswith(task["id"] + "-"):
                     errors.append(f"task id/filename mismatch: {path.name}")
+                records[task["id"]] = task.get("status", "")
+        errors.extend(index_errors((root / INDEX_PATH).read_text(), records, files))
         if (root / "AGENTS.md").stat().st_size > 16 * 1024:
             errors.append("root rules exceed V2 16 KiB context budget")
     except (OSError, ValueError, KeyError, TypeError) as exc:

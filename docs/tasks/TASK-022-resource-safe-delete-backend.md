@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-022"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "实现资料整体删除，涉及不可逆数据删除、删除确认令牌、数据库级联、文件 trash 隔离和公共 API 可用能力清单。"
 risk_flags = ["business", "critical-data", "security", "sensitive-storage", "public-api", "deletion", "tests"]
