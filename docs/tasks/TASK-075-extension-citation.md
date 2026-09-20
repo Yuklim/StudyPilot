@@ -24,7 +24,7 @@ allowed_paths = [
   "docs/tasks/TASK-075-extension-citation.md",
   "docs/tasks/任务索引.md",
 ]
-checks = ["extension", "frontend", "contracts"]
+checks = ["frontend", "contracts"]
 ```
 
 ## 需求与范围
@@ -55,6 +55,12 @@ checks = ["extension", "frontend", "contracts"]
 
 依赖：TASK-074（文献后端，merge `48f232e`）与 TASK-078（文献界面与 `putCitation`，merge `75067e1`）均已合并。基线 `75067e1`。
 并行：否。本任务持有 `docs/tasks/任务索引.md`。
+
+### 登记时发现的治理工具不一致（写入前记录）
+
+`checks` 原本写成 `["extension", "frontend", "contracts"]`，被 `validate_governance.py:218` 判为「unknown or missing check groups」——它认的显式组名只有 `governance/backend/frontend/contracts`，**没有 `extension`**；而 `check_task.py` 明明有 `extension` 组，并且会在变更路径以 `extension/` 开头时**自动选上它**（`selected_profiles`）。
+
+处置：`checks` 去掉 `"extension"`（自动选组已覆盖，本任务的 `allowed_paths` 里就有 `extension/**`，实际执行时该组照跑）。**不在本任务里改治理脚本**——那是 `scripts/governance/**`，属另一条 L3 的治理改动，与本任务的产品目标无关。记为非阻断遗留，交给下一个治理任务。
 
 ### 主 Agent 登记的实现决定（非用户决定，Review 可挑战）
 
