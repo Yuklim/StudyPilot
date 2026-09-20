@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-073"
-status = "READY"
+status = "IN_REVIEW"
 risk = "L2"
 risk_reason = "在既有契约之下做前端实现：FILE 资料的原件读取、上传、校验与下载都已交付（TASK-013/014），本任务只是把已经能下载的字节在站内渲染出来。不改后端、不改契约、不做迁移、不新增接口。新增一个第三方前端依赖（pdf.js）并在本机打包，不引入运行时外网依赖。按第 4 节属「已批准契约下的普通业务实现」，定 L2：1 Worker → 自动检查 → 1 独立只读 Reviewer；独立验收 N/A。若发现必须改契约或后端，停止并重新定级。"
 risk_flags = ["business"]
@@ -91,9 +91,26 @@ checks = ["frontend"]
 
 ## 实现与测试
 
-- 实现 SHA/变更摘要：待填
-- 命令、真实退出结果、product_fingerprint、环境、未运行原因：待填
-- 已知限制/未完成项：待填
+- 实现 SHA：`2162a40`（控制面登记 `de99d27`）。变更摘要：
+  - **依赖**：`pdfjs-dist@5.4.149`（`--save-exact`），打包进 bundle；worker 用 `pdfjs-dist/build/pdf.worker.min.mjs?url` 的打包产物，**运行时不依赖外网**。pdf.js 按需 `import()`，没有 PDF 的资料不为它买单。
+  - **`pdfPosition.ts`（新，纯函数）**：`locatePage`/`scrollTopFor`/`read|write|clearPdfPosition`。位置是「第几页 + 页内比例」而不是像素——PDF 的页高随缩放变化，像素换个缩放就没意义。指纹用原件行 id（契约里 FILE 原件不可更换，id 稳定）。
+  - **`PdfReader.tsx`（新）**：走既有受控下载拿 `Blob` → `arrayBuffer` → pdf.js；先量出每页尺寸占好位（滚动条不随渲染跳动），只渲染视口上下各 2 页、远处只占位；页码输入跳页、`−/＋` 缩放（0.5–3）、「适合宽度」；失败分三类（打开口令 / 结构损坏 / 读取失败），都配「用工具条里的『原件』下载」的兜底。
+  - **`files.ts`**：新增 `isPdfOriginal`（只认 `application/pdf` 且 READY）。
+  - **`ResourceDetail.tsx`**：FILE + PDF 原件时正文区放 `PdfReader`（按 `file.id` 给 key，换文件即重挂），其余格式保持现状走快照；**PDF 资料不渲染「高亮」Tab 与其面板**。
+  - **`styles.css`**：阅读器工具条、页面滚动容器（自身滚动，顶栏不动）、占位页、失败卡片。
+- 新测试（11 条）与判别性：
+  - `pdfPosition.test.ts` 4 例：按滚动位置定位页与页内比例（含滚过末页夹在 1）、缩放变化后回到同一处、按资料分别记忆且换文件不恢复、坏记录一律忽略。
+  - `PdfReader.test.tsx` 4 例（pdf.js 用 `vi.mock` 替身，jsdom 无 canvas/worker）：字节确实走受控下载且页面里没有 `iframe/embed/object` 直连接口；三页都占位而只渲染近处；三类失败各自的文案与「原件」兜底；回到离开时的页、且另一份文件存的位置不恢复。
+  - `e2e/pdf-reader.spec.ts` 3 例（真实 Chromium + 真实后端，夹具是仓库内自造的两页最小 PDF）：第一页**真的画出来了**（读 canvas 像素，非白即渲染成功）、`/ 2 页`、无 iframe 直连、PDF 资料无「高亮」Tab；跳到第 2 页 → 刷新后仍在第 2 页；非 PDF 的 FILE 资料保持既有形态。
+  - **e2e 抓到一个真缺陷并已修**：原本按「视口顶边」判当前页，短文档滚到底时末页顶部仍在视口顶之下（容器滚不了那么多），于是「跳到第 2 页」后页码显示的还是第 1 页。改为**按视口中线判**——中线落在哪一页，人就在读哪一页，任何文档长度都成立；跳页仍把该页顶部带到视口顶（符合预期），随后的 scroll 事件按中线重算。
+- 命令与结果（本机 macOS 25.5.0，工作区在 `2162a40`）：
+  - `npm run lint` / `npm run typecheck`（`tsc -b`）/ format 均 0；`vitest run` **695 passed**（TASK-072 时 687，+8）；`playwright test` **73 passed**（+3）。
+  - `python3 scripts/governance/check_task.py --task docs/tasks/TASK-073-pdf-reader.md --worktree` → **CHECKS PASS**。
+  - 过程记录：并行任务留下的 `.claude/worktrees/` 未被 `.gitignore` 忽略，会被治理检查判为「越界改动」；该 worktree 用完移除后检查即 PASS。**仓库应当忽略它**，见非阻断遗留项。
+- 已知限制/未完成项：
+  - **只读**：不做选中、标注、文本层搜索、打印、旋转、缩略图侧栏。PDF 上的高亮需要另一套锚点（页 + 页内位置），要动契约，属后续任务。
+  - **扫描版 PDF 没有文字层**：能看，但将来做搜索/标注时抽不出文字；本任务不涉及。
+  - 大文档只做了「远离视口的页释放 canvas」这一层优化，没有做渲染队列与优先级；几百页的文档表现未实测（夹具两页、真实文献量级未验）。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
