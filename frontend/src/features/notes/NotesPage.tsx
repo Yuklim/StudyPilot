@@ -6,13 +6,15 @@ import { resourceTitle } from '../resources/resourceTitle'
 import { renderSnapshot } from '../resources/snapshotMarkdown'
 import { useResourceQuery } from '../resources/useResourceQuery'
 import { attachNote, deleteNote, listNotes, type Note, type NotePage } from './api'
-import { displayText, noteSnippet, noteTitle } from './noteTitle'
+import { noteSnippet, noteTitle } from './noteTitle'
 import { ResourceAttachPicker } from './ResourceAttachPicker'
 
 /** 两栏（列表 + 预览）的最小宽度；以下只有列表，点一条直接进编辑页。 */
 const TWO_PANE = '(min-width: 1024px)'
-/** 一次拉取的条数：契约上限；页内搜索只对已加载的心得生效。 */
+/** 一次拉取的条数：契约上限。搜索走接口，所以这个数只影响翻页次数，不影响搜得到什么。 */
 const PAGE_SIZE = 100
+/** 停止输入多久之后才发搜索请求（毫秒）：一次输入打一串请求没有意义。 */
+const SEARCH_DELAY = 250
 
 function useTwoPane(fallback = true): boolean {
   const [wide, setWide] = useState(() =>
@@ -34,8 +36,10 @@ const UNTITLED = '无标题心得'
 /**
  * 「我的心得」= 独立心得的管理与预览（TASK-061，用户 2026-09-14「像 iPhone 备忘录」）。
  *
- * - 左栏：可搜索的列表（标题取第一行、摘要、更新时间），按最近更新排序，「加载更多」翻页；
- *   搜索是对已加载项的前端过滤——契约里心得列表没有搜索参数。
+ * - 左栏：可搜索的列表（标题取第一行、摘要、更新时间），按最近更新排序，「加载更多」翻页。
+ *   **搜索走接口**（TASK-070：契约给顶层 `/notes` 加了 `q`），因此命中覆盖全部独立心得，而不是
+ *   只搜已经翻出来的那几页；检索标准是**标题**（正文首个非空行，用户 2026-09-19 选定），正文里
+ *   出现但标题里没有的词不算命中，界面文案要把这点说清楚。
  * - 右栏（≥1024px）：选中那条的预览（同正文快照的 Markdown 渲染器）与管理动作：编辑（进整页
  *   编辑器）、后贴到资料、删除。窄屏没有右栏，点一条直接进编辑页。
  * - 选中项写进网址 `?note=<id>`：刷新、后退都还在那条上。
@@ -49,26 +53,38 @@ export function NotesPage() {
   // 第一页走 useResourceQuery（读取中/失败/重试都由它管）；「加载更多」拿到的后续页放本地，
   // 第一页一换（刷新）就作废。
   const [revision, setRevision] = useState(0)
-  const first = useCallback(() => listNotes(null, 1, '-updated_at', PAGE_SIZE), [])
-  const { result, retry } = useResourceQuery('notes:' + revision, first)
-  const [extra, setExtra] = useState<{ after: NotePage | undefined; pages: Note[][] }>({
-    after: undefined,
-    pages: [],
-  })
-  const [moreError, setMoreError] = useState<unknown>(null)
+  const [query, setQuery] = useState('')
+  // 输入即时进 `query`（框里跟手），停笔 250ms 才进 `needle`（真正发请求的那个）。
+  const [needle, setNeedle] = useState('')
+  useEffect(() => {
+    const trimmed = query.trim()
+    if (trimmed === needle) return
+    const timer = window.setTimeout(() => setNeedle(trimmed), SEARCH_DELAY)
+    return () => window.clearTimeout(timer)
+  }, [query, needle])
+  const first = useCallback(() => listNotes(null, 1, '-updated_at', PAGE_SIZE, needle), [needle])
+  const { result, retry } = useResourceQuery('notes:' + revision + ':' + needle, first)
+  // 「加载更多」的全部产物——多出来的页、最后一页说的 has_more、失败原因——都挂在**它当时
+  // 那一页第一页**上（`after`）。第一页一换（刷新、或换了搜索词）它们整体作废：Review F1 抓到
+  // 的回归是 has_more 曾经是独立 state，翻过页再搜索时会把上一批的 `false` 带过来，命中几百条
+  // 也不给「加载更多」。判别式只有一条：`after` 不是当前第一页，就当它不存在。
+  const [extra, setExtra] = useState<{
+    after: NotePage | undefined
+    pages: Note[][]
+    hasMore: boolean | null
+    failure: unknown
+  }>({ after: undefined, pages: [], hasMore: null, failure: null })
   const firstPage = result?.data
-  const more = useMemo(
-    () => (extra.after === firstPage ? extra.pages : []),
-    [extra.after, extra.pages, firstPage],
-  )
+  const carried = extra.after === firstPage
+  const more = useMemo(() => (carried ? extra.pages : []), [carried, extra.pages])
   const pages = useMemo(() => (firstPage ? [firstPage.data, ...more] : []), [firstPage, more])
   // 「还有没有下一页」以最后拿到的那页为准；没加载过后续页就看第一页。
-  const [moreHasMore, setMoreHasMore] = useState<boolean | null>(null)
-  const canLoadMore = firstPage !== undefined && (moreHasMore ?? firstPage.page.has_more)
+  const moreError = carried ? extra.failure : null
+  const canLoadMore =
+    firstPage !== undefined && ((carried ? extra.hasMore : null) ?? firstPage.page.has_more)
   const total = firstPage?.page.total_items ?? null
   const loading = result === undefined
   const error = result?.error
-  const [query, setQuery] = useState('')
   const [loadingMore, setLoadingMore] = useState(false)
   // 刚后贴成功的那条：列表已刷新（它不再是独立心得），右栏仍要给出「打开《资料》」的去处。
   const [attached, setAttached] = useState<Resource | null>(null)
@@ -83,28 +99,35 @@ export function NotesPage() {
   async function loadMore() {
     if (!firstPage || loadingMore) return
     setLoadingMore(true)
-    setMoreError(null)
+    setExtra((current) => ({ ...current, failure: null }))
     try {
-      const page = await listNotes(null, pages.length + 1, '-updated_at', PAGE_SIZE)
+      const page = await listNotes(null, pages.length + 1, '-updated_at', PAGE_SIZE, needle)
       if (!alive.current) return
-      setExtra({ after: firstPage, pages: [...more, page.data] })
-      setMoreHasMore(page.page.has_more)
+      // `firstPage` 是点击那一刻的第一页：请求在途时换了搜索词，这一批就挂在旧的第一页上，
+      // 下一次渲染直接作废，不会把上一次搜索的结果拼进新结果里。
+      setExtra({
+        after: firstPage,
+        pages: [...more, page.data],
+        hasMore: page.page.has_more,
+        failure: null,
+      })
     } catch (cause) {
-      if (alive.current) setMoreError(cause)
+      if (alive.current)
+        setExtra({
+          after: firstPage,
+          pages: more,
+          hasMore: carried ? extra.hasMore : null,
+          failure: cause,
+        })
     } finally {
       if (alive.current) setLoadingMore(false)
     }
   }
 
   const notes = useMemo(() => pages.flat(), [pages])
-  const needle = query.trim().toLowerCase()
-  // 按去掉内嵌图片数据的文本匹配（TASK-063）：base64 里什么字母都有，直接搜正文会假命中。
-  // 每条的可搜文本只算一次（含图正文可达 MB 级，不能每敲一个字重扫）。
-  const searchable = useMemo(
-    () => new Map(notes.map((row) => [row.id, displayText(row.content).toLowerCase()])),
-    [notes],
-  )
-  const shown = needle ? notes.filter((row) => searchable.get(row.id)?.includes(needle)) : notes
+  // 命中与否由后端决定（按标题匹配全部独立心得），这里不再二次过滤：前端再筛一道只会
+  // 让「接口说有、界面不显示」这种不一致有机会发生。
+  const searching = needle !== ''
   const selected = notes.find((row) => row.id === selectedId) ?? null
   // 地址里指着一条、但已加载的独立列表里没有：已绑定资料、已删除，或在还没加载的页里
   // （TASK-061 Review F3）。不能静默当成「没选」。
@@ -122,7 +145,6 @@ export function NotesPage() {
     )
   }
   function refresh() {
-    setMoreHasMore(null)
     setRevision((value) => value + 1)
   }
 
@@ -133,20 +155,24 @@ export function NotesPage() {
           <div className="resource-field search-field">
             <input
               type="search"
-              aria-label="搜索心得"
-              placeholder="搜索已加载的心得"
+              aria-label="按标题搜索心得"
+              placeholder="按标题搜索全部心得"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
             />
           </div>
         </div>
         <p className="resource-hint notes-list-hint" aria-live="polite">
-          {total === null ? '独立心得' : `共 ${total} 条独立心得`}
-          ；绑定资料的心得在各自资料里。
+          {searching
+            ? `标题含「${needle}」的独立心得${total === null ? '' : ` ${total} 条`}`
+            : total === null
+              ? '独立心得'
+              : `共 ${total} 条独立心得`}
+          ；{searching ? '只按标题搜索，正文里的词不算。' : '绑定资料的心得在各自资料里。'}
         </p>
         {loading && (
           <p role="status" className="resource-loading">
-            正在翻开心得…
+            {searching ? '正在搜索…' : '正在翻开心得…'}
           </p>
         )}
         {error !== undefined && (
@@ -157,18 +183,20 @@ export function NotesPage() {
             </button>
           </div>
         )}
-        {!loading && error === undefined && notes.length === 0 && (
+        {!loading && error === undefined && notes.length === 0 && !searching && (
           <div className="empty-sheet notes-empty">
             <h2>还没有独立心得</h2>
             <p>不必先收藏资料，随手记下的想法都会留在这里。用左侧「写心得」或快捷键记一条。</p>
           </div>
         )}
-        {notes.length > 0 && shown.length === 0 && (
-          <p className="quiet-empty">已加载的心得里没有包含「{query.trim()}」的。</p>
+        {!loading && error === undefined && notes.length === 0 && searching && (
+          <p className="quiet-empty">
+            没有标题含「{needle}」的独立心得。搜索只看标题（正文第一行），换个词试试。
+          </p>
         )}
-        {shown.length > 0 && (
+        {notes.length > 0 && (
           <ul className="notes-index" aria-label="心得列表">
-            {shown.map((row) => {
+            {notes.map((row) => {
               const title = noteTitle(row.content) ?? UNTITLED
               const snippet = noteSnippet(row.content)
               const current = row.id === selectedId
@@ -225,7 +253,9 @@ export function NotesPage() {
           ) : missing ? (
             <div className="notes-preview-empty" role="status">
               <p className="resource-hint">
-                这条心得不在独立心得列表里：可能已后贴到资料、已删除，或在还没加载的页里。
+                {searching
+                  ? '这条心得不在当前搜索结果里：标题不含搜索词，也可能已后贴到资料或已删除。'
+                  : '这条心得不在独立心得列表里：可能已后贴到资料、已删除，或在还没加载的页里。'}
               </p>
               <Link className="text-link" to={`/notes/${selectedId}`}>
                 直接打开

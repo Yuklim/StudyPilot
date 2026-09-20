@@ -2,6 +2,7 @@
 
 import re
 from typing import Annotated, Literal
+from unicodedata import normalize
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
@@ -13,6 +14,38 @@ MAX_CONTENT = 2_000_000
 Content = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=MAX_CONTENT)
 ]
+
+
+# TASK-070: notes have no title column - the page shows the first usable line as
+# the title, the way a memo app does. Search matches that same derived line, so
+# the two sides cannot drift: `frontend/src/features/notes/noteTitle.ts` holds the
+# identical rule, and both are pinned by tests.
+IMAGE = re.compile(r"!\[([^\]]*)\]\([^)]*\)")
+HEADING = re.compile(r"^\s*#{1,6}\s+")
+# A line ends exactly where the page says it does (`split(/\r?\n/)`). `splitlines()`
+# would also break on \r, \x0b, \u2028 and friends, which would let the two sides
+# derive different titles for the same note - what the page shows must be findable.
+LINE = re.compile(r"\r?\n")
+
+
+def normalized_search(value: str) -> str:
+    """Contract 2.3 text matching: NFKC, case folding, whitespace folding."""
+    return " ".join(normalize("NFKC", value).casefold().split())
+
+
+def note_title(content: str) -> str | None:
+    """The first line a reader would take as the title, or None if there is none.
+
+    Same rule as the page: drop a leading Markdown heading marker, keep only the
+    alt text of inline images (an embedded image is a huge base64 blob, never a
+    title), skip blank and image-only lines. **Not truncated** - the page cuts the
+    title at 60 characters for display only, and search should not stop there.
+    """
+    for raw in LINE.split(content):
+        line = IMAGE.sub(lambda match: match.group(1).strip(), HEADING.sub("", raw)).strip()
+        if line:
+            return line
+    return None
 
 
 class NoteError(Exception):
@@ -56,4 +89,26 @@ class NoteQuery(BaseModel):
     def integer_query(cls, value: object) -> object:
         if not isinstance(value, str) or not re.fullmatch(r"[0-9]+", value):
             raise ValueError("use an integer")
+        return value
+
+
+class StandaloneNoteQuery(NoteQuery):
+    """The top-level /api/v1/notes listing, which also accepts a title search.
+
+    TASK-070: only this collection takes `q`. The per-resource listing keeps the
+    plain `NoteQuery`, so `GET /resources/{id}/notes?q=x` still fails validation
+    (extra="forbid") instead of silently ignoring the parameter - contract 2.3
+    requires unknown query parameters to be rejected.
+    """
+
+    q: str | None = Field(default=None, min_length=1, max_length=200)
+
+    @field_validator("q")
+    @classmethod
+    def searchable(cls, value: str | None) -> str | None:
+        # Whitespace-only searches fold to nothing and would quietly mean "every
+        # note that has a title at all" - dropping the untitled ones from the very
+        # count the page shows. Refused, the way the resource search refuses it.
+        if value is not None and not normalized_search(value):
+            raise ValueError("empty search")
         return value

@@ -40,6 +40,15 @@ describe('controlled note API', () => {
     request.mockResolvedValueOnce(notePage([], 2))
     await listNotes(resourceId, 2)
     expect(request).toHaveBeenLastCalledWith(url + '?page=2&page_size=20&sort=-created_at')
+    // 标题搜索（TASK-070）：词经过 URL 编码，空白串等于没搜、不带 q。
+    request.mockResolvedValueOnce(notePage([], 1))
+    await listNotes(null, 1, '-updated_at', 20, ' 甲 的 ')
+    expect(request).toHaveBeenLastCalledWith(
+      '/api/v1/notes?page=1&page_size=20&sort=-updated_at&q=' + encodeURIComponent('甲 的'),
+    )
+    request.mockResolvedValueOnce(notePage([], 1))
+    await listNotes(null, 1, '-updated_at', 20, '   ')
+    expect(request).toHaveBeenLastCalledWith('/api/v1/notes?page=1&page_size=20&sort=-updated_at')
   })
   it.each([
     { resource_id: '018f1f58-4eb2-4a0d-a716-fb81b1960999' },
@@ -108,6 +117,13 @@ describe('controlled note API', () => {
       code: 'INVALID_REQUEST',
     })
     await expect(listNotes(null, 1, '-updated_at', 0)).rejects.toMatchObject({
+      code: 'INVALID_REQUEST',
+    })
+    // TASK-070：`q` 只有顶层集合有；资料下的心得列表带 q 会被后端 422，客户端先拦住。
+    await expect(listNotes(resourceId, 1, '-updated_at', 20, '甲')).rejects.toMatchObject({
+      code: 'INVALID_REQUEST',
+    })
+    await expect(listNotes(null, 1, '-updated_at', 20, '长'.repeat(201))).rejects.toMatchObject({
       code: 'INVALID_REQUEST',
     })
     await expect(saveNote(resourceId, 'x', note({ resource_id: 'other' }))).rejects.toMatchObject({

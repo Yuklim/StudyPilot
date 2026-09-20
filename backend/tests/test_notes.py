@@ -18,7 +18,13 @@ from support import RuntimePaths, resource
 from studypilot.infrastructure.database.models import LearningProgress, Note, OriginalFile
 from studypilot.infrastructure.database.note_store import NoteStore
 from studypilot.main import create_app
-from studypilot.modules.notes.contracts import NoteAttach, NoteCreate, NoteDetach, NotePatch
+from studypilot.modules.notes.contracts import (
+    NoteAttach,
+    NoteCreate,
+    NoteDetach,
+    NotePatch,
+    note_title,
+)
 
 CONTEXT = {"sec-fetch-site": "same-origin", "sec-fetch-mode": "cors", "sec-fetch-dest": "empty"}
 PRIVATE = "private synthetic note"
@@ -878,3 +884,129 @@ def test_real_competing_scope_moves_have_a_single_winner(
     else:
         assert data["resource_id"] is None
         error(authorized.get(path(item, note)), 404, "NOTE_NOT_FOUND")
+
+
+# --- TASK-070: title search on the standalone collection -------------------
+
+
+def fullwidth(value: str) -> str:
+    """The full-width form of an ASCII string; NFKC folds it back to ASCII."""
+    return "".join(chr(ord(char) + 0xFEE0) for char in value)
+
+
+def titles(page: dict[str, Any]) -> list[str | None]:
+    return [note_title(row["content"]) for row in page["data"]]
+
+
+def test_note_title_rule_matches_the_page(database: Any) -> None:
+    """The searchable title is the first usable line, untruncated.
+
+    Same rule as `frontend/src/features/notes/noteTitle.ts`; both sides derive it
+    independently, so this pins the backend half against drift.
+    """
+    assert note_title("## 神经网络笔记\n后面是正文") == "神经网络笔记"
+    assert note_title("\n   \n真正的标题\n正文") == "真正的标题"
+    # An image-only line is never a title; its alt text is, when it has one.
+    assert note_title("![](data:image/webp;base64,AAAA)\n标题在图片后面") == "标题在图片后面"
+    assert note_title("![流程图](data:image/webp;base64,AAAA)\n正文") == "流程图"
+    assert note_title("   \n\n") is None
+    # The page cuts at 60 characters for display; search must not.
+    assert note_title("长" * 100) == "长" * 100
+    # A line ends where the page says it does: \r\n and \n, nothing else (Review F3).
+    assert note_title("# 标题\r\n正文") == "标题"
+    assert note_title("甲\r乙\n丙") == "甲\r乙"
+
+
+def test_standalone_title_search_matches_titles_only(database: Any, authorized: TestClient) -> None:
+    hit = add_standalone(authorized, "# Kubernetes 入门\n讲的是容器编排")
+    add_standalone(authorized, "Docker 笔记\n这里提到 Kubernetes 只在正文里")
+    add_standalone(authorized, "读《失控》的想法\n无关")
+
+    found = authorized.get(standalone_path() + "?q=kubernetes").json()
+    # The body-only mention is not a hit: the user asked for title search.
+    assert [row["id"] for row in found["data"]] == [hit["id"]]
+    assert titles(found) == ["Kubernetes 入门"]
+    assert found["page"]["total_items"] == 1 and found["page"]["total_pages"] == 1
+    assert found["page"]["has_more"] is False
+
+    # Contract 2.3 folding: NFKC (full-width), case, and runs of whitespace.
+    for needle in [fullwidth("KUBERNETES"), "kubernetes", "KUBERNETES   入门"]:
+        page = authorized.get(standalone_path(), params={"q": needle}).json()
+        assert [row["id"] for row in page["data"]] == [hit["id"]], needle
+
+    # A word that exists nowhere gives an empty page, not an error.
+    missing = authorized.get(standalone_path(), params={"q": "不存在的词"}).json()
+    assert missing["data"] == [] and missing["page"]["total_items"] == 0
+    assert missing["page"]["total_pages"] == 0
+
+    # Without q the collection is unchanged.
+    everything = authorized.get(standalone_path() + "?page=1&page_size=20").json()
+    assert everything["page"]["total_items"] == 3
+
+
+def test_standalone_title_search_reads_past_a_leading_image(
+    database: Any, authorized: TestClient
+) -> None:
+    """A note that opens with a pasted image still matches its real title line.
+
+    The store only reads the opening characters of each note; a base64 image is
+    far longer than that window, so this exercises the full-content fallback.
+    """
+    image = "![](data:image/webp;base64," + "A" * 6000 + ")"
+    buried = add_standalone(authorized, f"{image}\n图片后面的标题\n正文")
+    page = authorized.get(standalone_path(), params={"q": "图片后面"}).json()
+    assert [row["id"] for row in page["data"]] == [buried["id"]]
+    # The same line rule holds for the title read out of the prefix window: a note
+    # long enough to be truncated, whose title line sits inside the window and
+    # carries a lone \r, must still match as one line (second-round Review).
+    carriage = add_standalone(authorized, "带\r回车的标题\n" + "正" * 5000)
+    whole = authorized.get(standalone_path(), params={"q": "带\r回车的标题"}).json()
+    assert [row["id"] for row in whole["data"]] == [carriage["id"]]
+    # The alt text of an image is a title, and is searchable as one.
+    labelled = add_standalone(authorized, "![会议白板](data:image/webp;base64,AAAA)\n正文")
+    alt = authorized.get(standalone_path(), params={"q": "会议白板"}).json()
+    assert [row["id"] for row in alt["data"]] == [labelled["id"]]
+
+
+def test_standalone_title_search_pages_over_matches_only(
+    database: Any, authorized: TestClient
+) -> None:
+    created = [add_standalone(authorized, f"周报 {index}\n正文") for index in range(3)]
+    add_standalone(authorized, "月报 0\n正文")
+    newest_first = [note["id"] for note in reversed(created)]
+
+    first = authorized.get(standalone_path(), params={"q": "周报", "page_size": 2}).json()
+    assert [row["id"] for row in first["data"]] == newest_first[:2]
+    # Totals describe the filtered set, not the whole collection.
+    assert first["page"]["total_items"] == 3 and first["page"]["total_pages"] == 2
+    assert first["page"]["has_more"] is True
+
+    second = authorized.get(
+        standalone_path(), params={"q": "周报", "page": 2, "page_size": 2}
+    ).json()
+    assert [row["id"] for row in second["data"]] == newest_first[2:]
+    assert second["page"]["has_more"] is False
+
+    # Sorting still applies to the matches.
+    oldest = authorized.get(
+        standalone_path(), params={"q": "周报", "sort": "created_at", "page_size": 2}
+    ).json()
+    assert [row["id"] for row in oldest["data"]] == newest_first[::-1][:2]
+
+
+def test_search_parameter_is_rejected_where_the_contract_does_not_offer_it(
+    item: dict[str, Any], authorized: TestClient
+) -> None:
+    add(authorized, item, "# 绑定心得\n正文")
+    # Notes under a resource have no search parameter; it is refused, not ignored.
+    error(authorized.get(path(item) + "?q=绑定"), 422, "VALIDATION_ERROR")
+    # Empty and oversized q are refused on the collection that does offer it.
+    error(authorized.get(standalone_path() + "?q="), 422, "VALIDATION_ERROR")
+    # Whitespace-only searches fold to nothing; refused rather than silently
+    # meaning "every note that has a title" (Review F2).
+    for blank in [" ", "\u3000", "\t \n"]:
+        error(authorized.get(standalone_path(), params={"q": blank}), 422, "VALIDATION_ERROR")
+    error(authorized.get(standalone_path(), params={"q": "长" * 201}), 422, "VALIDATION_ERROR")
+    assert authorized.get(standalone_path(), params={"q": "长" * 200}).status_code == 200
+    # Unknown parameters stay refused.
+    error(authorized.get(standalone_path() + "?query=绑定"), 422, "VALIDATION_ERROR")

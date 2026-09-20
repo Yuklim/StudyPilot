@@ -95,23 +95,35 @@ function path(resourceId: string | null, noteId?: string): string {
 export type NoteSort = '-created_at' | 'created_at' | '-updated_at' | 'updated_at'
 const NOTE_SORTS: readonly NoteSort[] = ['-created_at', 'created_at', '-updated_at', 'updated_at']
 
+/**
+ * TASK-070：`q` 只有顶层独立心得集合接受，按**心得标题**（正文首个非空行）搜索；契约里
+ * 资料下的心得列表没有这个参数，传了后端会 422，所以这里先拦住，不发无效请求。
+ * 空白串当作没搜（与「清空搜索框」同义），不发 `q=`——后端对显式空串是 422。
+ */
 export async function listNotes(
   resourceId: string | null,
   number = 1,
   sort: NoteSort = '-created_at',
   pageSize = 20,
+  q = '',
 ): Promise<NotePage> {
+  const needle = q.trim()
   if (
     !Number.isSafeInteger(number) ||
     number < 1 ||
     !NOTE_SORTS.includes(sort) ||
     !Number.isSafeInteger(pageSize) ||
     pageSize < 1 ||
-    pageSize > 100
+    pageSize > 100 ||
+    (needle !== '' && resourceId !== null) ||
+    [...needle].length > 200
   )
     throw new ApiError('INVALID_REQUEST')
+  const search = needle ? '&q=' + encodeURIComponent(needle) : ''
   const envelope = object(
-    await api.request(path(resourceId) + `?page=${number}&page_size=${pageSize}&sort=${sort}`),
+    await api.request(
+      path(resourceId) + `?page=${number}&page_size=${pageSize}&sort=${sort}` + search,
+    ),
   )
   const page = object(envelope.page)
   if (!Array.isArray(envelope.data) || typeof page.has_more !== 'boolean' || page.number !== number)
