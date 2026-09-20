@@ -22,6 +22,10 @@ Content = Annotated[
 # identical rule, and both are pinned by tests.
 IMAGE = re.compile(r"!\[([^\]]*)\]\([^)]*\)")
 HEADING = re.compile(r"^\s*#{1,6}\s+")
+# A line ends exactly where the page says it does (`split(/\r?\n/)`). `splitlines()`
+# would also break on \r, \x0b, \u2028 and friends, which would let the two sides
+# derive different titles for the same note - what the page shows must be findable.
+LINE = re.compile(r"\r?\n")
 
 
 def normalized_search(value: str) -> str:
@@ -37,7 +41,7 @@ def note_title(content: str) -> str | None:
     title), skip blank and image-only lines. **Not truncated** - the page cuts the
     title at 60 characters for display only, and search should not stop there.
     """
-    for raw in content.splitlines():
+    for raw in LINE.split(content):
         line = IMAGE.sub(lambda match: match.group(1).strip(), HEADING.sub("", raw)).strip()
         if line:
             return line
@@ -98,3 +102,13 @@ class StandaloneNoteQuery(NoteQuery):
     """
 
     q: str | None = Field(default=None, min_length=1, max_length=200)
+
+    @field_validator("q")
+    @classmethod
+    def searchable(cls, value: str | None) -> str | None:
+        # Whitespace-only searches fold to nothing and would quietly mean "every
+        # note that has a title at all" - dropping the untitled ones from the very
+        # count the page shows. Refused, the way the resource search refuses it.
+        if value is not None and not normalized_search(value):
+            raise ValueError("empty search")
+        return value

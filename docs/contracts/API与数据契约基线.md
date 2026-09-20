@@ -162,7 +162,7 @@ TASK-011/012 已完成分类后端与页面，TASK-013/014 已完成 FILE 后端
 | 列表 | 搜索/筛选白名单 | 排序白名单与默认值 |
 | --- | --- | --- |
 | 资料 | `q` 只搜标题、来源名称、保存原因；重复 `topic_id`（任一）、`topic_unassigned`（可与 `topic_id` 并列为「或」）、重复 `tag_id` + `tag_match=all|any`（默认 `all`）、重复 `source_type`、重复 `learning_status`、`progress_min/max`、`created_from/to`、`updated_from/to` | `created_at`、`updated_at`、`title`、`progress_percent`；默认 `-created_at,id` |
-| 独立心得列表（顶层 `/api/v1/notes`） | `q` 只搜心得标题——心得没有标题字段，标题＝正文**首个非空行**（去掉行首 `#{1,6} `、行内图片只取替代文字、纯图片行跳过），按未截断的该行匹配；不搜正文其余部分。资料下的心得列表不接受 `q` | `created_at`、`updated_at`；默认 `-created_at,id` |
+| 独立心得列表（顶层 `/api/v1/notes`） | `q` 只搜心得标题——心得没有标题字段，标题＝正文**首个非空行**（行以 `\r?\n` 分隔；去掉行首 `#{1,6} `、行内图片只取替代文字、纯图片行跳过），按未截断的该行匹配；不搜正文其余部分。`q` 经 2.3 规范化后为空（纯空白）与显式空串同样 `422`。资料下的心得列表不接受 `q` | `created_at`、`updated_at`；默认 `-created_at,id` |
 | 单资料学习记录 | `started_from/to` | `started_at`、`created_at`、`duration_seconds`；默认 `-started_at,id` |
 | 全局学习记录 | 在上项基础上增加 `resource_id`、`topic_id` | 同上 |
 | 复习列表 | `scope=TODAY/OVERDUE/UPCOMING/ALL`、`time_zone`、`topic_id`、`q`（同资料搜索） | `due_date`、`title`；默认 `due_date NULLS LAST,title,id`，`-due_date` 也固定 NULLS LAST |

@@ -158,6 +158,36 @@ describe('notes manager page', () => {
     await waitFor(() => expect(within(list()).getAllByRole('listitem')).toHaveLength(3))
   })
 
+  it('still offers more pages after a search replaces an already-paged list (Review F1)', async () => {
+    wide(true)
+    // 回归：翻过页之后再搜索。旧写法把「上一批说没有下一页」带进新的搜索结果，命中再多也
+    // 只停在第一页——正是本任务要解决的「翻不到的旧心得」那个区间。
+    // 判别性：把 has_more 改回不随第一页作废的独立 state，本例即红。
+    mock((path) => {
+      if (!path.startsWith('/api/v1/notes?')) return samplePage([])
+      const params = new URLSearchParams(path.slice(path.indexOf('?')))
+      if (params.get('q') === null)
+        // 未搜索：第一页还有下一页，第二页到底。
+        return params.get('page') === '2'
+          ? notePage([rows()[1]!], 2, 21)
+          : notePage([rows()[0]!], 1, 21)
+      // 搜索命中很多条：第一页之后仍然有。
+      return notePage([rows()[2]!], 1, 21)
+    })
+    mount('/notes')
+    await screen.findByText('甲的标题')
+    fireEvent.click(screen.getByRole('button', { name: '加载更多' }))
+    await waitFor(() => expect(within(list()).getAllByRole('listitem')).toHaveLength(2))
+    // 这一步之后「加载更多」已经消失（第二页到底了）。
+    expect(screen.queryByRole('button', { name: '加载更多' })).toBeNull()
+    fireEvent.change(screen.getByRole('searchbox', { name: '按标题搜索心得' }), {
+      target: { value: '丙' },
+    })
+    await waitFor(() => expect(within(list()).getAllByRole('listitem')).toHaveLength(1))
+    // 搜索结果自己说还有下一页，按钮必须回来。
+    expect(screen.getByRole('button', { name: '加载更多' })).toBeInTheDocument()
+  })
+
   it('keeps the search term while loading the next page of matches', async () => {
     wide(true)
     const request = mock((path) => {

@@ -64,20 +64,24 @@ export function NotesPage() {
   }, [query, needle])
   const first = useCallback(() => listNotes(null, 1, '-updated_at', PAGE_SIZE, needle), [needle])
   const { result, retry } = useResourceQuery('notes:' + revision + ':' + needle, first)
-  const [extra, setExtra] = useState<{ after: NotePage | undefined; pages: Note[][] }>({
-    after: undefined,
-    pages: [],
-  })
-  const [moreError, setMoreError] = useState<unknown>(null)
+  // 「加载更多」的全部产物——多出来的页、最后一页说的 has_more、失败原因——都挂在**它当时
+  // 那一页第一页**上（`after`）。第一页一换（刷新、或换了搜索词）它们整体作废：Review F1 抓到
+  // 的回归是 has_more 曾经是独立 state，翻过页再搜索时会把上一批的 `false` 带过来，命中几百条
+  // 也不给「加载更多」。判别式只有一条：`after` 不是当前第一页，就当它不存在。
+  const [extra, setExtra] = useState<{
+    after: NotePage | undefined
+    pages: Note[][]
+    hasMore: boolean | null
+    failure: unknown
+  }>({ after: undefined, pages: [], hasMore: null, failure: null })
   const firstPage = result?.data
-  const more = useMemo(
-    () => (extra.after === firstPage ? extra.pages : []),
-    [extra.after, extra.pages, firstPage],
-  )
+  const carried = extra.after === firstPage
+  const more = useMemo(() => (carried ? extra.pages : []), [carried, extra.pages])
   const pages = useMemo(() => (firstPage ? [firstPage.data, ...more] : []), [firstPage, more])
   // 「还有没有下一页」以最后拿到的那页为准；没加载过后续页就看第一页。
-  const [moreHasMore, setMoreHasMore] = useState<boolean | null>(null)
-  const canLoadMore = firstPage !== undefined && (moreHasMore ?? firstPage.page.has_more)
+  const moreError = carried ? extra.failure : null
+  const canLoadMore =
+    firstPage !== undefined && ((carried ? extra.hasMore : null) ?? firstPage.page.has_more)
   const total = firstPage?.page.total_items ?? null
   const loading = result === undefined
   const error = result?.error
@@ -95,14 +99,26 @@ export function NotesPage() {
   async function loadMore() {
     if (!firstPage || loadingMore) return
     setLoadingMore(true)
-    setMoreError(null)
+    setExtra((current) => ({ ...current, failure: null }))
     try {
       const page = await listNotes(null, pages.length + 1, '-updated_at', PAGE_SIZE, needle)
       if (!alive.current) return
-      setExtra({ after: firstPage, pages: [...more, page.data] })
-      setMoreHasMore(page.page.has_more)
+      // `firstPage` 是点击那一刻的第一页：请求在途时换了搜索词，这一批就挂在旧的第一页上，
+      // 下一次渲染直接作废，不会把上一次搜索的结果拼进新结果里。
+      setExtra({
+        after: firstPage,
+        pages: [...more, page.data],
+        hasMore: page.page.has_more,
+        failure: null,
+      })
     } catch (cause) {
-      if (alive.current) setMoreError(cause)
+      if (alive.current)
+        setExtra({
+          after: firstPage,
+          pages: more,
+          hasMore: carried ? extra.hasMore : null,
+          failure: cause,
+        })
     } finally {
       if (alive.current) setLoadingMore(false)
     }
@@ -129,7 +145,6 @@ export function NotesPage() {
     )
   }
   function refresh() {
-    setMoreHasMore(null)
     setRevision((value) => value + 1)
   }
 

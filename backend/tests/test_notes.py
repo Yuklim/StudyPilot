@@ -912,6 +912,9 @@ def test_note_title_rule_matches_the_page(database: Any) -> None:
     assert note_title("   \n\n") is None
     # The page cuts at 60 characters for display; search must not.
     assert note_title("长" * 100) == "长" * 100
+    # A line ends where the page says it does: \r\n and \n, nothing else (Review F3).
+    assert note_title("# 标题\r\n正文") == "标题"
+    assert note_title("甲\r乙\n丙") == "甲\r乙"
 
 
 def test_standalone_title_search_matches_titles_only(database: Any, authorized: TestClient) -> None:
@@ -993,6 +996,10 @@ def test_search_parameter_is_rejected_where_the_contract_does_not_offer_it(
     error(authorized.get(path(item) + "?q=绑定"), 422, "VALIDATION_ERROR")
     # Empty and oversized q are refused on the collection that does offer it.
     error(authorized.get(standalone_path() + "?q="), 422, "VALIDATION_ERROR")
+    # Whitespace-only searches fold to nothing; refused rather than silently
+    # meaning "every note that has a title" (Review F2).
+    for blank in [" ", "\u3000", "\t \n"]:
+        error(authorized.get(standalone_path(), params={"q": blank}), 422, "VALIDATION_ERROR")
     error(authorized.get(standalone_path(), params={"q": "长" * 201}), 422, "VALIDATION_ERROR")
     assert authorized.get(standalone_path(), params={"q": "长" * 200}).status_code == 200
     # Unknown parameters stay refused.
