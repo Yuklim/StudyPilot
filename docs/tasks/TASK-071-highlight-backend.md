@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-071"
-status = "READY"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "新增一张用户数据表 `highlights`（0007 迁移）、一个新后端模块与四个公共接口，并给资料删除的影响预览新增 `highlight_count` 与清单条目。命中架构/公共 API/迁移/关键数据模型四项高风险标志中的多项，取最高按 L3 走：Worker → 自动检查 → 独立只读 Reviewer → 独立只读 Integration/Acceptance。这是用户数据（用户读文章时亲手标的段落），删除与级联语义必须一次定准。"
 risk_flags = ["architecture", "public-api", "migration", "critical-data"]
@@ -112,9 +112,21 @@ checks = ["backend", "contracts"]
 
 ## 实现与测试
 
-- 实现 SHA/变更摘要：待填
-- 命令、真实退出结果、product_fingerprint、环境、未运行原因：待填
-- 已知限制/未完成项：待填
+- 实现 SHA：`a66639b`（控制面登记 `24c081f`）。变更摘要：
+  - **模型与迁移**：`models.py` 新增 `Highlight`（`Identified`/`Created`/`Versioned`）——`exact` 1～2000、`prefix`/`suffix` ≤200 可空、`start_offset >= 0 AND end_offset > start_offset`、`note_id` 唯一且 `ON DELETE SET NULL`、`resource_id` `ON DELETE CASCADE`、复合索引 `(resource_id, start_offset, id)`、owner `highlights`。`0007_highlights` 建表/回滚，命名约定与 0005 一致；`test_migrations.py` 的 head 与表数（14→15）同步，`compare_metadata` 仍为空（模型与迁移一致）。
+  - **模块**：`modules/highlights/contracts.py`（`HighlightError`/`HighlightCreate`/`HighlightPatch`/`HighlightQuery`）。`exact` **不去首尾空白**——空白是选区的一部分，去掉会移动锚点。`end_offset > start_offset` 用 `model_validator(mode="after")`。
+  - **存储层**：`highlight_store.py`——`require_resource`（与 notes 同一条可读规则）、`require_snapshot`（必须有 READY 快照，否则 `SNAPSHOT_NOT_FOUND`）、`require_note`（必须同资料下的笔记；已被别的高亮占用则 `NOTE_ALREADY_HIGHLIGHTED` 409，改绑到自己已持有的那条不算冲突）、`find`/`check_version`/`create`/`detail`/`rebind`/`delete`/`page`（默认 `start_offset,id`）。
+  - **应用与 API**：`application/highlights.py`（事务 + `StaleDataError` 分类，不重放写）、`api/highlights.py`（五个端点、`If-Match`、错误码到中文消息的映射），`main.py` 注册路由。
+  - **删除影响**：`resource_store.py` 的 `DELETION_IMPACT_KEYS` 增加 `highlight_count`，清单增加 `highlights` 条目（id + version）；契约 9 节第 2 条的令牌绑定集合同步写入 Highlight。
+  - **契约**：`API与数据契约基线.md` 新增 4.15 节（字段表 + 分层锚点/服务端不解释正文/孤立不落库/锚点不可变/独立于心得/本阶段边界）、2.3 白名单新增一行、10 节新增五行、9 节绑定集合、交付说明段追加一句；`openapi-v1.json` 新增 `Highlight`/`HighlightCreate`/`HighlightPatch`/`HighlightEnvelope`/`HighlightPage` 五个 schema、三个 response 组件（`HighlightTargetNotFound`/`ResourceOrHighlightNotFound`/`HighlightNoteConflict`）、`highlights` tag、两个 path 共五个 operation，`x-delivery-profile.available_operations` 增加五项、`DeletionImpact` 增加 `highlight_count`。**改动按既有紧凑单行格式插入**（一次整份重排会产生 468 行无意义 diff，已回退重做）。
+- 新测试：`tests/test_highlights.py` 8 例——锚点原样存回且可无心得独立存在（字段集合固定）；写入前置（资料 404 / 无快照 404 / 无快照仍可列出空页）；边界值 9 组 422 + 两个上限值 201；心得绑定→改绑→解绑（版本推进、409/428、`PATCH` 改锚点被拒）；心得必须同资料（别处的心得、独立心得、不存在的 id 各 404）且一条心得只配一条高亮（409；改绑到自己那条不算冲突）；删心得后高亮仍在且 `note_id` 为空；列表按文中顺序 + `-created_at` + 分页 + 越界空页 + 三种 422；跨资料隔离与按版本删除（428/409/204）。`test_resource_deletion.py` 的依赖夹具加入一条绑定心得的高亮，影响计数断言加 `highlight_count: 1`，级联后断言表为空。`test_taxonomy.py` 的交付目录用例同步（35→40 + 五个 operationId 集合断言）。
+- 命令与结果（本机 macOS 25.5.0，backend `uv` 虚拟环境 Python 3.13，工作区在 `a66639b`）：
+  - `ruff check src tests` / `ruff format --check` / `mypy`（76 源文件）均 0；`pytest -q` **569 passed**（TASK-070 时 561，+8）。
+  - `python3 scripts/governance/check_task.py --task docs/tasks/TASK-071-highlight-backend.md --worktree` → **CHECKS PASS**，`profiles=backend,contracts`（含 `uv build --offline` 与 OpenAPI 模型校验 exit=0）。
+- 已知限制/未完成项：
+  - **界面上看不到任何变化**：选区取锚点、上色渲染、重定位与孤立提示、删除对话框显示高亮数，都在 TASK-072。
+  - 服务端不校验 `exact` 是否仍能在快照正文里找到，也不做重定位；坏锚点（前端传错偏移、正文已整份替换）要到阅读器渲染时才暴露。这是契约 4.15 明写的分工，不是遗漏。
+  - `highlight_count` 已进影响预览，但前端删除对话框目前只显示 `note_count`，要等 TASK-072 才会把高亮数摆出来。在前端能创建高亮之前，这个差距对用户不可见。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
