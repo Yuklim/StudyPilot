@@ -87,6 +87,11 @@ def test_citation_describes_the_work_without_touching_the_resource(
     assert citation["resource_id"] == resource["id"] and citation["version"] == 1
     assert UUID(citation["id"]).version == 4
     assert datetime.fromisoformat(citation["created_at"]).tzinfo == UTC
+    # Contract 10 spells instants with a trailing `Z`, and every other endpoint does.
+    # `fromisoformat` accepts `+00:00` just as happily, so the assertion above cannot
+    # tell the two apart - this endpoint shipped `+00:00` until a reader that validates
+    # the format rejected it (TASK-078).
+    assert citation["created_at"].endswith("Z") and citation["updated_at"].endswith("Z")
     assert authorized.get(path(resource)).json()["data"] == citation
 
     # The point of a separate table: the resource keeps its own title and address.

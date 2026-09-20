@@ -10,6 +10,8 @@ risk_flags = ["business"]
 owner = "coordinator"
 base = "bcfa7805666d19d9dfaba0f6732f916fd8ca52b6"
 allowed_paths = [
+  "frontend/src/api/client.ts",
+  "frontend/src/api/client.test.ts",
   "frontend/src/features/resources/citation.ts",
   "frontend/src/features/resources/citation.test.ts",
   "frontend/src/features/resources/ReaderCitation.tsx",
@@ -19,11 +21,13 @@ allowed_paths = [
   "frontend/src/features/resources/ResourceDetail.tsx",
   "frontend/src/styles.css",
   "frontend/e2e/citation.spec.ts",
+  "backend/src/studypilot/api/citations.py",
+  "backend/tests/test_citations.py",
   "docs/tasks/TASK-077-pending-registrations.md",
   "docs/tasks/TASK-078-citation-ui.md",
   "docs/tasks/任务索引.md",
 ]
-checks = ["frontend"]
+checks = ["frontend", "backend"]
 ```
 
 ## 需求与范围
@@ -49,13 +53,33 @@ checks = ["frontend"]
 - **不做摘要（`abstract`）字段**：契约里有（至多 20000 字），但塞进 374px 宽的右栏会把整个 Tab 撑长；用户已同意这一版不做。
 - 不新开右栏 Tab（文献信息与来源/收藏时间同类，属「这篇资料是什么」，放进既有「信息」Tab）。
 - 不做引文格式化与导出（APA/BibTeX 之类）、不做按作者/年份的搜索与筛选、不碰 `extension/**`（那是并行的 TASK-075）。
-- 不改后端、契约、openapi、迁移；不动资料标题与来源地址（它们是资料自身的字段，在「编辑资料」里改）。
+- 不改契约、openapi、迁移；不动资料标题与来源地址（它们是资料自身的字段，在「编辑资料」里改）。后端只改下面登记的那一处**违约修正**，不碰业务逻辑。
 - 所有未列入 `allowed_paths` 的路径。
 
 ### 依赖与并行
 
 依赖：TASK-074（文献元数据后端）已合并（merge `48f232e`），三个接口在 main 上可用。基线 `bcfa780`。
 并行：本任务**持有 `docs/tasks/任务索引.md`**。若用户授权 TASK-075（扩展抓取）并行，则 075 不写索引，其索引行延后补登记（AGENTS.md 第 3 节）。两者路径不相交：本任务只写 `frontend/**` 与两份文档，075 只写 `extension/**`。
+
+### 登记后的路径修订（实施中，写入前记录）
+
+把 `frontend/src/api/client.ts` 与 `frontend/src/api/client.test.ts` 追加进 `allowed_paths`：文献接口在资料没有文献信息时返回 **404 `CITATION_NOT_FOUND`**，而前端的 `messages` 表与服务端错误码白名单里**没有这个码**（其余的 `VALIDATION_ERROR`/`VERSION_CONFLICT`/`VERSION_REQUIRED`/`RESOURCE_NOT_FOUND` 都已有）。不加这个码，「还没填文献信息」这个**正常状态**会被当成未知错误。改动仅此一码：`messages` 加一行中文提示 + 白名单加一行，不动 `client.ts` 的任何既有行为。
+
+另记一条**登记时的完成条件口径修正**（写入前发现，如实登记）：完成条件里写「422 的字段错误落到对应字段旁」。实际核对后端后确认，**422 只返回 `VALIDATION_ERROR` 一个码，不带字段级明细**。因此改为：前端按契约的边界（年份 1000–2200、作者至多 100 位且单个至多 200 字、各字符串上限）**在本地校验并把错误落到对应字段**；万一服务端仍返回 422，给一句整体提示并保留用户已填内容。这不降低要求，只是把「谁来判定字段」说准。
+
+### 范围修订二：后端的时间戳违约（实施中发现，用户当场授权后写入）
+
+e2e 跑真实后端时，前端把文献接口的响应判成「格式不正确」。查下来是**后端违反契约**：契约第 533 行写明「后端规范化为 UTC 保存并**以 `Z` 返回**」，仓库里 `api/notes.py`、`api/highlights.py`、`api/learning.py` 与 `resource_store.py` 都带了 `.replace("+00:00", "Z")` 的 datetime 编码器，**只有 TASK-074 的 `api/citations.py` 没带**，于是它返回 `2026-09-20T06:52:43.123456+00:00`——全 API 里唯一一个。TASK-074 的 L3 Review 与独立验收核的是字段语义、迁移与删除影响，没有比对时间戳编码，所以漏过去了；单元测试也发现不了（那里接口是替身，返回的是用例自己造的 `Z`）。
+
+2026-09-20 主 Agent 把三个选项（并进本任务修／单开后端任务／前端容忍两种格式）摆给用户，用户选**「并进 TASK-078 一起修」**。据此：`backend/src/studypilot/api/citations.py` 与 `backend/tests/test_citations.py` 追加进 `allowed_paths`，`checks` 加 `backend`。
+
+**风险仍定 L2**：这是让实现回到已批准契约，不是改契约本身；改动是把别处现成的 datetime 编码器搬过来（一处），外加一条断言时间戳以 `Z` 结尾的后端用例。不碰文献的任何业务逻辑、校验、迁移与删除影响。若 Review 认为「改变了已交付接口的响应字节」应当升级，主 Agent 接受重新定级。
+
+### 范围修订三：`isbn` 字段要原样带回（实施中发现，写入前记录）
+
+契约里文献还有 `isbn`，而草图与目标里的字段清单没有它（用户确认的那一版就没有）。问题在于 **`PUT` 是整份替换**：如果表单不认识 `isbn`，那么一条带 ISBN 的文献（将来由扩展抓取写入）只要在界面上按一次保存，ISBN 就被悄悄抹掉了。
+
+处置：把 `isbn` 与 `abstract` 一样**放进类型并原样带回**（读到什么就写回什么），但**不做可编辑的输入框**——加字段属于扩需求，不在用户确认的范围里。这样既不丢数据，也不擅自扩界面。「ISBN 与摘要不可在界面上编辑」记入已知限制。
 
 ### 主 Agent 登记的实现决定（非用户决定，Review 可挑战）
 

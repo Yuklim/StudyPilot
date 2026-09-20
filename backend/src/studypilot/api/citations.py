@@ -8,6 +8,7 @@ delete it with a strong version header.
 import json
 import re
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -60,13 +61,27 @@ def guarded(request: Request, build: Callable[[], Response]) -> Response:
         return failure(request, CitationError("UNKNOWN_ERROR", 500))
 
 
+# Contract 10: instants go out as RFC 3339 UTC ending in `Z`. `jsonable_encoder`
+# would render an aware UTC datetime as `+00:00`, which is the same instant but
+# not the spelling the contract promises - notes, highlights and learning all
+# normalise it the same way, and a client that validates the format (the reader
+# does) rejects the odd one out.
+def encoded(payload: Any) -> Any:
+    return jsonable_encoder(
+        payload,
+        custom_encoder={
+            datetime: lambda value: value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+        },
+    )
+
+
 def respond(request: Request, operation: Callable[[], Any], status: int = 200) -> Response:
     def build() -> Response:
         result = operation()
         return (
             Response(status_code=204)
             if result is None
-            else JSONResponse(status_code=status, content=jsonable_encoder(result))
+            else JSONResponse(status_code=status, content=encoded(result))
         )
 
     return guarded(request, build)
@@ -128,7 +143,7 @@ async def put_citation(request: Request, resource_id: str) -> Response:
     def build() -> Response:
         payload, created = citations.put(record_id, command)
         # 201 the first time a resource gets a citation, 200 when replacing it.
-        return JSONResponse(status_code=201 if created else 200, content=jsonable_encoder(payload))
+        return JSONResponse(status_code=201 if created else 200, content=encoded(payload))
 
     return await run_in_threadpool(lambda: guarded(request, build))
 
