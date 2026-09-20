@@ -74,5 +74,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Drops the table outright: going back below 0007 means the highlights go.
+
+    There is nowhere to put them - every earlier schema has no place for an
+    anchor - so a downgrade is a decision to discard what was marked, the same
+    shape 0004 and 0005 take for snapshots and their images.
+    """
     op.drop_index("ix_highlights_resource_start", table_name="highlights")
     op.drop_table("highlights")
