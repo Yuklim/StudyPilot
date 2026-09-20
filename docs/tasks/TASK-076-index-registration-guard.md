@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-076"
-status = "READY"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "改根规则 AGENTS.md 与 scripts/governance/ 下的校验脚本：前者是协作底线正文，后者在 CI 的「仓库治理检查」里每个 PR 都跑、失败即拦住合并，属第 4 节的「治理权限/门禁」。risk-policy.json 的 high_risk_paths 也把 AGENTS.md 与 scripts/governance/** 列为高风险路径，命中即取最高级。定 L3：1 Worker → 自动检查 → 独立只读 Reviewer → 独立只读 Integration/Acceptance。新增的是会 FAIL 的门禁，误判会拦住无辜的 PR，因此判别性用例与「现仓库必须 PASS」是硬完成条件。"
 risk_flags = ["governance"]
@@ -82,9 +82,27 @@ checks = ["governance"]
 
 ## 实现与测试
 
-- 实现 SHA：待填。
-- 命令与结果：待填。
-- 已知限制/未完成项：待填。
+- 实现 SHA：`0eed3c5`（控制面登记 `f8912a9`）。变更摘要：
+  - **`AGENTS.md`**（两句，第 3 节与第 5 节各一句）：并行任务中只有一个可以把 `docs/tasks/任务索引.md` 列进 allowed_paths，其余不写索引（附一句为什么：表按最新在上插行，两个分支插在同一锚点必然冲突）；延后的索引行最迟在标 MERGED 时补齐、且行状态与记录 `status` 必须一致，由 `validate_governance` 校验。改后 9601 字节，仍在脚本自带的 16 KiB 上限内。
+  - **`validate_governance.py`**：新增常量 `INDEX_PATH` 与两个纯函数。`index_rows(text)` 解析索引表——**先按 `" | "` 切列再在首列里取链接**，因为任务标题里可以有 Markdown 链接和嵌套方括号（TASK-064 的标题含 `![图片](image:N)`）；解析不出任务号或文件名的行带 `ok=False` 返回，由调用方报错而不是静默跳过。`index_errors(text, records, files)` 六条：行可解析、任务号唯一、链接指向存在且同号的记录、状态值属 `STATES`、**状态为 MERGED 的记录必须在册**、有行时行状态必须等于记录 `status`。`validate()` 里收集 `{任务号: status}` 与实际文件名后调用它。
+  - **为什么是「MERGED ⇒ 有行」而不是「记录 ⇒ 有行」**：后者会把并行延后登记的正常窗口判成错误，与本任务要立的规则自相矛盾；前者兜住真正的失败模式（永远忘了补），而每个任务最终都会 MERGED，所以最终覆盖全部任务。
+  - **补上的两处真实失真**：`TASK-022` 记录 `status` 漏登（证据区早已写明 MERGED 与合并提交 `51b427f`，仅 toml 字段停在 ACCEPTED；合并事实已独立核对——`51b427f` 是 PR #27 的合并提交且在 main 上）；`TASK-073` 登记 MERGED（用户 2026-09-20 合并 PR #82，merge `eeb4399`），记录与索引行同步。
+  - **`docs/governance/多Agent开发制度使用指南.md` 未改**：全文没有一处提到索引（已 grep 确认），没有会过时的说法要同步。路径留在 allowed_paths 里是上限，不是必须改。
+- 新测试 5 条（治理套件 23 → 28）与**变异测试实证**：
+  - `test_index_parses_titles_with_nested_brackets`：拿**真实索引**跑，全部 74 行都要解析成功，并单独断言 TASK-064 那行取到了正确的文件名。
+  - `test_index_rejects_broken_rows`：重复行 / 指向别的任务的记录 / 记录不存在 / 非法状态值 / 解析不出的行——**逐条对上错误原因**（不是只断言「有错」），某条校验被删时会红在那一条上。
+  - `test_index_allows_a_deferred_row_only_until_merged`：记录在册而索引暂无行，未 MERGED 时不算错（并行窗口）；标成 MERGED 就必须报 `never registered`。
+  - `test_index_status_must_match_the_record`：行状态与记录不一致要报；索引有行而记录不存在时只由链接检查负责，不重复报状态。
+  - `test_validate_actually_runs_the_index_check`：把 `index_errors` 换成哨兵，`validate()` 必须把结论带出来——**因为仓库本身是干净的，「校验写好了」和「校验被接进 validate()」是两件事**。
+  - **变异测试（7 个变异全部被抓）**：逐条删掉六条校验、把解析换成会被嵌套方括号骗的朴素正则、把 `validate()` 里的调用摘掉——每种都让对应用例变红。第七条（摘掉接线）在第一版测试下**是绿的**，正是它促成了上面那条哨兵用例。
+  - 实地反证：把 `TASK-022` 的状态改回 ACCEPTED，`validate_governance.py` 立刻 `FAIL: docs/tasks/任务索引.md:75: index says MERGED, record says ACCEPTED`——新校验在真实仓库上确实咬得住，且除此之外零误报（全量扫过 74 行索引与全部 schema_version=2 记录）。
+- 命令与结果（本机 macOS 25.5.0，工作区在 `0eed3c5`）：
+  - `python3 scripts/governance/check_task.py --task docs/tasks/TASK-076-index-registration-guard.md --worktree` → **CHECKS PASS**（profile=governance：`validate_governance.py` exit 0、`ruff check --isolated`、`ruff format --check --isolated --line-length 100`、`unittest discover` **28 tests OK**）。
+  - 输出里的 `missing-tool` / `fake-test` 两行是 `check_task.py` 自带的负向回归演示（验证「工具缺失会如实报错」），非真实失败；TASK-024 的记录里已有同样说明。
+- 已知限制/未完成项：
+  - 校验只保证索引与记录的**结构与状态**对得上，不校验摘要文案是否如实——那是 Review 的事。
+  - 不覆盖「两个记录文件声明同一个任务号」：已有的 id/文件名校验挡住了大部分，完整覆盖要另立不变量，本任务不扩。
+  - `TASK-074` 的索引行与 MERGED 状态**不在本任务**：它的记录此刻只在未合并的 PR #81 上，本分支没有它，而 Agent 被 deny 规则禁止执行 merge。按本任务刚立的规则，它的行由 #81 合并之后的下一个已授权任务补登记——新校验此刻不会因此报错（它还不是 MERGED），标 MERGED 时才会强制补齐。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
