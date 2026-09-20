@@ -9,6 +9,7 @@ from starlette.concurrency import run_in_threadpool
 
 from studypilot.api.files import router as files_router
 from studypilot.api.health import router as health_router
+from studypilot.api.highlights import router as highlights_router
 from studypilot.api.learning import router as learning_router
 from studypilot.api.notes import router as notes_router
 from studypilot.api.notes import standalone_router as standalone_notes_router
@@ -65,6 +66,7 @@ def create_app() -> FastAPI:
     application.include_router(taxonomy_router)
     application.include_router(learning_router)
     application.include_router(notes_router)
+    application.include_router(highlights_router)
     application.include_router(standalone_notes_router)
     return application
 

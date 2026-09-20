@@ -22,6 +22,7 @@ allowed_paths = [
   "backend/tests/test_highlights.py",
   "backend/tests/test_resource_deletion.py",
   "backend/tests/test_migrations.py",
+  "backend/tests/test_taxonomy.py",
   "backend/tests/support.py",
   "docs/contracts/API与数据契约基线.md",
   "docs/contracts/openapi-v1.json",
@@ -53,10 +54,11 @@ checks = ["backend", "contracts"]
    - `start_offset` / `end_offset`（降级锚点，`>= 0` 且 `end_offset > start_offset`）；
    - `note_id`（FK → `notes`，`ON DELETE SET NULL`，可空，**唯一**：一条心得最多配一条高亮）；
    - `version` / `created_at` / `updated_at`（沿用既有 `Identified`/`Created`/`Versioned` 基类与命名约定）。
-2. **四个接口**（新模块 `highlights`，错误码沿用 `ResourceError` 家族的既有风格）：
+2. **五个接口**（新模块 `highlights`，错误码沿用既有风格；登记时写的是「四个」，实现时补上了详情读取——它是列表/写入的自然配套，测试与前端按 id 复核都要用，仍在本任务的 `allowed_paths` 与同一批契约改动内）：
    - `GET /api/v1/resources/{resource_id}/highlights`：分页；默认按**文中顺序** `start_offset,id`，排序白名单 `start_offset`/`created_at`；无搜索筛选。
    - `POST /api/v1/resources/{resource_id}/highlights`：`HighlightCreate`（锚点五个字段 + 可选 `note_id`）；201。
    - `PATCH /api/v1/resources/{resource_id}/highlights/{highlight_id}`：`HighlightPatch` **只改 `note_id`**（给 `null` 即解绑）+ `expected_version`；锚点不可改（换了锚点就是另一条高亮）。
+   - `GET /api/v1/resources/{resource_id}/highlights/{highlight_id}`：单条详情；200。
    - `DELETE /api/v1/resources/{resource_id}/highlights/{highlight_id}`：`If-Match` 强版本头；204。
 3. **前置条件**：资料必须存在且可读；该资料必须已有 **READY 的正文快照**（高亮锚定的是快照正文），否则 `404 SNAPSHOT_NOT_FOUND`（与 `snapshot_store.py` 既有用法同码）。`note_id` 必须指向**同一份资料**下的心得，否则 `404 NOTE_NOT_FOUND`；已被别的高亮占用则 `409`。
 4. **资料删除**：`highlight_count` 进删除影响预览的 `impact` 与清单（`DELETION_IMPACT_KEYS` + manifest），随资料级联删除；契约 9 节与 openapi 的影响 schema 同步。
@@ -85,6 +87,10 @@ checks = ["backend", "contracts"]
 - **`note_id` 放在 highlights 这一侧且唯一**：`notes` 表一个字段都不用动；删心得只把高亮解绑（`SET NULL`），不连带删掉用户标的那段话。
 - **owner 用新模块 `highlights`**：高亮是用户手写的标注数据，与「资料」「心得」都不是同一回事；契约里按新 owner 记。
 
+### 登记后的路径修订（实施中，写入前记录）
+
+`backend/tests/test_taxonomy.py` 追加进 `allowed_paths`：该文件里有一条「交付目录与实际路由一致」的用例，断言 `x-delivery-profile.available_operations` 的**总数**（35）。新增五个操作必然改动这个数字，不改它就等于让这条既有用例失效。改动限于该用例的计数与新增五个 operationId 的集合断言，不放宽其他断言。
+
 ## 完成条件
 
 - 四个接口按契约工作：创建/列表（默认文中顺序、两种排序白名单、分页字段正确）/改绑与解绑（版本推进、`expected_version` 不符 409、缺失 428）/删除（`If-Match`，204）。
@@ -92,8 +98,8 @@ checks = ["backend", "contracts"]
 - 字段校验：`exact` 空/超 2000 → 422；`prefix`/`suffix` 超 200 → 422；`end_offset <= start_offset` → 422；负偏移 → 422；未知字段/未知查询参数 → 422。
 - 删除心得 → 该高亮仍在，`note_id` 变 `null`（有用例）；删除资料 → 高亮一并消失，且删除预览的 `impact.highlight_count` 与清单条目数与实际一致（有用例）。
 - 迁移：`0007_highlights` 升级可建表、降级可回滚，`test_migrations.py` 通过；表约束（CHECK/FK/UNIQUE/索引）与模型一致。
-- OpenAPI 校验通过，四个 operation 与实现一致；契约文档五处同步。
-- `check_task.py` 必要检查 PASS（backend + contracts）。
+- OpenAPI 校验通过，五个 operation 与实现一致；契约文档五处同步（2.3 白名单、4.15 新实体节、9 节令牌绑定集合、10 节操作行、交付说明段）。
+- `check_task.py` 必要检查 PASS（backend + contracts）；交付目录用例（`test_taxonomy.py` 的 delivery catalog）同步包含五个新 operationId。
 - L3：独立只读 Reviewer + 独立只读 Integration/Acceptance 各出结论。
 
 ## 上下文包
