@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-071"
-status = "IN_ACCEPTANCE"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "新增一张用户数据表 `highlights`（0007 迁移）、一个新后端模块与四个公共接口，并给资料删除的影响预览新增 `highlight_count` 与清单条目。命中架构/公共 API/迁移/关键数据模型四项高风险标志中的多项，取最高按 L3 走：Worker → 自动检查 → 独立只读 Reviewer → 独立只读 Integration/Acceptance。这是用户数据（用户读文章时亲手标的段落），删除与级联语义必须一次定准。"
 risk_flags = ["architecture", "public-api", "migration", "critical-data"]
@@ -146,12 +146,18 @@ checks = ["backend", "contracts"]
   - **首轮**（`b10fa92..2908f9d`）**CHANGES_REQUIRED**，三条必修全在契约文档层、代码无需改动：openapi 的 `updateResourceHighlight` 漏 `RESOURCE_NOT_FOUND` 且其 404 组件含 PATCH 永不出现的 `SNAPSHOT_NOT_FOUND`；契约第 1 节「当前可用操作」表缺高亮行；4.15 的「四个接口」与实际五个矛盾。另有 F4（`PATCH` 省略 `note_id` 等于静默解绑）等五条可记录/可选项。同轮确认通过：模型↔迁移逐项一致（5 个 CHECK、唯一约束、两个 FK 与 `SET NULL`/`CASCADE`、复合索引、PK/版本约定）、降级干净、未动 `notes`/`learning_resources`、`compare_metadata` 仍为空、表数 14→15；删除语义自洽（影响键、manifest、`impact_revision`、9 节令牌绑定集合，级联与解绑各有判别性用例）；并发/版本与 notes 同语义；跨资料取 id 与坏 UUID 均 404。
   - **第二轮增量**（`2908f9d..45f2495`）**PASS，No findings**：「PATCH 的 `x-error-codes` 已含 `RESOURCE_NOT_FOUND`，404 改指新 `HighlightOrNoteNotFound`（资料/高亮/笔记三例，无 `SNAPSHOT_NOT_FOUND`）；POST 仍用 `HighlightTargetNotFound`、GET/DELETE 仍用 `ResourceOrHighlightNotFound`，三者各自正确。契约能力行与『五个接口』措辞已补。`note_id: UUID | None` 无默认＝必填可空，契约字段表、4.15 正文与 `HighlightPatch.required` 三方一致；`command_body` 仍先判 `expected_version` 缺失为 428，故 `{}` 是 428、`{"expected_version":n}` 是 422，与 notes 同语义。F8 三例均有判别性，省略 `note_id` 那例还断言了随后 GET 的绑定未变，不是只看状态码。」
   - Reviewer 明确同意 F5/F6/F7 只记录不改：F5 要改 `notes` 语义（本任务非目标）且只造成可恢复的悬挂绑定；F6 契约已写明；F7 本机单用户下概率可忽略。
-- Acceptance：待填
-- 最终状态/风险/用户操作：待填
+- Acceptance：L3 独立只读 Integration/Acceptance（`.claude/agents/reviewer.md` 的另一实例，独立于实现者与本任务 Reviewer，无前序上下文），**PASS**（3 条非阻断）。权限证据：声明「只持有 `Read`/`Grep`/`Glob`，无写工具、无 Bash，无法 git 或改文件」；核对对象是分支尖端工作树，并读 `.git/HEAD`/`.git/logs/HEAD` 确认 `45f2495` 之后只有一次证据写回提交。原文要点：
+  > 完成条件六组逐条满足并给出行号：五接口（`api/highlights.py:119-178` + 三组用例）；前置条件（`highlight_store.py:48-95` + 无快照/FAILED/心得归属用例）；字段校验（`contracts.py:28-91` + 9 组 422 与两个上限）；删心得保留高亮（`models.py:487` SET NULL + 用例）与删资料级联计数（`resource_store.py` 的 impact 与 manifest **同出一个 `marks` 列表，结构上不可能不一致**）；迁移与模型逐条一致，`test_migrations.py` 钉死 head、表数 15 与 `compare_metadata==[]`；契约六处与 openapi（两 path 五 operation、五 schema、三 response、tag、`DeletionImpact.highlight_count`、`x-delivery-profile` 恰 40 项）一致。
+  > 需求与范围：全仓 `grep -i highlight` **前端零命中**，`notes` 表与 `note_store` 语义未动，字段集合被用例钉死（无颜色等未授权能力）。路径修订如实：`test_taxonomy.py` 只改计数并加断言，原有各子集与媒体类型断言全在，**未放宽**。
+  > 证据真实性：tests 目录无 `skip`/`xfail`/注释断言；569=561+8 与 8 个新用例自洽；`check_task.py` 确实跑 OpenAPI 模型校验。
+  > 另核实：前端两个 `deletionImpact` 校验器（`api/client.ts:154-173`、`features/resources/api.ts:118-137`）按固定键遍历、忽略未知键，**新增 `highlight_count` 不会打断现有删除对话框**；F5 经代码核实为真（`note_store.py:154-164` 的 detach 只改 `resource_id`，不管高亮）。
+  > Findings（非阻断）：① 任务索引行仍 READY 且写「四个接口」；② openapi 的 `deleteResourceHighlight` 409 指向带 `NOTE_ALREADY_HIGHLIGHTED` 示例的组件，而 DELETE 只会 `VERSION_CONFLICT`；③ 0007 降级缺一句「丢弃数据即撤销本意」的说明。
+- 验收项处置（形成第三候选 `55a14ac`）：①②③ 全部修正——索引行改 IN_ACCEPTANCE/「五个接口」；DELETE 的 409 改指现成的 `VersionConflict`（`x-error-codes` 本就正确，未动）；`0007_highlights.downgrade()` 补 docstring，行为未改。`check_task.py --worktree` 复跑 **CHECKS PASS**。同一 Reviewer 第三次增量复审 `45f2495..55a14ac` **PASS，No findings**：「DELETE 现为 404 `ResourceOrHighlightNotFound` / 409 `VersionConflict` / 428 `PreconditionRequired`，三个引用与 `highlight_store.delete`（只有 `find` + `check_version`）逐条对应；`HighlightNoteConflict` 现只剩 POST/PATCH 引用，两者确实可返回该码；降级只加 docstring，两行未变。」
+- 最终状态/风险/用户操作：**ACCEPTED**，等用户合并 PR。风险低：新增表与新增端点，既有接口与 `notes` 语义一字未动；`q is None` 式的既有路径不受影响；两轮 Review + 三次增量 + 独立验收均 PASS。**交付时界面无变化**——高亮要等 TASK-072 才看得见。用户操作：合并 PR，合并后本机库会由启动脚本升到 0007。
 - 非阻断遗留项：
   - **F5（记录 → 交 TASK-072）** `attachNote`/`detachNote` 能把一条已被高亮绑定的心得移出该资料，留下违反 4.15「`note_id` 须同资料」的**悬挂绑定**。修它要改 notes 的移动语义（本任务非目标），且后果可恢复（重新绑回即可，不丢数据）。TASK-072 需处理：读取高亮时若其 `note_id` 指向的心得已不在本资料，按「没有配心得」展示并允许重新配。重评触发：TASK-072 落地时一并处理。
   - **F6（记录）** 删除心得由数据库的 `SET NULL` 触发，**不推进** `highlight.version`（4.15 已写明）。旧版本客户端手里的高亮仍显示原 `note_id`，直到它重新读取。单用户本机下无实际影响。
   - **F7（记录）** `require_note` 的占用检查是 SELECT-then-INSERT，两个并发请求抢同一条心得时靠 `UNIQUE(note_id)` 兜底，会得到 500 而不是 409。本机单用户、且需同一毫秒内两次写才触发。重评触发：出现多写入方（如扩展与页面同时写）时改为捕获 `IntegrityError` 转 409。
   - **（记录）** `highlight_count` 已进删除影响预览，但前端删除对话框目前只显示 `note_count`；在 TASK-072 让用户能创建高亮之前，这个差距对用户不可见。
-- 日期与决定日志：2026-09-19 用户选定第三部分＝高亮能存住，形态＝高亮可单独存在、可选配心得 → 登记 TASK-071（后端）；前端为 TASK-072。
+- 日期与决定日志：2026-09-19 用户选定第三部分＝高亮能存住，形态＝高亮可单独存在、可选配心得 → 登记 TASK-071（后端）；前端为 TASK-072 → 实现 `a66639b` → 两轮 Review（首轮 CHANGES_REQUIRED，三条必修全在契约文档层）+ 独立验收 PASS → 最终候选 `55a14ac` → ACCEPTED，待用户合并。
 <!-- EVIDENCE:END -->
