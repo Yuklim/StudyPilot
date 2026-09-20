@@ -20,6 +20,7 @@ from studypilot.infrastructure.database.models import (
     LearningResource,
     Note,
     OriginalFile,
+    ResourceCitation,
     ResourceTag,
     ReviewRecord,
     StudyRecord,
@@ -88,6 +89,17 @@ def add_dependents(session_factory: sessionmaker[Session], resource_id: str) -> 
         session.add(ResourceTag(resource_id=resource.id, tag_id=tag.id))
         note = Note(resource_id=resource.id, content=PRIVATE)
         session.add(note)
+        # The citation is user-entered data as well (TASK-074): it must be
+        # counted before asking and gone afterwards.
+        session.add(
+            ResourceCitation(
+                resource_id=resource.id,
+                item_type="JOURNAL_ARTICLE",
+                authors=["删除保留作者"],
+                issued_year=2024,
+                doi="10.1000/synthetic-delete",
+            )
+        )
         session.flush()
         # A marked passage is user data too: it must be counted before asking and
         # gone afterwards (TASK-071).
@@ -143,6 +155,7 @@ def test_preview_and_delete_cascades_resource_data_but_keeps_taxonomy(
     assert body["impact"] == {
         "original_file_count": 0,
         "snapshot_asset_count": 0,
+        "citation_count": 1,
         "note_count": 1,
         "highlight_count": 1,
         "study_record_count": 1,
@@ -162,6 +175,7 @@ def test_preview_and_delete_cascades_resource_data_but_keeps_taxonomy(
         for model in (
             LearningResource,
             LearningProgress,
+            ResourceCitation,
             Note,
             Highlight,
             StudyRecord,

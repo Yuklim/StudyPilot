@@ -49,7 +49,7 @@
 
 本文件第 5、8、10 节及 `openapi-v1.json` 的标准 paths/schemas 描述**完整 MVP 目标**，不是当前程序全部已可调用的能力清单。同一操作允许按本节明确的输入子集分阶段交付；TASK-009 当前运行时的可用性及未开放输入响应以本节为准，不能把完整目标中的 FILE 分支视为本阶段已承诺可用。最终字段、媒体类型、成功响应、安全及数据规则仍保留，不删减、不改名，不宣称完整 MVP 已完成。
 
-TASK-011/012 已完成分类后端与页面，TASK-013/014 已完成 FILE 后端和上传/下载页面，TASK-015/016 已完成旧学习记录后端与页面，TASK-017 已提供个人笔记后端。TASK-019 接入轻量心得页面：正文新增/回看/修改/确认删除，只自动显示保存时间；不向学习写接口提交虚构的开始时间、时长、进度或状态。旧历史与状态/归档入口收起保留。TASK-027 提供独立心得：`Note.resource_id` 按用户确认放宽为可空并新增顶层 `/api/v1/notes` 集合——独立心得(resource_id 为 null)可不先收藏资料直接记录/回看/修改/删除；绑定资料(resource_id 非空)的心得仍在资料详情。这是本节首次真实放宽标准 Note 契约与操作清单，随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-029 再次放宽标准资源契约：`title` 改为可空（0003 迁移），WEB/PASTE/FILE 创建均可省略或显式 null 标题，`updateResource` 显式 null 清除标题，资料按 title 排序时未命名(null)固定排在有标题之后；界面以「未命名资料」占位展示、不落库。同样随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-030 提供心得后贴/解除：独立心得(resource_id 为 null)可在「我的心得」页经 `attachNote` 后贴绑定到某份可读资料；已绑定心得可在资料详情经 `detachNote` 解除回独立。绑定移动是专用版本化写（`Note.resource_id` 在专用路径上移动、version+1、content 不变、单事务、不回放），`NoteCreate`/`NotePatch` 请求体仍不得直接写 `resource_id`。同样随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-032 放宽 `ResourcePatch`：新增可选 `tag_ids` 实现「标签可后补」——资料修改页可直接整组替换标签，不必逐个调用幂等关联端点；语义、版本与错误处理见 4.7 与 12 节。既有 `attachResourceTag`/`detachResourceTag` 与资料详情逐个增删路径不变。同样随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-034 为分类端点的响应新增只读 `resource_count`（使用该分类的资料份数），用于分辨在用分类与僵尸分类：新增 `TopicUsage`/`TagUsage` 两个响应 schema，`TopicPage`/`TopicEnvelope`/`TagPage`/`TagEnvelope` 改指向它们；**原 `Topic`/`Tag` schema 一字未动，资料响应内嵌的 `tags` 继续引用 `Tag`、不带该字段**——否则每份资料都要为每个内嵌标签各算一次计数。分页列表的计数由一次聚合查询得出。同样随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-035 新增两个标签批量关联操作 —— `detachAllTagResources`（清空某标签的全部关联，标签保留）与 `mergeTag`（把源标签的关联移到目标标签后删除源标签）。二者都是一次事务内的批量写，都必须携带 `expected_resource_count`（调用方界面上看到的份数），服务端重算不符即 `409 TAXONOMY_USAGE_CHANGED` 且不写入；`mergeTag` 另需源标签的 `expected_version`。两者都不推进任何资料版本。既有的逐条幂等关联端点语义不变。同样随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-036 新增**正文快照**：新表 `content_snapshots`（0004 迁移）与三个操作 `getResourceSnapshot`/`putResourceSnapshot`/`deleteResourceSnapshot`，让资料在保留 `source_url` 的同时拥有一份保存当时的 Markdown 正文副本。**未放宽 `learning_resources` 的来源互斥 CHECK** —— 该约束只管它自己的列，快照放在新表因而与之并存（详见 4.13）。本阶段正文只由调用方提供（手动录入），**服务端不抓取任何外部内容、不发起任何对外网络请求**。同样随该任务测试、独立审查、验收通过并由用户合并后交付。 TASK-039 补上快照的**图片冻结**：新表 `snapshot_assets`（0005 迁移）与四个操作 `uploadSnapshotAsset`/`listSnapshotAssets`/`downloadSnapshotAsset`/`deleteSnapshotAsset`，图片字节存进既有受控文件目录，一份快照可挂任意多张（**不设张数上限**，单图 10 MiB）。**正文一字不改写**——原站地址留在正文里作溯源，资产按 `source_url` 旁路映射，渲染时替换（详见 4.14）。后端仍**不出网**：字节只能由调用方（浏览器扩展）提供。同样随该任务测试、独立审查、验收通过并由用户合并后交付。 TASK-063 放宽 `Note.content` 上限：50,000 → **2,000,000 字符**（0006 迁移改写 `notes` 表的 CHECK；`min_length`、去首尾、版本化写与错误码不变，属 1.2 节允许的「放宽既有输入」）。目的是让心得可以粘贴图片：用户选定图片**直接以 base64 data URI 内嵌进 Markdown 正文**，不新增图片接口、不落文件、不改 `snapshot_assets`；服务端对内嵌图片不解析、不校验，只按字符数限制。资料正文快照的渲染**不因此放行** `data:` 图片，只有心得预览开启。同样随该任务测试、独立审查、验收通过并由用户合并后交付。 TASK-071 新增**阅读高亮**：新表 `highlights`（0007 迁移）与五个操作（列表/新增/详情/改绑解绑/删除），让读者标下的段落作为独立对象存活，心得可选配（见 4.15）。删除资料的影响计数新增 `highlight_count`。**不改 `notes` 表与既有笔记接口语义**，服务端不解释正文、不做重定位。同样随该任务测试、独立审查、验收通过并由用户合并后交付。 TASK-070 为顶层 `GET /api/v1/notes` 新增**可选** `q`：按心得标题（正文首个非空行）做 2.3 规定的NFKC/大小写/空白折叠包含匹配，分页计数按过滤后结果集算。**不新增列、不做迁移、不改 `Note` 响应 schema**，也不放宽集合语义（仍只列独立心得）；资料下的心得列表未获得该参数，传入仍 `422`。同样随该任务测试、独立审查、验收通过并由用户合并后交付。
+TASK-011/012 已完成分类后端与页面，TASK-013/014 已完成 FILE 后端和上传/下载页面，TASK-015/016 已完成旧学习记录后端与页面，TASK-017 已提供个人笔记后端。TASK-019 接入轻量心得页面：正文新增/回看/修改/确认删除，只自动显示保存时间；不向学习写接口提交虚构的开始时间、时长、进度或状态。旧历史与状态/归档入口收起保留。TASK-027 提供独立心得：`Note.resource_id` 按用户确认放宽为可空并新增顶层 `/api/v1/notes` 集合——独立心得(resource_id 为 null)可不先收藏资料直接记录/回看/修改/删除；绑定资料(resource_id 非空)的心得仍在资料详情。这是本节首次真实放宽标准 Note 契约与操作清单，随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-029 再次放宽标准资源契约：`title` 改为可空（0003 迁移），WEB/PASTE/FILE 创建均可省略或显式 null 标题，`updateResource` 显式 null 清除标题，资料按 title 排序时未命名(null)固定排在有标题之后；界面以「未命名资料」占位展示、不落库。同样随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-030 提供心得后贴/解除：独立心得(resource_id 为 null)可在「我的心得」页经 `attachNote` 后贴绑定到某份可读资料；已绑定心得可在资料详情经 `detachNote` 解除回独立。绑定移动是专用版本化写（`Note.resource_id` 在专用路径上移动、version+1、content 不变、单事务、不回放），`NoteCreate`/`NotePatch` 请求体仍不得直接写 `resource_id`。同样随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-032 放宽 `ResourcePatch`：新增可选 `tag_ids` 实现「标签可后补」——资料修改页可直接整组替换标签，不必逐个调用幂等关联端点；语义、版本与错误处理见 4.7 与 12 节。既有 `attachResourceTag`/`detachResourceTag` 与资料详情逐个增删路径不变。同样随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-034 为分类端点的响应新增只读 `resource_count`（使用该分类的资料份数），用于分辨在用分类与僵尸分类：新增 `TopicUsage`/`TagUsage` 两个响应 schema，`TopicPage`/`TopicEnvelope`/`TagPage`/`TagEnvelope` 改指向它们；**原 `Topic`/`Tag` schema 一字未动，资料响应内嵌的 `tags` 继续引用 `Tag`、不带该字段**——否则每份资料都要为每个内嵌标签各算一次计数。分页列表的计数由一次聚合查询得出。同样随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-035 新增两个标签批量关联操作 —— `detachAllTagResources`（清空某标签的全部关联，标签保留）与 `mergeTag`（把源标签的关联移到目标标签后删除源标签）。二者都是一次事务内的批量写，都必须携带 `expected_resource_count`（调用方界面上看到的份数），服务端重算不符即 `409 TAXONOMY_USAGE_CHANGED` 且不写入；`mergeTag` 另需源标签的 `expected_version`。两者都不推进任何资料版本。既有的逐条幂等关联端点语义不变。同样随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-036 新增**正文快照**：新表 `content_snapshots`（0004 迁移）与三个操作 `getResourceSnapshot`/`putResourceSnapshot`/`deleteResourceSnapshot`，让资料在保留 `source_url` 的同时拥有一份保存当时的 Markdown 正文副本。**未放宽 `learning_resources` 的来源互斥 CHECK** —— 该约束只管它自己的列，快照放在新表因而与之并存（详见 4.13）。本阶段正文只由调用方提供（手动录入），**服务端不抓取任何外部内容、不发起任何对外网络请求**。同样随该任务测试、独立审查、验收通过并由用户合并后交付。 TASK-039 补上快照的**图片冻结**：新表 `snapshot_assets`（0005 迁移）与四个操作 `uploadSnapshotAsset`/`listSnapshotAssets`/`downloadSnapshotAsset`/`deleteSnapshotAsset`，图片字节存进既有受控文件目录，一份快照可挂任意多张（**不设张数上限**，单图 10 MiB）。**正文一字不改写**——原站地址留在正文里作溯源，资产按 `source_url` 旁路映射，渲染时替换（详见 4.14）。后端仍**不出网**：字节只能由调用方（浏览器扩展）提供。同样随该任务测试、独立审查、验收通过并由用户合并后交付。 TASK-063 放宽 `Note.content` 上限：50,000 → **2,000,000 字符**（0006 迁移改写 `notes` 表的 CHECK；`min_length`、去首尾、版本化写与错误码不变，属 1.2 节允许的「放宽既有输入」）。目的是让心得可以粘贴图片：用户选定图片**直接以 base64 data URI 内嵌进 Markdown 正文**，不新增图片接口、不落文件、不改 `snapshot_assets`；服务端对内嵌图片不解析、不校验，只按字符数限制。资料正文快照的渲染**不因此放行** `data:` 图片，只有心得预览开启。同样随该任务测试、独立审查、验收通过并由用户合并后交付。 TASK-071 新增**阅读高亮**：新表 `highlights`（0007 迁移）与五个操作（列表/新增/详情/改绑解绑/删除），让读者标下的段落作为独立对象存活，心得可选配（见 4.15）。删除资料的影响计数新增 `highlight_count`。**不改 `notes` 表与既有笔记接口语义**，服务端不解释正文、不做重定位。同样随该任务测试、独立审查、验收通过并由用户合并后交付。 TASK-070 为顶层 `GET /api/v1/notes` 新增**可选** `q`：按心得标题（正文首个非空行）做 2.3 规定的NFKC/大小写/空白折叠包含匹配，分页计数按过滤后结果集算。**不新增列、不做迁移、不改 `Note` 响应 schema**，也不放宽集合语义（仍只列独立心得）；资料下的心得列表未获得该参数，传入仍 `422`。同样随该任务测试、独立审查、验收通过并由用户合并后交付。 TASK-074 新增**文献信息**：新表 `resource_citations`（0008 迁移，与资料 1:1）与三个操作（读取/整份写入或替换/删除），让「作者、年份、刊物、卷期页、DOI/ISBN、摘要」有结构化的去处，不必再塞进「保存原因」或标签（见 4.16）。删除资料的影响计数新增 `citation_count`。**不改 `learning_resources` 表与既有资料接口语义**；服务端仍**不出网**——不解析 DOI、不查外部数据库，元数据全部由调用方提供。本次只交付后端，编辑界面与浏览器连接器另行安排。同样随该任务测试、独立审查、验收通过并由用户合并后交付。
 
 | 当前可用操作 | 交付范围 |
 | --- | --- |
@@ -62,6 +62,7 @@ TASK-011/012 已完成分类后端与页面，TASK-013/014 已完成 FILE 后端
 | `listTopics` / `createTopic` / `getTopic` / `updateTopic` / `deleteTopic` | TASK-011：既定主题创建/读/改/删除未使用项；保留版本、规范化唯一与引用保护。TASK-034 起前四个的响应为 `TopicUsage`，多一个只读 `resource_count`；新建为 0；列表的计数用一次聚合查询 |
 | `listTags` / `createTag` / `getTag` / `updateTag` / `deleteTag` | TASK-011：既定标签创建/读/改/删除未使用项；不增加颜色字段或级联资料删除。TASK-034 起前四个的响应为 `TagUsage`，多一个只读 `resource_count`；新建为 0；列表的计数用一次聚合查询 |
 | `getResourceSnapshot` / `putResourceSnapshot` / `deleteResourceSnapshot` | TASK-036：读取、整份写入或替换、删除资料的正文快照。首次写入 201、替换 200 且必须携带 `expected_version`（缺失 428）；删除用强版本头。只写 `content_snapshots`，不改资料及其标签、心得、学习数据与原件；服务端不抓取 |
+| `getResourceCitation` / `putResourceCitation` / `deleteResourceCitation` | TASK-074：读取、整份写入或替换、删除资料的文献信息（作者/年份/刊物/卷期页/DOI/ISBN/摘要，见 4.16）。首次写入 201、替换 200 且必须携带 `expected_version`（缺失 428、不符 409）；**整份替换、不做字段级合并**，省略的字段被清空；删除用强版本头。只写 `resource_citations`，不改资料标题、来源、标签、心得、高亮、学习数据与原件；服务端不解析 DOI、不查外部数据库、不出网。界面与浏览器连接器另行安排 |
 | `uploadSnapshotAsset` / `listSnapshotAssets` / `downloadSnapshotAsset` / `deleteSnapshotAsset` | TASK-039：冻结快照正文里的图片。一次传一张（≤10 MiB，PNG/JPEG/GIF/WebP，按字节判定，不收 SVG），写操作以**快照版本**为前置条件且不推进它；同一 `source_url` 幂等。正文一字不改写，映射按 `source_url` 旁路。字节存进既有受控文件目录，替换正文/删快照/删资料三条路径都会隔离字节。服务端不出网 |
 | `detachAllTagResources` / `mergeTag` | TASK-035：标签批量关联操作。清空只删关联、保留标签；合并把源标签关联移到目标（目标已有的资料不重复插入）后删除源标签。均为单事务批量写，均带 `expected_resource_count` 守卫，合并另带源标签 `expected_version`；不改资料正文、主题、心得、学习数据，也不推进资料版本 |
 | `attachResourceTag` / `detachResourceTag` | TASK-011：既定幂等关联/解除；不写资料主要主题、正文或学习状态 |
@@ -133,6 +134,7 @@ TASK-011/012 已完成分类后端与页面，TASK-013/014 已完成 FILE 后端
 | 409 | `SOURCE_TYPE_MISMATCH` | PATCH 提交了与资料已有且不可变的 `source_type` 不匹配的来源字段。 |
 | 409 | `TAXONOMY_IN_USE` | 主题或标签仍被资料使用。 |
 | 404 | `SNAPSHOT_NOT_FOUND` | 资料存在但还没有正文快照；或试图替换一份并不存在的快照。 |
+| 404 | `CITATION_NOT_FOUND` | 资料存在但还没有填写文献信息；或试图替换一份并不存在的文献信息。 |
 | 404 | `SNAPSHOT_ASSET_NOT_FOUND` | 该快照下没有这张已冻结的图片；资产属于另一份资料时返回同一码，不区分「不存在」与「不属于你」。 |
 | 413 | `ASSET_TOO_LARGE` | 单张图片超过 10,485,760 字节。 |
 | 415 | `ASSET_TYPE_UNSUPPORTED` | 字节不是 PNG/JPEG/GIF/WebP 之一（SVG 明确不冻结）。 |
@@ -366,6 +368,7 @@ OpenAPI 中 `ReviewRecord` 用条件 schema 固化上述规则：`NEEDS_REVIEW` 
 | Topic—LearningResource | Topic 1 对资料 0..*；资料 `topic_id` 可空 | 资料删除不影响 Topic | Topic 有引用即 409；先经 resources 重分配/清空 |
 | LearningResource—ContentSnapshot | 资料 1 对快照 0..1（`UNIQUE(resource_id)`） | 快照随资料级联删除 | 单独删除快照不影响资料及其任何从属数据 |
 | ContentSnapshot—SnapshotAsset | 快照 1 对图片 0..*；`(snapshot_id, source_url)` 复合唯一、存储键唯一 | 图片随快照级联删除，**且其字节一并进入隔离区** | 可按快照版本单独删除一张；正文被整份替换或删除时全部作废 |
+| LearningResource—ResourceCitation | 资料 1 对文献信息 0..1（`UNIQUE(resource_id)`） | 文献信息随资料级联删除 | 单独删除文献信息不影响资料及其任何从属数据 |
 | LearningResource—OriginalFile | FILE 资料恰好 1，其他恰好 0；`resource_id`、存储键唯一 | 经确认并按 trash 协议删除 | 不提供单独删除/替换原件接口 |
 | LearningResource—LearningProgress | 恰好 1；`resource_id` 唯一 | 经确认删除 | 不可单独删除 |
 | LearningResource—Note | 绑定笔记 1 对 0..*；独立心得 `resource_id` 为 null 不属此关系 | 绑定的纳入影响集合，经确认删除；独立心得不受资源删除影响 | 绑定笔记可按版本单独删除；独立心得经顶层 `/notes` 单独删除 |
@@ -457,6 +460,36 @@ OpenAPI 中 `ReviewRecord` 用条件 schema 固化上述规则：`NEEDS_REVIEW` 
 **高亮独立于心得。** 用户 2026-09-19 选定的形态：选中即可标下来，心得可选配。链接放在 highlights 这一侧，`notes` 表不受影响；删除心得只把 `note_id` 置空（`SET NULL`），标下来的那段话仍在。删除资料按第 9 节连同高亮一起删除，影响计数为此新增 `highlight_count`。
 
 **本阶段的边界（TASK-071）。** 本任务只交付后端存储与五个接口（列表/新增/详情/改绑解绑/删除）；选区取锚点、上色渲染（CSS Custom Highlight API）、重定位与孤立提示属 TASK-072，因此本任务交付时界面上看不到变化。
+
+### 4.16 Citation（resources 所有）
+
+| API 名称 | 类型/示例 | C/U | 必填/可空/默认/限制 | 敏感 | 所有者与不变量 |
+| --- | --- | --- | --- | --- | --- |
+| `id` | uuid | R | 必有 | 否 | resources |
+| `resource_id` | uuid | R | 必有 | 否 | resources；`UNIQUE`，一份资料至多一条文献信息；外键 `ON DELETE CASCADE` |
+| `item_type` | string / `JOURNAL_ARTICLE` | C/U | `JOURNAL_ARTICLE` / `PREPRINT` / `CONFERENCE_PAPER` / `BOOK` / `BOOK_CHAPTER` / `THESIS` / `REPORT` / `WEBPAGE` / `OTHER`，默认 `OTHER` | 否 | resources；取自 CSL/Zotero 的类型表，只保留个人文库真正会有的几种 |
+| `authors` | string[] / `["LeCun, Y.","Bengio, Y."]` | C/U | 可空；至多 100 个，单个去首尾空白后 1～200 字符；**空数组视为未填，存 null** | 否 | resources；**顺序即作品印出的作者顺序**，不重排、不去重、不拆姓名 |
+| `issued_year` | int / `2015` | C/U | 可空，1000～2200 | 否 | resources；越界的是笔误或解析事故 |
+| `issued_date` | string / `2015-05-28` | C/U | 可空，1～32 | 否 | resources；页面上印的日期**原样保留、不解析** |
+| `container_title` | string / `Nature` | C/U | 可空，1～500 | 否 | resources；刊物、会议论文集或书名，**不是**这份资料自己的标题 |
+| `volume` / `issue` / `pages` | string | C/U | 各可空，1～50 | 否 | resources；`pages` 是自由文本而非范围（`12-30`、`e0123456`、`1, 4-9` 都合法） |
+| `publisher` / `doi` | string | C/U | 各可空，1～200 | 否 | resources；`doi` 原样保存，服务端不解析、不请求、不校验存在性 |
+| `isbn` | string | C/U | 可空，1～32 | 否 | resources；原样保存，不校验校验位 |
+| `abstract` | string | C/U | 可空，1～20,000 | 是 | resources |
+| `version` | int | R | 默认 1 | 否 | resources |
+| `created_at` / `updated_at` | instant | R | 自动 | 否 | resources |
+
+所有可写字符串字段的规则与 `LearningResource.title` 一致：去首尾空白，清空用显式 `null`，空串与纯空白 `422`——否则同一个「没填」会有两种写法，日后的搜索与导出都要各处理一遍。
+
+**为什么另建一张表，而不给 `learning_resources` 加列。** 那张表回答的是「我怎么回到我存的东西」——标题、地址、来源名称、为什么留它——每份资料的每一列都有意义；文献信息回答的是另一个问题「这是什么作品、该怎么引用」，对大多数随手保存的网页**根本不存在**，而且是**整块到达**（由连接器一次抓下来）而不是逐字段由人填。把十来个可空列挂到核心表上，每一次资料列表查询都要为它们付行宽，且「整份替换」的写会和资料已有的字段级 `PATCH` 混在同一个入口里，语义分不清。分表还有一条现实理由：资料的来源互斥 CHECK（见 4.1）管的是它自己的列，文献信息放新表则该 CHECK **一字未改**。
+
+**与 `title` / `source_url` 的分工。** 资料的 `title` 是用户在自己的库里认出它的名字（可能是「那篇讲注意力的论文」），`source_url` 是回到它的地址；`container_title` 是**它登在哪**，`doi`/`isbn` 是**这个作品的标识符**。三者不互相覆盖，也不互相校验：改了文献信息不会改资料标题，反之亦然。本阶段**不做**按作者/DOI 的搜索与排序，`authors` 是 JSON 数组、不建索引——存下来是为了以后能导出与检索，不是现在就提供检索。
+
+**为什么 `authors` 是 JSON 数组而不是一张关联表。** 作者顺序是引用的一部分，关联表要额外的位置列与第二条写入路径才能保住顺序；而本阶段既不按作者搜索也不做作者实体（同名合并、ORCID 都属于别的任务），关联表买不到任何东西。代价如实记于此：数据库层因此**没有**对元素个数与长度的 CHECK——用 SQL 数 JSON 数组元素要依赖方言函数，用字节长度近似则既会误伤合法姓名（转义会膨胀）又管不住个数。形状由 `modules/citations/contracts.py` 把守，它是唯一的写入者。
+
+**写入语义。** `putResourceCitation` 是**整份替换**，不是字段级合并：首次写入省略 `expected_version` 并返回 201；已有文献信息时必须携带，缺失 `428`、不匹配 `409 VERSION_CONFLICT`；对尚不存在的文献信息携带 `expected_version` 返回 `404 CITATION_NOT_FOUND`（调用方的认知已过期）。**省略的字段表示「这份作品没有该项」并清空原值**——若改成字段级合并，删掉一个写错的作者或一个手滑的 DOI 就无法表达，只能再发明一套「null 表示删除」的约定；而调用方手上本来就有它刚读到的完整记录。请求体为 `{}` 是合法的（一条什么都没记的文献信息），它仍需版本前置条件，因此不会是误触。内容完全相同的重写不推进 `version`（2.4 节的既有规则）。删除只移除文献信息，资料及其标签、心得、高亮、学习数据与原件一律不变；删除资料则按第 9 节连同文献信息一并删除，影响计数为此新增 `citation_count`（0 或 1）。
+
+**本阶段的边界（TASK-074）。** 服务端**不发起任何对外网络请求**：不解析 DOI、不查 Crossref/DataCite、不校验 DOI 或 ISBN 是否真实存在，元数据全部由调用方提供——这与 4.13/4.14 的快照与图片是同一条边界。也**不做**引文格式导出（BibTeX/CSL），那需要先定字段到 CSL 变量的映射与样式，属另一个任务。本任务只交付后端存储与三个接口，因此交付时界面上看不到变化。
 
 ## 5. 资料来源与创建契约 `[需求][细化]`
 
@@ -583,7 +616,7 @@ OpenAPI 中 `ReviewRecord` 用条件 schema 固化上述规则：`NEEDS_REVIEW` 
 ## 9. 删除确认协议 `[需求][架构][细化]`
 
 1. `POST /resources/{id}/deletion-preview` 不删除数据；生成 5 分钟、一次性、至少 256 位不透明令牌。响应列出安全影响计数、资料版本、`impact_revision` 和过期时间，不返回正文、笔记或完整文件名。
-2. 服务端保存令牌摘要，并把令牌绑定到资料 ID/版本，以及按类型和 ID 排序的 OriginalFile、SnapshotAsset、Note、Highlight、StudyRecord、ActiveReviewPlan、ReviewRecord、ResourceTag 的 ID+版本（不可变历史用创建序号；SnapshotAsset 无自身版本，用 ID + 存储键）全集。只比较数量不够。
+2. 服务端保存令牌摘要，并把令牌绑定到资料 ID/版本，以及按类型和 ID 排序的 OriginalFile、SnapshotAsset、Citation、Note、Highlight、StudyRecord、ActiveReviewPlan、ReviewRecord、ResourceTag 的 ID+版本（不可变历史用创建序号；SnapshotAsset 无自身版本，用 ID + 存储键）全集。只比较数量不够。
 3. 用户确认后，DELETE 在 `X-StudyPilot-Deletion-Token` 专用头提交原令牌；URL、JSON、日志均不得出现。
 4. 同一数据库写事务中验证未过期/未用/绑定正确并重算全集。变化时旧令牌立即作废，返回 `409 DELETION_IMPACT_CHANGED`；`details.current_impact` 只给当前资料版本、影响计数和 `impact_revision`，不得包含确认令牌或过期时间。OpenAPI 用 `DeletionImpactChangedErrorResponse` 把这一统一 `ErrorResponse` 场景收窄为不可多字段的机器 schema。界面展示新摘要，用户确认查看后必须重新调用 deletion-preview 才能取得新令牌。
 5. 一致时先把 READY 文件原子移动到同卷 trash 隔离键，再标记令牌已用、删除关联及资料并提交；提交成功后异步/对账清理 trash。文件移动失败则数据库回滚。
@@ -612,6 +645,9 @@ OpenAPI 中 `ReviewRecord` 用条件 schema 固化上述规则：`NEEDS_REVIEW` 
 | POST `/resources/{resource_id}/snapshot/assets` | 冻结一张图片 / resources | multipart（`file` + `source_url`），强版本头；201 `SnapshotAsset` | 201/400/403/404/409/413/415/422/428/500/503；写字节与一行资产，不推进快照版本，地址重复即幂等 |
 | GET `/resources/{resource_id}/snapshot/assets/{asset_id}/bytes` | 取回图片字节 / resources | 无体；200 二进制 | 200/403/404/409/500/503；只读，须用 fetch，`<img src>` 会被门禁拒绝 |
 | DELETE `/resources/{resource_id}/snapshot/assets/{asset_id}` | 删除一张图片 / resources | 无体，强版本头；204 | 204/403/404/409/428/500/503；行删除、字节进隔离区 |
+| GET `/resources/{resource_id}/citation` | 读取文献信息 / resources | 无体；200 `Citation` | 200/403/404/500；只读 |
+| PUT `/resources/{resource_id}/citation` | 写入或整份替换文献信息 / resources | `CitationWrite`；201 首次 / 200 替换 | 200/201/400/403/404/409/415/422/428/500；只写 `resource_citations`，省略字段被清空，不改资料与其他从属数据；服务端不出网 |
+| DELETE `/resources/{resource_id}/citation` | 删除文献信息 / resources | 无体，强版本头；204 | 204/403/404/409/428/500；资料保留 |
 | POST `/tags/{tag_id}/detach-all` | 清空标签关联 / taxonomy | `TagDetachAll`；200 `TagUsage` | 200/400/403/404/409/415/422/500；只删关联，保留标签 |
 | POST `/tags/{tag_id}/merge` | 合并标签 / taxonomy | `TagMerge`；200 目标 `TagUsage` | 200/400/403/404/409/415/422/428/500；移关联后删除源标签 |
 | PUT `/resources/{resource_id}/tags/{tag_id}` | 幂等关联 / taxonomy | 无体；200 `ResourceTag` | 200/403/404/500；首次创建关联，已有不变 |
@@ -687,6 +723,9 @@ DELETE review 带 JSON 是契约列明的例外；它仍是写请求并必须先
 | `getResourceSnapshot` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `RESOURCE_NOT_FOUND`, `SNAPSHOT_NOT_FOUND`, `UNKNOWN_ERROR` |
 | `putResourceSnapshot` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `CONTENT_TYPE_UNSUPPORTED`, `VALIDATION_ERROR`, `RESOURCE_NOT_FOUND`, `SNAPSHOT_NOT_FOUND`, `VERSION_CONFLICT`, `VERSION_REQUIRED`, `STORAGE_PATH_UNAVAILABLE`, `UNKNOWN_ERROR` |
 | `deleteResourceSnapshot` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `RESOURCE_NOT_FOUND`, `SNAPSHOT_NOT_FOUND`, `VERSION_CONFLICT`, `VERSION_REQUIRED`, `STORAGE_PATH_UNAVAILABLE`, `UNKNOWN_ERROR` |
+| `getResourceCitation` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `RESOURCE_NOT_FOUND`, `CITATION_NOT_FOUND`, `UNKNOWN_ERROR` |
+| `putResourceCitation` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `CONTENT_TYPE_UNSUPPORTED`, `VALIDATION_ERROR`, `RESOURCE_NOT_FOUND`, `CITATION_NOT_FOUND`, `VERSION_CONFLICT`, `VERSION_REQUIRED`, `UNKNOWN_ERROR` |
+| `deleteResourceCitation` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `RESOURCE_NOT_FOUND`, `CITATION_NOT_FOUND`, `VERSION_CONFLICT`, `VERSION_REQUIRED`, `UNKNOWN_ERROR` |
 | `listSnapshotAssets` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `RESOURCE_NOT_FOUND`, `SNAPSHOT_NOT_FOUND`, `UNKNOWN_ERROR` |
 | `uploadSnapshotAsset` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `REQUEST_ORIGIN_FORBIDDEN`, `MALFORMED_REQUEST`, `VALIDATION_ERROR`, `ASSET_TYPE_UNSUPPORTED`, `ASSET_TOO_LARGE`, `RESOURCE_NOT_FOUND`, `SNAPSHOT_NOT_FOUND`, `VERSION_CONFLICT`, `VERSION_REQUIRED`, `STORAGE_PATH_UNAVAILABLE`, `UNKNOWN_ERROR` |
 | `downloadSnapshotAsset` | `HOST_FORBIDDEN`, `LOCAL_TOKEN_REQUIRED`, `LOCAL_TOKEN_INVALID`, `RESOURCE_NOT_FOUND`, `SNAPSHOT_NOT_FOUND`, `SNAPSHOT_ASSET_NOT_FOUND`, `FILE_CORRUPTED`, `STORAGE_PATH_UNAVAILABLE`, `UNKNOWN_ERROR` |
