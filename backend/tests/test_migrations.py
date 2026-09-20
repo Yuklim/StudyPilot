@@ -30,7 +30,7 @@ def test_upgrade_is_repeatable_and_matches_models(tmp_path: Path) -> None:
                 "alembic_version",
             }
             context = MigrationContext.configure(connection, opts={"compare_type": True})
-            assert context.get_current_heads() == ("0006_note_content_limit",)
+            assert context.get_current_heads() == ("0007_highlights",)
             assert compare_metadata(context, Base.metadata) == []
         with factory() as session:
             assert session.scalar(select(Topic.name)) == "Kept after upgrade"
@@ -45,7 +45,7 @@ def test_empty_downgrade_and_reupgrade(tmp_path: Path) -> None:
         migrate(engine, "base", downgrade=True)
         assert inspect(engine).get_table_names() == ["alembic_version"]
         migrate(engine)
-        assert len(inspect(engine).get_table_names()) == 14
+        assert len(inspect(engine).get_table_names()) == 15
     finally:
         engine.dispose()
 
@@ -65,7 +65,7 @@ def test_nonempty_downgrade_refuses_before_dropping_any_table(tmp_path: Path) ->
             # The downgrade runs in one transaction; the non-empty guard aborts it,
             # rolling back the already-applied 0002 step too, so head stays put.
             assert MigrationContext.configure(connection).get_current_heads() == (
-                "0006_note_content_limit",
+                "0007_highlights",
             )
         with factory() as session:
             assert session.scalar(select(Topic.name)) == "Must not be deleted"
@@ -126,7 +126,7 @@ def test_0006_widens_note_content_and_refuses_lossy_downgrade(tmp_path: Path) ->
             migrate(engine, "0005_snapshot_assets", downgrade=True)
         with engine.connect() as connection:
             assert MigrationContext.configure(connection).get_current_heads() == (
-                "0006_note_content_limit",
+                "0007_highlights",
             )
         with factory.begin() as session:
             session.query(Note).filter(Note.content == "y" * 60_000).delete()

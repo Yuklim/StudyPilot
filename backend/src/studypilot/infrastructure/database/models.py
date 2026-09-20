@@ -444,6 +444,49 @@ class ReviewRecord(Identified, Created, Base):
     next_review_date: Mapped[date | None] = mapped_column(Date)
 
 
+class Highlight(Identified, Created, Versioned, Base):
+    """One passage the reader marked in a resource's frozen text.
+
+    **Layered anchor, not a position.** A character offset breaks the moment the
+    text above it changes, and a DOM path breaks when the renderer changes; so a
+    highlight stores what it says (`exact`) with enough context to tell repeats
+    apart (`prefix`/`suffix`), and keeps the offsets only as a fallback for fuzzy
+    re-location (the W3C Web Annotation model, see docs/research 5.1). Deciding
+    where the anchor lands today is the reader's job at render time: the backend
+    never reads the snapshot text, and a highlight whose passage can no longer be
+    found is **not** recorded as such here - put the text back and it belongs again.
+
+    A highlight stands on its own; `note_id` is the optional note written about it
+    (user's decision, 2026-09-19). The link lives on this side so the notes table
+    keeps its shape, and it is `SET NULL` on delete: throwing away what you wrote
+    about a passage must not throw away the passage you marked.
+    """
+
+    __tablename__ = "highlights"
+    __table_args__ = (
+        bounded_length("exact", 1, 2_000),
+        CheckConstraint("prefix IS NULL OR length(prefix) <= 200", name="prefix_length"),
+        CheckConstraint("suffix IS NULL OR length(suffix) <= 200", name="suffix_length"),
+        CheckConstraint("start_offset >= 0 AND end_offset > start_offset", name="offset_order"),
+        # A note describes at most one passage; binding it elsewhere would leave two
+        # highlights claiming the same writing.
+        UniqueConstraint("note_id"),
+        positive_version(),
+        # The reader asks for one resource's highlights in reading order.
+        Index("ix_highlights_resource_start", "resource_id", "start_offset", "id"),
+        {"info": {"owner": "highlights"}},
+    )
+    resource_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("learning_resources.id", ondelete="CASCADE")
+    )
+    exact: Mapped[str] = mapped_column(Text)
+    prefix: Mapped[str | None] = mapped_column(String(200))
+    suffix: Mapped[str | None] = mapped_column(String(200))
+    start_offset: Mapped[int] = mapped_column(Integer)
+    end_offset: Mapped[int] = mapped_column(Integer)
+    note_id: Mapped[UUID | None] = mapped_column(Uuid, ForeignKey("notes.id", ondelete="SET NULL"))
+
+
 @event.listens_for(Topic, "before_insert")
 @event.listens_for(Topic, "before_update")
 @event.listens_for(Tag, "before_insert")

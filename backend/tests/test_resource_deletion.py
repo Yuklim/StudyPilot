@@ -15,6 +15,7 @@ from test_resources import CONTEXT
 from studypilot.infrastructure.database.models import (
     ActiveReviewPlan,
     DeletionConfirmation,
+    Highlight,
     LearningProgress,
     LearningResource,
     Note,
@@ -85,7 +86,22 @@ def add_dependents(session_factory: sessionmaker[Session], resource_id: str) -> 
         assert resource is not None
         resource.topic_id = topic.id
         session.add(ResourceTag(resource_id=resource.id, tag_id=tag.id))
-        session.add(Note(resource_id=resource.id, content=PRIVATE))
+        note = Note(resource_id=resource.id, content=PRIVATE)
+        session.add(note)
+        session.flush()
+        # A marked passage is user data too: it must be counted before asking and
+        # gone afterwards (TASK-071).
+        session.add(
+            Highlight(
+                resource_id=resource.id,
+                exact="被标下来的一段",
+                prefix="前文",
+                suffix="后文",
+                start_offset=10,
+                end_offset=17,
+                note_id=note.id,
+            )
+        )
         session.add(
             StudyRecord(
                 resource_id=resource.id,
@@ -128,6 +144,7 @@ def test_preview_and_delete_cascades_resource_data_but_keeps_taxonomy(
         "original_file_count": 0,
         "snapshot_asset_count": 0,
         "note_count": 1,
+        "highlight_count": 1,
         "study_record_count": 1,
         "active_review_plan_count": 1,
         "review_record_count": 1,
@@ -146,6 +163,7 @@ def test_preview_and_delete_cascades_resource_data_but_keeps_taxonomy(
             LearningResource,
             LearningProgress,
             Note,
+            Highlight,
             StudyRecord,
             ActiveReviewPlan,
             ReviewRecord,

@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-070"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "给已冻结的公共契约新增查询能力：顶层 `GET /api/v1/notes` 增加可选 `q`（只搜标题），需同步《API与数据契约基线》2.3 搜索白名单、10 节操作行、4.8 节笔记说明与 openapi-v1.json。按第 4 节「架构、公共 API」归 L3，与 TASK-027/032/034/057 同类（均为契约放宽，全部定 L3）。无数据迁移、无模型字段变化、不改写任何既有语义：资料内心得列表仍不接受 q（传了 422），/notes 仍只列独立心得。执行链：Worker → 自动检查 → 独立只读 Reviewer → 独立只读 Integration/Acceptance。"
 risk_flags = ["public-api", "architecture"]
@@ -139,11 +139,11 @@ checks = ["backend", "frontend", "contracts"]
   > 用户需求对账：三条确认逐条相符——只搜独立心得（`Note.resource_id.is_(None)` 未变）、只按标题、只升级 `/notes` 搜索框；未新增 `/search`、未加 `scope`/`include`、未动资料统一搜索。**无超授权改动。**
   > 证据真实性：测试里无 `skip`/`only`/被注释的断言，旧断言未放宽（`test_notes.py:235` 对资料端点的 `q=private` 仍断 422）；计数自洽——backend 556+5=561、frontend 657→658、e2e 66+1=67。
   > Findings（均非阻断）：1. 契约 `:70`「当前可用操作」表的 `listStandaloneNotes` 行未就地补注 `q`（不构成矛盾，建议下次契约改动顺手补）；2. 任务索引行状态仍 READY。
-- 最终状态/风险/用户操作：**ACCEPTED**，等用户合并 PR。风险低：新增的是一个可选查询参数，既有路径（`q is None`）与旧实现一字不差；三轮独立 Review + 独立验收均 PASS；无迁移、无数据结构变化，回滚只需还原该参数。用户操作：合并 PR。
+- 最终状态/风险/用户操作：**MERGED**——2026-09-19 用户已合并 PR #78，merge commit `b10fa92`（登记并入 TASK-071 控制面）。风险低：新增的是一个可选查询参数，既有路径（`q is None`）与旧实现一字不差；三轮独立 Review + 独立验收均 PASS；无迁移、无数据结构变化，回滚只需还原该参数。用户操作：合并 PR。
 - 非阻断遗留项：
   - **F4（可选，记录）** 首行是大图片的心得会触发「回源读完整正文」：这类心得有 N 条，一次 `q` 请求就多 N 次单条全量读。个人本机数据量下可接受；重评触发：心得上千条或含图心得很多导致搜索变慢，届时的正确解法是持久化标题列 + SQL 过滤。责任角色：coordinator。
   - **（记录）** 标题派生规则在前后端各一份实现（`noteTitle.ts` / `note_title()` + `LINE`），靠两侧测试固定口径；规则要改必须两边同改。重评触发：任一侧改动标题派生。
   - **（验收 F1，记录）** 契约 `docs/contracts/API与数据契约基线.md:70`「当前可用操作」表的 `listStandaloneNotes` 行未就地补注 `q`。验收判定不构成矛盾（该行并未声称无搜索），TASK-063 有同样先例；为此再开一轮增量复审的成本高于收益，按验收建议**下次改该契约时顺手补**。责任角色：coordinator。重评触发：下一次改动 notes 相关契约。
   - **（验收记录）** 前端标题显示截断 60 字、后端按未截断行匹配：命中的词可能不在列表显示的标题里。这是契约 2.3 明写的有意设计（截断只是显示），不改。
-- 日期与决定日志：2026-09-19 用户选定「先做心得搜索」，并确认只搜独立心得、只按标题、只升级 /notes 搜索框 → 登记 TASK-070 → 实现 `776e9ba` → 三轮独立 Review（首轮 CHANGES_REQUIRED，F1 为本次 diff 新引入的翻页回归）→ 最终候选 `99799b1` → 独立验收 PASS → ACCEPTED，待用户合并。
+- 日期与决定日志：2026-09-19 用户选定「先做心得搜索」，并确认只搜独立心得、只按标题、只升级 /notes 搜索框 → 登记 TASK-070 → 实现 `776e9ba` → 三轮独立 Review（首轮 CHANGES_REQUIRED，F1 为本次 diff 新引入的翻页回归）→ 最终候选 `99799b1` → 独立验收 PASS → ACCEPTED → 2026-09-19 用户合并 PR #78，MERGED。
 <!-- EVIDENCE:END -->

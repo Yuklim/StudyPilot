@@ -30,6 +30,7 @@ from .models import (
     ActiveReviewPlan,
     ContentSnapshot,
     DeletionConfirmation,
+    Highlight,
     LearningProgress,
     LearningResource,
     Note,
@@ -79,6 +80,7 @@ DELETION_IMPACT_KEYS = (
     "original_file_count",
     "snapshot_asset_count",
     "note_count",
+    "highlight_count",
     "study_record_count",
     "active_review_plan_count",
     "review_record_count",
@@ -270,6 +272,14 @@ class ResourceStore:
             )
         )
         progress = self._session.get(LearningProgress, resource_id)
+        # Highlights hang off the resource, not its snapshot: replacing the text does
+        # not un-mark what the reader marked (re-anchoring is the reader's job), but
+        # deleting the resource does take them, so they are counted before asking.
+        marks = list(
+            self._session.scalars(
+                select(Highlight).where(Highlight.resource_id == resource_id).order_by(Highlight.id)
+            )
+        )
         study_records = list(
             self._session.scalars(
                 select(StudyRecord)
@@ -318,6 +328,7 @@ class ResourceStore:
             if progress is None
             else [{"resource_id": str(progress.resource_id), "version": progress.version}],
             "notes": [{"id": str(row.id), "version": row.version} for row in notes],
+            "highlights": [{"id": str(row.id), "version": row.version} for row in marks],
             "study_records": [
                 {"id": str(row.id), "created_at": self._stamp(row.created_at)}
                 for row in study_records
@@ -342,6 +353,7 @@ class ResourceStore:
             original_file_count=len(originals),
             snapshot_asset_count=len(assets),
             note_count=len(notes),
+            highlight_count=len(marks),
             study_record_count=len(study_records),
             active_review_plan_count=0 if plan is None else 1,
             review_record_count=len(review_records),

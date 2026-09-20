@@ -49,7 +49,7 @@
 
 本文件第 5、8、10 节及 `openapi-v1.json` 的标准 paths/schemas 描述**完整 MVP 目标**，不是当前程序全部已可调用的能力清单。同一操作允许按本节明确的输入子集分阶段交付；TASK-009 当前运行时的可用性及未开放输入响应以本节为准，不能把完整目标中的 FILE 分支视为本阶段已承诺可用。最终字段、媒体类型、成功响应、安全及数据规则仍保留，不删减、不改名，不宣称完整 MVP 已完成。
 
-TASK-011/012 已完成分类后端与页面，TASK-013/014 已完成 FILE 后端和上传/下载页面，TASK-015/016 已完成旧学习记录后端与页面，TASK-017 已提供个人笔记后端。TASK-019 接入轻量心得页面：正文新增/回看/修改/确认删除，只自动显示保存时间；不向学习写接口提交虚构的开始时间、时长、进度或状态。旧历史与状态/归档入口收起保留。TASK-027 提供独立心得：`Note.resource_id` 按用户确认放宽为可空并新增顶层 `/api/v1/notes` 集合——独立心得(resource_id 为 null)可不先收藏资料直接记录/回看/修改/删除；绑定资料(resource_id 非空)的心得仍在资料详情。这是本节首次真实放宽标准 Note 契约与操作清单，随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-029 再次放宽标准资源契约：`title` 改为可空（0003 迁移），WEB/PASTE/FILE 创建均可省略或显式 null 标题，`updateResource` 显式 null 清除标题，资料按 title 排序时未命名(null)固定排在有标题之后；界面以「未命名资料」占位展示、不落库。同样随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-030 提供心得后贴/解除：独立心得(resource_id 为 null)可在「我的心得」页经 `attachNote` 后贴绑定到某份可读资料；已绑定心得可在资料详情经 `detachNote` 解除回独立。绑定移动是专用版本化写（`Note.resource_id` 在专用路径上移动、version+1、content 不变、单事务、不回放），`NoteCreate`/`NotePatch` 请求体仍不得直接写 `resource_id`。同样随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-032 放宽 `ResourcePatch`：新增可选 `tag_ids` 实现「标签可后补」——资料修改页可直接整组替换标签，不必逐个调用幂等关联端点；语义、版本与错误处理见 4.7 与 12 节。既有 `attachResourceTag`/`detachResourceTag` 与资料详情逐个增删路径不变。同样随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-034 为分类端点的响应新增只读 `resource_count`（使用该分类的资料份数），用于分辨在用分类与僵尸分类：新增 `TopicUsage`/`TagUsage` 两个响应 schema，`TopicPage`/`TopicEnvelope`/`TagPage`/`TagEnvelope` 改指向它们；**原 `Topic`/`Tag` schema 一字未动，资料响应内嵌的 `tags` 继续引用 `Tag`、不带该字段**——否则每份资料都要为每个内嵌标签各算一次计数。分页列表的计数由一次聚合查询得出。同样随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-035 新增两个标签批量关联操作 —— `detachAllTagResources`（清空某标签的全部关联，标签保留）与 `mergeTag`（把源标签的关联移到目标标签后删除源标签）。二者都是一次事务内的批量写，都必须携带 `expected_resource_count`（调用方界面上看到的份数），服务端重算不符即 `409 TAXONOMY_USAGE_CHANGED` 且不写入；`mergeTag` 另需源标签的 `expected_version`。两者都不推进任何资料版本。既有的逐条幂等关联端点语义不变。同样随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-036 新增**正文快照**：新表 `content_snapshots`（0004 迁移）与三个操作 `getResourceSnapshot`/`putResourceSnapshot`/`deleteResourceSnapshot`，让资料在保留 `source_url` 的同时拥有一份保存当时的 Markdown 正文副本。**未放宽 `learning_resources` 的来源互斥 CHECK** —— 该约束只管它自己的列，快照放在新表因而与之并存（详见 4.13）。本阶段正文只由调用方提供（手动录入），**服务端不抓取任何外部内容、不发起任何对外网络请求**。同样随该任务测试、独立审查、验收通过并由用户合并后交付。 TASK-039 补上快照的**图片冻结**：新表 `snapshot_assets`（0005 迁移）与四个操作 `uploadSnapshotAsset`/`listSnapshotAssets`/`downloadSnapshotAsset`/`deleteSnapshotAsset`，图片字节存进既有受控文件目录，一份快照可挂任意多张（**不设张数上限**，单图 10 MiB）。**正文一字不改写**——原站地址留在正文里作溯源，资产按 `source_url` 旁路映射，渲染时替换（详见 4.14）。后端仍**不出网**：字节只能由调用方（浏览器扩展）提供。同样随该任务测试、独立审查、验收通过并由用户合并后交付。 TASK-063 放宽 `Note.content` 上限：50,000 → **2,000,000 字符**（0006 迁移改写 `notes` 表的 CHECK；`min_length`、去首尾、版本化写与错误码不变，属 1.2 节允许的「放宽既有输入」）。目的是让心得可以粘贴图片：用户选定图片**直接以 base64 data URI 内嵌进 Markdown 正文**，不新增图片接口、不落文件、不改 `snapshot_assets`；服务端对内嵌图片不解析、不校验，只按字符数限制。资料正文快照的渲染**不因此放行** `data:` 图片，只有心得预览开启。同样随该任务测试、独立审查、验收通过并由用户合并后交付。 TASK-070 为顶层 `GET /api/v1/notes` 新增**可选** `q`：按心得标题（正文首个非空行）做 2.3 规定的NFKC/大小写/空白折叠包含匹配，分页计数按过滤后结果集算。**不新增列、不做迁移、不改 `Note` 响应 schema**，也不放宽集合语义（仍只列独立心得）；资料下的心得列表未获得该参数，传入仍 `422`。同样随该任务测试、独立审查、验收通过并由用户合并后交付。
+TASK-011/012 已完成分类后端与页面，TASK-013/014 已完成 FILE 后端和上传/下载页面，TASK-015/016 已完成旧学习记录后端与页面，TASK-017 已提供个人笔记后端。TASK-019 接入轻量心得页面：正文新增/回看/修改/确认删除，只自动显示保存时间；不向学习写接口提交虚构的开始时间、时长、进度或状态。旧历史与状态/归档入口收起保留。TASK-027 提供独立心得：`Note.resource_id` 按用户确认放宽为可空并新增顶层 `/api/v1/notes` 集合——独立心得(resource_id 为 null)可不先收藏资料直接记录/回看/修改/删除；绑定资料(resource_id 非空)的心得仍在资料详情。这是本节首次真实放宽标准 Note 契约与操作清单，随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-029 再次放宽标准资源契约：`title` 改为可空（0003 迁移），WEB/PASTE/FILE 创建均可省略或显式 null 标题，`updateResource` 显式 null 清除标题，资料按 title 排序时未命名(null)固定排在有标题之后；界面以「未命名资料」占位展示、不落库。同样随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-030 提供心得后贴/解除：独立心得(resource_id 为 null)可在「我的心得」页经 `attachNote` 后贴绑定到某份可读资料；已绑定心得可在资料详情经 `detachNote` 解除回独立。绑定移动是专用版本化写（`Note.resource_id` 在专用路径上移动、version+1、content 不变、单事务、不回放），`NoteCreate`/`NotePatch` 请求体仍不得直接写 `resource_id`。同样随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-032 放宽 `ResourcePatch`：新增可选 `tag_ids` 实现「标签可后补」——资料修改页可直接整组替换标签，不必逐个调用幂等关联端点；语义、版本与错误处理见 4.7 与 12 节。既有 `attachResourceTag`/`detachResourceTag` 与资料详情逐个增删路径不变。同样随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-034 为分类端点的响应新增只读 `resource_count`（使用该分类的资料份数），用于分辨在用分类与僵尸分类：新增 `TopicUsage`/`TagUsage` 两个响应 schema，`TopicPage`/`TopicEnvelope`/`TagPage`/`TagEnvelope` 改指向它们；**原 `Topic`/`Tag` schema 一字未动，资料响应内嵌的 `tags` 继续引用 `Tag`、不带该字段**——否则每份资料都要为每个内嵌标签各算一次计数。分页列表的计数由一次聚合查询得出。同样随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-035 新增两个标签批量关联操作 —— `detachAllTagResources`（清空某标签的全部关联，标签保留）与 `mergeTag`（把源标签的关联移到目标标签后删除源标签）。二者都是一次事务内的批量写，都必须携带 `expected_resource_count`（调用方界面上看到的份数），服务端重算不符即 `409 TAXONOMY_USAGE_CHANGED` 且不写入；`mergeTag` 另需源标签的 `expected_version`。两者都不推进任何资料版本。既有的逐条幂等关联端点语义不变。同样随该任务测试、独立审查、验收通过并由用户合并后交付。TASK-036 新增**正文快照**：新表 `content_snapshots`（0004 迁移）与三个操作 `getResourceSnapshot`/`putResourceSnapshot`/`deleteResourceSnapshot`，让资料在保留 `source_url` 的同时拥有一份保存当时的 Markdown 正文副本。**未放宽 `learning_resources` 的来源互斥 CHECK** —— 该约束只管它自己的列，快照放在新表因而与之并存（详见 4.13）。本阶段正文只由调用方提供（手动录入），**服务端不抓取任何外部内容、不发起任何对外网络请求**。同样随该任务测试、独立审查、验收通过并由用户合并后交付。 TASK-039 补上快照的**图片冻结**：新表 `snapshot_assets`（0005 迁移）与四个操作 `uploadSnapshotAsset`/`listSnapshotAssets`/`downloadSnapshotAsset`/`deleteSnapshotAsset`，图片字节存进既有受控文件目录，一份快照可挂任意多张（**不设张数上限**，单图 10 MiB）。**正文一字不改写**——原站地址留在正文里作溯源，资产按 `source_url` 旁路映射，渲染时替换（详见 4.14）。后端仍**不出网**：字节只能由调用方（浏览器扩展）提供。同样随该任务测试、独立审查、验收通过并由用户合并后交付。 TASK-063 放宽 `Note.content` 上限：50,000 → **2,000,000 字符**（0006 迁移改写 `notes` 表的 CHECK；`min_length`、去首尾、版本化写与错误码不变，属 1.2 节允许的「放宽既有输入」）。目的是让心得可以粘贴图片：用户选定图片**直接以 base64 data URI 内嵌进 Markdown 正文**，不新增图片接口、不落文件、不改 `snapshot_assets`；服务端对内嵌图片不解析、不校验，只按字符数限制。资料正文快照的渲染**不因此放行** `data:` 图片，只有心得预览开启。同样随该任务测试、独立审查、验收通过并由用户合并后交付。 TASK-071 新增**阅读高亮**：新表 `highlights`（0007 迁移）与五个操作（列表/新增/详情/改绑解绑/删除），让读者标下的段落作为独立对象存活，心得可选配（见 4.15）。删除资料的影响计数新增 `highlight_count`。**不改 `notes` 表与既有笔记接口语义**，服务端不解释正文、不做重定位。同样随该任务测试、独立审查、验收通过并由用户合并后交付。 TASK-070 为顶层 `GET /api/v1/notes` 新增**可选** `q`：按心得标题（正文首个非空行）做 2.3 规定的NFKC/大小写/空白折叠包含匹配，分页计数按过滤后结果集算。**不新增列、不做迁移、不改 `Note` 响应 schema**，也不放宽集合语义（仍只列独立心得）；资料下的心得列表未获得该参数，传入仍 `422`。同样随该任务测试、独立审查、验收通过并由用户合并后交付。
 
 | 当前可用操作 | 交付范围 |
 | --- | --- |
@@ -69,6 +69,7 @@ TASK-011/012 已完成分类后端与页面，TASK-013/014 已完成 FILE 后端
 | `listResourceNotes` / `createResourceNote` / `getResourceNote` / `updateResourceNote` / `deleteResourceNote` | TASK-017：既定个人笔记增删改查与稳定分页；严格正文、所属资料及版本保护，只写 Note，不改变资料、进度或原件，不提供全文搜索或回收站 |
 | `listStandaloneNotes` / `createStandaloneNote` / `getStandaloneNote` / `updateStandaloneNote` / `deleteStandaloneNote` | TASK-027：独立心得(resource_id 为 null)的增删改查与稳定分页；无资源可见性前置，版本/单事务/不回放/错误收敛同资源笔记 |
 | `attachNote` / `detachNote` | TASK-030：独立心得经 `attachNote` 后贴绑定到目标资料(resource_id null→该资料，目标需可读)、已绑定心得经 `detachNote` 解除回独立(该资料→null)；均版本化单事务写，成功后 version+1、content 不变、不回放，错误收敛同既有 note 写 |
+| `listResourceHighlights` / `createResourceHighlight` / `getResourceHighlight` / `updateResourceHighlight` / `deleteResourceHighlight` | TASK-071：阅读高亮的存储与读写（见 4.15）。锚点分层记录（原文 + 前后文 + 偏移）且**创建后不可改**，`PATCH` 只改心得绑定；写入要求资料可读且已有 READY 正文快照，列表不要求（无快照返回空页）。服务端不校验锚点是否仍能在正文里找到、不做重定位——定位在阅读器渲染时完成。删除资料连同高亮删除，影响计数新增 `highlight_count`；删除心得只解绑，不删高亮。界面接入另行实现（TASK-072） |
 
 - TASK-009～012 对 multipart 的临时 `415 CONTENT_TYPE_UNSUPPORTED` 限制由 TASK-013 的实际文件实现解除；合法 FILE 表单按第 5/8 节处理，其他媒体类型仍拒绝。缺失令牌或非法来源仍优先按第 7 节返回对应 `403`，不读正文或操作文件/数据库。
 - JSON 请求的 FILE 不属于 WEB/PASTE JSON schema，仍为 `422 VALIDATION_ERROR`。已开放的 WEB/PASTE 校验、错误、事务和只读投影必须完整符合其契约，不能借分阶段交付降低这些要求。
@@ -163,6 +164,7 @@ TASK-011/012 已完成分类后端与页面，TASK-013/014 已完成 FILE 后端
 | --- | --- | --- |
 | 资料 | `q` 只搜标题、来源名称、保存原因；重复 `topic_id`（任一）、`topic_unassigned`（可与 `topic_id` 并列为「或」）、重复 `tag_id` + `tag_match=all|any`（默认 `all`）、重复 `source_type`、重复 `learning_status`、`progress_min/max`、`created_from/to`、`updated_from/to` | `created_at`、`updated_at`、`title`、`progress_percent`；默认 `-created_at,id` |
 | 独立心得列表（顶层 `/api/v1/notes`） | `q` 只搜心得标题——心得没有标题字段，标题＝正文**首个非空行**（行以 `\r?\n` 分隔；去掉行首 `#{1,6} `、行内图片只取替代文字、纯图片行跳过），按未截断的该行匹配；不搜正文其余部分。`q` 经 2.3 规范化后为空（纯空白）与显式空串同样 `422`。资料下的心得列表不接受 `q` | `created_at`、`updated_at`；默认 `-created_at,id` |
+| 资料高亮列表 | 无搜索与筛选参数（未知参数 `422`） | `start_offset`、`created_at`；默认 `start_offset,id`——按文中顺序读，不是按标记顺序 |
 | 单资料学习记录 | `started_from/to` | `started_at`、`created_at`、`duration_seconds`；默认 `-started_at,id` |
 | 全局学习记录 | 在上项基础上增加 `resource_id`、`topic_id` | 同上 |
 | 复习列表 | `scope=TODAY/OVERDUE/UPCOMING/ALL`、`time_zone`、`topic_id`、`q`（同资料搜索） | `due_date`、`title`；默认 `due_date NULLS LAST,title,id`，`-due_date` 也固定 NULLS LAST |
@@ -431,6 +433,31 @@ OpenAPI 中 `ReviewRecord` 用条件 schema 固化上述规则：`NEEDS_REVIEW` 
 
 **本阶段的边界（TASK-039）。** 后端仍**不发起任何对外网络请求**：`source_url` 只是匹配键，服务端从不解析或请求它，图片字节全部由调用方上传。本任务只交付后端 —— 由浏览器扩展在页面上取到图片字节并上传、以及渲染时把正文里的原站地址换成本机资产，都属 TASK-040，因此本任务交付时界面上看不到变化。
 
+### 4.15 Highlight（highlights 所有）
+
+| API 名称 | 类型/示例 | C/U | 必填/可空/默认/限制 | 敏感 | 所有者与不变量 |
+| --- | --- | --- | --- | --- | --- |
+| `id` | uuid | R | 必有 | 否 | highlights |
+| `resource_id` | uuid | C(路径) | 必有 | 否 | highlights；外键指向 `learning_resources.id`，`ON DELETE CASCADE` |
+| `exact` | string / `输入层、隐藏层、输出层` | C | 必填，1～2,000；**不去首尾空白** | 是 | highlights；用户标下来的原文，创建后不可改 |
+| `prefix` / `suffix` | string / null | C | 可空，各 0～200 | 是 | highlights；前后文，用于同一段文字多次出现时消歧；创建后不可改 |
+| `start_offset` / `end_offset` | int | C | `start_offset >= 0`，`end_offset > start_offset` | 否 | highlights；降级锚点（字符偏移），创建后不可改 |
+| `note_id` | uuid / null | C/U | 创建时可空；**`PATCH` 里必填**（给 `null` 才是解绑，省略即 `422`）；必须是**同一份资料**下的笔记；一条笔记最多配一条高亮 | 否 | highlights；外键指向 `notes.id`，`ON DELETE SET NULL`；`PATCH` 唯一可改的字段 |
+| `version` | int | R | 默认 1 | 否 | highlights；只有改绑/解绑会推进 |
+| `created_at` / `updated_at` | instant | R | 自动 | 否 | highlights |
+
+**锚点是分层的，不是一个位置。** 字符偏移在正文上方增删后即错位，DOM 路径在换一种渲染实现后即全部失效（见 `docs/research/阅读器与标注能力调研.md` 5.1）。因此一条高亮同时记下**它说的那句话**（`exact`）、**足以区分重复措辞的上下文**（`prefix`/`suffix`）与**偏移**（降级用）。重新定位按「`exact` 唯一匹配 → 用前后文消歧 → 偏移附近模糊匹配 → 标为孤立」逐级降级。
+
+**服务端不解释正文。** 后端**不校验** `exact` 是否真的出现在快照里、不做重定位、不改写正文、不出网；定位发生在阅读器渲染时。**孤立状态不落库**——正文换回来，高亮就该重新对上；把一次定位失败写进数据库会让它永久化。孤立的高亮必须保留内容并向用户说明「原文位置已找不到」，不得静默丢弃。
+
+**写入前置条件。** 资料必须可读，且必须已有 **READY 的正文快照**（`SNAPSHOT_NOT_FOUND`）——没有冻结的正文就没有可锚定的东西。**列表不要求快照**：没有快照时返回空页。
+
+**锚点不可变。** `PATCH` 只接受 `note_id`，且**必须显式给出**：`null` 是解绑，省略是 `422 VALIDATION_ERROR`——一个漏字段的请求不该悄悄解开用户配好的心得。让锚点可改会出现「同一条高亮指向完全不同的话却保留原有历史」；标另一段就是另一条高亮。
+
+**高亮独立于心得。** 用户 2026-09-19 选定的形态：选中即可标下来，心得可选配。链接放在 highlights 这一侧，`notes` 表不受影响；删除心得只把 `note_id` 置空（`SET NULL`），标下来的那段话仍在。删除资料按第 9 节连同高亮一起删除，影响计数为此新增 `highlight_count`。
+
+**本阶段的边界（TASK-071）。** 本任务只交付后端存储与五个接口（列表/新增/详情/改绑解绑/删除）；选区取锚点、上色渲染（CSS Custom Highlight API）、重定位与孤立提示属 TASK-072，因此本任务交付时界面上看不到变化。
+
 ## 5. 资料来源与创建契约 `[需求][细化]`
 
 一份资料恰好一种主要来源：
@@ -556,7 +583,7 @@ OpenAPI 中 `ReviewRecord` 用条件 schema 固化上述规则：`NEEDS_REVIEW` 
 ## 9. 删除确认协议 `[需求][架构][细化]`
 
 1. `POST /resources/{id}/deletion-preview` 不删除数据；生成 5 分钟、一次性、至少 256 位不透明令牌。响应列出安全影响计数、资料版本、`impact_revision` 和过期时间，不返回正文、笔记或完整文件名。
-2. 服务端保存令牌摘要，并把令牌绑定到资料 ID/版本，以及按类型和 ID 排序的 OriginalFile、SnapshotAsset、Note、StudyRecord、ActiveReviewPlan、ReviewRecord、ResourceTag 的 ID+版本（不可变历史用创建序号；SnapshotAsset 无自身版本，用 ID + 存储键）全集。只比较数量不够。
+2. 服务端保存令牌摘要，并把令牌绑定到资料 ID/版本，以及按类型和 ID 排序的 OriginalFile、SnapshotAsset、Note、Highlight、StudyRecord、ActiveReviewPlan、ReviewRecord、ResourceTag 的 ID+版本（不可变历史用创建序号；SnapshotAsset 无自身版本，用 ID + 存储键）全集。只比较数量不够。
 3. 用户确认后，DELETE 在 `X-StudyPilot-Deletion-Token` 专用头提交原令牌；URL、JSON、日志均不得出现。
 4. 同一数据库写事务中验证未过期/未用/绑定正确并重算全集。变化时旧令牌立即作废，返回 `409 DELETION_IMPACT_CHANGED`；`details.current_impact` 只给当前资料版本、影响计数和 `impact_revision`，不得包含确认令牌或过期时间。OpenAPI 用 `DeletionImpactChangedErrorResponse` 把这一统一 `ErrorResponse` 场景收窄为不可多字段的机器 schema。界面展示新摘要，用户确认查看后必须重新调用 deletion-preview 才能取得新令牌。
 5. 一致时先把 READY 文件原子移动到同卷 trash 隔离键，再标记令牌已用、删除关联及资料并提交；提交成功后异步/对账清理 trash。文件移动失败则数据库回滚。
@@ -601,6 +628,11 @@ OpenAPI 中 `ReviewRecord` 用条件 schema 固化上述规则：`NEEDS_REVIEW` 
 | DELETE `/api/v1/notes/{note_id}` | 删除独立心得 / notes | If-Match；204 | 204/403/404/409/428/500；删除 |
 | POST `/api/v1/notes/{note_id}/attach` | 后贴心得绑定 / notes | `NoteAttach`；200 Note | 200/400/403/404/409/415/422/428/500；版本化写，resource_id 变目标资料、version+1、content 不变 |
 | POST `/resources/{resource_id}/notes/{note_id}/detach` | 解除心得绑定 / notes | `NoteDetach`；200 Note | 200/400/403/404/409/415/422/428/500；版本化写，resource_id 变 null、version+1、content 不变 |
+| GET `/resources/{resource_id}/highlights` | 高亮列表 / highlights | 分页 + 排序（见 2.3）；200 `HighlightPage` | 200/403/404/422/500；只读；无快照时为空页 |
+| POST `/resources/{resource_id}/highlights` | 新增高亮 / highlights | `HighlightCreate`；201 `Highlight` | 201/400/403/404/409/415/422/500；要求资料可读且有 READY 快照；`note_id` 须同资料且未被占用 |
+| GET `/resources/{resource_id}/highlights/{highlight_id}` | 高亮详情 / highlights | ID；200 `Highlight` | 200/403/404/500；只读 |
+| PATCH `/resources/{resource_id}/highlights/{highlight_id}` | 改绑/解绑心得 / highlights | `HighlightPatch`（只含 `note_id` 与 `expected_version`）；200 `Highlight` | 200/400/403/404/409/415/422/428/500；锚点不可改 |
+| DELETE `/resources/{resource_id}/highlights/{highlight_id}` | 删除高亮 / highlights | If-Match；204 | 204/403/404/409/428/500；删除 |
 | GET `/resources/{resource_id}/study-records` | 单资料历史 / learning | 分页/时间筛选；200 `StudyRecordPage` | 200/403/404/422/500；只读 |
 | POST `/resources/{resource_id}/study-records` | 记录学习并更新当前值 / learning | `StudyRecordCreate`；201 `StudyRecordResult` | 201/400/403/404/409/415/422/500；事务写入 |
 | GET `/study-records` | 全局近期活动 / learning | 分页/筛选；200 页面 | 200/403/422/500；只读 |
