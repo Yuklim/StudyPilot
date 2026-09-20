@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-073"
-status = "IN_REVIEW"
+status = "ACCEPTED"
 risk = "L2"
 risk_reason = "在既有契约之下做前端实现：FILE 资料的原件读取、上传、校验与下载都已交付（TASK-013/014），本任务只是把已经能下载的字节在站内渲染出来。不改后端、不改契约、不做迁移、不新增接口。新增一个第三方前端依赖（pdf.js）并在本机打包，不引入运行时外网依赖。按第 4 节属「已批准契约下的普通业务实现」，定 L2：1 Worker → 自动检查 → 1 独立只读 Reviewer；独立验收 N/A。若发现必须改契约或后端，停止并重新定级。"
 risk_flags = ["business"]
@@ -155,7 +155,7 @@ checks = ["frontend"]
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：第一候选 `aa8f7cc`；第二候选 `7edcc43`；第三候选（当前）见下方 Review 段落写回。
+- 候选 SHA：第一候选 `aa8f7cc`；第二候选 `7edcc43`；**最终候选 `eb598f0`**。
 - Review：
   - **第一轮（候选 `aa8f7cc`）结论 CHANGES_REQUIRED**，F1–F5，逐条处置见上文「Review F1–F5 的修正」。
     报告原文未留存于本记录（上一会话写回时只留了逐条处置），此处如实标注，不补写、不冒充原文。
@@ -182,12 +182,34 @@ checks = ["frontend"]
 
     主 Agent 复核：第 1 条经读码核实为真缺陷（两条后果均确定性触发），已按最小修法修正并补判别性用例；
     第 2 条已改；第 3 条三小项两条已顺手处理、一条（16px）记为非阻断遗留，理由见上。
-  - **第三轮（增量 `7edcc43..<本次写回 SHA>`）**：待填。
+  - **第三轮（增量 `7edcc43..eb598f0`，结论覆盖 `92a4764..eb598f0`）结论 PASS**，同一位独立只读 Reviewer。报告原文：
+
+    > **结论：PASS（覆盖最终候选 `92a4764..eb598f0`）**
+    >
+    > **本轮实际审（整文件通读，无 Bash 故不跑 diff）**：`pdfPosition.ts`、`PdfReader.tsx`、`pdfPosition.test.ts`、`PdfReader.test.tsx`、`docs/tasks/TASK-073-pdf-reader.md`、`任务索引.md:24`，并重新核了 `ResourceDetail.tsx`/`styles.css` 相关段与全仓 `onPages`/`ratioWithinPage` 引用。
+    >
+    > **F7 已真修**：`ratioWithinPage` 与 `scrollTopFor` 严格互逆——未夹取时 `scrollTopFor(p, (S+v/2−tops)/h) = max(0,S)`，我手算了跳页（816 → ratio 300/816 → 回 816）与恢复两条路径。边界正确：空数组→0（`locatePage` 更早返回 `{1,0}`）、`height<=0`→0（与旧 `height>0` 等价）、page 越界两处都夹在 `[0,len-1]`、短页夹 1 且误差 < v/2 有界。`locatePage` 改为复用它，行为与旧内联实现一致，ratio 只剩一处定义。
+    > **新的相互作用**：钉住分支只换了写回的 ratio，<2px 解钉阈值与 rAF 节流未动；恢复那次写回现在把刚读出的比例原样写回（不再覆盖成 0），`scrollTopFor` 在顶部 `max(0,…)` 夹取时改写为「实际可达位置」，属正确归一。未发现永远钉住/永远解不了钉的路径。
+    >
+    > **`getPage().catch(() => null)`**：可接受。打开时的量尺循环已对每一页成功 `getPage` 过，之后失败几乎只有「文档已 destroy」；即使真失败，旧写法也是空白页 + 未捕获 rejection，用户可见结果不变，且 `near` 翻转会让该页重试。删 `onPages` 干净，全仓无残留（grep 命中的都是 `ClassificationPages`）。
+    >
+    > **16px 的拒绝站得住**：偏差对每一页都是恒定 +16（不累积），写与读同模型故往返相消，只把页码翻页点提前 16px（≈2%，且落在页间空隙里）；改为量 `offsetTop` 会让 jsdom 单测失去判别性，成本大于收益。记为非阻断遗留 2 即可。
+    >
+    > **新用例非假绿**：纯函数那条是独立手算值（300/800、`top−300`、短页夹 1）；组件那条断言的 816 由 `goTo` 真实写入的 `scrollTop` 与存下的 ratio 各自独立支撑，改回 `ratio: 0` 即 516——判别性成立。`defineProperty` 只补 jsdom 缺的 `clientHeight`/`scrollTop` 布局，未替换被测逻辑；真实滚动仍由 e2e 覆盖。索引行已 IN_REVIEW 并补摘要，第二轮报告原文完整写回 EVIDENCE。
+    >
+    > **继承前两轮、本轮未重审**：`package-lock.json` 内容、e2e 夹具字节与 `pdf-reader.spec.ts`、`ResourceToolbar.tsx`/`FileOriginal.tsx`/`files.test.ts`/`FilePages.test.tsx`、`docs/开发与运行.md`、`styles.css` 视觉细节、`.gitattributes`（本轮仅确认未变）。
+    >
+    > **剩余风险**：缩放后 `pinned.top` 是旧尺度坐标，仅在缩放导致容器夹取且新旧位置差 <2px 的巧合下会存下偏一页的页码，下一次滚动即自愈；大文档渲染队列未实测；PDF 无高亮/文本层为已登记非目标。
 - Acceptance：L2，N/A。
-- 最终状态/风险/用户操作：待填
+- 最终状态/风险/用户操作：**ACCEPTED**。L2 执行链走完（1 Worker → 自动检查 → 独立只读 Reviewer；独立验收 N/A）。
+  三轮审查：第一轮 F1–F5、第二轮 F7（必须修，真缺陷）、第三轮 PASS。最终候选 `eb598f0` 上的检查：
+  lint / typecheck / format 0，`vitest run` **699 passed**，`playwright test` **73 passed**，`check_task.py --worktree` **CHECKS PASS**。
+  剩余风险都是已登记的非目标或非阻断遗留，没有未决的产品决定。**需要用户操作：合并 PR**（本任务交付站内 PDF 阅读；
+  合并后 main 才带上 pdf.js 与阅读器，下一个任务（PDF 上的高亮锚点，要动契约）才有基线可依）。
 - 非阻断遗留项：
   1. `.claude/worktrees/` 未被 `.gitignore` 忽略，并行任务留下的工作目录会被 `check_task.py` 判为越界改动（本任务已靠用完即删绕开）。该改动属仓库根配置，不在本任务 `allowed_paths` 内，留给下一个有根配置授权的任务。
   2. `offsets.tops` 未计入 `.pdf-reader-pages` 的 16px `padding-top`：读写用同一套模型，往返自洽，只在页边界处早 16px 翻页；要消除就得改成按真实 DOM 量 `offsetTop`，而 jsdom 不排版会让单测失去判别性。暂不改。
   3. 大文档（数百页）只做了「远离视口释放 canvas」一层，渲染队列与优先级未做、未实测。
+  4. 缩放后 `pinned.current.top` 仍是旧尺度下的坐标（第三轮 Reviewer 的剩余风险）：只有「缩放导致容器夹取、且新旧位置差 <2px」的巧合下会存下偏一页的页码，用户下一次滚动即自愈。改它要在缩放时清钉，收益不抵再开一轮候选的成本，留待后续任务顺手处理。
 - 日期与决定日志：2026-09-20 用户「可以尝试开始做一下本地 pdf 文件的阅读器了」→ 方案沟通（v1 只读）→「A可以」→ Pencil 草图确认「可以」→ 登记 TASK-073；同日用户授权与 TASK-074 并行。
 <!-- EVIDENCE:END -->
