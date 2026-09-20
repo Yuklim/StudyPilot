@@ -89,6 +89,10 @@ describe('citation client', () => {
       { data: { ...row(), issued_year: 3000 } },
       { data: { ...row(), version: 0 } },
       { data: { ...row(), authors: ['ok', 42] } },
+      // 契约第 533 节要求时间戳以 Z 返回；`+00:00` 是同一时刻的另一种拼法，但不是契约
+      // 承诺的那一种。文献接口曾经真的这么返回过（TASK-078 的 e2e 抓到），所以钉住它。
+      { data: { ...row(), created_at: '2026-09-20T02:00:00+00:00' } },
+      { data: { ...row(), updated_at: '2026-09-20T03:00:00+00:00' } },
       { data: null },
     ]) {
       request.mockResolvedValue(bad)
@@ -110,6 +114,12 @@ describe('citation client', () => {
     expect(long.map((problem) => problem.field)).toContain('authors')
     const locator = draftProblems(draft({ volume: '1'.repeat(51) }))
     expect(locator[0]).toMatchObject({ field: 'volume' })
+    // ISBN 在后端是 Stamp（32），不是 Name（200）——这里曾经写成 200（Review F1）。
+    expect(draftProblems(draft({ isbn: '9'.repeat(33) }))[0]).toMatchObject({ field: 'isbn' })
+    expect(draftProblems(draft({ isbn: '9'.repeat(32) }))).toEqual([])
+    expect(draftProblems(draft({ abstract: 'a'.repeat(20_001) }))[0]).toMatchObject({
+      field: 'abstract',
+    })
   })
 
   it('folds blank boxes into null so that "unknown" has exactly one spelling', () => {

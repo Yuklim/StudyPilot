@@ -48,6 +48,7 @@ export const MAX_LOCATOR = 50
 export const MAX_STAMP = 32
 export const MAX_NAME = 200
 export const MAX_CONTAINER = 500
+export const MAX_ABSTRACT = 20_000
 
 export interface Citation {
   resource_id: string
@@ -146,8 +147,8 @@ function citationAt(value: unknown, resourceId: string): Citation {
     pages: text(row.pages, MAX_LOCATOR),
     publisher: text(row.publisher, MAX_NAME),
     doi: text(row.doi, MAX_NAME),
-    isbn: text(row.isbn, MAX_NAME),
-    abstract: text(row.abstract, 20_000),
+    isbn: text(row.isbn, MAX_STAMP),
+    abstract: text(row.abstract, MAX_ABSTRACT),
     version,
     created_at: instant(row.created_at),
     updated_at: instant(row.updated_at),
@@ -237,7 +238,8 @@ export function draftProblems(draft: CitationDraft): DraftProblem[] {
     ['pages', MAX_LOCATOR, '页'],
     ['publisher', MAX_NAME, '出版方'],
     ['doi', MAX_NAME, 'DOI'],
-    ['isbn', MAX_NAME, 'ISBN'],
+    ['isbn', MAX_STAMP, 'ISBN'],
+    ['abstract', MAX_ABSTRACT, '摘要'],
   ]
   for (const [field, max, label] of limits) {
     const value = draft[field]

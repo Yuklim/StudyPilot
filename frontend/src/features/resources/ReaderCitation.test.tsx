@@ -79,6 +79,18 @@ describe('citation in the info tab', () => {
     expect(screen.getByLabelText('第 1 位作者')).toHaveValue('Anna Karpathy')
     const [, options] = request.mock.calls[1]!
     expect(options!.body).toMatchObject({ expected_version: 2 })
+
+    // 光有提示没用：手里这份的版本已经过时，再按保存只会再撞一次，所以编辑态里
+    // 必须当场给出一条出路（Review F2）。
+    request.mockResolvedValue({ data: row({ publisher: '别处改过的出版方', version: 7 }) })
+    fireEvent.click(screen.getByRole('button', { name: '重新读取（放弃这次修改）' }))
+    await waitFor(() =>
+      expect((screen.getByLabelText('出版方') as HTMLInputElement).value).toBe('别处改过的出版方'),
+    )
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(4))
+    // 重读之后再保存带的是新版本，不是那个已经撞过的旧版本。
+    expect(request.mock.calls[3]![1]!.body).toMatchObject({ expected_version: 7 })
   })
 
   it('does not quietly drop an ISBN it has no input box for', async () => {

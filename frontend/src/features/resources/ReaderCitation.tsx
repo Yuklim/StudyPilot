@@ -42,13 +42,16 @@ function toDraft(citation: Citation): CitationDraft {
   return draft
 }
 
-/** 冲突类错误要说清楚「别处改过」，其余按共享客户端的中文提示走。 */
-function saveFailureText(cause: unknown): string {
-  if (
+function isConflict(cause: unknown): boolean {
+  return (
     cause instanceof ApiError &&
     (cause.code === 'VERSION_CONFLICT' || cause.code === 'VERSION_REQUIRED')
   )
-    return '这条文献信息刚在别处改过。点「重新读取」拿到最新的一份，再把你的修改填上去。'
+}
+
+/** 冲突类错误要说清楚「别处改过」，其余按共享客户端的中文提示走。 */
+function saveFailureText(cause: unknown): string {
+  if (isConflict(cause)) return '这条文献信息刚在别处改过。先拿到最新的一份，再把你的修改填上去。'
   if (cause instanceof ApiError && cause.code === 'VALIDATION_ERROR')
     return '有字段不符合要求，服务端没有收下。请检查年份、DOI 与各字段长度后再保存。'
   return failureText(cause)
@@ -66,6 +69,9 @@ export function ReaderCitation({ resourceId }: { resourceId: string }) {
   const [loadFailure, setLoadFailure] = useState<string | null>(null)
   const [failure, setFailure] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
+  // 冲突之后光有提示没用：手里这份的版本已经过时，再按保存只会再撞一次。
+  // 标记它，好在编辑态里就地给一个「重新读取」的出路。
+  const [conflicted, setConflicted] = useState(false)
   const [confirming, setConfirming] = useState(false)
 
   const load = useCallback(async () => {
@@ -104,6 +110,7 @@ export function ReaderCitation({ resourceId }: { resourceId: string }) {
     setProblems([])
     setFailure(null)
     setConfirming(false)
+    setConflicted(false)
     setEditing(true)
   }
 
@@ -117,9 +124,27 @@ export function ReaderCitation({ resourceId }: { resourceId: string }) {
       setCitation(await putCitation(resourceId, cleaned, citation?.version ?? null))
       setEditing(false)
       setFailure(null)
+      setConflicted(false)
     } catch (cause) {
       // 保存失败时**不关表单**：用户填的东西还在里面，关掉就等于替他丢掉。
       setFailure(saveFailureText(cause))
+      setConflicted(isConflict(cause))
+    } finally {
+      setPending(false)
+    }
+  }
+
+  const reread = async () => {
+    setPending(true)
+    try {
+      const latest = await getCitation(resourceId)
+      setCitation(latest)
+      setDraft(latest ? toDraft(latest) : EMPTY_DRAFT)
+      setFailure(null)
+      setConflicted(false)
+      if (!latest) setEditing(false)
+    } catch (cause) {
+      setFailure(failureText(cause))
     } finally {
       setPending(false)
     }
@@ -260,6 +285,13 @@ export function ReaderCitation({ resourceId }: { resourceId: string }) {
           </p>
         </fieldset>
         {failure && <p role="alert">{failure}</p>}
+        {conflicted && (
+          <div className="citation-actions">
+            <button type="button" className="journal-button" disabled={pending} onClick={reread}>
+              重新读取（放弃这次修改）
+            </button>
+          </div>
+        )}
         {confirming ? (
           <div className="citation-confirm" role="alertdialog" aria-label="确认清空文献信息">
             <p>清空之后这份文献信息就没有了，恢复只能重新填一遍。确定吗？</p>
