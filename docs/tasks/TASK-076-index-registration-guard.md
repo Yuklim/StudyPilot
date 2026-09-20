@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-076"
-status = "IN_REVIEW"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "改根规则 AGENTS.md 与 scripts/governance/ 下的校验脚本：前者是协作底线正文，后者在 CI 的「仓库治理检查」里每个 PR 都跑、失败即拦住合并，属第 4 节的「治理权限/门禁」。risk-policy.json 的 high_risk_paths 也把 AGENTS.md 与 scripts/governance/** 列为高风险路径，命中即取最高级。定 L3：1 Worker → 自动检查 → 独立只读 Reviewer → 独立只读 Integration/Acceptance。新增的是会 FAIL 的门禁，误判会拦住无辜的 PR，因此判别性用例与「现仓库必须 PASS」是硬完成条件。"
 risk_flags = ["governance"]
@@ -129,10 +129,49 @@ checks = ["governance"]
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：待填
-- Review：待填
-- Acceptance：待填
-- 最终状态/风险/用户操作：待填
-- 非阻断遗留项：待填
+- 候选 SHA：第一候选 `ddb50db`；第二候选 `59b2899`；**最终候选 `fbaa1a4`**。
+- 最终候选上的机械检查（工作区干净、HEAD=`fbaa1a4`）：`python3 scripts/governance/check_task.py --task docs/tasks/TASK-076-index-registration-guard.md --worktree` → **CHECKS PASS**，`STATIC PASS base=eeb4399… input=WORKTREE`、`files=7`、`product_fingerprint=d97933ee307d4b286abed7595540299275b5dd8505f2d69dd2588c968bfd473b`、`Ran 29 tests OK`。（验收 F1：先前记录里的 CHECKS PASS 标的是第二候选，而最终候选动过可执行的用例夹具，口径不足——已在最终候选上重跑并以指纹留证。）
+- Review：独立只读 Reviewer（`.claude/agents/reviewer.md`，仅 Read/Grep/Glob，无写工具、无 Bash），**三轮**：
+  - 第一轮（`eeb4399..ddb50db`）**PASS**，4 条非阻断，逐条处置见正文「第一轮 Review 的处置」。
+  - 第二轮（增量 `ddb50db..59b2899`）**PASS**，4 条「陈述比证据宽」，逐条处置见正文「第二轮 Review 的处置」。
+  - 第三轮（增量 `59b2899..fbaa1a4`，结论覆盖 `eeb4399..fbaa1a4`）**PASS，无 findings**。报告原文：
+
+    > **结论：PASS（覆盖最终候选 `eeb4399..fbaa1a4`）。本轮无 findings，不再要求新候选。**
+    >
+    > **增量属实，已逐字核对**（reflog 748 行确认 `59b2899..fbaa1a4` 只有一个提交，HEAD=`fbaa1a4`）：`validate_governance.py` 改的只有两段 docstring（245–246、278–280）。判定逻辑 248–269 与 282–304 与第二候选**逐字相同**——跳过条件、`" | "` 切列、两条正则、`ok` 计算、六条错误文案与顺序、`validate()` 里的接线、`STATES`/`INDEX_PATH` 全未动。`test_validate_governance.py` 只改 167–169（`row` 补换行 + 新增 `second`），其余用例逐字未变。记录：112 行改正 + 新增 119–127 段；冻结区（toml、目标/非目标、实现决定、完成条件、上下文包）与前两轮读到的完全一致。
+    >
+    > **第二张表不会掩盖原用例要守的东西**（这是本轮最该问的一条，我核过）：断言是 `assertEqual([], errors)`——追加内容只可能**增加**错误，不可能隐藏错误。夹具里的两行分别由「无 `TASK-`」「`| ---`」两条分支跳过；同时 `TASK-101` 的记录是 MERGED，万一那一行被误跳过就会触发 `never registered` → 红，所以「好行必须仍被看见」也由同一断言守着。变异回退（表头改回写死文案）现在会一次产生 3 条 unparsable，判别性比第二候选更强。
+    >
+    > **新 docstring 与实现相符**：分述精确对应两个跳过分支与 `ok` 的计算；被第一轮推翻的断言已无残留。
+    >
+    > **剩余非阻断遗留（同意记录、不必再开候选）**：F1（已有行的任务若在后续窗口成为非持有者会无法自救；触发需先违反一持有者规则）、F4（首列转义管道 `\|` 错位误报）。
+    >
+    > **剩余风险**：第三候选上的 CHECKS PASS / 29 tests 是主 Agent 跑的机械证据，我无法重跑；但本轮增量不含可执行逻辑，且我已独立核对真实索引 74 行仍全部可解析、70 份 schema2 记录与行状态一一相符。
+
+- Acceptance：独立只读 Integration/Acceptance（**全新实例，无前序上下文，独立于实现者与 Reviewer**；自述权限证据：仅 Read/Grep/Glob，无 Write/Edit/NotebookEdit、无 Bash，运行器层面真实只读）。首轮结论 **CHANGES_REQUIRED**，三条全为证据口径、无代码缺陷；完成条件七项逐条对账均给出行号证据并判为满足。报告要点原文：
+
+    > 1. 规则落地：`AGENTS.md:24`、`AGENTS.md:47` → 满足；16 KiB 上限检查在 `validate_governance.py:377-378`。
+    > 2. 六条校验 `validate_governance.py:284-303`，反例 `test_validate_governance.py:178-186`、:193-194、:200-201，接线哨兵 :146-154 → 满足。
+    > 3. 嵌套方括号回归：真实行 `任务索引.md:38`，用例 :156-162 断言取到 `TASK-064-image-placeholders.md`；朴素正则会取成 `image:N` → 满足。
+    > 4. 状态修正：TASK-022 依据其 :52 原文与 `51b427f`、TASK-073 依据 :204 的 PR #82/`eeb4399`，两者都只改 toml `status` 与 EVIDENCE 区内的事实，**属合并后状态登记，不是越权改冻结正文** → 满足。
+    > 6. 路径：全仓 grep `TASK-076` 只命中三处，均在 allowed_paths 内；指南未改且全文无「索引」字样，与记录说法一致 → 满足。
+    > 7. 数字自洽：索引 74 行；`test_validate_governance.py` 20 个 + `test_check_task.py` 9 个 = **29**，与「29 tests OK」对得上。
+    >
+    > **F1（必须）最终候选没有机械检查证据**：记录里的 CHECKS PASS 明写「工作区在第二候选」，而 `fbaa1a4` 改了可执行的测试夹具。须在 `fbaa1a4` 上重跑并写入 EVIDENCE。我已手算该夹具 → 预期仍返回 `[]`，**未发现实质缺陷**，但 PASS 不能由我替它声明。
+    > **F2（必须）覆盖最终候选的 Review 结论不在记录里**：两段处置分别标「第二候选」「第三候选」，EVIDENCE 区全为「待填」。置 ACCEPTED 前须把覆盖 `fbaa1a4` 的报告原文与候选 SHA 写回。
+    > **F3（记录后继续）记录里有一句已过时**：正文称「TASK-074 的记录此刻只在未合并的 PR #81 上」，但 origin/main 早已 ff 到 `48f232e`，**早于**第二、第三候选。正文在 EVIDENCE 区外不可改，应在 EVIDENCE 里如实登记：074 的登记义务**现在已到期**，不是「将来」。
+    > 其余「陈述 vs 证据」独立复看均如实，无新增夸大。
+    >
+    > **对 074 登记安排的判断**：拦得住「只做一半」——`validate_governance.py:301-303` 在 074 被标 MERGED 而无行时必报 `never registered`，哨兵证明这条真的接进了 `validate()`。**拦不住「既没人标 MERGED、也没人补行」**——074 此刻正处在这个无界窗口。记录已如实承认，不算隐瞒，但确实存在被永远遗忘的可能；唯一低成本兜底是把「下一个任务补 074 行并标 MERGED」写进 EVIDENCE 的下一步。
+    > **剩余风险**：本分支没有 TASK-074 的记录，我无法验证它在 main 上的 `status`。若它在 main 上已是 `MERGED`，076 一合并，main 的治理检查会立刻 FAIL。合并前请确认 main 上该记录为 ACCEPTED。
+
+  主 Agent 对验收三条的处置：**F1 已补**（最终候选上重跑，指纹见上）；**F2 已补**（本次写回）；**F3 已如实登记**（见下方非阻断遗留 3）。验收提的剩余风险已核实并消除：`git show origin/main:docs/tasks/TASK-074-citation-metadata.md` 为 `status = "ACCEPTED"`，且 main 的索引里没有 `^| [TASK-074` 行——并行窗口合法，076 合并后 main 的治理检查不会因此 FAIL。
+- 最终状态/风险/用户操作：**ACCEPTED**。L3 执行链走完：1 Worker → 自动检查 → 独立只读 Reviewer（三轮 PASS）→ 独立只读 Integration/Acceptance（一轮 CHANGES_REQUIRED，三条证据口径已全部补齐）。风险：改的是会 FAIL 的 CI 门禁，误报会拦住无辜 PR——已用「现仓库 0 误报」「逐条反例对上原因」「8 个变异全部被抓」三重证据约束。**需要用户操作：合并 PR。** 合并后这条门禁对之后每个 PR 生效；**下一个任务必须先补 TASK-074 的索引行并把它标为 MERGED**（见下）。
+- 非阻断遗留项：
+  1. **（第一轮 Review F1，记录）** 「行状态必须等于记录 status」在「某任务已有索引行、却在后续并行窗口里成了非持有者」时无合规解法。**重评触发**：真的出现暂停后重启、且已有行的任务成为非持有者——届时要么把索引给它，要么把该条收紧为「任一侧为 MERGED 时才比对」（代价是放过 ACCEPTED ↔ IN_REVIEW 的漂移）。
+  2. **（第一轮 Review F4，记录）** 首列里若出现转义管道 `\|`，`split(" | ")` 会让列错位、状态列误报 `invalid index status`。现有 74 行无此写法，失败可定位、改回即好。**重评触发**：有人在任务标题里用了转义管道。
+  3. **（验收 F3，如实登记）** 正文第 51、106 行写的「TASK-074 的记录此刻只在**未合并**的 PR #81 上」**已过时**：用户已于本任务实施期间合并 PR #81（merge `48f232e`），该合并早于第二、第三候选。正文在 EVIDENCE 区外不可改，故在此更正。**含义：074 的登记义务不是「将来」，是现在已到期。**
+  4. **（验收指出的无界窗口）** 本任务的门禁拦得住「登记只做了一半」，拦不住「合并后既没人标 MERGED、也没人补行」。要管那一类得用 main 上的合并事实做判据（读 git 历史），属另一条不变量。**重评触发**：再出现一次「合并很久没人登记」。
+- **下一步（不是遗留，是到期的动作）**：本任务合并后，**下一个已授权任务的控制面提交必须做两件事**——给 `TASK-074` 补索引行、把它的记录与索引行都标成 `MERGED`（合并事实：用户 2026-09-20 合并 PR #81，merge `48f232e`）。本任务做不到是因为 074 的记录只在 main 上、而本分支基于合并前的 `eeb4399`，且 Agent 被 `.claude/settings.json` 的 deny 规则禁止执行 merge。新门禁会在「074 被标 MERGED 却没有行」时报 `never registered`，但不会催人开始做这件事——所以写在这里。
 - 日期与决定日志：2026-09-20 TASK-073/074 并行撞索引冲突 → 用户选定救火方案「撤回 074 的索引行」→ 用户「现在就开一个」授权把改进写成规则与门禁 → 登记 TASK-076。
 <!-- EVIDENCE:END -->
