@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-070"
-status = "READY"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "给已冻结的公共契约新增查询能力：顶层 `GET /api/v1/notes` 增加可选 `q`（只搜标题），需同步《API与数据契约基线》2.3 搜索白名单、10 节操作行、4.8 节笔记说明与 openapi-v1.json。按第 4 节「架构、公共 API」归 L3，与 TASK-027/032/034/057 同类（均为契约放宽，全部定 L3）。无数据迁移、无模型字段变化、不改写任何既有语义：资料内心得列表仍不接受 q（传了 422），/notes 仍只列独立心得。执行链：Worker → 自动检查 → 独立只读 Reviewer → 独立只读 Integration/Acceptance。"
 risk_flags = ["public-api", "architecture"]
@@ -88,9 +88,26 @@ checks = ["backend", "frontend", "contracts"]
 
 ## 实现与测试
 
-- 实现 SHA/变更摘要：待填
-- 命令、真实退出结果、product_fingerprint、环境、未运行原因：待填
-- 已知限制/未完成项：待填
+- 实现 SHA：`776e9ba`（登记 `d807e85`；`2bc5f0f` 只改本记录的 `risk_flags` 取值——原写 `contract`/`public_api`，`docs/governance/risk-policy.json` 的合法值是 `public-api`/`architecture`，`check_task.py` 因此先 FAIL，改后 PASS；等级仍是 L3，未变更风险判断）。
+- 变更摘要：
+  - **后端契约模型**（`modules/notes/contracts.py`）：新增 `normalized_search()`（NFKC + casefold + 空白折叠，与 `resources`/`taxonomy` 各自持有一份同形）、`note_title()`（首个非空行；去行首 `#{1,6} `、行内图片只留替代文字、纯图片行跳过；**不截断**）、`StandaloneNoteQuery(NoteQuery)` 只给顶层集合加 `q`（`min_length=1, max_length=200`，与资料 `q` 同形）。资料下的列表仍用 `NoteQuery`，`extra="forbid"` 使 `?q=` 得到 422。
+  - **存储层**（`note_store.py`）：`_page` 增加可选 `q`；无 `q` 时与以往一字不差。有 `q` 时按排序取 `(id, substr(content, 1, 4001))`，在 Python 侧派生标题并匹配，过滤后再切片，只为**当页**读完整行。`_search_title()` 处理前缀被截断的情形：只从完整行派生，找不到就单独回源读这一条完整正文（首行是大 base64 图片时会走到）。
+  - **API/应用层**：`list_standalone_notes` 改用 `StandaloneNoteQuery`，`page_standalone` 透传 `q`；其余端点未动。
+  - **契约文档**（`API与数据契约基线.md`）：2.3 白名单表新增「独立心得列表」一行；10 节 `GET /api/v1/notes` 操作行补 `q` 与「分页计数按过滤后结果集算」；4.8/§312 补明标题搜索不改变「笔记不进入资料统一搜索」；交付说明段追加 TASK-070 一句。**`openapi-v1.json`** 的 `listStandaloneNotes` 增加 `q` 参数（含派生规则说明），`x-contract-section` 补 `2.3`。
+  - **前端**：`listNotes` 增加第 5 个参数 `q`（空白串＝不搜、不发 `q=`；带 `q` 却指定了 resourceId、或超 200 字符 → 本地 `INVALID_REQUEST`，不发无效请求）。`NotesPage` 去掉对已加载项的前端过滤，改为停笔 250ms 后带 `q` 请求第一页（`useResourceQuery` 的 key 含 `needle`，第一页一换旧的「加载更多」页自动作废），「加载更多」沿用同一 `q`；文案改为「按标题搜索全部心得」「只按标题搜索，正文里的词不算」，空结果、搜索中、选中项不在结果里各有对应文案。
+  - `docs/开发与运行.md` 心得一节补一句搜索口径。
+- 新测试与判别性（均实际验证）：
+  - backend `tests/test_notes.py` +5 例：标题派生规则（与前端 `noteTitle.ts` 同口径，含「不截断」）；只搜标题（正文里的 Kubernetes 不命中）+ NFKC/大小写/空白折叠三种写法都命中；前缀之外的标题（首行是 6000 字符 base64 图片）仍命中、图片替代文字可搜；过滤后分页（`total_items`/`total_pages`/`has_more` 与页内容一致、排序仍生效）；`?q=` 在资料下的列表 422、空串 422、201 字符 422、200 字符 200、未知参数仍 422。**判别性**：去掉回源 → 「前缀之外的标题」红；把匹配对象从标题换成正文前缀 → 「只搜标题」红。
+  - frontend `NotesPage.test.tsx`：旧的「前端过滤、不问后端」用例改写为「搜索走接口、有防抖、显示接口返回的结果」，另加「翻页带着同一搜索词」。**判别性**：`q` 不透传 → 两例红；去掉防抖 → 前一例红（连敲三次会打出三条请求）。`api.test.ts` 补 `q` 的编码/空白/越界与跨集合拦截。TASK-063 那条图片用例里原本断言「前端搜索跳过 base64」的部分删去并注明：该职责自本任务起在后端的标题派生上，由 backend 用例守。
+  - e2e `notes-pages.spec.ts` +1：真实后端下建两条独立心得（一条标题含冷僻词、一条只有正文含），搜索只命中前者，搜正文词得到「没有标题含…」，清空恢复两条；同文件原有那条流程用例的搜索断言同步改为新文案。
+- 命令与结果（本机 macOS 25.5.0，backend `uv` 虚拟环境 Python 3.13，frontend Node devDependencies；均在 `776e9ba` 的工作区）：
+  - backend：`ruff check src tests` / `ruff format --check` / `mypy`（71 文件）均 0；`pytest -q` **561 passed**（TASK-069 时 556，+5）。
+  - frontend：`npm run lint` / `typecheck` / `format:check` 0；`vitest run` **657 passed**（+1 净增：新增 2 例、删除 1 例旧的前端过滤用例）；`playwright test` **67 passed**（+1）。
+  - 治理：`python3 scripts/governance/check_task.py --task docs/tasks/TASK-070-note-title-search.md --worktree` → **CHECKS PASS**，`profiles=backend,contracts,frontend`（含 OpenAPI 模型校验 exit=0、`uv build --offline` exit=0、前端 build exit=0）。
+- 已知限制/未完成项：
+  - 匹配在应用层做、不建索引：`q` 请求会按排序读一遍该集合的 `(id, 正文前 4001 字符)`。个人本机数据量下可接受；上千条心得时应改为持久化标题列 + SQL 过滤（当前不做，理由见任务的「主 Agent 登记的实现决定」）。
+  - 标题派生规则在前后端各有一份实现（`noteTitle.ts` / `note_title()`），靠两侧测试固定口径；规则若要改，必须两边同改。
+  - 搜索只覆盖**独立心得**（用户 2026-09-19 选定）：绑定资料的心得既不在该页，也没有搜索参数。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
