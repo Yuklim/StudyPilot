@@ -282,10 +282,11 @@ test('top-level notes page manages standalone notes: write, list, preview, edit,
   await expect(list).toContainText('补充的独立心得')
   await expect(list).not.toContainText('不先收藏资料')
 
-  // 搜索只在前端过滤。
-  await page.getByRole('searchbox', { name: '搜索心得' }).fill('没有这个词')
-  await expect(page.getByText(/没有包含「没有这个词」/)).toBeVisible()
-  await page.getByRole('searchbox', { name: '搜索心得' }).fill('')
+  // 搜索走接口、只看标题（TASK-070，完整形态见本文件末尾那条用例）。
+  await page.getByRole('searchbox', { name: '按标题搜索心得' }).fill('没有这个词')
+  await expect(page.getByText(/没有标题含「没有这个词」/)).toBeVisible()
+  await page.getByRole('searchbox', { name: '按标题搜索心得' }).fill('')
+  await expect(list).toContainText('补充的独立心得')
 
   // 删除：预览里一次确认。
   await list.getByRole('link', { name: /补充的独立心得/ }).click()
@@ -589,4 +590,36 @@ test('an image pasted into the editor is embedded as base64, previewed, saved an
   // 清理。
   const current = (await call(page, `/notes/${id}`)).body.data
   expect((await call(page, `/notes/${id}`, 'DELETE', undefined, current.version)).status).toBe(204)
+})
+
+test('the notes page searches every standalone note by title through the backend (TASK-070)', async ({
+  page,
+}) => {
+  // Real backend, real browser: the search box must hit the API (so notes that were
+  // never scrolled into view are still found) and must match the **title** only.
+  await page.goto('/notes')
+  for (const note of (await call(page, '/notes')).body.data)
+    expect((await call(page, `/notes/${note.id}`, 'DELETE', undefined, note.version)).status).toBe(
+      204,
+    )
+  const wanted = '# 检索目标 冷僻词兀兀\n正文里没有那个词。'
+  const decoy = '# 另一条心得\n正文里写了 冷僻词兀兀，但标题里没有。'
+  for (const content of [wanted, decoy])
+    expect((await call(page, '/notes', 'POST', { content })).status).toBe(201)
+
+  await page.goto('/notes')
+  const list = page.getByRole('list', { name: '心得列表' })
+  await expect(list.getByRole('listitem')).toHaveCount(2)
+  const box = page.getByRole('searchbox', { name: '按标题搜索心得' })
+  await box.fill('冷僻词兀兀')
+  // Only the note whose title carries the word; the body-only mention is not a hit.
+  await expect(list.getByRole('listitem')).toHaveCount(1)
+  await expect(list).toContainText('检索目标 冷僻词兀兀')
+  await expect(page.getByText(/只按标题搜索/)).toBeVisible()
+
+  await box.fill('正文里没有那个词')
+  await expect(page.getByText(/没有标题含「正文里没有那个词」的独立心得/)).toBeVisible()
+
+  await box.fill('')
+  await expect(list.getByRole('listitem')).toHaveCount(2)
 })

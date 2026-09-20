@@ -10,7 +10,8 @@ import type { Note } from './api'
 import { note as boundNote, notePage } from './fixtures'
 
 /**
- * 「我的心得」两栏管理 + 预览（TASK-061）。契约不变（`GET /notes` 只列独立心得、无搜索）；
+ * 「我的心得」两栏管理 + 预览（TASK-061）。`GET /notes` 仍只列独立心得；TASK-070 起它多了
+ * 一个按标题搜的 `q`，页面的搜索框改走接口（命中覆盖全部心得，不再只过滤已加载的几页）。
  * 这里守的是页面：列表/搜索/选中写网址/预览去重与转义/后贴/删除/加载更多/窄屏直接进编辑页。
  */
 const note = (overrides: Partial<Note> = {}): Note => boundNote({ resource_id: null, ...overrides })
@@ -119,24 +120,68 @@ describe('notes manager page', () => {
     ).toBeInTheDocument()
   })
 
-  it('filters the loaded notes by text without asking the backend', async () => {
+  it('sends the search to the backend, debounced, and shows what comes back', async () => {
     wide(true)
-    const request = mock((path) =>
-      path.startsWith('/api/v1/notes?') ? notePage(rows()) : samplePage([]),
-    )
+    // 判别性：`q` 不透传到请求里（或不带防抖多打几次）本例即红。
+    const request = mock((path) => {
+      if (!path.startsWith('/api/v1/notes?')) return samplePage([])
+      const q = new URLSearchParams(path.slice(path.indexOf('?'))).get('q')
+      if (q === null) return notePage(rows())
+      // 后端按标题匹配；这里只认「甲」，用来证明显示的是接口给的结果。
+      return notePage(q === '甲' ? [rows()[0]!] : [])
+    })
     mount('/notes')
     await screen.findByText('甲的标题')
     const before = request.mock.calls.length
-    fireEvent.change(screen.getByRole('searchbox', { name: '搜索心得' }), {
-      target: { value: '正文' },
-    })
-    expect(within(list()).getAllByRole('listitem')).toHaveLength(2)
-    fireEvent.change(screen.getByRole('searchbox', { name: '搜索心得' }), {
-      target: { value: '没有的词' },
-    })
+    const box = screen.getByRole('searchbox', { name: '按标题搜索心得' })
+    // 连着敲三下：防抖之后只该多出一次请求，且带的是最终的词。
+    fireEvent.change(box, { target: { value: '甲' } })
+    fireEvent.change(box, { target: { value: '甲的' } })
+    fireEvent.change(box, { target: { value: '甲' } })
+    await waitFor(() => expect(within(list()).getAllByRole('listitem')).toHaveLength(1))
+    const searches = request.mock.calls
+      .map(([path]) => String(path))
+      .filter((path) => path.startsWith('/api/v1/notes?') && path.includes('q='))
+    expect(searches).toEqual([
+      '/api/v1/notes?page=1&page_size=100&sort=-updated_at&q=' + encodeURIComponent('甲'),
+    ])
+    expect(request.mock.calls.length).toBe(before + 1)
+    expect(screen.getByText(/只按标题搜索/)).toBeInTheDocument()
+
+    // 没有命中的词：接口回空页，界面说清楚「只看标题」。
+    fireEvent.change(box, { target: { value: '没有的词' } })
+    await screen.findByText(/没有标题含「没有的词」的独立心得/)
     expect(screen.queryByRole('list', { name: '心得列表' })).toBeNull()
-    expect(screen.getByText(/没有包含「没有的词」/)).toBeInTheDocument()
-    expect(request.mock.calls.length).toBe(before)
+
+    // 清空搜索框回到完整列表（不再带 q）。
+    fireEvent.change(box, { target: { value: '' } })
+    await waitFor(() => expect(within(list()).getAllByRole('listitem')).toHaveLength(3))
+  })
+
+  it('keeps the search term while loading the next page of matches', async () => {
+    wide(true)
+    const request = mock((path) => {
+      if (!path.startsWith('/api/v1/notes?')) return samplePage([])
+      const params = new URLSearchParams(path.slice(path.indexOf('?')))
+      if (params.get('q') !== '周报') return notePage(rows())
+      // total 21 > 一页 20：第一页才会给出「加载更多」。
+      return params.get('page') === '2'
+        ? notePage([rows()[1]!], 2, 21)
+        : notePage([rows()[0]!], 1, 21)
+    })
+    mount('/notes')
+    await screen.findByText('甲的标题')
+    fireEvent.change(screen.getByRole('searchbox', { name: '按标题搜索心得' }), {
+      target: { value: '周报' },
+    })
+    await waitFor(() => expect(within(list()).getAllByRole('listitem')).toHaveLength(1))
+    fireEvent.click(screen.getByRole('button', { name: '加载更多' }))
+    await waitFor(() => expect(within(list()).getAllByRole('listitem')).toHaveLength(2))
+    const second = request.mock.calls
+      .map(([path]) => String(path))
+      .find((path) => path.includes('page=2'))
+    // 第二页必须带着同一个搜索词，否则翻出来的是没搜索时的下一页。
+    expect(second).toContain('q=' + encodeURIComponent('周报'))
   })
 
   it('loads the next page on demand', async () => {
@@ -260,15 +305,8 @@ describe('notes manager page', () => {
     expect(img?.getAttribute('alt')).toBe('截图')
     // 列表里的摘要不带 base64。
     expect(within(list()).getByText('截图 配文 zzqq')).toBeInTheDocument()
-    // 搜 base64 里肯定有的字母串：不能因为图片数据而命中；搜配文能命中。
-    fireEvent.change(screen.getByRole('searchbox', { name: '搜索心得' }), {
-      target: { value: 'UklGR' },
-    })
-    expect(screen.getByText(/已加载的心得里没有包含/)).toBeInTheDocument()
-    fireEvent.change(screen.getByRole('searchbox', { name: '搜索心得' }), {
-      target: { value: 'zzqq' },
-    })
-    expect(within(list()).getAllByRole('listitem')).toHaveLength(1)
+    // 「base64 不该被当成可搜文本」自 TASK-070 起由后端的标题派生负责（backend/tests/test_notes.py），
+    // 页面不再自己过滤，这里只守渲染与摘要。
   })
 
   it('closes the delete dialog on Escape and hands focus back to the trigger (TASK-062)', async () => {

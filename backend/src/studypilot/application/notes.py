@@ -15,6 +15,7 @@ from studypilot.modules.notes.contracts import (
     NoteError,
     NotePatch,
     NoteQuery,
+    StandaloneNoteQuery,
 )
 
 
@@ -78,7 +79,7 @@ def detail_standalone(note_id: UUID) -> dict[str, Any]:
     return {"data": transaction(lambda store: store.detail_standalone(note_id))}
 
 
-def page_standalone(query: NoteQuery) -> dict[str, Any]:
+def page_standalone(query: StandaloneNoteQuery) -> dict[str, Any]:
     return transaction(lambda store: store.page_standalone(query))
 
 

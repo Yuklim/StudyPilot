@@ -21,6 +21,7 @@ from studypilot.modules.notes.contracts import (
     NoteError,
     NotePatch,
     NoteQuery,
+    StandaloneNoteQuery,
 )
 
 router = APIRouter(prefix="/api/v1/resources/{resource_id}/notes", redirect_slashes=False)
@@ -212,7 +213,7 @@ def list_standalone_notes(request: Request) -> Response:
         if any(len(request.query_params.getlist(key)) != 1 for key in request.query_params):
             raise NoteError("VALIDATION_ERROR", 422)
         try:
-            query = NoteQuery.model_validate(dict(request.query_params))
+            query = StandaloneNoteQuery.model_validate(dict(request.query_params))
         except ValidationError:
             raise NoteError("VALIDATION_ERROR", 422) from None
         return notes.page_standalone(query)
