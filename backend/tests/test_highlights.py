@@ -8,10 +8,14 @@ writes, reading order, and what a resource deletion takes with it.
 """
 
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
+from sqlalchemy.orm import Session, sessionmaker
+
+from studypilot.infrastructure.database.models import ContentSnapshot
 
 CONTEXT = {"sec-fetch-site": "same-origin", "sec-fetch-mode": "cors", "sec-fetch-dest": "empty"}
 MARKDOWN = "# 神经网络\n\n神经网络主要由输入层、隐藏层、输出层构成。\n\n第二段。\n"
@@ -117,14 +121,35 @@ def test_a_highlight_keeps_its_anchor_and_stands_without_a_note(authorized: Test
     bare = add(authorized, resource, prefix=None, suffix=None, start_offset=0, end_offset=5)
     assert bare["prefix"] is None and bare["suffix"] is None
 
+    # Surrounding spaces are part of what was selected: trimming them would move
+    # the anchor, so the text is stored exactly as sent (contract 4.15).
+    spaced = add(authorized, resource, exact="  两侧有空格  ", start_offset=60, end_offset=70)
+    assert spaced["exact"] == "  两侧有空格  "
+
 
 @pytest.mark.usefixtures("database")
-def test_highlights_need_text_to_point_at(authorized: TestClient) -> None:
+def test_highlights_need_text_to_point_at(
+    authorized: TestClient, session_factory: sessionmaker[Session]
+) -> None:
     missing = {"id": str(uuid4())}
     error(authorized.post(path(missing), json=anchor()), 404, "RESOURCE_NOT_FOUND")
     # A resource with no snapshot has nothing to anchor into yet.
     without = web(authorized, "还没有正文")
     error(authorized.post(path(without), json=anchor()), 404, "SNAPSHOT_NOT_FOUND")
+    # A FAILED capture is not text either: it records why there is none. The write
+    # API only takes content, so the failed state is set the way a capture failure
+    # would leave it.
+    failed = readable(authorized, "抓取失败的正文")
+    with session_factory.begin() as session:
+        snapshot = session.scalar(
+            select(ContentSnapshot).where(ContentSnapshot.resource_id == UUID(failed["id"]))
+        )
+        assert snapshot is not None
+        snapshot.status = "FAILED"
+        snapshot.failure_code = "EXTRACTION_FAILED"
+        snapshot.content = snapshot.sha256 = None
+        snapshot.char_count = None
+    error(authorized.post(path(failed), json=anchor()), 404, "SNAPSHOT_NOT_FOUND")
     # Listing is allowed without a snapshot (empty), only writing needs one.
     empty = authorized.get(path(without)).json()
     assert empty["data"] == [] and empty["page"]["total_items"] == 0
@@ -184,6 +209,18 @@ def test_a_note_can_be_bound_rebound_and_released(authorized: TestClient) -> Non
         422,
         "VALIDATION_ERROR",
     )
+    # Leaving note_id out is refused rather than read as "unbind": a forgotten
+    # field must not quietly throw away the note a passage is about (Review F4).
+    bound = authorized.patch(
+        path(resource, body), json={"note_id": first["id"], "expected_version": 3}
+    )
+    assert bound.status_code == 200 and bound.json()["data"]["note_id"] == first["id"]
+    error(
+        authorized.patch(path(resource, body), json={"expected_version": 4}),
+        422,
+        "VALIDATION_ERROR",
+    )
+    assert authorized.get(path(resource, body)).json()["data"]["note_id"] == first["id"]
 
 
 @pytest.mark.usefixtures("database")

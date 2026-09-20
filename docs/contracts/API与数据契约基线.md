@@ -69,6 +69,7 @@ TASK-011/012 已完成分类后端与页面，TASK-013/014 已完成 FILE 后端
 | `listResourceNotes` / `createResourceNote` / `getResourceNote` / `updateResourceNote` / `deleteResourceNote` | TASK-017：既定个人笔记增删改查与稳定分页；严格正文、所属资料及版本保护，只写 Note，不改变资料、进度或原件，不提供全文搜索或回收站 |
 | `listStandaloneNotes` / `createStandaloneNote` / `getStandaloneNote` / `updateStandaloneNote` / `deleteStandaloneNote` | TASK-027：独立心得(resource_id 为 null)的增删改查与稳定分页；无资源可见性前置，版本/单事务/不回放/错误收敛同资源笔记 |
 | `attachNote` / `detachNote` | TASK-030：独立心得经 `attachNote` 后贴绑定到目标资料(resource_id null→该资料，目标需可读)、已绑定心得经 `detachNote` 解除回独立(该资料→null)；均版本化单事务写，成功后 version+1、content 不变、不回放，错误收敛同既有 note 写 |
+| `listResourceHighlights` / `createResourceHighlight` / `getResourceHighlight` / `updateResourceHighlight` / `deleteResourceHighlight` | TASK-071：阅读高亮的存储与读写（见 4.15）。锚点分层记录（原文 + 前后文 + 偏移）且**创建后不可改**，`PATCH` 只改心得绑定；写入要求资料可读且已有 READY 正文快照，列表不要求（无快照返回空页）。服务端不校验锚点是否仍能在正文里找到、不做重定位——定位在阅读器渲染时完成。删除资料连同高亮删除，影响计数新增 `highlight_count`；删除心得只解绑，不删高亮。界面接入另行实现（TASK-072） |
 
 - TASK-009～012 对 multipart 的临时 `415 CONTENT_TYPE_UNSUPPORTED` 限制由 TASK-013 的实际文件实现解除；合法 FILE 表单按第 5/8 节处理，其他媒体类型仍拒绝。缺失令牌或非法来源仍优先按第 7 节返回对应 `403`，不读正文或操作文件/数据库。
 - JSON 请求的 FILE 不属于 WEB/PASTE JSON schema，仍为 `422 VALIDATION_ERROR`。已开放的 WEB/PASTE 校验、错误、事务和只读投影必须完整符合其契约，不能借分阶段交付降低这些要求。
@@ -441,7 +442,7 @@ OpenAPI 中 `ReviewRecord` 用条件 schema 固化上述规则：`NEEDS_REVIEW` 
 | `exact` | string / `输入层、隐藏层、输出层` | C | 必填，1～2,000；**不去首尾空白** | 是 | highlights；用户标下来的原文，创建后不可改 |
 | `prefix` / `suffix` | string / null | C | 可空，各 0～200 | 是 | highlights；前后文，用于同一段文字多次出现时消歧；创建后不可改 |
 | `start_offset` / `end_offset` | int | C | `start_offset >= 0`，`end_offset > start_offset` | 否 | highlights；降级锚点（字符偏移），创建后不可改 |
-| `note_id` | uuid / null | C/U | 可空；必须是**同一份资料**下的笔记；一条笔记最多配一条高亮 | 否 | highlights；外键指向 `notes.id`，`ON DELETE SET NULL`；`PATCH` 唯一可改的字段 |
+| `note_id` | uuid / null | C/U | 创建时可空；**`PATCH` 里必填**（给 `null` 才是解绑，省略即 `422`）；必须是**同一份资料**下的笔记；一条笔记最多配一条高亮 | 否 | highlights；外键指向 `notes.id`，`ON DELETE SET NULL`；`PATCH` 唯一可改的字段 |
 | `version` | int | R | 默认 1 | 否 | highlights；只有改绑/解绑会推进 |
 | `created_at` / `updated_at` | instant | R | 自动 | 否 | highlights |
 
@@ -451,11 +452,11 @@ OpenAPI 中 `ReviewRecord` 用条件 schema 固化上述规则：`NEEDS_REVIEW` 
 
 **写入前置条件。** 资料必须可读，且必须已有 **READY 的正文快照**（`SNAPSHOT_NOT_FOUND`）——没有冻结的正文就没有可锚定的东西。**列表不要求快照**：没有快照时返回空页。
 
-**锚点不可变。** `PATCH` 只接受 `note_id`（给 `null` 即解绑）。让锚点可改会出现「同一条高亮指向完全不同的话却保留原有历史」；标另一段就是另一条高亮。
+**锚点不可变。** `PATCH` 只接受 `note_id`，且**必须显式给出**：`null` 是解绑，省略是 `422 VALIDATION_ERROR`——一个漏字段的请求不该悄悄解开用户配好的心得。让锚点可改会出现「同一条高亮指向完全不同的话却保留原有历史」；标另一段就是另一条高亮。
 
 **高亮独立于心得。** 用户 2026-09-19 选定的形态：选中即可标下来，心得可选配。链接放在 highlights 这一侧，`notes` 表不受影响；删除心得只把 `note_id` 置空（`SET NULL`），标下来的那段话仍在。删除资料按第 9 节连同高亮一起删除，影响计数为此新增 `highlight_count`。
 
-**本阶段的边界（TASK-071）。** 本任务只交付后端存储与四个接口；选区取锚点、上色渲染（CSS Custom Highlight API）、重定位与孤立提示属 TASK-072，因此本任务交付时界面上看不到变化。
+**本阶段的边界（TASK-071）。** 本任务只交付后端存储与五个接口（列表/新增/详情/改绑解绑/删除）；选区取锚点、上色渲染（CSS Custom Highlight API）、重定位与孤立提示属 TASK-072，因此本任务交付时界面上看不到变化。
 
 ## 5. 资料来源与创建契约 `[需求][细化]`
 

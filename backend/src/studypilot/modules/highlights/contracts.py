@@ -62,11 +62,16 @@ class HighlightPatch(BaseModel):
 
     The anchor is deliberately immutable: letting it change would turn one
     highlight into a mark on entirely different words while keeping its history.
-    Marking another passage is another highlight. `note_id: null` unbinds.
+    Marking another passage is another highlight.
+
+    `note_id` is **required and may be null**: null unbinds, and leaving the field
+    out is refused. A caller that forgot the field almost never meant "throw away
+    the note this passage is about", and silently doing it is the kind of loss the
+    user only notices much later (first-round Review, F4).
     """
 
     model_config = ConfigDict(extra="forbid", strict=True)
-    note_id: UUID | None = None
+    note_id: UUID | None
     expected_version: int = Field(ge=1)
 
 
