@@ -98,9 +98,30 @@ export function locatePage(
     if (anchor >= tops[at]!) index = at
     else break
   }
+  return { page: index + 1, ratio: ratioWithinPage(index + 1, scrollTop, tops, heights, viewport) }
+}
+
+/**
+ * 指定「就算第 `page` 页」时，视口中线落在这一页的比例。
+ *
+ * 跳页钉住意图那条路径要用它（`PdfReader` 的 `onScroll`）：页码按用户点的那页显示，**页内
+ * 比例仍要按真实位置算**。ratio 的定义必须与 `locatePage`/`scrollTopFor` 互逆——写死 0 的话
+ * 下次打开会滚到「页顶再往上半个视口」，比离开的地方高半屏（第二轮 Review 抓到的）。
+ * 页比半个视口还矮时比例夹在 1，回来的落点差在一页之内，误差有界。
+ */
+export function ratioWithinPage(
+  page: number,
+  scrollTop: number,
+  tops: number[],
+  heights: number[],
+  viewport = 0,
+): number {
+  if (!tops.length) return 0
+  const index = Math.min(Math.max(page - 1, 0), tops.length - 1)
   const height = heights[index] ?? 0
-  const ratio = height > 0 ? Math.min(1, Math.max(0, (anchor - tops[index]!) / height)) : 0
-  return { page: index + 1, ratio }
+  if (height <= 0) return 0
+  const anchor = scrollTop + viewport / 2
+  return Math.min(1, Math.max(0, (anchor - tops[index]!) / height))
 }
 
 /**

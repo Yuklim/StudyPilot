@@ -4,6 +4,7 @@ import {
   clearPdfPosition,
   locatePage,
   pdfPositionKey,
+  ratioWithinPage,
   readPdfPosition,
   scrollTopFor,
   writePdfPosition,
@@ -25,6 +26,21 @@ describe('pdf reading position', () => {
     // 滚过末页底部：停在末页，比例夹在 1。
     expect(locatePage(99999, tops, heights)).toEqual({ page: 4, ratio: 1 })
     expect(locatePage(500, [], [])).toEqual({ page: 1, ratio: 0 })
+  })
+
+  it('keeps a pinned jump invertible instead of writing ratio 0 (第二轮 Review)', () => {
+    const viewport = 600
+    // 「跳到第 2 页」是把这一页的顶部带到视口顶；此刻中线已经落进这一页 300px 处。
+    const top = tops[1]!
+    const ratio = ratioWithinPage(2, top, tops, heights, viewport)
+    expect(ratio).toBeCloseTo(300 / 800)
+    // 记下来的位置要能原样回到离开处。
+    expect(scrollTopFor({ page: 2, ratio }, tops, heights, viewport)).toBeCloseTo(top)
+    // 写死 0 就会落在页顶再往上半个视口——比离开的地方高半屏。
+    expect(scrollTopFor({ page: 2, ratio: 0 }, tops, heights, viewport)).toBeCloseTo(top - 300)
+    // 页比半个视口还矮时比例夹在 1，回来的落点差在一页之内。
+    expect(ratioWithinPage(1, 0, [0], [100], viewport)).toBe(1)
+    expect(ratioWithinPage(1, 0, [], [], viewport)).toBe(0)
   })
 
   it('goes back to the same place, whatever the zoom is', () => {

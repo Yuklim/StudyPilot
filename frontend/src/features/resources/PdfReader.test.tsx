@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { api } from '../../api/client'
 import { PdfReader } from './PdfReader'
-import { pdfPositionKey } from './pdfPosition'
+import { pdfPositionKey, scrollTopFor } from './pdfPosition'
 import type { OriginalFile } from './files'
 
 /**
@@ -125,6 +125,35 @@ describe('in-app pdf reader', () => {
     // 清空输入框：`Number('')` 是 0，但那不是「跳到第 0 页」。
     fireEvent.change(box, { target: { value: '' } })
     expect(box.value).toBe('3')
+  })
+
+  it('remembers where a jump really left the reader, not half a screen above it (第二轮 Review)', async () => {
+    vi.spyOn(api, 'downloadOriginal').mockResolvedValue({ blob: bytes(), fileName: 'paper.pdf' })
+    render(<PdfReader resourceId={resourceId} file={file} />)
+    await screen.findByLabelText('第 1 页')
+    const node = document.querySelector('.pdf-reader-pages') as HTMLElement
+    // jsdom 不排版：给滚动容器一个视口高度和一个真的存得住的 scrollTop。
+    let top = 0
+    Object.defineProperty(node, 'clientHeight', { configurable: true, get: () => 600 })
+    Object.defineProperty(node, 'scrollTop', {
+      configurable: true,
+      get: () => top,
+      set: (value: number) => {
+        top = value
+      },
+    })
+    fireEvent.change(screen.getByLabelText('页码'), { target: { value: '2' } })
+    // 每页 800 高、页间 16：第 2 页顶部在 816，跳页把它带到视口顶。
+    expect(node.scrollTop).toBe(816)
+    fireEvent.scroll(node)
+    await waitFor(() => expect(localStorage.getItem(pdfPositionKey(resourceId))).not.toBeNull())
+    const saved = JSON.parse(localStorage.getItem(pdfPositionKey(resourceId))!) as {
+      page: number
+      ratio: number
+    }
+    expect(saved.page).toBe(2)
+    // 关键：存下的位置要能原样回到离开处。钉住时写死 `ratio: 0` 的话这里是 516——高半屏。
+    expect(scrollTopFor(saved, [0, 816, 1632], [816, 816, 816], 600)).toBeCloseTo(816)
   })
 
   it('comes back to the page it was left on, and ignores a position saved for another file', async () => {

@@ -2,7 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { failureText } from './api'
 import { downloadOriginal, type OriginalFile } from './files'
-import { locatePage, readPdfPosition, scrollTopFor, writePdfPosition } from './pdfPosition'
+import {
+  locatePage,
+  ratioWithinPage,
+  readPdfPosition,
+  scrollTopFor,
+  writePdfPosition,
+} from './pdfPosition'
 
 /**
  * 站内读本地 PDF（TASK-073，用户 2026-09-20 在 Pencil 草图上确认的形态）。
@@ -58,16 +64,7 @@ function classify(cause: unknown): Failure {
   return { kind: 'read', detail: failureText(cause) }
 }
 
-export function PdfReader({
-  resourceId,
-  file,
-  onPages,
-}: {
-  resourceId: string
-  file: OriginalFile
-  /** 把「第几页 / 共几页」报给工具条。 */
-  onPages?: (state: { page: number; total: number }) => void
-}) {
+export function PdfReader({ resourceId, file }: { resourceId: string; file: OriginalFile }) {
   const [doc, setDoc] = useState<Doc | null>(null)
   const [failure, setFailure] = useState<Failure | null>(null)
   const [sizes, setSizes] = useState<{ width: number; height: number }[]>([])
@@ -132,9 +129,6 @@ export function PdfReader({
   }, [fileId, fileSize, fileType])
 
   const total = doc?.numPages ?? 0
-  useEffect(() => {
-    onPages?.({ page, total })
-  }, [page, total, onPages])
   useEffect(() => () => cancelAnimationFrame(frame.current), [])
 
   // --- 位置记忆：恢复一次，之后滚动就写回 ---
@@ -179,7 +173,21 @@ export function PdfReader({
       const target = pinned.current
       if (target && Math.abs(current.scrollTop - target.top) < 2) {
         setPage(target.page)
-        writePdfPosition(resourceId, { page: target.page, ratio: 0, fingerprint: fileId })
+        // 页码按意图走，**页内比例仍按真实位置算**：ratio 的定义是视口中线落在页内的比例，
+        // 与 `scrollTopFor` 互逆。原本这里写死 0，于是（一）跳页后离开，回来会落在「页顶再往上
+        // 半个视口」处，比离开的地方高半屏；（二）恢复位置时赋值 `scrollTop` 触发的这次 scroll
+        // 正好命中本分支，把刚读出来的精确比例覆盖成 0——读到一半离开，页内位置就丢了。
+        writePdfPosition(resourceId, {
+          page: target.page,
+          ratio: ratioWithinPage(
+            target.page,
+            current.scrollTop,
+            offsets.tops,
+            offsets.heights,
+            current.clientHeight,
+          ),
+          fingerprint: fileId,
+        })
         return
       }
       pinned.current = null
@@ -310,8 +318,10 @@ function PdfPageView({
     let alive = true
     let task: { cancel: () => void } | null = null
     void (async () => {
-      const target = await doc.getPage(number)
-      if (!alive) return
+      // 卸载或换文件时文档已被 `destroy()`，这里的 `getPage` 会抛；没人接就是一条未捕获的
+      // rejection（只污染控制台，但没必要留着）。
+      const target = await doc.getPage(number).catch(() => null)
+      if (!alive || !target) return
       const viewport = target.getViewport({ scale })
       const node = canvas.current
       const context = node?.getContext('2d')
