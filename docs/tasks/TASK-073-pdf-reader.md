@@ -26,6 +26,7 @@ allowed_paths = [
   "frontend/src/styles.css",
   "frontend/e2e/pdf-reader.spec.ts",
   "frontend/e2e/fixtures/**",
+  ".gitattributes",
   "docs/开发与运行.md",
   "docs/tasks/TASK-073-pdf-reader.md",
   "docs/tasks/TASK-072-highlight-reader.md",
@@ -70,6 +71,10 @@ checks = ["frontend"]
 - **pdf.js 的 worker 用打包产物而非 CDN**：`workerSrc` 指向打进 bundle 的文件。
 - **失败要分因**：加密（需要口令）、结构损坏、渲染异常三类给不同文案，都配「下载原件」。
 - **e2e 用一份自造的最小 PDF**（仓库内固定字节，不引入真实文献），放 `frontend/e2e/fixtures/`。
+
+### 登记后的路径修订（实施中，写入前记录）
+
+新增 `.gitattributes`（仓库原本没有这个文件）并追加进 `allowed_paths`：e2e 夹具是一份真实的小 PDF，而 PDF 的 xref 表每项固定 20 字节、**必须**以空格结尾；git 会把这种小体积 PDF 当文本，于是 `check_task.py` 里的 `git diff --check` 把格式要求的空格报成「行尾空格」并整体 FAIL。声明 `*.pdf binary` 是这件事的标准解法，也让将来任何 PDF 夹具不再踩同一个坑。内容仅此一行规则 + 注释。
 
 ## 完成条件
 

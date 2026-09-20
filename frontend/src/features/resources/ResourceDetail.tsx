@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { failureText, getResource, type Source } from './api'
 import { ContentSnapshot, type SnapshotState } from './ContentSnapshot'
 import { PdfReader } from './PdfReader'
+import { clearPdfPosition } from './pdfPosition'
 import { isPdfOriginal, type OriginalFile } from './files'
 import { ResourceDeleteDialog } from './ResourceDeleteDialog'
 import { ResourceError } from './ResourceState'
@@ -387,6 +388,8 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
   const afterDeletion = useCallback(() => {
     // 资料没了，本机记的阅读位置也没用了（TASK-067 Review F3）。
     clearPosition(resourceId)
+    // PDF 的位置是另一把钥匙，删资料时一起清（Review F5：TASK-067 的同一处置没平移过来）。
+    clearPdfPosition(resourceId)
     navigate('/resources')
   }, [navigate, resourceId])
 

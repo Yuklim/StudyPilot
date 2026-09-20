@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { api } from '../../api/client'
@@ -99,6 +99,32 @@ describe('in-app pdf reader', () => {
     vi.spyOn(api, 'downloadOriginal').mockRejectedValue(new Error('network'))
     const unread = render(<PdfReader resourceId={resourceId} file={file} />)
     expect(await within(unread.container).findByRole('alert')).toBeInTheDocument()
+  })
+
+  it('does not re-download when the parent hands over an equal-but-new file object (Review F1)', async () => {
+    // 改标签、存学习记录、编辑资料都会让父级重读资料，给出一个内容相同的新对象。按引用
+    // 依赖会整份重下重解析，而清理又会销毁此刻仍在用的文档——那个窗口里一滚动就是空白页。
+    const download = vi
+      .spyOn(api, 'downloadOriginal')
+      .mockResolvedValue({ blob: bytes(), fileName: 'paper.pdf' })
+    const view = render(<PdfReader resourceId={resourceId} file={file} />)
+    await screen.findByLabelText('第 1 页')
+    expect(download).toHaveBeenCalledTimes(1)
+    view.rerender(<PdfReader resourceId={resourceId} file={{ ...file }} />)
+    await screen.findByLabelText('第 1 页')
+    expect(download).toHaveBeenCalledTimes(1)
+  })
+
+  it('treats an emptied page box as unfinished input, not as page zero (Review F3)', async () => {
+    vi.spyOn(api, 'downloadOriginal').mockResolvedValue({ blob: bytes(), fileName: 'paper.pdf' })
+    render(<PdfReader resourceId={resourceId} file={file} />)
+    await screen.findByLabelText('第 1 页')
+    const box = screen.getByLabelText('页码') as HTMLInputElement
+    fireEvent.change(box, { target: { value: '3' } })
+    expect(box.value).toBe('3')
+    // 清空输入框：`Number('')` 是 0，但那不是「跳到第 0 页」。
+    fireEvent.change(box, { target: { value: '' } })
+    expect(box.value).toBe('3')
   })
 
   it('comes back to the page it was left on, and ignores a position saved for another file', async () => {

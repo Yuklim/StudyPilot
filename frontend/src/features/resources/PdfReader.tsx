@@ -75,16 +75,31 @@ export function PdfReader({
   const [page, setPage] = useState(1)
   const container = useRef<HTMLDivElement>(null)
   const restored = useRef(false)
+  /** 最近一次「跳到第 N 页」的意图：滚动稳定在 `top` 上时页码就按它显示。 */
+  const pinned = useRef<{ page: number; top: number } | null>(null)
+  const frame = useRef(0)
 
   // --- 取字节并打开 ---
   // 换一份原件就**整个重挂**（父级给 `key={file.id}`），所以这里不用在 effect 里同步重置
   // 状态——同步 setState 会触发级联渲染，项目的 lint 直接禁掉了这种写法。
+  //
+  // 依赖只看 `file.id`，**不看 `file` 这个对象**（Review F1）：改标签、存学习记录、编辑资料
+  // 都会让父级重读资料、给出一个内容相同的新对象；按引用依赖会整份 PDF 重新下载重解析，
+  // 而 cleanup 又会 `destroy()` 掉此刻 state 里仍在用的文档，那个窗口里一滚动就是空白页。
+  // 拆成基本类型再进依赖：对象引用每次重读资料都会变，这几个值不会（同一份原件不可更换）。
+  const { id: fileId, size_bytes: fileSize, media_type: fileType } = file
   useEffect(() => {
     let alive = true
     let opened: Doc | null = null
     void (async () => {
       try {
-        const download = await downloadOriginal(file)
+        const download = await downloadOriginal({
+          id: fileId,
+          original_name: '',
+          size_bytes: fileSize,
+          media_type: fileType,
+          status: 'READY',
+        })
         const bytes = await download.blob.arrayBuffer()
         if (!alive) return
         opened = await openDocument(bytes)
@@ -114,12 +129,13 @@ export function PdfReader({
       alive = false
       if (opened) void opened.destroy()
     }
-  }, [file])
+  }, [fileId, fileSize, fileType])
 
   const total = doc?.numPages ?? 0
   useEffect(() => {
     onPages?.({ page, total })
   }, [page, total, onPages])
+  useEffect(() => () => cancelAnimationFrame(frame.current), [])
 
   // --- 位置记忆：恢复一次，之后滚动就写回 ---
   const offsets = useMemo(() => {
@@ -139,29 +155,51 @@ export function PdfReader({
     if (!sizes.length || restored.current) return
     restored.current = true
     const saved = readPdfPosition(resourceId)
-    if (!saved || saved.fingerprint !== file.id) return
+    if (!saved || saved.fingerprint !== fileId) return
     const node = container.current
     if (!node) return
     node.scrollTop = scrollTopFor(saved, offsets.tops, offsets.heights, node.clientHeight)
-    setPage(Math.min(saved.page, sizes.length))
-  }, [sizes, offsets, resourceId, file.id])
+    const wanted = Math.min(saved.page, sizes.length)
+    pinned.current = { page: wanted, top: node.scrollTop }
+    setPage(wanted)
+  }, [sizes, offsets, resourceId, fileId])
 
   const onScroll = useCallback(() => {
     const node = container.current
     if (!node || !sizes.length) return
-    const at = locatePage(node.scrollTop, offsets.tops, offsets.heights, node.clientHeight)
-    setPage(at.page)
-    writePdfPosition(resourceId, { ...at, fingerprint: file.id })
-  }, [offsets, resourceId, sizes.length, file.id])
+    // 按帧节流：滚动事件一秒能来上百次，每次都 `JSON.stringify` + 写 localStorage 会卡顿
+    // （Review F2；与正文阅读位置那边同一套做法）。
+    if (frame.current) return
+    frame.current = requestAnimationFrame(() => {
+      frame.current = 0
+      const current = container.current
+      if (!current) return
+      // 跳页是明确的意图：滚动稳定到目标位置之前，页码按用户点的那页显示，别被中线判据改口
+      // （Review F4：一页比半个视口还矮时，顶部对齐后中线会落进下一页）。
+      const target = pinned.current
+      if (target && Math.abs(current.scrollTop - target.top) < 2) {
+        setPage(target.page)
+        writePdfPosition(resourceId, { page: target.page, ratio: 0, fingerprint: fileId })
+        return
+      }
+      pinned.current = null
+      const at = locatePage(current.scrollTop, offsets.tops, offsets.heights, current.clientHeight)
+      setPage(at.page)
+      writePdfPosition(resourceId, { ...at, fingerprint: fileId })
+    })
+  }, [offsets, resourceId, sizes.length, fileId])
 
   const goTo = useCallback(
     (target: number) => {
       const node = container.current
       if (!node || !sizes.length) return
-      const wanted = Math.min(Math.max(target, 1), sizes.length)
-      // 跳页是把那一页的**顶部**带到视口顶（人的预期），不是把中线对齐；随后的 scroll 事件
-      // 会按中线重算页码与位置，短文档滚不到底时得到的就是最接近的那一页。
-      node.scrollTop = offsets.tops[wanted - 1] ?? 0
+      // 输入框被清空时 `Number('')` 是 0：那不是「跳到第 0 页」，是还没输完（Review F3）。
+      if (!Number.isFinite(target) || target < 1) return
+      const wanted = Math.min(Math.round(target), sizes.length)
+      // 跳页是把那一页的**顶部**带到视口顶（人的预期），并记下这次意图。
+      const top = offsets.tops[wanted - 1] ?? 0
+      pinned.current = { page: wanted, top }
+      node.scrollTop = top
       setPage(wanted)
     },
     [offsets, sizes.length],
