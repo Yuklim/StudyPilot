@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-069"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L2"
 risk_reason = "唯一有行为变化的是 TASK-068 F2：`quoteRequest` 从单槽位改成待消费队列，让 `available=false` 瞬态窗口内的连续两次「记下这段」都进草稿，不再被后一次覆盖。改的是既有前端组件间的 prop 形状与消费逻辑（ResourceDetail ↔ NotesPanel），不碰接口、契约、数据含义，按 business 归 L2：独立只读 Review；验收 N/A。其余为文档数字、提示文案、ref 赋值、useMemo、测试清理与注释，单独看是 L1，取最高级按 L2 走一次 Review。"
 risk_flags = ["business"]
@@ -99,13 +99,13 @@ checks = ["frontend"]
   > 剩余风险：低。未消费引文仍只在内存、刷新即失（与旧行为一致）；F3 属理论窗口，无定向用例。我未重跑检查，采信记录中的 vitest 656 / e2e 66 / CHECKS PASS；如候选相对 `fbaedd9` 另有代码改动需重跑。
 - Reviewer 提的候选一致性：已核对 `git diff --stat fbaedd9 9d08e90` 只含本记录一文件，工作树与 `9d08e90` 无差异，检查证据成立。
 - Acceptance：L2，N/A。
-- 最终状态/风险/用户操作：**ACCEPTED**，等用户合并 PR。风险低：唯一行为变化是引文队列，覆盖有判别性用例；其余为文档/文案/注释/性能与一处 ref 赋值。
+- 最终状态/风险/用户操作：**MERGED**——2026-09-19 用户已合并 PR #77，merge commit `44eb28a`（登记并入 TASK-070 控制面）。风险低：唯一行为变化是引文队列，覆盖有判别性用例；其余为文档/文案/注释/性能与一处 ref 赋值。
 - 非阻断遗留项（Review findings 处置）：
   - F1 **记录**：完成条件里「既有引文用例……保持绿」措辞宽于实际——`quoteRequest` 的自动化覆盖只有本次新增的一条（删除/保存中作废、焦点落末尾等分支无定向用例）。与 TASK-068 持平、未变差；按规则证据写回不改标记区外的完成条件，改在此处如实记下。重评触发：下次再动引文链路时补齐分支用例。
   - F2 **已修**：索引行状态同步为 ACCEPTED。
   - F3 **记录**（可选）：引文批次被 `deleting/pending` 作废时仍推进 `quoteConsumed` 并触发一次聚焦，删除/保存结束后焦点会落进写作框——与旧单槽位同形，用户至今未反馈；改动它会牵动 TASK-045/051 两轮复审守住的焦点形态，成本大于收益。重评触发：用户反馈删除后焦点被抢。
   - F4 **记录**（可选）：`token === quotes.length` 是 ResourceDetail 与 NotesPanel 之间的隐式不变量（两处均有注释）；若将来队列要裁剪，必须两处同改。
-- 日期与决定日志：2026-09-19 用户「改吧」→ 登记 TASK-069 → 实现 `fbaedd9` → 冻结候选 `9d08e90` → L2 独立 Review PASS（4 条非阻断）→ ACCEPTED，待用户合并。
+- 日期与决定日志：2026-09-19 用户「改吧」→ 登记 TASK-069 → 实现 `fbaedd9` → 冻结候选 `9d08e90` → L2 独立 Review PASS（4 条非阻断）→ ACCEPTED → 2026-09-19 用户合并 PR #77，MERGED。
 
 此区禁止放入或变更任务授权、风险等级、允许路径、检查要求、实现或测试记录。
 <!-- EVIDENCE:END -->
