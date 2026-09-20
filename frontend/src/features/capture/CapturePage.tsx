@@ -191,12 +191,19 @@ export function CapturePage() {
       {citationMiss ? (
         <div className="resource-error">
           <p role="alert">
-            资料和正文都保存好了，只有文献信息没存上：{citationMiss.reason}{' '}
+            {/*
+              不写「**只有**文献信息没存上」：图片也可能同时没冻上，那句话在组合状态下
+              就是假的（Review 第二轮）。同理，图片那块已经给了「打开这份资料」时这里
+              不再重复一个同名按钮。
+            */}
+            资料和正文都保存好了，文献信息没存上：{citationMiss.reason}{' '}
             打开这份资料，在右栏的「信息」里可以自己补。这里不会自动重试，也不会因此重新建一份。
           </p>
-          <Link className="journal-button" to={`/resources/${citationMiss.id}`}>
-            打开这份资料
-          </Link>
+          {images ? null : (
+            <Link className="journal-button" to={`/resources/${citationMiss.id}`}>
+              打开这份资料
+            </Link>
+          )}
         </div>
       ) : null}
 
