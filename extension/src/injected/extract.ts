@@ -2,10 +2,19 @@ import Defuddle from 'defuddle/full'
 
 import {
   CAPTURE_EXTRACTED,
+  MAX_CITATION_AUTHOR,
+  MAX_CITATION_AUTHORS,
+  MAX_CITATION_CONTAINER,
+  MAX_CITATION_LOCATOR,
+  MAX_CITATION_NAME,
+  MAX_CITATION_STAMP,
+  MAX_CITATION_YEAR,
   MAX_IMAGES,
   MAX_MARKDOWN,
   MAX_TITLE,
+  MIN_CITATION_YEAR,
   isSafeImageUrl,
+  type CapturedCitation,
   type CapturePayload,
 } from '../shared/protocol'
 
@@ -88,6 +97,142 @@ export function collectImages(markdown: string, baseUrl: string): string[] {
   return found.slice(0, MAX_IMAGES)
 }
 
+/**
+ * 认出这一页声明的文献信息（TASK-075）。**只读这一页自己写在 `<meta>`/JSON-LD 里的东西**，
+ * 不联网核对——本机应用不出网，这条承诺与 `useAsync: false` 同源。
+ *
+ * 取值顺序固定为「结构化的在前，含糊的在后」：`citation_*`（Google Scholar 那套 Highwire
+ * 标签，学术站点几乎都有）→ `DC.*`（都柏林核心）→ JSON-LD 的 schema.org。
+ *
+ * **作者只认结构化来源。** Defuddle 也给一个 `author` 字符串，但那是「张三, 李四」还是
+ * 「张三（某机构）」无从判断，拆错了比不填更糟——认不准就不猜，是这一块的总原则。
+ */
+function metaValues(doc: Document, name: string): string[] {
+  const found: string[] = []
+  // name 与 property 都要看：Highwire 用 name，OG/schema 系用 property。
+  for (const node of doc.querySelectorAll('meta[name], meta[property]')) {
+    const key = (node.getAttribute('name') ?? node.getAttribute('property') ?? '').toLowerCase()
+    if (key !== name) continue
+    const content = (node.getAttribute('content') ?? '').trim()
+    if (content) found.push(content)
+  }
+  return found
+}
+
+/** 去空白、按上限截断；空串一律折成 null（「未知」只留一种写法）。 */
+function bounded(value: string | undefined, max: number): string | null {
+  const text = (value ?? '').trim()
+  if (!text) return null
+  return [...text].length > max ? [...text].slice(0, max).join('') : text
+}
+
+/** 页面里所有 JSON-LD 的 @type，小写。解析失败的块跳过，不因一处坏 JSON 放弃整页。 */
+function schemaTypes(doc: Document): string[] {
+  const types: string[] = []
+  const walk = (node: unknown) => {
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item)
+      return
+    }
+    if (!node || typeof node !== 'object') return
+    const record = node as Record<string, unknown>
+    const type = record['@type']
+    if (typeof type === 'string') types.push(type.toLowerCase())
+    if (Array.isArray(type))
+      for (const item of type) if (typeof item === 'string') types.push(item.toLowerCase())
+    if (Array.isArray(record['@graph'])) walk(record['@graph'])
+  }
+  for (const node of doc.querySelectorAll('script[type="application/ld+json"]')) {
+    try {
+      walk(JSON.parse(node.textContent ?? ''))
+    } catch {
+      // 坏 JSON 在真实网页上很常见，跳过它继续看下一块。
+    }
+  }
+  return types
+}
+
+export function extractCitation(doc: Document, url: string): CapturedCitation | null {
+  const first = (...names: string[]) => {
+    for (const name of names) {
+      const found = metaValues(doc, name)[0]
+      if (found) return found
+    }
+    return undefined
+  }
+  const doi = bounded(first('citation_doi', 'dc.identifier.doi'), MAX_CITATION_NAME)
+  const container = bounded(
+    first(
+      'citation_journal_title',
+      'citation_conference_title',
+      'citation_inbook_title',
+      'dc.source',
+    ),
+    MAX_CITATION_CONTAINER,
+  )
+  const types = schemaTypes(doc)
+  const says = (...wanted: string[]) => wanted.some((type) => types.includes(type))
+
+  // **门槛**：有 DOI、或有期刊/会议名、或 schema.org 明说是论文/书，才算认出了文献。
+  // 只有作者和日期的普通博客不算——否则每篇博客都弹这块卡片，用户很快就会无视它。
+  if (!doi && !container && !says('scholarlyarticle', 'book', 'thesis', 'report')) return null
+
+  const authors = metaValues(doc, 'citation_author')
+    .concat(metaValues(doc, 'dc.creator'))
+    .map((name) => bounded(name, MAX_CITATION_AUTHOR))
+    .filter((name): name is string => name !== null)
+    .slice(0, MAX_CITATION_AUTHORS)
+  const stamp = first('citation_publication_date', 'citation_date', 'dc.date')
+  const year = Number((stamp ?? '').slice(0, 4))
+  const firstPage = first('citation_firstpage')
+  const lastPage = first('citation_lastpage')
+  const conference = Boolean(first('citation_conference_title'))
+  // 页面明说自己是什么，就按它说的算——既然这些声明足以让我们把卡片显示出来，
+  // 就没有理由在类型上又不信它。都没说时才看 DOI/期刊，最后才落到 OTHER。
+  const item_type: CapturedCitation['item_type'] = says('book')
+    ? 'BOOK'
+    : says('thesis') || first('citation_dissertation_name')
+      ? 'THESIS'
+      : says('report')
+        ? 'REPORT'
+        : conference
+          ? 'CONFERENCE_PAPER'
+          : says('scholarlyarticle') || container || doi
+            ? // arXiv 这类预印本站点也给 DOI，但没有期刊名：有 DOI 无期刊 + 域名是
+              // arxiv 就按预印本算，别的一律按期刊论文。
+              !container && /(^|\.)arxiv\.org$/i.test(hostOf(url))
+              ? 'PREPRINT'
+              : 'JOURNAL_ARTICLE'
+            : 'OTHER'
+  return {
+    item_type,
+    authors,
+    issued_year:
+      Number.isSafeInteger(year) && year >= MIN_CITATION_YEAR && year <= MAX_CITATION_YEAR
+        ? year
+        : null,
+    issued_date: bounded(stamp, MAX_CITATION_STAMP),
+    container_title: container,
+    volume: bounded(first('citation_volume'), MAX_CITATION_LOCATOR),
+    issue: bounded(first('citation_issue'), MAX_CITATION_LOCATOR),
+    pages: bounded(
+      firstPage && lastPage ? `${firstPage}-${lastPage}` : (firstPage ?? lastPage),
+      MAX_CITATION_LOCATOR,
+    ),
+    publisher: bounded(first('citation_publisher', 'dc.publisher'), MAX_CITATION_NAME),
+    doi,
+    isbn: bounded(first('citation_isbn', 'dc.identifier.isbn'), MAX_CITATION_STAMP),
+  }
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname
+  } catch {
+    return ''
+  }
+}
+
 export function extractFromDocument(doc: Document, url: string): CapturePayload {
   // markdown: true 让 Defuddle 直接把正文转成 Markdown 放进 content。
   //
@@ -104,6 +249,7 @@ export function extractFromDocument(doc: Document, url: string): CapturePayload 
     url: normalizeSourceUrl(url),
     markdown,
     images: collectImages(markdown, url),
+    citation: extractCitation(doc, url),
   }
 }
 

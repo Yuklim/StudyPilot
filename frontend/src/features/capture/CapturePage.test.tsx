@@ -322,3 +322,106 @@ describe('imageFailureText', () => {
     expect(imageFailureText('VERSION_CONFLICT', 1)).toContain('VERSION_CONFLICT')
   })
 })
+
+describe('capture page · citation', () => {
+  const citation = {
+    item_type: 'JOURNAL_ARTICLE' as const,
+    authors: ['Karpathy, Anna', '李维'],
+    issued_year: 2024,
+    issued_date: '2024/03/01',
+    container_title: 'Nature Machine Intelligence',
+    volume: '6',
+    issue: '3',
+    pages: '245-259',
+    publisher: 'Springer Nature',
+    doi: '10.1038/s42256-024-00812-x',
+    isbn: null,
+  }
+  const paper = { ...captured, citation }
+
+  /** 资料与正文都成功；文献那一次由调用方决定怎么回。 */
+  function backend(onCitation: () => unknown = () => ({ data: {} })) {
+    return vi.spyOn(api, 'request').mockImplementation(async (path, options) => {
+      if (path === '/api/v1/resources' && options?.method === 'POST') return { data: sample() }
+      if (path.endsWith('/citation')) return onCitation()
+      if (options?.method === 'PUT') return { data: snapshotSample }
+      return undefined
+    })
+  }
+
+  it('shows what it recognised, ticked, and stores it alongside the resource', async () => {
+    const request = backend()
+    mount()
+    await screen.findByText(/还没有收到扩展发来的内容/)
+    deliver({}, paper)
+    const toggle = await screen.findByRole('checkbox', { name: /一并存下来/ })
+    expect(toggle).toBeChecked()
+    expect(screen.getByText('Karpathy, Anna；李维')).toBeInTheDocument()
+    expect(screen.getByText('Nature Machine Intelligence')).toBeInTheDocument()
+    expect(screen.getByText('期刊论文')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '保存为资料' }))
+    await waitFor(() =>
+      expect(
+        request.mock.calls.some(
+          ([path, options]) => path.endsWith('/citation') && options?.method === 'PUT',
+        ),
+      ).toBe(true),
+    )
+    const [, options] = request.mock.calls.find(([path]) => path.endsWith('/citation'))!
+    // 整份写入、首次不带 expected_version；空字段不出现。
+    expect(options!.body).toEqual({
+      item_type: 'JOURNAL_ARTICLE',
+      authors: ['Karpathy, Anna', '李维'],
+      issued_year: 2024,
+      issued_date: '2024/03/01',
+      container_title: 'Nature Machine Intelligence',
+      volume: '6',
+      issue: '3',
+      pages: '245-259',
+      publisher: 'Springer Nature',
+      doi: '10.1038/s42256-024-00812-x',
+    })
+  })
+
+  it('writes nothing extra when the user unticks it', async () => {
+    const request = backend()
+    mount()
+    await screen.findByText(/还没有收到扩展发来的内容/)
+    deliver({}, paper)
+    fireEvent.click(await screen.findByRole('checkbox', { name: /一并存下来/ }))
+    fireEvent.click(screen.getByRole('button', { name: '保存为资料' }))
+    await waitFor(() =>
+      expect(request.mock.calls.some(([path]) => path === '/api/v1/resources')).toBe(true),
+    )
+    expect(request.mock.calls.filter(([path]) => path.endsWith('/citation'))).toEqual([])
+  })
+
+  it('adds nothing at all to the page when the page is not a paper', async () => {
+    backend()
+    mount()
+    await screen.findByText(/还没有收到扩展发来的内容/)
+    deliver()
+    await screen.findByDisplayValue('如何理解数据库索引')
+    expect(screen.queryByRole('checkbox', { name: /一并存下来/ })).toBeNull()
+    expect(screen.queryByText(/这页看起来是一篇文献/)).toBeNull()
+  })
+
+  it('keeps the resource when only the citation fails to save, and says where to fix it', async () => {
+    const request = backend(() => {
+      throw new ApiError('UNKNOWN_ERROR', 500)
+    })
+    mount()
+    await screen.findByText(/还没有收到扩展发来的内容/)
+    deliver({}, paper)
+    fireEvent.click(await screen.findByRole('button', { name: '保存为资料' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/只有文献信息没存上/)
+    expect(screen.getByRole('link', { name: '打开这份资料' })).toBeInTheDocument()
+    // 不因为这次失败重新建一份资料。
+    expect(
+      request.mock.calls.filter(
+        ([path, options]) => path === '/api/v1/resources' && options?.method === 'POST',
+      ),
+    ).toHaveLength(1)
+  })
+})

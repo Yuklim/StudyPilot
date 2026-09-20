@@ -8,6 +8,7 @@ import {
   uploadSnapshotAsset,
 } from '../resources/api'
 
+import { EMPTY_DRAFT, ITEM_TYPE_LABELS, putCitation } from '../resources/citation'
 import { askExtensionForImage, freezeImages, imageFailureText } from './freeze'
 import {
   CAPTURE_READY,
@@ -30,6 +31,9 @@ import {
  */
 export function CapturePage() {
   const navigate = useNavigate()
+  // 识别到文献时默认勾上：识别到了却默认不存，等于白识别。取消只影响这一次。
+  const [saveCitation, setSaveCitation] = useState(true)
+  const [citationMiss, setCitationMiss] = useState<{ id: string; reason: string } | null>(null)
   const [captured, setCaptured] = useState<CapturePayload | null>(null)
   const [title, setTitle] = useState('')
   const [markdown, setMarkdown] = useState('')
@@ -115,6 +119,17 @@ export function CapturePage() {
           return
         }
       }
+      // 文献信息放在最后写：资料与正文才是这一页的正事，文献没存上不该连累它们。
+      // 失败就**停在这一页**如实说清（与图片没冻上同一条口径），不自动重试、不回滚。
+      if (captured.citation && saveCitation) {
+        try {
+          await putCitation(created.id, { ...EMPTY_DRAFT, ...captured.citation }, null)
+        } catch (cause) {
+          if (!alive.current) return
+          setCitationMiss({ id: created.id, reason: failureText(cause) })
+          return
+        }
+      }
       if (alive.current) navigate(`/resources/${created.id}`)
     } catch (cause) {
       if (!alive.current) return
@@ -160,6 +175,18 @@ export function CapturePage() {
             ))}
           </ul>
           <Link className="journal-button" to={`/resources/${images.id}`}>
+            打开这份资料
+          </Link>
+        </div>
+      ) : null}
+
+      {citationMiss ? (
+        <div className="resource-error">
+          <p role="alert">
+            资料和正文都保存好了，只有文献信息没存上：{citationMiss.reason}{' '}
+            打开这份资料，在右栏的「信息」里可以自己补。这里不会自动重试，也不会因此重新建一份。
+          </p>
+          <Link className="journal-button" to={`/resources/${citationMiss.id}`}>
             打开这份资料
           </Link>
         </div>
@@ -218,6 +245,49 @@ export function CapturePage() {
                 onChange={(event) => setMarkdown(event.target.value)}
               />
             </label>
+            {captured.citation ? (
+              <div className="capture-citation">
+                <label className="capture-citation-toggle">
+                  <input
+                    type="checkbox"
+                    checked={saveCitation}
+                    onChange={(event) => setSaveCitation(event.target.checked)}
+                  />
+                  这页看起来是一篇文献，一并存下来
+                </label>
+                <dl className="reader-info-list">
+                  <dt>类型</dt>
+                  <dd>{ITEM_TYPE_LABELS[captured.citation.item_type]}</dd>
+                  {captured.citation.authors.length > 0 ? (
+                    <>
+                      <dt>作者</dt>
+                      <dd>{captured.citation.authors.join('；')}</dd>
+                    </>
+                  ) : null}
+                  {captured.citation.issued_year !== null ? (
+                    <>
+                      <dt>年份</dt>
+                      <dd>{captured.citation.issued_year}</dd>
+                    </>
+                  ) : null}
+                  {captured.citation.container_title ? (
+                    <>
+                      <dt>出处</dt>
+                      <dd>{captured.citation.container_title}</dd>
+                    </>
+                  ) : null}
+                  {captured.citation.doi ? (
+                    <>
+                      <dt>DOI</dt>
+                      <dd>{captured.citation.doi}</dd>
+                    </>
+                  ) : null}
+                </dl>
+                <p className="resource-hint">
+                  识别可能不准，而且只看这一页自己声明的内容，没有联网核对。存下来之后在资料的「信息」里随时能改或清空。
+                </p>
+              </div>
+            ) : null}
             {error ? <p role="alert">{error}</p> : null}
             <div className="resource-actions">
               <button type="submit" className="journal-button primary">

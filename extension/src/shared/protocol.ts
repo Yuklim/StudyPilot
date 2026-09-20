@@ -46,6 +46,50 @@ export const MAX_IMAGE_BYTES = 10 * 1024 * 1024
  */
 export const MAX_IMAGES = 60
 
+/** 文献信息的上限，与后端 `modules/citations/contracts.py` 一一对应（契约 4.16）。 */
+export const CITATION_ITEM_TYPES = [
+  'JOURNAL_ARTICLE',
+  'PREPRINT',
+  'CONFERENCE_PAPER',
+  'BOOK',
+  'BOOK_CHAPTER',
+  'THESIS',
+  'REPORT',
+  'WEBPAGE',
+  'OTHER',
+] as const
+export const MAX_CITATION_AUTHORS = 100
+export const MAX_CITATION_AUTHOR = 200
+export const MIN_CITATION_YEAR = 1000
+export const MAX_CITATION_YEAR = 2200
+export const MAX_CITATION_STAMP = 32
+export const MAX_CITATION_LOCATOR = 50
+export const MAX_CITATION_NAME = 200
+export const MAX_CITATION_CONTAINER = 500
+
+/**
+ * 采集时认出来的文献信息。认不出就是 `null` —— 多数网页不是文献，那是常态而非失败。
+ *
+ * 字段与后端文献接口（契约 4.16）同名同义，页面确认后原样交给 `PUT /citation`。
+ * 这里**不带** `abstract`：摘要动辄上万字，为它把消息载荷撑大不值得，而它也不是
+ * 用户在确认页上会看的东西。
+ */
+export interface CapturedCitation {
+  item_type: (typeof CITATION_ITEM_TYPES)[number]
+  /** 至多 MAX_CITATION_AUTHORS 位，每位去空白后非空；认不出作者时是空数组。 */
+  authors: string[]
+  issued_year: number | null
+  /** 原样保留的出版日期字符串（`2024-03`、`Spring 2024` 都有人这么写），不解析。 */
+  issued_date: string | null
+  container_title: string | null
+  volume: string | null
+  issue: string | null
+  pages: string | null
+  publisher: string | null
+  doi: string | null
+  isbn: string | null
+}
+
 export interface CapturePayload {
   /** 可为空字符串：后端标题可空（TASK-029），页面据此显示「未命名资料」。 */
   title: string
@@ -58,6 +102,13 @@ export interface CapturePayload {
    * 用户拒绝了权限 —— 那件事发生在此之后，由页面按取回结果如实告知。
    */
   images: string[]
+  /**
+   * 采集时认出来的文献信息；认不出就是 `null`（多数网页不是文献）。
+   *
+   * **可缺省**：旧版本扩展留下的暂存里没有这个字段，缺失与 `null` 同义（契约 14.2）。
+   * 接收端的 `capturedFrom` 会把它归一成 `null`，好让「认不出」只有一种写法。
+   */
+  citation?: CapturedCitation | null
 }
 
 /**
@@ -140,6 +191,57 @@ export function matchPatternFor(url: URL): string {
 
 // 中转脚本用它，防的是「自己存坏了」。
 /**
+ * 文献信息的校验。`null` 与缺失都算「没认出来」，一律放行为 `null`。
+ *
+ * 上限逐条对齐后端（契约 4.16）：超一个字都判整块不合格而不是截断——截断会让用户
+ * 在确认页上看到的与最终存下的不是同一份，而这一块的全部价值就在于「你看到的就是
+ * 要存的」。扩展侧在产出时就已按同样的上限收口，所以这里红了说明是有人在伪造消息。
+ */
+export function isCapturedCitation(value: unknown): value is CapturedCitation | null {
+  if (value === null || value === undefined) return true
+  if (typeof value !== 'object' || Array.isArray(value)) return false
+  const candidate = value as Record<string, unknown>
+  const bounded = (field: string, max: number) => {
+    const item = candidate[field]
+    if (item === null || item === undefined) return true
+    return typeof item === 'string' && item.trim().length >= 1 && [...item].length <= max
+  }
+  if (!(CITATION_ITEM_TYPES as readonly string[]).includes(candidate.item_type as string))
+    return false
+  const authors = candidate.authors
+  if (!Array.isArray(authors) || authors.length > MAX_CITATION_AUTHORS) return false
+  if (
+    !authors.every(
+      (name) =>
+        typeof name === 'string' &&
+        name.trim().length >= 1 &&
+        [...name].length <= MAX_CITATION_AUTHOR,
+    )
+  )
+    return false
+  const year = candidate.issued_year
+  if (
+    year !== null &&
+    year !== undefined &&
+    (typeof year !== 'number' ||
+      !Number.isSafeInteger(year) ||
+      year < MIN_CITATION_YEAR ||
+      year > MAX_CITATION_YEAR)
+  )
+    return false
+  return (
+    bounded('issued_date', MAX_CITATION_STAMP) &&
+    bounded('container_title', MAX_CITATION_CONTAINER) &&
+    bounded('volume', MAX_CITATION_LOCATOR) &&
+    bounded('issue', MAX_CITATION_LOCATOR) &&
+    bounded('pages', MAX_CITATION_LOCATOR) &&
+    bounded('publisher', MAX_CITATION_NAME) &&
+    bounded('doi', MAX_CITATION_NAME) &&
+    bounded('isbn', MAX_CITATION_STAMP)
+  )
+}
+
+/**
  * 接收端一律先过这道校验再使用：结构对不上就丢弃，不猜测、不补救。
  *
  * **任何网页都能向同源窗口 postMessage**，所以这不是防御性编程的客套，而是这条
@@ -157,5 +259,6 @@ export function isCapturePayload(value: unknown): value is CapturePayload {
   if (typeof url !== 'string' || !isSafeSourceUrl(url)) return false
   if (typeof markdown !== 'string') return false
   if (!isImageList(candidate.images)) return false
+  if (!isCapturedCitation(candidate.citation)) return false
   return markdown.trim().length > 0 && markdown.length <= MAX_MARKDOWN
 }

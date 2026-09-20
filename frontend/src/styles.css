@@ -3471,3 +3471,26 @@ a.source-chip:focus-visible {
   margin: 0;
   font-size: 13px;
 }
+
+/* 采集确认页里「识别到的文献信息」（TASK-075）：只读卡片 + 一个可取消的勾选。 */
+.capture-citation {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid #bfc8b5;
+  border-radius: 10px;
+  background: var(--paper);
+}
+.capture-citation-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.capture-citation .reader-info-list {
+  font-size: 13px;
+}
+.capture-citation .resource-hint {
+  margin: 0;
+}
