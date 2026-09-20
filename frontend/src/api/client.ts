@@ -14,6 +14,8 @@ export interface DeletionImpact {
   /** TASK-039 起随删除预览返回：这份资料的快照下已冻结的图片张数。 */
   snapshot_asset_count: number
   note_count: number
+  /** TASK-071 起随删除预览返回：这份资料上已标下的高亮条数。 */
+  highlight_count: number
   study_record_count: number
   active_review_plan_count: number
   review_record_count: number
@@ -157,6 +159,7 @@ function deletionImpact(value: unknown): DeletionImpact | undefined {
     'original_file_count',
     'snapshot_asset_count',
     'note_count',
+    'highlight_count',
     'study_record_count',
     'active_review_plan_count',
     'review_record_count',

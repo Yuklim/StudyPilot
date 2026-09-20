@@ -36,11 +36,43 @@ function snapshotOf(content: string) {
   }
 }
 
+const highlightId = '018f1f58-4eb2-4a0d-a716-fb81b1960201'
+const savedNoteId = '018f1f58-4eb2-4a0d-a716-fb81b1960301'
+/** 本次挂载里发出的高亮写请求，按顺序记下来。 */
+let marked: { method: string; path: string; body: Record<string, unknown> }[] = []
+
 function mount(initial = sample()) {
+  marked = []
   // 保存学习记录后详情重读要拿到新进度（真实后端如此），否则「记为学习进度」不会消失。
   let item = initial
   const request = vi.spyOn(api, 'request').mockImplementation(async (path: string, init) => {
     if (path === `${detailPath}/snapshot`) return { data: snapshotOf(article) }
+    // TASK-072：高亮。默认没有已存的，创建/改绑回一条最小可信的记录。
+    if (path.startsWith(`${detailPath}/highlights`)) {
+      if (init?.method === 'POST' || init?.method === 'PATCH') {
+        const sent = (init.body ?? {}) as Record<string, unknown>
+        marked.push({ method: init.method, path, body: sent })
+        return {
+          data: {
+            id: highlightId,
+            resource_id: resourceId,
+            exact: typeof sent.exact === 'string' ? sent.exact : '输入层、隐藏层、输出层',
+            prefix: (sent.prefix as string | null) ?? null,
+            suffix: (sent.suffix as string | null) ?? null,
+            start_offset: typeof sent.start_offset === 'number' ? sent.start_offset : 0,
+            end_offset: typeof sent.end_offset === 'number' ? sent.end_offset : 11,
+            note_id: (sent.note_id as string | null) ?? null,
+            version: init.method === 'PATCH' ? 2 : 1,
+            created_at: '2026-09-19T02:00:00Z',
+            updated_at: '2026-09-19T02:00:00Z',
+          },
+        }
+      }
+      return {
+        data: [],
+        page: { number: 1, size: 100, total_items: 0, total_pages: 0, has_more: false },
+      }
+    }
     if (path === `${detailPath}/snapshot/assets`) return { data: [] }
     if (path.startsWith(`${detailPath}/notes?`))
       return {
@@ -83,6 +115,19 @@ function mount(initial = sample()) {
       }
       return result
     }
+    if (path === `${detailPath}/notes` && init?.method === 'POST') {
+      const sent = init.body as { content: string }
+      return {
+        data: {
+          id: savedNoteId,
+          resource_id: resourceId,
+          content: sent.content,
+          version: 1,
+          created_at: '2026-09-19T02:10:00Z',
+          updated_at: '2026-09-19T02:10:00Z',
+        },
+      }
+    }
     if (path.startsWith(`${detailPath}/study-records`)) return samplePage([])
     if (path === detailPath) return { data: item }
     return samplePage([])
@@ -91,15 +136,28 @@ function mount(initial = sample()) {
   return request
 }
 
-/** 让 `window.getSelection` 报告一个落在 `node` 里的选区（jsdom 不会自己产生选区）。 */
+/**
+ * 让 `window.getSelection` 报告一个落在 `node` 里的选区（jsdom 不会自己产生选区）。
+ * TASK-072 起「标下来」要按真实 `Range` 取锚点，所以文本能在 `node` 里找到时给一个**真的**
+ * `Range`；找不到（选的是别处、或空选区）就沿用只够判「在不在正文里」的替身。
+ */
 function selectText(text: string, node: Node | null) {
+  const value = node?.nodeValue ?? ''
+  const at = text && value ? value.indexOf(text.split('\n')[0]!) : -1
+  const real = (() => {
+    if (!node || at === -1) return null
+    const range = document.createRange()
+    range.setStart(node, at)
+    range.setEnd(node, Math.min(at + text.length, value.length))
+    return range
+  })()
   const selection = {
     isCollapsed: !text,
     rangeCount: text ? 1 : 0,
     anchorNode: node,
     focusNode: node,
     toString: () => text,
-    getRangeAt: () => ({ startContainer: node }),
+    getRangeAt: () => real ?? ({ startContainer: node } as unknown as Range),
     // 真实浏览器清掉选区后 `selectionchange` 再来时选区是空的；mock 也照此。
     removeAllRanges: vi.fn(() => {
       selection.isCollapsed = true
@@ -167,6 +225,67 @@ describe('记下这段', () => {
     selectText('第二节。', screen.getByText('第二节。').firstChild)
     fireEvent.click(pill()!)
     expect(editor().value.endsWith('> 当隐藏层只有一层时叫两层网络。\n\n> 第二节。\n\n')).toBe(true)
+  })
+
+  it('marks the passage without opening the composer (TASK-072)', async () => {
+    mount()
+    const paragraph = await screen.findByText(/神经网络主要由输入层/)
+    selectText('神经网络主要由输入层、隐藏层、输出层构成。', paragraph.firstChild)
+    fireEvent.click(screen.getByRole('button', { name: '标下来' }))
+    // 锚点按渲染后的正文取：原文 + 前后文 + 偏移，一起发出去。
+    await waitFor(() => expect(marked).toHaveLength(1))
+    expect(marked[0]!.method).toBe('POST')
+    expect(marked[0]!.body.exact).toBe('神经网络主要由输入层、隐藏层、输出层构成。')
+    expect(typeof marked[0]!.body.start_offset).toBe('number')
+    expect(marked[0]!.body.end_offset).toBe(
+      (marked[0]!.body.start_offset as number) +
+        '神经网络主要由输入层、隐藏层、输出层构成。'.length,
+    )
+    // 只标记：右栏落在「高亮」Tab 上，心得 Tab 没被选中。
+    expect(screen.getByRole('tab', { name: /高亮/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: '心得' })).toHaveAttribute('aria-selected', 'false')
+    // 切回心得看一眼：草稿一个字都没多。
+    fireEvent.click(screen.getByRole('tab', { name: '心得' }))
+    expect(editor()).toHaveValue('')
+  })
+
+  it('marks what was quoted and binds the note that gets saved for it (TASK-072)', async () => {
+    mount()
+    const paragraph = await screen.findByText(/神经网络主要由输入层/)
+    selectText('神经网络主要由输入层、隐藏层、输出层构成。', paragraph.firstChild)
+    fireEvent.click(pill()!)
+    // 「记下这段」= 引文进草稿 + 顺手标下来。
+    await waitFor(() => expect(marked).toHaveLength(1))
+    expect(marked[0]!.method).toBe('POST')
+    expect(editor().value).toContain('> 神经网络主要由输入层、隐藏层、输出层构成。')
+
+    fireEvent.change(editor(), { target: { value: '这段要记住。' } })
+    fireEvent.submit(screen.getByRole('form', { name: '心得编辑' }))
+    // 心得一保存就配到刚标下的那条高亮上；解绑与改绑都走同一个 PATCH。
+    await waitFor(() => expect(marked).toHaveLength(2))
+    expect(marked[1]!.method).toBe('PATCH')
+    expect(marked[1]!.path).toBe(`${detailPath}/highlights/${highlightId}`)
+    expect(marked[1]!.body).toMatchObject({ expected_version: 1 })
+    expect(marked[1]!.body.note_id).toBe(savedNoteId)
+  })
+
+  it('drops a pending pairing when the reader turns to an existing note (Review F3)', async () => {
+    mount()
+    const paragraph = await screen.findByText(/神经网络主要由输入层/)
+    // 先「记下这段」——这条高亮开始等一条心得。
+    selectText('神经网络主要由输入层、隐藏层、输出层构成。', paragraph.firstChild)
+    fireEvent.click(pill()!)
+    await waitFor(() => expect(marked).toHaveLength(1))
+    // 改主意：只标一下别的段落（明确不想配心得）。
+    selectText('第二节。', screen.getByText('第二节。').firstChild)
+    fireEvent.click(screen.getByRole('button', { name: '标下来' }))
+    await waitFor(() => expect(marked).toHaveLength(2))
+    // 之后随手写的一条心得不该被配到任何一条高亮上。
+    fireEvent.click(screen.getByRole('tab', { name: '心得' }))
+    fireEvent.change(editor(), { target: { value: '与上面两段都无关的一句。' } })
+    fireEvent.submit(screen.getByRole('form', { name: '心得编辑' }))
+    await waitFor(() => expect(screen.getByText(/心得已保存/)).toBeInTheDocument())
+    expect(marked.filter((call) => call.method === 'PATCH')).toHaveLength(0)
   })
 
   it('formats multi-line selections as a Markdown blockquote and ignores oversized ones', () => {
@@ -311,6 +430,7 @@ describe('删除资料', () => {
               original_file_count: 0,
               snapshot_asset_count: 0,
               note_count: 0,
+              highlight_count: 0,
               study_record_count: 0,
               active_review_plan_count: 0,
               review_record_count: 0,

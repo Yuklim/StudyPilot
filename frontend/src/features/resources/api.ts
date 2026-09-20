@@ -121,6 +121,7 @@ function deletionImpact(value: unknown): DeletionImpact {
     'original_file_count',
     'snapshot_asset_count',
     'note_count',
+    'highlight_count',
     'study_record_count',
     'active_review_plan_count',
     'review_record_count',

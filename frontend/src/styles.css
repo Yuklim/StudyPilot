@@ -10,6 +10,10 @@
   --green: #52684e;
   --muted: #6d736a;
   --line: #e3e5da;
+  --ink: #303a32;
+  /* 高亮的底色（TASK-072，Pencil 草图定的暖黄）与它在卡片里的浅一档版本。 */
+  --mark: #f4e7b2;
+  --mark-soft: #fbf2d4;
 }
 
 * {
@@ -3024,24 +3028,115 @@ a.source-chip:focus-visible {
   position: fixed;
   z-index: 7;
   transform: translate(-50%, -100%);
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--green);
+  box-shadow: 0 4px 14px rgba(48, 58, 50, 0.22);
+}
+/* 胶囊里两个动作之间的细线（TASK-072）：「标下来」只上色，「记下这段」还开心得框。 */
+.reader-quote-divider {
+  width: 1px;
+  height: 16px;
+  background: rgba(255, 253, 248, 0.35);
 }
 .reader-quote-button {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 8px 14px;
+  padding: 7px 13px;
   border: 0;
   border-radius: 999px;
-  background: var(--green);
+  background: transparent;
   color: var(--paper);
   font: inherit;
   font-size: 12px;
   font-weight: 600;
-  box-shadow: 0 4px 14px rgba(48, 58, 50, 0.22);
   cursor: pointer;
 }
 .reader-quote-button:hover {
-  background: #45593f;
+  background: rgba(255, 253, 248, 0.16);
+}
+/* 「标下来」用高亮本身的颜色作底：按钮长什么样，标完就是什么样。 */
+.reader-quote-button.mark {
+  background: var(--mark);
+  color: var(--ink);
+}
+.reader-quote-button.mark:hover {
+  background: #eedf9c;
+}
+
+/* --- 高亮（TASK-072） ---
+   上色走 CSS Custom Highlight API：直接给 Range 着色，正文 DOM 一个节点都不加。浏览器不
+   支持这个规则时整条被忽略，高亮就只是列在右栏里——降级本身不需要额外代码。 */
+::highlight(studypilot-mark) {
+  background-color: var(--mark);
+  color: var(--ink);
+}
+.reader-highlights {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.reader-highlights-hint {
+  margin: 0;
+}
+.reader-highlights-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.reader-highlights-list > li {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+}
+.reader-highlights-list > li.orphaned {
+  background: #f6f5f0;
+}
+.reader-highlight-orphan {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.reader-highlight-quote {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--mark-soft);
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--ink);
+}
+.reader-highlights-list > li.orphaned .reader-highlight-quote {
+  background: #eeece6;
+  color: var(--muted);
+}
+.reader-highlight-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--green);
+}
+.reader-highlight-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+}
+.reader-highlight-actions .text-link.danger {
+  color: var(--muted);
+}
+.reader-highlights-empty {
+  padding: 20px;
 }
 /* 「记为学习进度 N%」：与状态徽章并排的次级按钮。**只在宽屏（≥1280px）显示**：窄屏顶栏本就
    一行排满，多一个文字按钮会折成三行（320px 实测 57→151px），随滚动出现的这次增高还会把

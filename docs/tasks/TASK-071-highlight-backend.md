@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-071"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "新增一张用户数据表 `highlights`（0007 迁移）、一个新后端模块与四个公共接口，并给资料删除的影响预览新增 `highlight_count` 与清单条目。命中架构/公共 API/迁移/关键数据模型四项高风险标志中的多项，取最高按 L3 走：Worker → 自动检查 → 独立只读 Reviewer → 独立只读 Integration/Acceptance。这是用户数据（用户读文章时亲手标的段落），删除与级联语义必须一次定准。"
 risk_flags = ["architecture", "public-api", "migration", "critical-data"]
@@ -153,11 +153,11 @@ checks = ["backend", "contracts"]
   > 另核实：前端两个 `deletionImpact` 校验器（`api/client.ts:154-173`、`features/resources/api.ts:118-137`）按固定键遍历、忽略未知键，**新增 `highlight_count` 不会打断现有删除对话框**；F5 经代码核实为真（`note_store.py:154-164` 的 detach 只改 `resource_id`，不管高亮）。
   > Findings（非阻断）：① 任务索引行仍 READY 且写「四个接口」；② openapi 的 `deleteResourceHighlight` 409 指向带 `NOTE_ALREADY_HIGHLIGHTED` 示例的组件，而 DELETE 只会 `VERSION_CONFLICT`；③ 0007 降级缺一句「丢弃数据即撤销本意」的说明。
 - 验收项处置（形成第三候选 `55a14ac`）：①②③ 全部修正——索引行改 IN_ACCEPTANCE/「五个接口」；DELETE 的 409 改指现成的 `VersionConflict`（`x-error-codes` 本就正确，未动）；`0007_highlights.downgrade()` 补 docstring，行为未改。`check_task.py --worktree` 复跑 **CHECKS PASS**。同一 Reviewer 第三次增量复审 `45f2495..55a14ac` **PASS，No findings**：「DELETE 现为 404 `ResourceOrHighlightNotFound` / 409 `VersionConflict` / 428 `PreconditionRequired`，三个引用与 `highlight_store.delete`（只有 `find` + `check_version`）逐条对应；`HighlightNoteConflict` 现只剩 POST/PATCH 引用，两者确实可返回该码；降级只加 docstring，两行未变。」
-- 最终状态/风险/用户操作：**ACCEPTED**，等用户合并 PR。风险低：新增表与新增端点，既有接口与 `notes` 语义一字未动；`q is None` 式的既有路径不受影响；两轮 Review + 三次增量 + 独立验收均 PASS。**交付时界面无变化**——高亮要等 TASK-072 才看得见。用户操作：合并 PR，合并后本机库会由启动脚本升到 0007。
+- 最终状态/风险/用户操作：**MERGED**——2026-09-19 用户已合并 PR #79，merge commit `0522381`（登记并入 TASK-072 控制面）。风险低：新增表与新增端点，既有接口与 `notes` 语义一字未动；`q is None` 式的既有路径不受影响；两轮 Review + 三次增量 + 独立验收均 PASS。**交付时界面无变化**——高亮要等 TASK-072 才看得见。用户操作：合并 PR，合并后本机库会由启动脚本升到 0007。
 - 非阻断遗留项：
   - **F5（记录 → 交 TASK-072）** `attachNote`/`detachNote` 能把一条已被高亮绑定的心得移出该资料，留下违反 4.15「`note_id` 须同资料」的**悬挂绑定**。修它要改 notes 的移动语义（本任务非目标），且后果可恢复（重新绑回即可，不丢数据）。TASK-072 需处理：读取高亮时若其 `note_id` 指向的心得已不在本资料，按「没有配心得」展示并允许重新配。重评触发：TASK-072 落地时一并处理。
   - **F6（记录）** 删除心得由数据库的 `SET NULL` 触发，**不推进** `highlight.version`（4.15 已写明）。旧版本客户端手里的高亮仍显示原 `note_id`，直到它重新读取。单用户本机下无实际影响。
   - **F7（记录）** `require_note` 的占用检查是 SELECT-then-INSERT，两个并发请求抢同一条心得时靠 `UNIQUE(note_id)` 兜底，会得到 500 而不是 409。本机单用户、且需同一毫秒内两次写才触发。重评触发：出现多写入方（如扩展与页面同时写）时改为捕获 `IntegrityError` 转 409。
   - **（记录）** `highlight_count` 已进删除影响预览，但前端删除对话框目前只显示 `note_count`；在 TASK-072 让用户能创建高亮之前，这个差距对用户不可见。
-- 日期与决定日志：2026-09-19 用户选定第三部分＝高亮能存住，形态＝高亮可单独存在、可选配心得 → 登记 TASK-071（后端）；前端为 TASK-072 → 实现 `a66639b` → 两轮 Review（首轮 CHANGES_REQUIRED，三条必修全在契约文档层）+ 独立验收 PASS → 最终候选 `55a14ac` → ACCEPTED，待用户合并。
+- 日期与决定日志：2026-09-19 用户选定第三部分＝高亮能存住，形态＝高亮可单独存在、可选配心得 → 登记 TASK-071（后端）；前端为 TASK-072 → 实现 `a66639b` → 两轮 Review（首轮 CHANGES_REQUIRED，三条必修全在契约文档层）+ 独立验收 PASS → 最终候选 `55a14ac` → ACCEPTED → 2026-09-19 用户合并 PR #79，MERGED。
 <!-- EVIDENCE:END -->

@@ -38,6 +38,7 @@ export function NotesPanel({
   focusRequest = 0,
   quoteRequest,
   onCount,
+  onSaved,
 }: {
   /** 绑定资料的心得传资源 id；独立心得(顶层「我的心得」页)传 null 或不传。 */
   resourceId?: string | null
@@ -61,6 +62,11 @@ export function NotesPanel({
    * 只在心得区挂载、`scope` 有资料时才有意义，由 `ResourceDetail` 传入；独立用法不传。
    */
   onCount?: (total: number) => void
+  /**
+   * TASK-072：一条心得**新建**成功后回传。阅读器用它把刚写的心得配到「记下这段」时标下的
+   * 那条高亮上（契约 4.15 的 `note_id`）。修改既有心得不回调——那条心得早就配好了。
+   */
+  onSaved?: (note: Note) => void
 }) {
   const scope = resourceId ?? null
   const standalone = scope === null
@@ -285,6 +291,9 @@ export function NotesPanel({
       } else {
         const saved = await saveNote(scope, expanded, selected)
         if (alive.current) setNotice(`心得已保存 · ${displayTime(saved.updated_at)}`)
+        // 只有**新建**才回调：阅读器据此把它配到刚标下的高亮上（TASK-072）。改既有心得
+        // 不回调——那条心得的配对早就定了，重复 PATCH 只会白推一次版本。
+        if (!selected) onSaved?.(saved)
       }
       if (alive.current) {
         reset()
