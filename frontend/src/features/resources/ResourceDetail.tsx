@@ -98,6 +98,9 @@ function useSqueezeLayout(fallback = true): boolean {
   return squeeze
 }
 
+/** 「在等心得」的配对最多留这么久（毫秒）：过了就不配，宁可让用户再点一次「写心得」。 */
+const PENDING_MS = 10 * 60 * 1000
+
 export function ResourceDetail({ resourceId }: { resourceId: string }) {
   const navigate = useNavigate()
   const load = useCallback(() => getResource(resourceId), [resourceId])
@@ -241,7 +244,10 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
   // 是最后一次，先前那条留作没配心得的高亮（不丢数据，已记录在任务里）。
   const [highlightRevision, setHighlightRevision] = useState(0)
   const [highlightCount, setHighlightCount] = useState<number | null>(null)
-  const pendingNote = useRef<Highlight | null>(null)
+  // 「在等一条心得」的那条高亮。它必须会**过期**（Review F3）：点了「记下这段」却放弃草稿、
+  // 或转头去改别的心得时，之后随手写的一条心得不该被配到那条旧高亮上——界面里目前没有解绑
+  // 入口，配错了不好收拾。除了几处显式清空，再给一个时限兜底。
+  const pendingNote = useRef<{ highlight: Highlight; at: number } | null>(null)
   const [markError, setMarkError] = useState<string | null>(null)
   const mark = useCallback(
     async (range: Range, keep: (highlight: Highlight) => void) => {
@@ -264,6 +270,8 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
     (range: Range) => {
       setSideTab('highlights')
       setNotesOpen(true)
+      // 只标记这一下，明确不想配心得：把上一次还在等的配对丢掉。
+      pendingNote.current = null
       void mark(range, () => {})
     },
     [mark],
@@ -274,7 +282,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
       // 取不到选区时只进草稿、不标高亮：引文是用户已经看见的动作，不该被上色失败连累。
       if (range)
         void mark(range, (created) => {
-          pendingNote.current = created
+          pendingNote.current = { highlight: created, at: Date.now() }
         })
     },
     [mark, takeQuote],
@@ -283,10 +291,12 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
   const bindSavedNote = useCallback(
     async (note: Note) => {
       const waiting = pendingNote.current
-      if (!waiting || note.resource_id !== resourceId) return
       pendingNote.current = null
+      if (!waiting || note.resource_id !== resourceId) return
+      // 过期就不配了：宁可让用户自己再点一次「写心得」，也不要把心得配到早就忘了的那段上。
+      if (Date.now() - waiting.at > PENDING_MS) return
       try {
-        await bindHighlightNote(resourceId, waiting, note.id)
+        await bindHighlightNote(resourceId, waiting.highlight, note.id)
         setHighlightRevision((value) => value + 1)
       } catch (cause) {
         setMarkError(failureText(cause))
@@ -295,12 +305,14 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
     [resourceId],
   )
   const openNoteFromHighlight = useCallback(() => {
+    // 去改的是**既有**心得，不是要给谁配一条新的：清掉在等的配对。
+    pendingNote.current = null
     setSideTab('notes')
     setNotesOpen(true)
   }, [])
   const writeNoteForHighlight = useCallback(
     (highlight: Highlight) => {
-      pendingNote.current = highlight
+      pendingNote.current = { highlight, at: Date.now() }
       setSideTab('notes')
       setNotesOpen(true)
       askEditorFocus()

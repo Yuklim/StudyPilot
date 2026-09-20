@@ -269,6 +269,25 @@ describe('记下这段', () => {
     expect(marked[1]!.body.note_id).toBe(savedNoteId)
   })
 
+  it('drops a pending pairing when the reader turns to an existing note (Review F3)', async () => {
+    mount()
+    const paragraph = await screen.findByText(/神经网络主要由输入层/)
+    // 先「记下这段」——这条高亮开始等一条心得。
+    selectText('神经网络主要由输入层、隐藏层、输出层构成。', paragraph.firstChild)
+    fireEvent.click(pill()!)
+    await waitFor(() => expect(marked).toHaveLength(1))
+    // 改主意：只标一下别的段落（明确不想配心得）。
+    selectText('第二节。', screen.getByText('第二节。').firstChild)
+    fireEvent.click(screen.getByRole('button', { name: '标下来' }))
+    await waitFor(() => expect(marked).toHaveLength(2))
+    // 之后随手写的一条心得不该被配到任何一条高亮上。
+    fireEvent.click(screen.getByRole('tab', { name: '心得' }))
+    fireEvent.change(editor(), { target: { value: '与上面两段都无关的一句。' } })
+    fireEvent.submit(screen.getByRole('form', { name: '心得编辑' }))
+    await waitFor(() => expect(screen.getByText(/心得已保存/)).toBeInTheDocument())
+    expect(marked.filter((call) => call.method === 'PATCH')).toHaveLength(0)
+  })
+
   it('formats multi-line selections as a Markdown blockquote and ignores oversized ones', () => {
     expect(toQuote('  a\n\n b \n')).toBe('> a\n>\n> b')
     const root = document.createElement('div')

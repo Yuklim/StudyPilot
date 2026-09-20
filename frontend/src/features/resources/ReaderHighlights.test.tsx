@@ -162,6 +162,36 @@ describe('reader highlights panel', () => {
     expect(within(items[1]!).getByRole('button', { name: '写心得' })).toBeInTheDocument()
   })
 
+  it('does not call a passage lost while there is no body to look in (Review F1)', async () => {
+    paint()
+    mock([highlight()])
+    // 正文还没渲染（快照在读、源码视图、这份资料没有快照）：不能说「原文位置已找不到」。
+    panel(null)
+    const item = (await screen.findAllByRole('listitem'))[0]!
+    expect(within(item).queryByText(/原文位置已找不到/)).toBeNull()
+    expect(item.className).not.toContain('orphaned')
+    expect(screen.getByText(/正文还没就绪/)).toBeInTheDocument()
+    expect(screen.queryByText(/条找不到原文/)).toBeNull()
+  })
+
+  it('still paints and lists when the note list cannot be read (Review F2)', async () => {
+    const registry = paint()
+    vi.spyOn(api, 'request').mockImplementation(async (path) => {
+      if (path.includes('/highlights')) {
+        return {
+          data: [highlight()],
+          page: { number: 1, size: 100, total_items: 1, total_pages: 1, has_more: false },
+        }
+      }
+      throw new Error('notes are unavailable')
+    })
+    panel(body())
+    // 心得列表只用来显示「配了哪条」，它挂了不该让整个 Tab 变错误页、更不该不上色。
+    await screen.findByRole('list', { name: '高亮列表' })
+    await waitFor(() => expect(registry.has('studypilot-mark')).toBe(true))
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
   it('asks once before deleting and drops the row afterwards', async () => {
     paint()
     const request = mock([highlight()])

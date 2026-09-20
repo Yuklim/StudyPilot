@@ -48,9 +48,13 @@ export function ReaderHighlights({
     () =>
       Promise.all([
         listHighlights(resourceId),
-        // 只为显示「配了哪条心得」。一页 100 条：超过这个数的资料里，落在后面的心得会被
-        // 当成悬挂绑定，代价只是多出一个「写心得」入口（已记录在任务里）。
-        listNotes(resourceId, 1, '-created_at', 100),
+        // 只为显示「配了哪条心得」。读不到就当没有：心得列表的故障不该把整个高亮 Tab 变成
+        // 错误页、更不该让正文不上色（Review F2）。一页 100 条：超过这个数的资料里，落在
+        // 后面的心得会被当成悬挂绑定，代价只是多出一个「写心得」入口（已记录在任务里）。
+        listNotes(resourceId, 1, '-created_at', 100).then(
+          (page) => page.data,
+          () => [] as Note[],
+        ),
       ]),
     [resourceId],
   )
@@ -71,7 +75,7 @@ export function ReaderHighlights({
     () => (result?.data?.[0].data ?? []).filter((row) => !removed.includes(row.id)),
     [result, removed],
   )
-  const notes = useMemo(() => result?.data?.[1].data ?? [], [result])
+  const notes = useMemo(() => result?.data?.[1] ?? [], [result])
 
   // 正文渲染完（或换了一版）就重新定位；`rendered` 由父级在 DOM 变化时换成新元素。
   const rows = useMemo<HighlightRow[]>(() => {
@@ -87,6 +91,9 @@ export function ReaderHighlights({
       return a.highlight.start_offset - b.highlight.start_offset
     })
   }, [highlights, notes, rendered])
+  // **正文还没就绪不等于孤立**（Review F1）：快照还在读、切到源码视图、这份资料没有快照时
+  // 都没有可定位的正文，这时说「原文位置已找不到」是在冤枉数据。列表照列，只是不下判断。
+  const locatable = rendered !== null
 
   useEffect(() => {
     onCount?.(highlights.length)
@@ -143,13 +150,15 @@ export function ReaderHighlights({
       </div>
     )
   }
-  const orphans = rows.filter((row) => !row.range).length
+  const orphans = locatable ? rows.filter((row) => !row.range).length : 0
   return (
     <div className="reader-highlights">
       <p className="resource-hint reader-highlights-hint" aria-live="polite">
         {rows.length === 0
           ? '还没有标下任何一段'
-          : `共 ${rows.length} 条 · 按文中顺序${orphans ? ` · ${orphans} 条找不到原文` : ''}`}
+          : `共 ${rows.length} 条 · 按文中顺序${orphans ? ` · ${orphans} 条找不到原文` : ''}${
+              locatable ? '' : ' · 正文还没就绪'
+            }`}
       </p>
       {failure !== null && (
         <p className="resource-error" role="alert">
@@ -167,8 +176,8 @@ export function ReaderHighlights({
       ) : (
         <ul className="reader-highlights-list" aria-label="高亮列表">
           {rows.map(({ highlight, range, note }) => (
-            <li key={highlight.id} className={range ? undefined : 'orphaned'}>
-              {!range && (
+            <li key={highlight.id} className={!locatable || range ? undefined : 'orphaned'}>
+              {locatable && !range && (
                 <p className="reader-highlight-orphan">
                   原文位置已找不到——正文换过一版。内容留着，换回来会自动对上。
                 </p>
