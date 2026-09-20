@@ -130,13 +130,64 @@ checks = ["frontend"]
   - e2e 夹具是一份真实 PDF，而 PDF 的 xref 表每项固定 20 字节、**必须**以空格结尾；git 把这种小体积 PDF 当文本，`git diff --check` 于是把格式要求的空格报成「行尾空格」。新增 `.gitattributes` 声明 `*.pdf binary` 解决。夹具本身刻意保持**全 ASCII、不压缩**：治理检查要求二进制文件人工核验，而这份夹具应当能被任何人直接读懂。
 - 修正后重跑：lint / typecheck / format 0；`vitest run` **697 passed**（+2 回归用例）；`playwright test` **73 passed**；`check_task.py --worktree` **CHECKS PASS**。
 
+### 第二轮 Review F7 的修正（第三候选）
+
+- **F7（必须修→已修，真缺陷）** 跳页钉住分支（`PdfReader.tsx` 的 `onScroll`）写回 `ratio: 0`，
+  而 `ratio` 的定义是「**视口中线**落在页内的比例」，`locatePage`/`scrollTopFor` 是互逆的一对。
+  两条确定性后果：（一）跳页后离开，回来时 `scrollTopFor` 给出 `tops[p-1] − clientHeight/2`，
+  落点比离开处**高半屏**，直接违反完成条件「落在离开时的页与页内位置」；（二）恢复位置时
+  赋值 `scrollTop` 触发的那次 scroll 正好命中本分支，把刚读出来的精确比例**覆盖成 0**——
+  正常滚到第 p 页 0.6 处离开，下次打开不滚动就走，页内位置即丢失。
+  改法：比例的算法抽成 `ratioWithinPage` 一处定义（`locatePage` 也改用它），钉住时**页码按
+  用户点的那页、比例按真实位置算**。往返可逆；页比半个视口还矮时比例夹在 1，误差在一页之内。
+  新增两条用例（纯函数一条、组件一条），**判别性已验**：把钉住分支改回 `ratio: 0`，
+  组件用例报 `expected 516 to be close to 816`——正好差半个视口。
+- **F8（索引行）** 索引里 TASK-073 仍是 `READY`，与记录的 `IN_REVIEW` 不一致（上一轮说要改但没改到），
+  本次写回一并更正并补上实现/检查摘要。
+- **Reviewer 标为「可选」的三条**：`getPage` 未捕获的 rejection、`onPages` 死 prop——都已顺手处理
+  （前者加兜底、后者删掉）；`offsets.tops` 未计入容器 16px `padding-top` 的恒定偏差**不改**：
+  写位置与读位置用的是同一套模型，往返是自洽的，唯一影响是页码在页边界处早 16px 翻页，
+  肉眼不可察；要改就得改成按真实 DOM 量 `offsetTop`，而 jsdom 不排版、单测会一并失去判别性。
+  记为非阻断遗留。
+- 修正后重跑：lint / typecheck / format 0；`vitest run` **699 passed**（+2 回归用例）；
+  `playwright test` **73 passed**；`check_task.py --worktree` **CHECKS PASS**。修正 SHA `4ee7b34`。
+
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：待填
-- Review：待填
+- 候选 SHA：第一候选 `aa8f7cc`；第二候选 `7edcc43`；第三候选（当前）见下方 Review 段落写回。
+- Review：
+  - **第一轮（候选 `aa8f7cc`）结论 CHANGES_REQUIRED**，F1–F5，逐条处置见上文「Review F1–F5 的修正」。
+    报告原文未留存于本记录（上一会话写回时只留了逐条处置），此处如实标注，不补写、不冒充原文。
+  - **第二轮（增量 `aa8f7cc..7edcc43`，结论覆盖 `92a4764..7edcc43`）结论 CHANGES_REQUIRED**，
+    独立只读 Reviewer（`.claude/agents/reviewer.md`，仅 Read/Grep/Glob，无写工具）。报告原文：
+
+    > **结论：CHANGES_REQUIRED（1 条必须修，2 条记录/可选）**
+    >
+    > **审查范围**：无 Bash，我以**整文件通读**代替 diff：`PdfReader.tsx`、`pdfPosition.ts`、`ResourceDetail.tsx`、`PdfReader.test.tsx`、`pdfPosition.test.ts`、`e2e/pdf-reader.spec.ts`、`styles.css`（pdf 段）、`files.ts`、`package.json`、`.gitattributes`、索引行。F1–F5 全部落点已逐条核到实现。结论覆盖 `92a4764..7edcc43`。
+    >
+    > **F1–F5 复核**：F1 依赖改为 `fileId/fileSize/fileType`，`alive` + 两处 `destroy` 竞态正确，用例 rerender `{...file}` 判别性成立 ✓。F2 rAF 单帧节流为帧内尾沿，最后一次写回不丢，卸载 `cancelAnimationFrame` 无泄漏 ✓。F3 `!Number.isFinite || <1` 覆盖空值/0/负数/NaN，超页夹到末页 ✓。F5 键名 `studypilot.pdf.position.<resourceId>` 与写入端一致，时机在 navigate 前 ✓。
+    >
+    > **findings**
+    >
+    > 1. **`frontend/src/features/resources/PdfReader.tsx:182`｜必须修（F4 引入的回归）** 钉住分支写回 `ratio: 0`，但此刻真实位置是「页顶对齐视口顶」，而 `pdfPosition` 的 ratio 定义是**视口中线**在页内的比例（`locatePage`/`scrollTopFor` 互逆）。后果两条：(a) 跳页后离开，再回来 `scrollTopFor` 给出 `tops[p-1] − clientHeight/2`，落点比离开处**高半屏**，直接违反完成条件「落在离开时的页与页内位置」；(b) `PdfReader.tsx:161-163` 恢复时同样钉住，赋值 `scrollTop` 触发的 scroll 事件命中钉住分支，把刚读出的精确 ratio **覆盖成 0**——正常滚动读到 p 页 0.6 处、下次打开后不滚动就离开，页内位置即丢失。两条都是确定性触发。单测抓不到（jsdom `scrollTop` 无布局），e2e 只断言页码，也抓不到。最小修：钉住时写真实比例而非 0 —— `ratio = clamp01((scrollTop + clientHeight/2 − tops[p-1]) / heights[p-1])`，页码仍用 `target.page`。可往返，短页夹在 1，误差有界；建议补一条「跳页→重挂→scrollTop 相同」的回归用例。
+    > 2. **`docs/tasks/任务索引.md:24`｜记录**：记录称「F6（索引行 READY）随本次写回更正」，但索引仍是 `READY`，与记录 `status = IN_REVIEW` 不一致，实现/候选/检查摘要也未入行。写回时一并纠正即可。
+    > 3. **可选**：`PdfReader.tsx:313` `await doc.getPage()` 无 catch，卸载与 `destroy()` 撞车时会有未捕获 rejection（仅控制台噪音）；`onPages` 是死 prop（`ResourceDetail` 未传）；`offsets.tops` 未计入 `.pdf-reader-pages` 的 16px `padding-top`，恒定 16px 偏差。三条均属第一候选既有，非本轮引入。
+    >
+    > **路径与证据**：全部改动落在 `allowed_paths`（含追加的 `.gitattributes`），全仓 `TASK-073`/`pdfjs` 命中文件无越界；`pdfjs-dist@5.4.149` 已钉死。新测试均有判别性，未见降低断言或跳过。
+    >
+    > **继承第一轮范围（本轮未重审）**：`package-lock.json` 内容、e2e 夹具字节、`ResourceToolbar.tsx`/`FileOriginal.tsx`/`files.test.ts`/`FilePages.test.tsx`、`docs/开发与运行.md` 文案、`styles.css` 视觉细节。
+    >
+    > **剩余风险**：大文档（数百页）渲染队列未实测；PDF 无高亮/文本层为已登记非目标。
+
+    主 Agent 复核：第 1 条经读码核实为真缺陷（两条后果均确定性触发），已按最小修法修正并补判别性用例；
+    第 2 条已改；第 3 条三小项两条已顺手处理、一条（16px）记为非阻断遗留，理由见上。
+  - **第三轮（增量 `7edcc43..<本次写回 SHA>`）**：待填。
 - Acceptance：L2，N/A。
 - 最终状态/风险/用户操作：待填
-- 非阻断遗留项：待填
+- 非阻断遗留项：
+  1. `.claude/worktrees/` 未被 `.gitignore` 忽略，并行任务留下的工作目录会被 `check_task.py` 判为越界改动（本任务已靠用完即删绕开）。该改动属仓库根配置，不在本任务 `allowed_paths` 内，留给下一个有根配置授权的任务。
+  2. `offsets.tops` 未计入 `.pdf-reader-pages` 的 16px `padding-top`：读写用同一套模型，往返自洽，只在页边界处早 16px 翻页；要消除就得改成按真实 DOM 量 `offsetTop`，而 jsdom 不排版会让单测失去判别性。暂不改。
+  3. 大文档（数百页）只做了「远离视口释放 canvas」一层，渲染队列与优先级未做、未实测。
 - 日期与决定日志：2026-09-20 用户「可以尝试开始做一下本地 pdf 文件的阅读器了」→ 方案沟通（v1 只读）→「A可以」→ Pencil 草图确认「可以」→ 登记 TASK-073；同日用户授权与 TASK-074 并行。
 <!-- EVIDENCE:END -->
