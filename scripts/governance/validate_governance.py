@@ -246,9 +246,14 @@ def index_rows(text: str) -> list[dict]:
     """
     rows = []
     for number, line in enumerate(text.splitlines(), 1):
-        if not line.startswith("| ") or line.startswith(("| ---", "| 任务 ")):
+        if not line.startswith("| ") or line.startswith("| ---"):
             continue
         cells = [cell.strip() for cell in line.split(" | ")]
+        # 表头按「首列里没有任务号」认，不按写死的表头文案认：索引将来改表头名或多出一张表时，
+        # 写死文案会把那些行整片报成 unparsable，拦住一个跟索引毫无关系的 PR（第一轮 Review）。
+        # 反过来，首列里有 TASK- 却取不出链接的行仍然会被报出来，不会因此被放过。
+        if "TASK-" not in cells[0]:
+            continue
         task = re.match(r"\| \[(TASK-\d{3,})", cells[0])
         link = re.search(r"\]\(\./(TASK-[^)]+\.md)\)", cells[0])
         rows.append(

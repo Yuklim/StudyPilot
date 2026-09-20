@@ -85,7 +85,7 @@ checks = ["governance"]
 - 实现 SHA：`0eed3c5`（控制面登记 `f8912a9`）。变更摘要：
   - **`AGENTS.md`**（两句，第 3 节与第 5 节各一句）：并行任务中只有一个可以把 `docs/tasks/任务索引.md` 列进 allowed_paths，其余不写索引（附一句为什么：表按最新在上插行，两个分支插在同一锚点必然冲突）；延后的索引行最迟在标 MERGED 时补齐、且行状态与记录 `status` 必须一致，由 `validate_governance` 校验。改后 9601 字节，仍在脚本自带的 16 KiB 上限内。
   - **`validate_governance.py`**：新增常量 `INDEX_PATH` 与两个纯函数。`index_rows(text)` 解析索引表——**先按 `" | "` 切列再在首列里取链接**，因为任务标题里可以有 Markdown 链接和嵌套方括号（TASK-064 的标题含 `![图片](image:N)`）；解析不出任务号或文件名的行带 `ok=False` 返回，由调用方报错而不是静默跳过。`index_errors(text, records, files)` 六条：行可解析、任务号唯一、链接指向存在且同号的记录、状态值属 `STATES`、**状态为 MERGED 的记录必须在册**、有行时行状态必须等于记录 `status`。`validate()` 里收集 `{任务号: status}` 与实际文件名后调用它。
-  - **为什么是「MERGED ⇒ 有行」而不是「记录 ⇒ 有行」**：后者会把并行延后登记的正常窗口判成错误，与本任务要立的规则自相矛盾；前者兜住真正的失败模式（永远忘了补），而每个任务最终都会 MERGED，所以最终覆盖全部任务。
+  - **为什么是「MERGED ⇒ 有行」而不是「记录 ⇒ 有行」**：后者会把并行延后登记的正常窗口判成错误，与本任务要立的规则自相矛盾；前者兜住的是**「登记只做了一半」**——记录标了 MERGED、索引没补。**它管不住「合并后既没人标 MERGED、也没人补行」，那个窗口是无界的**（第一轮 Review 指出：原先写的「每个任务最终都会 MERGED，所以最终覆盖全部任务」不成立，已改）。要管住那一类得有「main 上的合并事实 → 必须登记」的判据，需要读 git 历史，属另一条不变量，本任务不扩。
   - **补上的两处真实失真**：`TASK-022` 记录 `status` 漏登（证据区早已写明 MERGED 与合并提交 `51b427f`，仅 toml 字段停在 ACCEPTED；合并事实已独立核对——`51b427f` 是 PR #27 的合并提交且在 main 上）；`TASK-073` 登记 MERGED（用户 2026-09-20 合并 PR #82，merge `eeb4399`），记录与索引行同步。
   - **`docs/governance/多Agent开发制度使用指南.md` 未改**：全文没有一处提到索引（已 grep 确认），没有会过时的说法要同步。路径留在 allowed_paths 里是上限，不是必须改。
 - 新测试 5 条（治理套件 23 → 28）与**变异测试实证**：
@@ -99,10 +99,22 @@ checks = ["governance"]
 - 命令与结果（本机 macOS 25.5.0，工作区在 `0eed3c5`）：
   - `python3 scripts/governance/check_task.py --task docs/tasks/TASK-076-index-registration-guard.md --worktree` → **CHECKS PASS**（profile=governance：`validate_governance.py` exit 0、`ruff check --isolated`、`ruff format --check --isolated --line-length 100`、`unittest discover` **28 tests OK**）。
   - 输出里的 `missing-tool` / `fake-test` 两行是 `check_task.py` 自带的负向回归演示（验证「工具缺失会如实报错」），非真实失败；TASK-024 的记录里已有同样说明。
+- 修正后重跑（工作区在第二候选）：`check_task.py --task ... --worktree` → **CHECKS PASS**（`validate_governance.py` exit 0、ruff check、ruff format --check、unittest **29 tests OK**）。
 - 已知限制/未完成项：
   - 校验只保证索引与记录的**结构与状态**对得上，不校验摘要文案是否如实——那是 Review 的事。
   - 不覆盖「两个记录文件声明同一个任务号」：已有的 id/文件名校验挡住了大部分，完整覆盖要另立不变量，本任务不扩。
   - `TASK-074` 的索引行与 MERGED 状态**不在本任务**：它的记录此刻只在未合并的 PR #81 上，本分支没有它，而 Agent 被 deny 规则禁止执行 merge。按本任务刚立的规则，它的行由 #81 合并之后的下一个已授权任务补登记——新校验此刻不会因此报错（它还不是 MERGED），标 MERGED 时才会强制补齐。
+
+### 第一轮 Review 的处置（第二候选）
+
+结论 PASS、无必须修复项，4 条非阻断。逐条：
+
+- **F1（可记录→不改，理由如下）** 「行状态必须等于记录 status」在「某任务已有索引行、却在后续并行窗口里成了非持有者」时会把分支逼进死角（改不了行，分支持续红）。不改的理由：行只由持有者写，**有行本身就意味着它是持有者或已被后续控制面提交接管**，构造出这个局面要先违反刚立的规则；而 Reviewer 给的收紧办法（只在任一侧为 MERGED 时才比对）会放过 ACCEPTED/IN_REVIEW 之间的真实漂移——那正是本次在 TASK-022 上抓到的那一类。记为非阻断遗留，附重评触发条件。
+- **F2（可记录→已改）** 记录里「每个任务最终都会 MERGED，所以最终覆盖全部任务」的推理不成立（漏判窗口无界）。上面的取舍段落已改写成如实说法：这条不变量管的是「别只做一半」。
+- **F3（可选→已改，真误报面）** 表头原先按写死的 `"| 任务 "` 文案跳过：索引改表头名或多出一张表时，那些行会被整片报成 `unparsable`，拦住一个跟索引毫无关系的 PR。改为**按「首列里没有任务号」认表头**——首列里有 `TASK-` 却取不出链接的行仍然照报，不会因此被放过。新增回归用例 `test_index_survives_a_renamed_header_and_a_second_table`，**判别性已验**（把认法改回写死文案即红）。
+- **F4（可选→不改）** 首列里若出现转义管道 `\|`，`split(" | ")` 会把列错位、状态列报成 `invalid index status`（误报，但失败可定位、改回即好）。现有 74 行无此写法；要根治得换成懂转义的切列，复杂度不抵收益。记为非阻断遗留。
+- Reviewer 的**剩余风险**（CHECKS PASS 跑在实现 SHA `0eed3c5`，而候选 `ddb50db` 的增量恰是新校验读的输入）已用机械证据消除：修正后在最终候选上重跑 `check_task.py --worktree` → CHECKS PASS，见下方命令记录。
+- 修正后：治理套件 **29 tests OK**（+1 回归用例）。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
