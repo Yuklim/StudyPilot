@@ -321,6 +321,30 @@ describe('memory-only local API client', () => {
       expect(fetchMock).not.toHaveBeenCalled()
     },
   )
+  it('lets a citation be deleted with its version, but only at that exact path', async () => {
+    // 资料至多一份文献信息，所以路径止于集合名；白名单是有意的安全网，逐个放行。
+    const resource = '00000000-0000-4000-8000-000000000001'
+    fetchMock
+      .mockResolvedValueOnce(session())
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+    await expect(
+      createApiClient().request(`/api/v1/resources/${resource}/citation`, {
+        method: 'DELETE',
+        ifMatchVersion: 2,
+      }),
+    ).resolves.toBeUndefined()
+    const [, init] = fetchMock.mock.calls[1]
+    expect(new Headers(init?.headers).get('If-Match')).toBe('"2"')
+    fetchMock.mockClear()
+    await expect(
+      createApiClient().request(`/api/v1/resources/${resource}/citations`, {
+        method: 'DELETE',
+        ifMatchVersion: 2,
+      }),
+    ).rejects.toMatchObject({ code: 'INVALID_REQUEST' })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it.each([
     [tagPath, { method: 'PATCH', ifMatchVersion: 1 }],
     [tagPath, { method: 'DELETE', ifMatchVersion: 1, body: {} }],

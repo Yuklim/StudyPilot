@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-077"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L1"
 risk_reason = "纯控制面登记：只改 docs/tasks 下三份任务记录的 status 字段、各自 EVIDENCE 区里的合并事实，以及索引表的两行。不碰代码、规则、门禁、契约与迁移，不改任何任务的目标/风险/路径/检查。docs/tasks/** 不在 risk-policy.json 的 high_risk_paths 里；风险标志 documentation → L1。执行链：1 Worker → 自动检查 + 自检 → 主 Agent 汇总；独立 Review 与验收 N/A。本任务不产生任何产品行为变化，登记内容全部可由 git 合并事实独立复核。"
 risk_flags = ["documentation"]
@@ -79,7 +79,7 @@ checks = ["governance"]
 - 候选 SHA：本记录写回后的提交（一次提交内含全部登记与证据）。
 - Review：L1，N/A（按第 4 节 L1 执行链：1 Worker → 自动检查 + 自检 → 主 Agent 汇总）。
 - Acceptance：L1，N/A。
-- 最终状态/风险/用户操作：**ACCEPTED**。风险：纯登记，无产品行为变化；写错的后果是索引与记录不一致，而这恰好被 TASK-076 新加的门禁在 CI 上拦住（本次已实测两个方向）。**需要用户操作：合并 PR。**
+- 最终状态/风险/用户操作：**MERGED**——2026-09-20 用户已合并 PR #84，merge `bcfa780`（状态登记并入 TASK-078 控制面提交；用户同日要求登记类小活不再单开 PR）。此前为 ACCEPTED：风险：纯登记，无产品行为变化；写错的后果是索引与记录不一致，而这恰好被 TASK-076 新加的门禁在 CI 上拦住（本次已实测两个方向）。**需要用户操作：合并 PR。**
 - 非阻断遗留项：
   1. 本任务的 MERGED 登记留给下一个已授权任务（不预写 MERGED）。
   2. `openapi-v1.json` 的 `deleteResource` 409 示例仍缺 `citation_count` 与 `highlight_count`（TASK-074 的遗留，随 TASK-075 补）——本任务不碰契约，仅在索引行里如实标注。

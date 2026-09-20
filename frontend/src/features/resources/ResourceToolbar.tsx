@@ -5,6 +5,7 @@ import { displayTime, safeWebUrl, sourceLabels, statusLabels, type Resource } fr
 import { resourceTitle } from './resourceTitle'
 import { ResourceEditor } from './ResourceEditor'
 import { FileOriginal } from './FileOriginal'
+import { ReaderCitation } from './ReaderCitation'
 import { createRecord, learningError } from '../learning/api'
 import { LearningPanel } from '../learning/LearningPanel'
 import { ResourceTagEditor } from '../taxonomy/ResourceTagEditor'
@@ -531,6 +532,7 @@ export function ReaderInfo({ resource }: { resource: Resource }) {
           <time dateTime={resource.created_at}>{displayTime(resource.created_at)}</time>
         </dd>
       </dl>
+      <ReaderCitation resourceId={resource.id} />
     </div>
   )
 }

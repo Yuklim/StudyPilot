@@ -3399,3 +3399,75 @@ a.source-chip:focus-visible {
     --reader-pad: 12px;
   }
 }
+
+/* 文献信息（TASK-078）：右栏「信息」Tab 里的第二块，与上面的资料信息用一条细线分开。 */
+.reader-citation {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.reader-citation h3 {
+  margin: 0;
+  font-size: 14px;
+}
+.citation-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.citation-kind {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+.citation-year {
+  color: var(--muted);
+  font-size: 12px;
+}
+.citation-authors {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.citation-authors-label {
+  color: var(--muted);
+  font-size: 12px;
+}
+/* 一行一位作者：输入框吃掉剩余宽度，删除键固定在右侧，作者名再长也不挤走它。 */
+.citation-author-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.citation-author-row input {
+  flex: 1;
+  min-width: 0;
+}
+.citation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.citation-problem {
+  color: #8b493a;
+  font-size: 12px;
+}
+.citation-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper, #fffdf8);
+}
+.citation-confirm p {
+  margin: 0;
+  font-size: 13px;
+}
