@@ -482,7 +482,7 @@ def test_delivery_catalog_matches_taxonomy_routes_and_preserves_resource_limits(
     }
     available = set(profile["available_operations"])
     assert expected <= available
-    assert len(available) == 40
+    assert len(available) == 43
     assert {
         "downloadOriginalFile",
         "updateResource",
@@ -512,6 +512,12 @@ def test_delivery_catalog_matches_taxonomy_routes_and_preserves_resource_limits(
         "getResourceHighlight",
         "updateResourceHighlight",
         "deleteResourceHighlight",
+    } <= available
+    # TASK-074: the three citation operations are live too.
+    assert {
+        "getResourceCitation",
+        "putResourceCitation",
+        "deleteResourceCitation",
     } <= available
     assert {
         "listResourceStudyRecords",

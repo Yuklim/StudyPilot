@@ -28,6 +28,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, Mapper, declared_attr, mapped_column
 
+from studypilot.modules.citations.contracts import ITEM_TYPES as CITATION_ITEM_TYPES
 from studypilot.modules.resources.assets import IMAGE_MEDIA_TYPES
 
 from .types import UTCDateTime, utc_now
@@ -485,6 +486,80 @@ class Highlight(Identified, Created, Versioned, Base):
     start_offset: Mapped[int] = mapped_column(Integer)
     end_offset: Mapped[int] = mapped_column(Integer)
     note_id: Mapped[UUID | None] = mapped_column(Uuid, ForeignKey("notes.id", ondelete="SET NULL"))
+
+
+class ResourceCitation(Identified, Created, Versioned, Base):
+    """What the saved work *is*: its authors, year, journal and identifiers.
+
+    Separate from `learning_resources` on purpose. That table answers "how do I
+    get back to the thing I saved" - a title, an address, why it was kept - and
+    every one of its columns is filled for every resource. Bibliographic metadata
+    answers a different question ("what work is this, and how would I cite it"),
+    is absent for most saved pages, and arrives as a block from a connector
+    rather than field by field from a person. Putting a dozen nullable columns on
+    the core table would widen the row every read pays for, and would make the
+    "whole record replaced at once" write of a citation indistinguishable from
+    the field-level `PATCH` the resource already has.
+
+    One citation per resource (`UNIQUE(resource_id)`), cascading with it. There
+    is no second row to reconcile, so `title`/`source_url` on the resource stay
+    the single answer to "what do I click"; `container_title` here is the journal
+    or book the work sat in, not a second title for the same thing.
+
+    Nothing here is verified against the outside world: `doi`/`isbn` are stored
+    as given, never resolved. The server makes no outbound request.
+    """
+
+    __tablename__ = "resource_citations"
+    __table_args__ = (
+        CheckConstraint(
+            "item_type IN ('JOURNAL_ARTICLE', 'PREPRINT', 'CONFERENCE_PAPER', 'BOOK', "
+            "'BOOK_CHAPTER', 'THESIS', 'REPORT', 'WEBPAGE', 'OTHER')",
+            name="item_type",
+        ),
+        # A year outside this range is a typo or a parsing accident, not a work.
+        CheckConstraint(
+            "issued_year IS NULL OR issued_year BETWEEN 1000 AND 2200", name="issued_year_bounds"
+        ),
+        bounded_length("issued_date", 1, 32),
+        bounded_length("container_title", 1, 500),
+        bounded_length("volume", 1, 50),
+        bounded_length("issue", 1, 50),
+        bounded_length("pages", 1, 50),
+        bounded_length("publisher", 1, 200),
+        bounded_length("doi", 1, 200),
+        bounded_length("isbn", 1, 32),
+        bounded_length("abstract", 1, 20_000),
+        positive_version(),
+        {"info": {"owner": "resources"}},
+    )
+    resource_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("learning_resources.id", ondelete="CASCADE"), unique=True
+    )
+    item_type: Mapped[str] = mapped_column(
+        choices("item_type", *CITATION_ITEM_TYPES), default="OTHER", server_default="OTHER"
+    )
+    # A JSON array of names in printing order, because the order is part of the
+    # citation. There is deliberately no per-element CHECK: bounding the element
+    # count or length in SQL needs JSON-dialect functions, and a byte-length
+    # proxy would both reject legal names (escapes expand) and fail to bound the
+    # count. The shape is enforced in `modules.citations.contracts`, which is the
+    # only writer. Not indexed either - searching by author is not offered yet.
+    authors: Mapped[list[str] | None] = mapped_column(JSON(none_as_null=True))
+    issued_year: Mapped[int | None] = mapped_column(Integer)
+    # The printed date, verbatim: "2024-03", "Spring 2024" and "2024年3月" all
+    # occur, and turning them into a Date would invent a day that was never given.
+    issued_date: Mapped[str | None] = mapped_column(String(32))
+    # The journal, conference proceedings or book this work appeared in.
+    container_title: Mapped[str | None] = mapped_column(String(500))
+    volume: Mapped[str | None] = mapped_column(String(50))
+    issue: Mapped[str | None] = mapped_column(String(50))
+    # Free text, not a range: "12-30", "e0123456" and "1, 4-9" are all real.
+    pages: Mapped[str | None] = mapped_column(String(50))
+    publisher: Mapped[str | None] = mapped_column(String(200))
+    doi: Mapped[str | None] = mapped_column(String(200))
+    isbn: Mapped[str | None] = mapped_column(String(32))
+    abstract: Mapped[str | None] = mapped_column(Text)
 
 
 @event.listens_for(Topic, "before_insert")

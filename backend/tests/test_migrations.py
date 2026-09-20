@@ -13,7 +13,12 @@ from sqlalchemy.exc import IntegrityError
 from support import BACKEND, migrate
 
 from studypilot.infrastructure.database import Base, create_database_engine, create_session_factory
-from studypilot.infrastructure.database.models import LearningResource, Note, Topic
+from studypilot.infrastructure.database.models import (
+    LearningResource,
+    Note,
+    ResourceCitation,
+    Topic,
+)
 
 
 def test_upgrade_is_repeatable_and_matches_models(tmp_path: Path) -> None:
@@ -30,7 +35,7 @@ def test_upgrade_is_repeatable_and_matches_models(tmp_path: Path) -> None:
                 "alembic_version",
             }
             context = MigrationContext.configure(connection, opts={"compare_type": True})
-            assert context.get_current_heads() == ("0007_highlights",)
+            assert context.get_current_heads() == ("0008_resource_citations",)
             assert compare_metadata(context, Base.metadata) == []
         with factory() as session:
             assert session.scalar(select(Topic.name)) == "Kept after upgrade"
@@ -45,7 +50,7 @@ def test_empty_downgrade_and_reupgrade(tmp_path: Path) -> None:
         migrate(engine, "base", downgrade=True)
         assert inspect(engine).get_table_names() == ["alembic_version"]
         migrate(engine)
-        assert len(inspect(engine).get_table_names()) == 15
+        assert len(inspect(engine).get_table_names()) == 16
     finally:
         engine.dispose()
 
@@ -65,7 +70,7 @@ def test_nonempty_downgrade_refuses_before_dropping_any_table(tmp_path: Path) ->
             # The downgrade runs in one transaction; the non-empty guard aborts it,
             # rolling back the already-applied 0002 step too, so head stays put.
             assert MigrationContext.configure(connection).get_current_heads() == (
-                "0007_highlights",
+                "0008_resource_citations",
             )
         with factory() as session:
             assert session.scalar(select(Topic.name)) == "Must not be deleted"
@@ -126,7 +131,7 @@ def test_0006_widens_note_content_and_refuses_lossy_downgrade(tmp_path: Path) ->
             migrate(engine, "0005_snapshot_assets", downgrade=True)
         with engine.connect() as connection:
             assert MigrationContext.configure(connection).get_current_heads() == (
-                "0007_highlights",
+                "0008_resource_citations",
             )
         with factory.begin() as session:
             session.query(Note).filter(Note.content == "y" * 60_000).delete()
@@ -158,6 +163,52 @@ def test_0001_to_head_allows_untitled_resources(tmp_path: Path) -> None:
         with factory() as session:
             row = session.scalar(select(LearningResource).where(LearningResource.id == resource_id))
             assert row is not None and row.title is None
+    finally:
+        engine.dispose()
+
+
+def test_0008_adds_citations_and_downgrade_keeps_the_resource(tmp_path: Path) -> None:
+    """0008 creates `resource_citations`; going back drops the citations only,
+    leaving the resource with its title and address."""
+    engine = create_database_engine(f"sqlite:///{tmp_path / 'citations.db'}")
+    try:
+        migrate(engine, "0007_highlights")
+        assert "resource_citations" not in inspect(engine).get_table_names()
+        factory = create_session_factory(engine)
+        with factory.begin() as session:
+            resource = LearningResource(
+                title="有文献信息的资料",
+                source_type="WEB",
+                source_url="https://example.test/paper",
+            )
+            session.add(resource)
+            session.flush()
+            resource_id = resource.id
+        migrate(engine)
+        assert "resource_citations" in inspect(engine).get_table_names()
+        with factory.begin() as session:
+            session.add(
+                ResourceCitation(
+                    resource_id=resource_id,
+                    item_type="JOURNAL_ARTICLE",
+                    authors=["张三", "李四"],
+                    issued_year=2024,
+                    doi="10.1000/synthetic",
+                )
+            )
+        with factory() as session:
+            stored = session.scalar(select(ResourceCitation))
+            assert stored is not None
+            # Author order is data: it must survive the JSON round trip as given.
+            assert stored.authors == ["张三", "李四"] and stored.version == 1
+        migrate(engine, "0007_highlights", downgrade=True)
+        assert "resource_citations" not in inspect(engine).get_table_names()
+        with factory() as session:
+            kept = session.get(LearningResource, resource_id)
+            assert kept is not None and kept.source_url == "https://example.test/paper"
+        migrate(engine)
+        with factory() as session:
+            assert session.scalar(select(ResourceCitation)) is None
     finally:
         engine.dispose()
 
