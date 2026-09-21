@@ -259,9 +259,52 @@ describe('extractCitation', () => {
       ['https://example.com/10.1/x', null],
     ]
     for (const [href, expected] of shapes) {
-      const page = `<a href="${href}">链接</a><meta name="citation_title" content="标题"/><p>x</p>`
+      // 链接里的 DOI 只在页面**已凭强信号被认定为文献**时才取（见下一条用例），
+      // 所以这里给一个期刊名。
+      const page = `<a href="${href}">链接</a><meta name="citation_title" content="标题"/><meta name="citation_journal_title" content="某刊"/><p>x</p>`
       expect(extractCitation(pageWith(page), 'https://example.com/a')?.doi ?? null).toBe(expected)
     }
+  })
+
+  it('never adopts a DOI that belongs to something else on the page', () => {
+    // 第一轮 Review F1：维基条目、论文解读博客、期刊目录页的参考文献区里全是**别人的**
+    // DOI。把第一个捡来当本页的 DOI，就是把别人作品的编号静默写进这份资料——而确认页
+    // 默认勾选，用户看一串编号根本分辨不出。
+    const encyclopedia = `
+      <h1>Transformer（机器学习模型）</h1>
+      <ol>
+        <li><a href="https://doi.org/10.1038/s42256-024-00812-x">参考文献一</a></li>
+        <li><a href="https://doi.org/10.48550/arXiv.1706.03762">参考文献二</a></li>
+      </ol>
+      <p>正文</p>`
+    // 没有任何 citation_* / schema：整页根本不算文献。
+    expect(
+      extractCitation(pageWith(encyclopedia), 'https://wiki.example.org/Transformer'),
+    ).toBeNull()
+
+    // 弱信号（光有 citation_title）够格被认成文献，但**不够格**让我们认领一个链接里的 DOI。
+    const weakWithLink = `
+      <meta name="citation_title" content="我读《Attention Is All You Need》"/>
+      <a href="https://doi.org/10.48550/arXiv.1706.03762">原文</a><p>正文</p>`
+    const weak = extractCitation(pageWith(weakWithLink), 'https://blog.example.com/a')
+    expect(weak).not.toBeNull()
+    expect(weak?.doi).toBeNull()
+
+    // 强信号但页面上有多个 DOI：到底哪个是自己的无从判断，一个都不取。
+    const manyLinks = `
+      <meta name="citation_title" content="某篇论文"/>
+      <meta name="citation_journal_title" content="某某学报"/>
+      <a href="https://doi.org/10.1/a">参考一</a><a href="https://doi.org/10.2/b">参考二</a>
+      <p>正文</p>`
+    expect(extractCitation(pageWith(manyLinks), 'https://journal.example.com/a')?.doi).toBeNull()
+
+    // 同一个 DOI 出现多次（arXiv 就是链接文字与 href 各一处）仍算唯一。
+    const repeated = `
+      <meta name="citation_title" content="某篇论文"/>
+      <meta name="citation_journal_title" content="某某学报"/>
+      <a href="https://doi.org/10.1/a">10.1/a</a><a href="https://doi.org/10.1/a">再来一次</a>
+      <p>正文</p>`
+    expect(extractCitation(pageWith(repeated), 'https://journal.example.com/b')?.doi).toBe('10.1/a')
   })
 
   it('takes a bare citation_title as enough, the way Zotero does', () => {
@@ -314,6 +357,12 @@ describe('extractCitation', () => {
     // 学位论文与报告的机构进「出版方」——契约里没有单独的机构字段。
     const thesis = `<meta name="citation_dissertation_institution" content="某某大学"/><p>x</p>`
     expect(extractCitation(pageWith(thesis), 'https://example.edu/t')?.publisher).toBe('某某大学')
+    // 但 `citation_dissertation_name` 是**论文名**不是机构：它只作类型信号，填进出版方
+    // 会污染字段（第一轮 Review F4）。
+    const named = `<meta name="citation_dissertation_name" content="论某某问题的研究"/><p>x</p>`
+    const found = extractCitation(pageWith(named), 'https://example.edu/n')
+    expect(found?.item_type).toBe('THESIS')
+    expect(found?.publisher).toBeNull()
   })
 
   it('calls a DOI without a journal on arxiv.org a preprint, and does not guess elsewhere', () => {

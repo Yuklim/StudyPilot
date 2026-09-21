@@ -117,6 +117,8 @@ Zotero 分层：站点专用翻译器 `100` → unAPI `300` → COinS `310` → 
   {"item_type":"PREPRINT","authors":["Vaswani, Ashish","Shazeer, Noam","Parmar, Niki","Uszkoreit, Jakob","Jones, Llion","Gomez, Aidan N.","Kaiser, Lukasz","Polosukhin, Illia"],"issued_year":2017,"issued_date":"2017/06/12","container_title":null,"volume":null,"issue":null,"pages":null,"publisher":null,"doi":"10.48550/arXiv.1706.03762","isbn":null}
   ```
   用例里的夹具是照这份真实页面**逐字抄的标签集**，并用上述实跑核对过一致（实跑脚本是临时的，跑完即删，未提交——真实页面是第三方内容，不进仓库）。
+
+  **这条证据的口径，如实降级（第一轮 Review 的明确判断）**：实跑脚本已删、真实 HTML 不在仓库里，**Reviewer 与独立验收都无法复核它**，它是主 Agent 的证词而非可复核证据。仓库内的夹具只能支撑「给定这组标签 → PREPRINT/8 作者/2017/页面 DOI」，**不能独立支撑「arXiv 一定会被认出」**。因此「用户在 `arxiv.org` 上实测一次」是**合并后必须做的验证**，不是可选项——TASK-075 正是在同一环上翻的车。`version_name` 这次正好让「装的是哪一版」可确认。
 - 新测试 7 条（extension 161 → **167**）与判别性：
   - 真实 arXiv 标签集 → PREPRINT/8 位作者/2017/DOI；
   - DOI 链接的五种形态（`doi.org`、`dx.doi.org`、大小写、非 `10.` 开头、非 doi.org 域名）；
@@ -124,7 +126,7 @@ Zotero 分层：站点专用翻译器 `100` → unAPI `300` → COinS `310` → 
   - 博客平台特征压制弱信号、但**有期刊名时照常认**（含 yoast 与 wp-block-library 两种特征）；
   - 会议/学位论文/报告/书章节四种信号的类型映射，以及机构填进出版方；
   - `buildVersionName` 的正常与退化（空、空白、`HEAD`、非 SHA 一律 `+dev`），并断言前缀与 `manifest.version` 同源。
-  - **变异实测（4 个变异全被抓）**：把门槛改回 TASK-075 的写法 → 「光有 citation_title 即认」与类型映射两条红（**即 arXiv 会再次认不出**）；去掉页面 DOI 链接的读取 → 真实 arXiv 与 DOI 形态两条红；去掉博客往回拉 → 假阳性那条红；`version_name` 不注入 SHA → 版本那条红。
+  - **变异实测（4 个变异全被抓）**：把门槛改回 TASK-075 的写法 → 「光有 citation_title 即认」与类型映射两条红（**即 arXiv 会再次认不出**）；去掉页面 DOI 链接的读取 → 真实 arXiv 与 DOI 形态两条红；去掉博客往回拉 → 假阳性那条红；`buildVersionName` 不拼 SHA → 版本那条红。**更正（第一轮 Review F2）**：原先写成「`version_name` 不注入 SHA」不成立——变异点在 `manifest.ts` 的纯函数里，而 `vite.config.ts` 那行注入**没有任何用例覆盖**，删掉它全绿。构建产物是人工核对的。
 - 命令与结果（本机 macOS 25.5.0，工作区在 `730cc5f`）：
   - `python3 scripts/governance/check_task.py --task docs/tasks/TASK-079-citation-recall.md --worktree` → **CHECKS PASS**（profiles=contracts,extension；`product_fingerprint=32dd2281…`；extension **167 passed**、lint/typecheck/format/build 全过；OpenAPI 模型校验通过）。
   - `npm run build`（extension）→ 产物 manifest 含 `"version_name": "0.2.0+76831a4"`。

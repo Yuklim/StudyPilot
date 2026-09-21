@@ -33,6 +33,8 @@ describe('MV3 manifest', () => {
   it('stamps the build with the commit, and says "dev" instead of guessing', () => {
     // 「我装的是哪一版」在这之前无法回答：version 是手写常量，改十次代码也不动。
     expect(buildVersionName('327d2d6')).toBe('0.2.0+327d2d6')
+    // 工作区脏时带 -dirty：装的那一版并不等于那个 commit（第一轮 Review F3）。
+    expect(buildVersionName('327d2d6-dirty')).toBe('0.2.0+327d2d6-dirty')
     expect(buildVersionName('327d2d68df130c2ff281141f0c1c8425ca7601f9')).toMatch(
       /^0\.2\.0\+327d2d6/,
     )

@@ -153,26 +153,27 @@ function schemaTypes(doc: Document): string[] {
 }
 
 /**
- * 页面上声明的 DOI：任何指向 `doi.org` 的链接。
+ * 页面上出现的所有 DOI（去重）：指向 `doi.org` 的链接。
  *
  * arXiv 的 abs 页**不发 `citation_doi`**，但它在正文里放了一个
  * `<a id="arxiv-doi-link" href="https://doi.org/10.48550/arXiv.1706.03762">`——DOI 就写在
  * 页面上，只是不在 meta 里（2026-09-21 实测）。很多出版社页面也这么展示。读它既拿到了
  * 效果，又不必像 Zotero 那样按 `10.48550/arXiv.<id>` 的规律**代页面生成**一个它没说过的值。
  */
-function doiFromLinks(doc: Document): string | undefined {
+function doisFromLinks(doc: Document): string[] {
+  const found = new Set<string>()
   for (const node of doc.querySelectorAll('a[href]')) {
     const href = node.getAttribute('href') ?? ''
     try {
       const link = new URL(href, doc.baseURI || 'https://example.invalid/')
       if (!/^(www\.|dx\.)?doi\.org$/i.test(link.hostname)) continue
       const target = decodeURIComponent(link.pathname.replace(/^\//, ''))
-      if (target.startsWith('10.')) return target
+      if (target.startsWith('10.')) found.add(target)
     } catch {
       // 页面上的坏地址很常见，跳过它继续看下一个。
     }
   }
-  return undefined
+  return [...found]
 }
 
 /**
@@ -202,16 +203,17 @@ export function extractCitation(doc: Document, url: string): CapturedCitation | 
     }
     return undefined
   }
-  const doi = bounded(
-    first('citation_doi', 'dc.identifier.doi') ?? doiFromLinks(doc),
-    MAX_CITATION_NAME,
-  )
+  const declaredDoi = first('citation_doi', 'dc.identifier.doi')
+  const linkedDois = doisFromLinks(doc)
   // **不认 `dc.source`**：DC 规范里它常是站点名甚至一段网址，把它算成「期刊名」会让
   // 任何声明了 DC 的普通 CMS 页面被判成期刊论文、出处显示成一段地址。
   const inbook = first('citation_inbook_title', 'citation_book_title')
   const journal = first('citation_journal_title')
   const conference = first('citation_conference_title', 'citation_conference')
-  const thesisPlace = first('citation_dissertation_institution', 'citation_dissertation_name')
+  // `citation_dissertation_institution` 是机构（可作出版方）；`citation_dissertation_name`
+  // 是**论文名**，只能当类型信号——拿它填出版方会污染字段（第一轮 Review F4）。
+  const thesisPlace = first('citation_dissertation_institution')
+  const thesisName = first('citation_dissertation_name')
   const reportPlace = first('citation_technical_report_institution')
   const arxivId = first('citation_arxiv_id')
   const container = bounded(journal ?? conference ?? inbook, MAX_CITATION_CONTAINER)
@@ -223,16 +225,29 @@ export function extractCitation(doc: Document, url: string): CapturedCitation | 
   // 弱信号——光有 `citation_title`。`citation_*` 是 Highwire 那套**专门发给 Google Scholar**
   // 的学术标签，所以它自己就是信号；上一版额外要求 DOI 或期刊名，直接把预印本挡在了门外
   // （arXiv 两样都不发，用户实测撞到）。弱信号遇上博客平台特征则不认。
+  // 注意：**链接里的 DOI 不进这里**。它不是这一页自我声明的身份，见下方取值处的理由。
   const strong = Boolean(
-    doi ||
+    declaredDoi ||
     container ||
     thesisPlace ||
+    thesisName ||
     reportPlace ||
     arxivId ||
     says('scholarlyarticle', 'book', 'thesis', 'report'),
   )
   const weak = Boolean(first('citation_title'))
   if (!strong && !(weak && !looksLikeBlog(doc))) return null
+
+  // **链接里的 DOI 只在两条同时成立时才算这一页自己的**（第一轮 Review F1）：
+  // ① 这一页已凭 meta 里的强信号被认定为文献——链接本身**不作**认定依据；
+  // ② 整页只有唯一一个 DOI 链接。
+  // 否则：维基条目、论文解读博客、期刊目录页的参考文献区里全是**别人的** DOI，取第一个
+  // 就是把别人作品的编号写进这份资料；而确认页默认勾选、用户看一串编号根本分辨不出。
+  // arXiv 靠的是 ① `citation_arxiv_id` 是强信号，② 它的 abs 页实测确实只有一个 DOI 链接。
+  const doi = bounded(
+    declaredDoi ?? (strong && linkedDois.length === 1 ? linkedDois[0] : undefined),
+    MAX_CITATION_NAME,
+  )
 
   const authors = metaValues(doc, 'citation_author')
     .concat(metaValues(doc, 'dc.creator'))
@@ -254,7 +269,7 @@ export function extractCitation(doc: Document, url: string): CapturedCitation | 
   // 那个类型会直接显示在确认页的卡片上，猜错比留空更刺眼。
   const item_type: CapturedCitation['item_type'] = says('book')
     ? 'BOOK'
-    : says('thesis') || thesisPlace
+    : says('thesis') || thesisPlace || thesisName
       ? 'THESIS'
       : says('report') || reportPlace
         ? 'REPORT'

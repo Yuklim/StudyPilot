@@ -54,12 +54,13 @@ export type Manifest = {
  * 「还是 0.2.0 版本，为什么重新加载更新不了」）。Chrome 的 `version` 字段又只接受数字点
  * 分格式，塞不进 commit SHA。`version_name` 没有这个限制，且在扩展详情页直接可见。
  *
- * 构建时由 `vite.config.ts` 注入当前 commit 的短 SHA；拿不到 git（打包好的源码、CI 的浅
- * 克隆）时退化为 `dev`，**不猜、不留空**。
+ * 构建时由 `vite.config.ts` 注入当前 commit 的短 SHA；工作区有未提交改动时带 `-dirty`
+ * 后缀（否则「改了没提交就构建」会指向一个不含该改动的 commit）。拿不到 git（打包好的
+ * 源码、CI 的浅克隆）时退化为 `dev`，**不猜、不留空**。
  */
 export function buildVersionName(commit?: string): string {
   const stamp = (commit ?? '').trim()
-  return `${VERSION}+${/^[0-9a-f]{7,40}$/i.test(stamp) ? stamp : 'dev'}`
+  return `${VERSION}+${/^[0-9a-f]{7,40}(-dirty)?$/i.test(stamp) ? stamp : 'dev'}`
 }
 
 const VERSION = '0.2.0'

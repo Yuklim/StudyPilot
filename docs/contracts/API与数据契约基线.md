@@ -881,7 +881,16 @@ TASK-038 新增。这是本文件里**第一份非 HTTP 契约**：它约束的�
 
 **为什么不是更严的门槛**：TASK-075 曾要求「DOI 或期刊名」，而 arXiv 的 abs 页两样都不发（实测 `1706.03762` 只有 `citation_title`/`citation_author`/`citation_date`/`citation_arxiv_id` 等），于是预印本在真实站点一次都认不出来。Zotero 的通用兜底只要求 `citation_title`，防误判靠「往回拉」而不是抬门槛——本节照此对齐。
 
-**DOI 的来源**：`citation_doi`、`dc.identifier.doi`，以及**页面上任何指向 `doi.org`（含 `dx.doi.org`）且路径以 `10.` 开头的链接**。arXiv 正是后者：它不发 `citation_doi`，但在页面上放了 `<a id="arxiv-doi-link" href="https://doi.org/10.48550/arXiv.…">`。**仍然不推导**：Zotero 会在无 DOI 时按 `10.48550/arXiv.<id>` 自行拼出一个，本实现不这么做——页面没声明的值不填。
+**DOI 的来源**：首选 `citation_doi` / `dc.identifier.doi`。两者都没有时，才看页面上指向 `doi.org`（含 `dx.doi.org`、`www.doi.org`）且路径以 `10.` 开头的链接，且**必须同时满足两条**：
+
+- 这一页**已凭 meta 里的强信号**被认定为文献——链接本身**不作**认定依据；
+- 整页**只有唯一一个**这样的 DOI（同一个 DOI 出现多次仍算唯一）。
+
+否则一个都不取。理由：维基条目、论文解读博客、期刊目录页的参考文献区里全是**别人的** DOI，捡第一个就是把别人作品的编号写进这份资料，而确认页默认勾选、用户看一串编号分辨不出。arXiv 满足这两条（`citation_arxiv_id` 是强信号；其 abs 页实测只有一个 DOI 链接）。
+
+**仍然不推导**：Zotero 会在无 DOI 时按 `10.48550/arXiv.<id>` 自行拼出一个，本实现不这么做——页面没声明的值不填。
+
+**其余几条实现细则**（一并写明，免得实现与契约各说各话）：`citation_arxiv_id` 或 `arxiv.org` 域名且无期刊名时判预印本；`citation_dissertation_institution` 与 `citation_technical_report_institution` 既作类型信号也填进出版方（契约里没有单独的机构字段），而 `citation_dissertation_name` 是**论文名**，只作类型信号、不填出版方。
 
 **不联网核对**——与 14.4 的「扩展只读已渲染的 DOM」同源，识别只看这一页自己写了什么。
 

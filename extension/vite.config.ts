@@ -9,7 +9,13 @@ import { buildVersionName, manifest, POPUP_PAGE } from './src/manifest.ts'
 
 function headCommit(): string {
   try {
-    return execFileSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim()
+    // `--dirty` 让「工作区有未提交改动」也能看出来：否则改了代码没提交就构建，
+    // 版本名指向的是 HEAD 那个 commit，与「我装的是哪一版」的目的正好相反。
+    // stderr 丢掉：没有 git 或不在仓库里时它会打一行 fatal:，那不是构建的错。
+    return execFileSync('git', ['describe', '--always', '--dirty', '--abbrev=7'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim()
   } catch {
     // 没有 git（源码包、浅克隆）时不算失败：版本名退化成 `+dev`，构建照常。
     return ''
