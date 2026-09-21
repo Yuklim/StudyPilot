@@ -1,8 +1,8 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { api } from '../../api/client'
-import { PdfReader } from './PdfReader'
+import { MAX_CANVAS_PIXELS, PdfReader, pixelDensity } from './PdfReader'
 import { pdfPositionKey, scrollTopFor } from './pdfPosition'
 import type { OriginalFile } from './files'
 
@@ -59,6 +59,39 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+describe('canvas 像素密度（TASK-082）', () => {
+  it('matches the screen instead of settling for half of it', () => {
+    // 画布按 CSS 像素开、CSS 又拉伸到同样大时，高分屏上每个 CSS 像素只有一个采样点，
+    // 被放大 dpr 倍显示——那就是「糊」。实测 Retina 上像素利用率只有 50%。
+    expect(pixelDensity(600, 800, 2)).toBe(2)
+    expect(pixelDensity(600, 800, 3)).toBe(3)
+    // 普通屏不多画：1 就是 1，不浪费四倍内存。
+    expect(pixelDensity(600, 800, 1)).toBe(1)
+  })
+
+  it('never goes below 1, whatever the screen claims', () => {
+    // 低于 1 会比不做还糊。`devicePixelRatio` 在某些缩放设置下确实会小于 1。
+    expect(pixelDensity(600, 800, 0.75)).toBe(1)
+    expect(pixelDensity(600, 800, 0)).toBe(1)
+  })
+
+  it('spends no more than the pixel budget on one page', () => {
+    // 浏览器对 canvas 面积有硬上限（Safari 约 16.7M），撞上直接画不出来；内存同理。
+    // 超预算时按面积开方降密度，而不是无上限地开。
+    const big = { w: 2000, h: 2600 } // 5.2M CSS 像素，dpr 2 要 20.8M —— 超预算
+    const density = pixelDensity(big.w, big.h, 2)
+    expect(density).toBeGreaterThan(1)
+    expect(density).toBeLessThan(2)
+    expect(big.w * density * (big.h * density)).toBeLessThanOrEqual(MAX_CANVAS_PIXELS + 1)
+  })
+
+  it('still fits the common case at full density', () => {
+    // 「适合宽度」那一档实测需要 9.3M（1340×1734 CSS，dpr 2）——预算就是照它定的，
+    // 这一档必须**完全清晰**，否则这次修复在最常用的位置上打了折。
+    expect(pixelDensity(1340, 1734, 2)).toBe(2)
+  })
+})
+
 describe('in-app pdf reader', () => {
   it('takes the bytes through the controlled download, never through a direct src', async () => {
     const download = vi
@@ -80,6 +113,63 @@ describe('in-app pdf reader', () => {
     const box = screen.getByLabelText('页码') as HTMLInputElement
     expect(box.value).toBe('1')
     expect(box.max).toBe('3')
+  })
+
+  it('opens the canvas at device pixels while the page box keeps its CSS size', async () => {
+    vi.spyOn(api, 'downloadOriginal').mockResolvedValue({ blob: bytes(), fileName: 'paper.pdf' })
+    const original = window.devicePixelRatio
+    Object.defineProperty(window, 'devicePixelRatio', { value: 2, configurable: true })
+    // jsdom 没装 canvas 包，`getContext` 返回 null，尺寸那段会被早退跳过——给它一个
+    // 替身，这里验的是**我们自己算的画布尺寸**，不是真实绘制（那由 e2e 在 Chromium 里看）。
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
+      {} as unknown as CanvasRenderingContext2D,
+    )
+    try {
+      render(<PdfReader resourceId={resourceId} file={file} />)
+      const canvas = (await screen.findByLabelText('第 1 页')) as HTMLCanvasElement
+      await waitFor(() => expect(canvas.width).toBeGreaterThan(0))
+      // 夹具每页 600×800、scale 1：画布应当是 1200×1600，而**不是** 600×800。
+      expect(canvas.width).toBe(1200)
+      expect(canvas.height).toBe(1600)
+      // 显示尺寸由 CSS 的 100% 锁在 `.pdf-page` 的框上，这里不设内联尺寸——
+      // 两边都写会在缩放时各自舍入、互相打架。
+      expect(canvas.style.width).toBe('')
+      expect(canvas.style.height).toBe('')
+    } finally {
+      Object.defineProperty(window, 'devicePixelRatio', { value: original, configurable: true })
+    }
+  })
+
+  it('redraws when the window moves to a screen with a different pixel ratio', async () => {
+    // 把窗口从内置高分屏拖到外接的普通屏（或反过来）时 `devicePixelRatio` 会变。
+    // 不跟着重画的话，要么一直糊着，要么白白多画四倍像素。
+    vi.spyOn(api, 'downloadOriginal').mockResolvedValue({ blob: bytes(), fileName: 'paper.pdf' })
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
+      {} as unknown as CanvasRenderingContext2D,
+    )
+    const original = window.devicePixelRatio
+    // jsdom 没有 matchMedia，自己造一个能触发 change 的替身。
+    const listeners = new Set<() => void>()
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: true,
+      media: query,
+      addEventListener: (_: string, fn: () => void) => listeners.add(fn),
+      removeEventListener: (_: string, fn: () => void) => listeners.delete(fn),
+      addListener: (fn: () => void) => listeners.add(fn),
+      removeListener: (fn: () => void) => listeners.delete(fn),
+    }))
+    try {
+      Object.defineProperty(window, 'devicePixelRatio', { value: 1, configurable: true })
+      render(<PdfReader resourceId={resourceId} file={file} />)
+      const canvas = (await screen.findByLabelText('第 1 页')) as HTMLCanvasElement
+      await waitFor(() => expect(canvas.width).toBe(600))
+
+      Object.defineProperty(window, 'devicePixelRatio', { value: 2, configurable: true })
+      act(() => listeners.forEach((fn) => fn()))
+      await waitFor(() => expect(canvas.width).toBe(1200))
+    } finally {
+      Object.defineProperty(window, 'devicePixelRatio', { value: original, configurable: true })
+    }
   })
 
   it('tells the three kinds of failure apart and keeps the original reachable', async () => {

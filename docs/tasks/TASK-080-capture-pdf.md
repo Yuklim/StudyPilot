@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-080"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "要给契约第 14 节的 CapturePayload 增加携带 PDF 的字段（两份平行实现 + 逐字比对守卫），并可能动第 14.4 节的 manifest 权限集合（`unlimitedStorage`）。改动落在 docs/contracts/**，命中 risk-policy.json 的 high_risk_paths；同时改变「采集一篇文献」这个核心动作的产物形态（WEB+快照 → FILE+原件），属跨模块的产品语义变化。取最高定 L3：1 Worker → 自动检查 → 独立只读 Reviewer → 独立只读 Integration/Acceptance。"
 risk_flags = ["public-api", "architecture"]
@@ -481,7 +481,7 @@ arXiv 图片数为 0，所以首轮端到端实测没暴露它。
 
 ### 最终状态 / 风险 / 用户操作
 
-- **状态：ACCEPTED**，等待用户合并（只有用户本人可以合并）。
+- **状态：MERGED**——用户 2026-09-21 合并 PR #88，merge 提交 `b69fde5`。
 - **执行链已走完**：1 Worker（主 Agent 亲自实施，路径与角色登记在案）→ 自动检查 CHECKS PASS
   → 独立只读 Reviewer **五轮**（首轮 CHANGES_REQUIRED，抓到 F1「PDF 路径仍索取用不上的站点权限」这条真缺陷）
   → 独立只读 Acceptance **三轮**（首轮 ACCEPTED 并指出下载超时会拖垮整次采集，二轮 CHANGES_REQUIRED
