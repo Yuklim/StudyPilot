@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 import { failureText } from './api'
 import { downloadOriginal, type OriginalFile } from './files'
@@ -64,7 +65,30 @@ function classify(cause: unknown): Failure {
   return { kind: 'read', detail: failureText(cause) }
 }
 
-export function PdfReader({ resourceId, file }: { resourceId: string; file: OriginalFile }) {
+export function PdfReader({
+  resourceId,
+  file,
+  toolbarSlot,
+}: {
+  resourceId: string
+  file: OriginalFile
+  /**
+   * 页码/缩放/「适合宽度」要挂到哪里（TASK-081）。
+   *
+   * 草图里它们和返回、标题、下载原件、心得在**同一条**工具条上；而这些控件的状态
+   * （当前页、缩放、文档尺寸、滚动容器）全都长在这个组件里。与其把那套状态连同
+   * TASK-073 的滚动与位置记忆逻辑一起抬到 `ResourceDetail`（改动面大、风险高），
+   * 不如让控件本身投递到工具条里的挂载点——状态一行不动。
+   *
+   * 三态，含义各不相同：
+   * - `undefined`（不传）：控件留在阅读器自己头上。单测独立渲染本组件时走这条，
+   *   TASK-073 的既有用例因此一字不用改。
+   * - `null`：要投递，但挂载点还没挂上（首帧）。这时**什么都不渲染**——渲染在原位
+   *   再跳走会闪一下。
+   * - 元素：投递过去。
+   */
+  toolbarSlot?: HTMLElement | null
+}) {
   const [doc, setDoc] = useState<Doc | null>(null)
   const [failure, setFailure] = useState<Failure | null>(null)
   const [sizes, setSizes] = useState<{ width: number; height: number }[]>([])
@@ -232,66 +256,79 @@ export function PdfReader({ resourceId, file }: { resourceId: string; file: Orig
       </div>
     )
   }
+  const tools = (
+    <div className="pdf-reader-tools">
+      <label className="pdf-reader-page">
+        第
+        <input
+          type="number"
+          aria-label="页码"
+          min={1}
+          max={Math.max(total, 1)}
+          value={page}
+          onChange={(event) => goTo(Number(event.target.value))}
+        />
+        / {total || '…'} 页
+      </label>
+      <div className="pdf-reader-zoom">
+        <button
+          type="button"
+          className="journal-button"
+          aria-label="缩小"
+          onClick={() => setScale((value) => Math.max(MIN_SCALE, Number((value - 0.1).toFixed(2))))}
+        >
+          −
+        </button>
+        <span aria-live="polite">{Math.round(scale * 100)}%</span>
+        <button
+          type="button"
+          className="journal-button"
+          aria-label="放大"
+          onClick={() => setScale((value) => Math.min(MAX_SCALE, Number((value + 0.1).toFixed(2))))}
+        >
+          ＋
+        </button>
+        <button type="button" className="journal-button" onClick={fitWidth}>
+          适合宽度
+        </button>
+      </div>
+    </div>
+  )
+
+  const pages = (
+    <div className="pdf-reader-pages" ref={container} onScroll={onScroll} tabIndex={0}>
+      {!doc && !sizes.length && (
+        <p role="status" className="resource-loading">
+          正在打开这份 PDF…
+        </p>
+      )}
+      {sizes.map((size, index) => (
+        <PdfPageView
+          key={index}
+          doc={doc}
+          number={index + 1}
+          width={size.width * scale}
+          height={size.height * scale}
+          scale={scale}
+          near={Math.abs(index + 1 - page) <= NEAR_PAGES}
+        />
+      ))}
+    </div>
+  )
+
+  // 控件去了工具条时，这里只剩页面本身——阅读器因此从视口顶部直接开始（TASK-081）。
+  if (toolbarSlot !== undefined) {
+    return (
+      <div className="pdf-reader in-toolbar">
+        {toolbarSlot && createPortal(tools, toolbarSlot)}
+        {pages}
+      </div>
+    )
+  }
   return (
     <div className="pdf-reader">
-      <div className="pdf-reader-tools">
-        <label className="pdf-reader-page">
-          第
-          <input
-            type="number"
-            aria-label="页码"
-            min={1}
-            max={Math.max(total, 1)}
-            value={page}
-            onChange={(event) => goTo(Number(event.target.value))}
-          />
-          / {total || '…'} 页
-        </label>
-        <div className="pdf-reader-zoom">
-          <button
-            type="button"
-            className="journal-button"
-            aria-label="缩小"
-            onClick={() =>
-              setScale((value) => Math.max(MIN_SCALE, Number((value - 0.1).toFixed(2))))
-            }
-          >
-            −
-          </button>
-          <span aria-live="polite">{Math.round(scale * 100)}%</span>
-          <button
-            type="button"
-            className="journal-button"
-            aria-label="放大"
-            onClick={() =>
-              setScale((value) => Math.min(MAX_SCALE, Number((value + 0.1).toFixed(2))))
-            }
-          >
-            ＋
-          </button>
-          <button type="button" className="journal-button" onClick={fitWidth}>
-            适合宽度
-          </button>
-        </div>
-      </div>
-      <div className="pdf-reader-pages" ref={container} onScroll={onScroll} tabIndex={0}>
-        {!doc && !sizes.length && (
-          <p role="status" className="resource-loading">
-            正在打开这份 PDF…
-          </p>
-        )}
-        {sizes.map((size, index) => (
-          <PdfPageView
-            key={index}
-            doc={doc}
-            number={index + 1}
-            width={size.width * scale}
-            height={size.height * scale}
-            scale={scale}
-            near={Math.abs(index + 1 - page) <= NEAR_PAGES}
-          />
-        ))}
-      </div>
+      {tools}
+      {pages}
     </div>
   )
 }

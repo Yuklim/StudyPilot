@@ -2633,6 +2633,31 @@ a.source-chip:focus-visible {
   line-height: 1.3;
   overflow-wrap: anywhere;
 }
+/* PDF 页把标题与来源徽章收进顶栏（TASK-081）。
+   `min-width: 0` 是让下面那条省略号真的生效的前提：flex 子项默认 `min-width: auto`，
+   不写这一行时长文件名会把顶栏顶宽、把右侧按钮挤出去，而不是自己截断。 */
+.reader-toolbar-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+/* 顶栏里的 `h1`：和按钮同高、一行截断。**不换行**——换行等于把省下来的高度还回去。 */
+.reader-title.inline {
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 38px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+/* PDF 控件的挂载点：投递进来的 `.pdf-reader-tools` 在这里与按钮同排。 */
+.reader-toolbar-pdf {
+  display: flex;
+  align-items: center;
+}
+
 .reader-toolbar-buttons {
   display: flex;
   align-items: center;
@@ -2765,6 +2790,20 @@ a.source-chip:focus-visible {
      「返回资料库」文字视觉隐藏，可访问名称由 `.sr-only` 的文字保留。
      `⋯` 菜单不再退化为塞进顶栏的普通块（那会把 sticky 顶栏撑到 472px、正文整体被推下
      ——TASK-046 验收 F7）：与宽屏同一套浮动，宽度 `min(340px, 100vw - 32px)` 本就在视口内。 */
+  /* TASK-081：PDF 页顶栏里的标题在窄屏视觉隐藏，只留来源徽章。
+     TASK-052 当初把标题移出顶栏，正是因为窄屏下「返回·类型·标题」+ 按钮要排两行、
+     顶栏实测 123px；那条理由依然成立，所以这里不让长文件名有机会撑高顶栏。
+     `h1` 本身留在 DOM 里：页面仍要有标题、路由焦点仍落在它上。 */
+  .reader-toolbar-title .reader-title.inline {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
   .reader-back-text {
     position: absolute;
     width: 1px;
@@ -3105,7 +3144,26 @@ a.source-chip:focus-visible {
   font-size: 12px;
   color: var(--muted);
 }
-/* 页面本身滚动：顶栏与工具条留在原处，翻页时视线不用跟着整页跑。 */
+/* 控件投递进顶栏之后（TASK-081）：与顶栏按钮同高同间距，不自己再撑出一行。 */
+.reader-toolbar-pdf .pdf-reader-tools {
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+.reader-toolbar-pdf .pdf-reader-zoom {
+  gap: 4px;
+}
+.reader-toolbar-pdf .journal-button {
+  min-height: 38px;
+  padding: 7px 11px;
+}
+.reader-toolbar-pdf .pdf-reader-page input {
+  width: 52px;
+}
+/* 控件搬进顶栏后这一层就只剩页面本身，`gap` 没有第二个孩子可分隔（TASK-081）。 */
+.pdf-reader.in-toolbar {
+  gap: 0;
+}
+/* 页面本身滚动：顶栏留在原处，翻页时视线不用跟着整页跑。 */
 .pdf-reader-pages {
   display: flex;
   flex-direction: column;
@@ -3136,6 +3194,41 @@ a.source-chip:focus-visible {
   font-size: 13px;
   color: #b4b3aa;
 }
+/* **这次改版的落点**（TASK-081）：不再用 `calc(100vh - 常数)` 扣一个拍出来的数，
+   而是让这一列**按剩余空间填满**——顶栏在窄屏会换行变高，任何常数都会在某一档偏掉
+   （旧值 220px 就是这么来的）。整条链上的每一层都要 `min-height: 0`，否则 flex 子项
+   的默认最小高度＝内容高度，PDF 会把容器顶开、外层跟着出滚动条。
+   只在 `.pdf-page` 下生效：网页/粘贴资料的正文本来就随页面滚动，不动它们。 */
+.resource-sheet.reader.pdf-page {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.resource-sheet.reader.pdf-page .reader-body {
+  flex: 1;
+  min-height: 0;
+  align-items: stretch;
+  /* 比常规正文列（22/96）窄得多：这一页的内容自己会滚动，外面不需要留出翻页余量。
+     留 8px 只是让 PDF 那块灰底不贴着视口边。 */
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+.resource-sheet.reader.pdf-page .reader-main {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.resource-sheet.reader.pdf-page .pdf-reader.in-toolbar {
+  flex: 1;
+  min-height: 0;
+}
+.resource-sheet.reader.pdf-page .pdf-reader-pages {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+
 .pdf-reader-failed {
   padding: 24px;
   border: 1px solid var(--line);

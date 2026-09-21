@@ -63,6 +63,7 @@ const ReaderContent = memo(function ReaderContent({
   deleteRequest,
   onSnapshotState,
   pdf,
+  pdfToolbarSlot,
 }: {
   resourceId: string
   sourceType: Source
@@ -73,10 +74,15 @@ const ReaderContent = memo(function ReaderContent({
   onSnapshotState: (state: SnapshotState) => void
   /** TASK-073：FILE 资料的原件是 PDF 时，正文区放站内阅读器而不是快照空态。 */
   pdf: OriginalFile | null
+  /** TASK-081：PDF 控件要投递到顶栏的哪个节点上；`null` = 顶栏还没挂上。 */
+  pdfToolbarSlot: HTMLElement | null
 }) {
   // PDF 自己就是正文：这时不渲染快照区（那里只会显示「还没有保存正文」的引导，对一份
   // 已经能在站内读的 PDF 没有意义）。其他格式的原件保持现状，走快照那条路。
-  if (pdf) return <PdfReader key={pdf.id} resourceId={resourceId} file={pdf} />
+  if (pdf)
+    return (
+      <PdfReader key={pdf.id} resourceId={resourceId} file={pdf} toolbarSlot={pdfToolbarSlot} />
+    )
   return (
     <ContentSnapshot
       resourceId={resourceId}
@@ -332,6 +338,12 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
 
   // --- TASK-073：FILE 资料的原件是 PDF 时，站内直接读 ---
   const pdfOriginal = isPdfOriginal(item?.original_file ?? null) ? item!.original_file! : null
+  /**
+   * 顶栏里给 PDF 控件留的挂载点（TASK-081）。放 state 而不是 ref：ref 的变化不会触发
+   * 重渲染，`PdfReader` 就永远收不到这个节点。首帧它是 `null`，`PdfReader` 那一侧据此
+   * 什么都不渲染——渲染在原位再跳上去会闪一下。
+   */
+  const [pdfToolbarSlot, setPdfToolbarSlot] = useState<HTMLElement | null>(null)
   // 本机阅读位置的百分比：恢复时取存的值，滚动时随位置写回一起更新（只在整数变化时 setState）。
   const [readingPercent, setReadingPercent] = useState<number | null>(null)
 
@@ -420,7 +432,9 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
 
   return (
     <section
-      className={`resource-sheet reader${notesOpen ? ' notes-open' : ''}`}
+      className={`resource-sheet reader${notesOpen ? ' notes-open' : ''}${
+        pdfOriginal ? ' pdf-page' : ''
+      }`}
       aria-label="资料内容"
     >
       {/* 工具条只在资料读到之后才渲染，而**读取中与读取失败时同样需要出口**。
@@ -456,6 +470,9 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
           outlineOpen={outlineOpen}
           onToggleOutline={toggleOutline}
           readingPercent={readingPercent}
+          pdfMode={Boolean(pdfOriginal)}
+          pdfSlotRef={setPdfToolbarSlot}
+          headingSlot={headingSlot}
           snapshotExists={snapshotExists}
           snapshotUnreadable={snapshotUnreadable}
           showSource={showSource}
@@ -474,8 +491,10 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
               进入。宽屏挤压态两边都可见、都可读，不 inert。 */}
           <div className="reader-main" inert={opening} ref={setReaderMain}>
             {/* 标题进正文列（TASK-052）：页面 `h1` 就是文章的标题，位置与正文列对齐、
-                随正文滚走；路由焦点仍落在它上（`headingSlot`）。 */}
-            <ReaderHeader resource={toolbarItem} headingSlot={headingSlot} />
+                随正文滚走；路由焦点仍落在它上（`headingSlot`）。
+                **PDF 例外（TASK-081）**：那一页的标题长在顶栏里，这里不再重复一个 `h1`
+                ——一页两个 `h1` 既是无障碍问题，也正是要省掉的那 64px。 */}
+            {!pdfOriginal && <ReaderHeader resource={toolbarItem} headingSlot={headingSlot} />}
             {/* 「记下这段」浮动胶囊（TASK-068）：读正文里的选区，送进右栏心得草稿。 */}
             <ReaderQuote container={readerMain} onQuote={takeQuoteAndMark} onMark={takeMark} />
             {/* 标签与「收下它是因为」TASK-067 起在右栏「信息」Tab（用户 2026-09-17 选定），
@@ -493,6 +512,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
               deleteRequest={deleteRequest}
               onSnapshotState={receiveSnapshotState}
               pdf={pdfOriginal}
+              pdfToolbarSlot={pdfToolbarSlot}
             />
           </div>
           {/* 用心得 `<section aria-label>` 而不是 `<aside>`：section + 名字 = region，
