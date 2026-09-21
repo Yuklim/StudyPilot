@@ -372,10 +372,24 @@ function safeName(raw: string): string {
       return '\\/:*?"<>|'.includes(ch) ? ' ' : ch
     })
     .join('')
-  // 按码点切而不是按 UTF-16 单元：`.slice(0, 180)` 会把代理对劈成半个字符
-  // （emoji、生僻字标题），留下一个孤立代理。同文件的 `bounded()` 也是这么做的。
-  const tidy = cleaned.replace(/\s+/g, ' ').trim()
-  return [...tidy].slice(0, 180).join('')
+  return capName(cleaned.replace(/\s+/g, ' ').trim(), 180)
+}
+
+/**
+ * 截到至多 `max` 个 **UTF-16 单元**，且不把代理对劈成半个字符。
+ *
+ * 两头都要管住，所以不能只取其一（第二轮 Review 非阻断项①）：
+ * - 按 UTF-16 直接 `slice` 会在 emoji／生僻字中间切断，留下一个孤立代理；
+ * - 按码点 `[...s].slice(n)` 不会切断，但 n 个码点最多占 2n 个 UTF-16 单元，
+ *   于是 `name.length ≤ 200` 那道协议校验可能被越过，整条载荷被接收端丢掉。
+ */
+function capName(raw: string, max: number): string {
+  let out = ''
+  for (const ch of raw) {
+    if (out.length + ch.length > max) break
+    out += ch
+  }
+  return out
 }
 
 /** 从地址取文件名；末段没有像样的名字（arXiv 的 `/pdf/1706.03762` 有，PLOS 的没有）就退回标题。 */
@@ -389,7 +403,7 @@ function pdfNameFor(target: URL, title: string): string {
   const stem = last.replace(/\.pdf$/i, '')
   const fromPath = USELESS_NAMES.has(stem.toLowerCase()) ? '' : safeName(stem)
   const name = fromPath || safeName(title) || 'paper'
-  return `${name.slice(0, 180)}.pdf`
+  return `${name}.pdf`
 }
 
 /**

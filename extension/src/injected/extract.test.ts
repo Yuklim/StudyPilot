@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { MAX_IMAGES, MAX_MARKDOWN, MAX_TITLE } from '../shared/protocol'
+import { isCapturedPdf, MAX_IMAGES, MAX_MARKDOWN, MAX_TITLE } from '../shared/protocol'
 
 import {
   EXTRACT_OPTIONS,
@@ -584,6 +584,20 @@ describe('capturePdf', () => {
     const citation2 = extractCitation(pageWith(PAPER), PAGE)
     const { pdf: pdf2 } = await capturePdf(pageWith(PAPER), PAGE, citation2, '某篇论文')
     expect(pdf2!.name).toBe('2401.00001.pdf')
+
+    // 超长标题：切完既不能留下半个字符，也不能越过接收端 `name.length <= 200` 那道校验
+    // （第二轮 Review 非阻断项①②：原先按码点切，180 个 emoji 会占 360 个 UTF-16 单元）。
+    const emoji = PAPER.replace('https://arxiv.test/pdf/2401.00001', 'https://arxiv.test/download')
+    const citationE = extractCitation(pageWith(emoji), PAGE)
+    // 前面那个 `a` 是关键：它让 180 这个偶数边界落在某个代理对**中间**。
+    // 纯 emoji 的标题下，旧写法碰巧也切在完整字符上，钉不住这条。
+    const { pdf: pdfE } = await capturePdf(pageWith(emoji), PAGE, citationE, 'a' + '🙂'.repeat(300))
+    expect(pdfE!.name.length).toBeLessThanOrEqual(200)
+    // 没有孤立代理：能原样编解码回来说明每个代理对都是完整的。
+    expect(
+      [...pdfE!.name].every((ch) => ch.codePointAt(0)! < 0xd800 || ch.codePointAt(0)! > 0xdfff),
+    ).toBe(true)
+    expect(isCapturedPdf(pdfE)).toBe(true)
 
     // 两头都没有像样的名字时也得有个能存的名字。
     const bare = PAPER.replace('https://arxiv.test/pdf/2401.00001', 'https://arxiv.test/download')
