@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-082"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L2"
 risk_reason = "只改 `PdfPageView` 的 canvas 画布尺寸与 `styles.css` 一条规则，不动公共契约、不动数据含义、不动后端。不命中 risk-policy.json 的 high_risk_paths。**不定 L1 的理由是它改变内存特征**：按 devicePixelRatio 渲染会让每张 canvas 的像素数变成原来的 dpr²（Retina 上 4 倍），一份大文档同时渲染多页时可能吃爆内存或撞上浏览器的 canvas 面积上限——需要一位独立 Reviewer 盯住这个代价与所设的上限是否合理。执行链：1 Worker → 自动检查 → 1 独立只读 Reviewer。"
 risk_flags = ["business"]
@@ -190,7 +190,7 @@ canvas 配额很紧的环境、或同屏多个阅读器实例时才必须降，�
 - **最终候选 SHA**：见本分支最后一次实现提交（Review 修正后）。首轮候选 `adbdd03`。
 - **Review**：L2 独立只读 Reviewer 一轮，**PASS**，3 条非阻断（F1 注释过头话、F2 注释不实、
   F3 缺一次即时同步）**全部已处理**，详见上文「Review」一节。
-- **最终状态：ACCEPTED**，等待用户合并（只有用户本人可以合并）。
+- **最终状态：MERGED**——用户 2026-09-21 合并 PR #90，merge 提交 `168830e`。
 - **剩余风险**：① 4K 全屏「适合宽度」会降到 2 倍以下（无实测条件）；② 分数像素比下换屏可能
   不跟随（已补兜底，失败模式不比改前差）；③ 大幅面 PDF × 高缩放仍可能超预算（旧代码同样如此）；
   ④ Retina 下画布内存最坏约 200 MB（实测 178 MB），未做按距离分级密度。
