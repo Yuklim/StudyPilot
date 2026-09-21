@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-085"
-status = "IN_REVIEW"
+status = "IN_ACCEPTANCE"
 risk = "L3"
 risk_reason = "要改契约第 14.4 节（popup 的交互与权限询问时机写在那里），并修正 TASK-084 留下的一处**已失效的契约陈述**（§14.4 仍写「用户若在确认页取消勾选、改存网页正文」，而那个勾选框已被删）。`docs/contracts/**` 命中 risk-policy.json 的 high_risk_paths，取最高定 L3：1 Worker → 自动检查 → 独立只读 Reviewer → 独立只读 Integration/Acceptance。代码改动本身只在扩展 popup，但契约是公共事实来源，改它必须走满这条链。"
 risk_flags = ["public-api", "business"]
@@ -119,8 +119,10 @@ checks = ["contracts"]
 
 ## 实现与测试
 
-- 实现 SHA：登记 `db7279b`，实现随后。
-- 命令与结果：`check_task.py` → **CHECKS PASS**（`profiles=contracts,extension`）；扩展单测 **190 项**全绿。
+- 实现 SHA：登记 `db7279b`；首轮候选 `76dd81a`；Review 修正 `0db4f96` + 类型修正 `7b90bfe`。
+- 命令与结果（**对最终候选 `7b90bfe` 重跑**）：`check_task.py` → **CHECKS PASS**
+  （`profiles=contracts,extension`）；扩展单测 **196 项**全绿（新增接线用例 6 条）。
+  记录初稿写的「190 项」是首轮候选 `76dd81a` 的数字，已作废——独立 Review 要求绑到新候选。
 
 ### 落点
 
@@ -185,6 +187,9 @@ checks = ["contracts"]
 - **「算了」之后扩展存储里可能仍留着上一次的暂存内容**（本次不落新暂存，但不清旧的），
   与既有行为一致——那份会被下次采集覆盖或下次交付清除。
 - popup 的视觉风格没有草图可依，本次只加必要状态，未做整体设计。
+- **接线用例未覆盖四条分支**（独立 Review 二轮指出，均非阻断）：失败 + 正文有图 → 改存正文 →
+  应弹图片询问且此刻仍未交付（即「要点三次」那条已知限制的组合路径）、`#text-only`、
+  `runCapture` 失败时的 `outcomeText`、`deliver` 的 catch 分支。建议下次顺手补。
 - **用户文档有两处漂移，本任务改不了**（不在 `allowed_paths`，独立 Review 非阻断①）：
   `extension/README.md` 仍写按钮叫「保存这一页的正文」，`docs/开发与运行.md` 仍写「抓不到时**自动**
   退回」。登记为遗留，**并入下一个已授权任务**。
@@ -194,8 +199,47 @@ checks = ["contracts"]
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：待填
-- Review：待填
+- **最终候选 SHA**：`7b90bfe5fb392ec5b64182a3c77a4fac4dc9dff5`（基线 `168830e`）。
+  候选链：`76dd81a`（首轮）→ `0db4f96`（Review F1–F3 修正）→ `7b90bfe`（补齐接线用例的类型）。
+- **Review**：L3 独立只读 Reviewer 两轮——首轮 **CHANGES_REQUIRED**（F1 契约 §14.7 新失效陈述、
+  F2 把未合并分支当既成事实、F3 接线零覆盖却声称「有用例」），二轮 **PASS**。
+
+### 过程失误留痕（独立 Review 要求记一句，因为它会复发）
+
+首轮候选提交时 `vitest run` 是绿的、`tsc` 是红的（新用例的 mock 没标类型，`calls[0][2]`
+落在空元组上；vitest 不做类型检查）。我当时用
+
+```bash
+python3 scripts/governance/check_task.py ... | grep -E "^CHECKS" && git commit ...
+```
+
+看结果，而检查失败时输出的是 `CHECKS FAIL: 2`——**`grep` 匹配到它照样返回 0**，`&&` 后面的
+提交正常执行。于是一个类型错误的候选被提交并送去 Review。**同一天这个坑踩了两次**（TASK-085
+登记时也发生过一次）。正确写法是把检查与提交拆成两步，或用 `grep -qE "^CHECKS PASS"`。
+已写入主 Agent 的长期记忆。
+
+### 合并之后必须做的清理（独立 Review 二轮指出）
+
+契约 §14.4 里那句「**生效前提：TASK-084 先合并**」与它下面的合并顺序引用块，
+**在 TASK-084 合并之后自身就成了过期陈述**。最迟在把 TASK-085 标为 MERGED 时删掉它们。
+同理，本记录 TOML 的 `risk_reason` 里仍写「那个勾选框**已被删**」——属冻结区的小疵，
+不为它重开候选，一并在收尾时处理。
+
+### Review 报告（二轮，覆盖最终候选）原文
+
+> **结论：PASS**（覆盖新候选 `7b90bfe`，继承上一轮对 `76dd81a` 的其余结论）
+>
+> **① §14.7 新写法**：与代码逐条对得上——「先停在 popup」对 `main.ts:84-99`；「点改存正文才走既有行为」对 `:89-92`→`askImagesThenDeliver`；「点算了什么都不存」对 `:93-98`（不调 `deliverCapture`）；「确认页仍会再说一次原因」属实（载荷带 `pdf_problem`，`CapturePage.tsx:309-311` 渲染）。未发现新的不一致。
+>
+> **② F2 处置**：足够。条件化陈述在任一合并顺序下都不为假。**剩余风险**：TASK-084 合并后这条引用块与「生效前提」就成了新的过期陈述——请在 084 合并后（最迟在 085 标 MERGED 时）删掉它。
+>
+> **③ 6 条接线用例**：真有判别力——断言失败时 `deliverCapture` **未被调用**、「算了」未交付、交付时的 `images` 实参、实装版本、按钮回来，都钉在被测输入上，不是形状断言；所报三组变异与断言分布一致。**未覆盖的分支**（均非阻断）：a) 失败 + 正文有图 → 改存正文 → 应弹 `#choices` 且此刻仍未交付（即记录里「要点三次」那条已知限制的组合路径）；b) `#text-only`；c) `outcome.ok=false` → `outcomeText`；d) `deliver` 的 catch → 采集按钮回来。
+>
+> **④ 其他**：`main.test.ts` 已随范围修订 2 进 `allowed_paths`，无越界；`typeof chrome` 守卫与「算了」后 `show(button, true)` 均已落地，后者有用例钉住。
+>
+> 剩余风险：失败屏仍只有手工 DOM 实测 + 接线单测，真实网页上「抓失败→这一屏」仍需用户点一次确认；用户文档两处漂移已登记待下一个任务。
+
+- Acceptance：待填
 - Acceptance：待填
 - 最终状态/风险/用户操作：待填
 - 非阻断遗留项：待填
