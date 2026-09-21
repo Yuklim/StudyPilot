@@ -32,7 +32,8 @@ const giveUp = document.querySelector('#give-up')
 // **版本要取浏览器实际装着的那一份**（TASK-085 范围修订 1）：源码里的 `manifest.version`
 // 是 `buildVersion()` 的无参调用，运行时拿不到构建号，于是 popup 一直显示 `0.2.0`，
 // 而扩展管理页显示 `0.2.0.638+…`——用户早先抱怨过这个不一致，TASK-079 只修好了管理页那边。
-const installed = chrome.runtime?.getManifest?.()?.version
+const installed =
+  typeof chrome !== 'undefined' ? chrome.runtime?.getManifest?.()?.version : undefined
 if (status) status.textContent = popupText(installed || manifest.version)
 
 function show(element: Element | null, visible: boolean) {
@@ -91,7 +92,9 @@ if (
           }
           giveUp.onclick = () => {
             show(pdfFailed, false)
-            note.textContent = '这次什么都没保存。'
+            // 把采集按钮放回来：否则这一次 popup 里再也点不了第二次（独立 Review 非阻断②）。
+            show(button, true)
+            note.textContent = '这次什么都没保存。想改主意就再点一次。'
           }
           return
         }
