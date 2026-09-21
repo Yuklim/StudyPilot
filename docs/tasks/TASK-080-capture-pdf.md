@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-080"
-status = "READY"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "要给契约第 14 节的 CapturePayload 增加携带 PDF 的字段（两份平行实现 + 逐字比对守卫），并可能动第 14.4 节的 manifest 权限集合（`unlimitedStorage`）。改动落在 docs/contracts/**，命中 risk-policy.json 的 high_risk_paths；同时改变「采集一篇文献」这个核心动作的产物形态（WEB+快照 → FILE+原件），属跨模块的产品语义变化。取最高定 L3：1 Worker → 自动检查 → 独立只读 Reviewer → 独立只读 Integration/Acceptance。"
 risk_flags = ["public-api", "architecture"]
@@ -140,9 +140,81 @@ checks = ["frontend", "contracts"]
 
 ## 实现与测试
 
-- 实现 SHA：待填。
-- 命令与结果：待填。
-- 已知限制/未完成项：待填。
+- 实现 SHA：`d83dd91`（主体）、`4a35279`（真实站点实测后的三处修正）；范围修订登记在 `d73eff1`。
+- 命令与结果：`python3 scripts/governance/check_task.py --task docs/tasks/TASK-080-capture-pdf.md --worktree`
+  → **CHECKS PASS**，11 条全绿（contracts/extension/frontend 三组），
+  `files=20 product_fingerprint=78f285309e94b612b2553588d086616cfdcd7ae1d0faaacc5307fe87758e1b47`。
+  单测：扩展 176 项、前端 761 项（含本任务新增：`capturePdf` 的七条分支用例、确认页的 PDF/退回/取消勾选四组、
+  `isCapturedPdf` 的结构与自洽校验）。
+
+### 落点
+
+1. **抓取在注入脚本里**（`extract.ts` 的 `capturePdf`）：只认这一页 `citation_pdf_url` 声明的地址，
+   `target.origin !== origin` 时**在发请求之前**返回 `cross-origin`；`credentials: 'omit'`；
+   自己校验 `%PDF-` 而不信服务器的 `Content-Type`；超 25 MiB 判 `too-large`。
+2. **载荷多两个字段**（契约 14.2）：`pdf: CapturedPdf | null` 与 `pdf_problem`。两份平行协议同步改，
+   逐字比对守卫的函数清单加入 `isCapturedPdf`。
+3. **确认页分叉**（`CapturePage.tsx`）：有 PDF 且用户没取消勾选时走 `uploadResource` 建 FILE 资料、
+   不写快照、不存正文；文献信息照存；随后直接进站内 PDF 阅读器。取消勾选或没抓到就回到原来的 WEB+快照路径。
+4. **`unlimitedStorage`**：`storage.local` 默认约 10 MB，实测论文 base64 后 0.9–8.6 MB，最大的已贴着配额。
+   它不授予任何站点访问权——`manifest.test.ts` 另有断言钉死 `permissions` 里不得出现 `://` 或 `<all_urls>`。
+
+### 范围修订 1 的两处门闩改动（对应登记时的自缚）
+
+- **网络门闩换口径**：`boundaries.test.ts` 原本禁止 `/background/` 之外出现 `fetch(`。改为只放行
+  `injected/extract.ts` 一个文件，并在该文件上加四条：恰好一个 fetch 调用点、无 `XMLHttpRequest`/
+  `sendBeacon`、同域判断存在**且在 fetch 之前**、`credentials: 'omit'`。
+  **变异验证**（逐条确认门闩真会报警，不是摆设）：删同域判断 → 红；同域判断挪到 fetch 之后 → 红；
+  再加一个 fetch 调用点 → 红；`omit` 改 `include` → 红。四种全部变红，还原后复绿。
+- **三处权限宣称**（`extension/README.md`、`extension/AGENTS.md`、根 `README.md`）补上 `unlimitedStorage`，
+  并把「service worker 是唯一出网点」改成「两处，各自有各自的约束」。`extension/AGENTS.md` 里
+  「`permissions` 的确切三项（安装时权限一字未加）」也一并改正——那句话已经不成立了。
+
+### 真实浏览器实测（真实 Edge + 真实线上页面，2026-09-21）
+
+测法：构建出 `dist/extract.js`，用 CDP `Page.createIsolatedWorld` 在**隔离世界**里跑它——
+那正是 `chrome.scripting.executeScript` 注入脚本运行的地方。（先用 `page.evaluate` 测过一轮，
+但那是页面主世界、受页面 CSP 管，比实际更严；换隔离世界重测后结论一致，两轮都记在这里。）
+
+| 页面 | 结果 |
+| --- | --- |
+| arXiv `1706.03762` | 抓到 **2.11 MB**，`%PDF-`，`1706.03762.pdf`，PREPRINT + `10.48550/arXiv.1706.03762`，**零授权提示** |
+| arXiv `1512.03385` | 抓到 **0.78 MB**，同上形态 |
+| PLOS ONE（开放获取） | 抓到 **0.86 MB**，JOURNAL_ARTICLE + `10.1371/journal.pone.0287795` |
+| Nature `s41586-021-03819-2` | 认作文献（Nature / 正确 DOI），PDF `failed`，退回存正文 |
+| Springer IJCV | 认作文献（IJCV / 正确 DOI），PDF `failed`，退回存正文 |
+| 维基百科 Transformer | 不认作文献，行为与今天完全一致 |
+| wordpress.org/news | 不认作文献，行为与今天完全一致 |
+
+**Nature / Springer 为什么 `failed`——追到底了，不是猜的**：它们声明的 PDF 地址**是同域的**，
+请求发得出去，但被一条**跨域重定向链**掐断。实测重定向链：
+
+- Nature：`303 www.nature.com/…pdf` → `302 idp.nature.com/authorize?response_type=cookie` →
+  `302 idp.nature.com/transit` → `200` 回到 PDF。
+- Springer：`303 link.springer.com/content/pdf/…` → `302 idp.springer.com/authorize?response_type=cookie` →
+  `303` → `200` **落回文章页**（那篇本就不开放获取）。
+
+同域 fetch 一旦跟进跨域重定向就变成 CORS 请求，`credentials: 'omit'` 下必被挡回，表现为 `TypeError`。
+**这不该修**：跟过去就得带用户在该站的登录态，而那正是扩展承诺永不接触的东西。
+退回存正文是正确结果；确认页的提示已按这个真实原因改写成「多数出版社要求先登录才给，而扩展从不带你的账号信息」。
+
+**真实页面逼出的两处修正**（`4a35279`）：
+
+1. **PLOS 每篇都会被存成 `file.pdf`**——它的 PDF 地址是 `/plosone/article/file?id=…&type=printable`，
+   末段就是 `file`。改为：末段是 `file`/`download`/`printable` 等通用词时改用这一页的标题，
+   并把清洗规则从 `[^\w.-]`（会把中文整个剔掉）改成只去控制字符与路径分隔字符（与契约 8.1 的后端口径一致）。
+   修好后实测该页的文件名变成 `Women drive efforts to highlight…engineering.pdf`，arXiv 仍是 `1706.03762.pdf`。
+2. `failed` 的提示文案按上面查到的真实原因重写。
+
+### 已知限制 / 未完成项
+
+- **出版社站基本拿不到 PDF**（Nature、Springer 实测如此，原因见上）。这不是缺陷，是「不碰登录态」这条承诺的
+  必然结果；用户想要那篇 PDF 仍可自己下载后走文件导入。
+- **`unlimitedStorage` 是否会在安装时多一条权限提示，本次没有实测**：加载已解压扩展不走安装对话框，
+  自动化也触发不了。按 Chromium 的权限警告表它不产生提示，但这一条只是文档依据，不是本次观察到的事实。
+- 页面本身就是一个 PDF 地址时点采集，仍然不支持（注入脚本拿不到 DOM）——登记时即列为非目标。
+- 跨域 PDF 不走可选的 `<all_urls>` 权限去取：那条路能做但要多一次授权，与用户「以体验为主、不要过多点击授权」
+  的要求方向相反，故按用户定案退回存正文。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
