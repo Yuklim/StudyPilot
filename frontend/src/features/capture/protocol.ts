@@ -73,6 +73,29 @@ export interface CapturedCitation {
   isbn: string | null
 }
 
+/** 采集时一并取下的 PDF 上限，与后端单文件上限一致（契约第 8 节 25 MiB）。 */
+export const MAX_PDF_BYTES = 26_214_400
+
+/**
+ * 采集时顺手取下来的文献 PDF。
+ *
+ * **为什么由注入脚本去取**：它与页面同源运行，取一份**页面自己声明的同源 PDF**
+ * （`citation_pdf_url`）不需要任何 host 权限——用户点扩展图标那一下授予的 `activeTab`
+ * 就够了。这是「点一次就把文献拿进来」的落点。跨源的 PDF 受 CORS 管，取不到，按
+ * `pdf_problem` 如实告知并退回存正文。
+ */
+export interface CapturedPdf {
+  /** 文件名，取自地址最后一段；没有可用名字时是 `paper.pdf`。 */
+  name: string
+  /** 原始字节数。页面据它显示体积，也据它挡住超限的。 */
+  bytes: number
+  /** base64 的字节。取到时已校验过以 `%PDF-` 开头，不信服务器的 Content-Type。 */
+  base64: string
+}
+
+/** 没能取到 PDF 的原因，确认页据此如实说明；`null` 表示这一页本来就不是文献。 */
+export type PdfProblem = 'cross-origin' | 'too-large' | 'not-pdf' | 'failed'
+
 export interface CapturePayload {
   title: string
   url: string
@@ -91,6 +114,14 @@ export interface CapturePayload {
    * 接收端的 `capturedFrom` 会把它归一成 `null`，好让「认不出」只有一种写法。
    */
   citation?: CapturedCitation | null
+  /**
+   * 采集时一并取下的文献 PDF；没有就是 `null`。
+   *
+   * **可缺省**：旧版本扩展留下的暂存里没有这个字段，缺失与 `null` 同义。
+   */
+  pdf?: CapturedPdf | null
+  /** 认出是文献却没取到 PDF 时的原因；其余情况为 `null`。 */
+  pdf_problem?: PdfProblem | null
 }
 
 /**
@@ -224,6 +255,28 @@ export function isCapturedCitation(value: unknown): value is CapturedCitation | 
 }
 
 /**
+ * PDF 的校验。`null` 与缺失都算「这次没有 PDF」。
+ *
+ * base64 只做形状与体积校验：真正判断它是不是 PDF 的地方在取字节时（`%PDF-` 魔数），
+ * 因为付费墙常常回 200 加一页 HTML。到了这一步还不合格，说明不是本扩展产出的消息。
+ */
+export function isCapturedPdf(value: unknown): value is CapturedPdf | null {
+  if (value === null || value === undefined) return true
+  if (typeof value !== 'object' || Array.isArray(value)) return false
+  const candidate = value as Record<string, unknown>
+  const { name, bytes, base64 } = candidate
+  if (typeof name !== 'string' || !name.trim() || name.length > 200) return false
+  if (typeof bytes !== 'number' || !Number.isSafeInteger(bytes) || bytes < 1) return false
+  if (bytes > MAX_PDF_BYTES) return false
+  if (typeof base64 !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) return false
+  // base64 每 4 个字符编 3 字节，末尾用 `=` 补齐：长度**和**补齐位数合起来能唯一确定
+  // 原始字节数。只比长度的话，同一组里的 8 与 9 字节分辨不出来（都是 12 个字符）。
+  if (Math.ceil(bytes / 3) * 4 !== base64.length) return false
+  const padding = bytes % 3 === 0 ? 0 : 3 - (bytes % 3)
+  return base64.endsWith('='.repeat(padding)) && !base64.endsWith('='.repeat(padding + 1))
+}
+
+/**
  * 接收端一律先过这道校验再使用：结构对不上就丢弃，不猜测、不补救。
  *
  * **任何网页都能向同源窗口 postMessage**，所以这不是防御性编程的客套，而是这条
@@ -242,6 +295,7 @@ export function isCapturePayload(value: unknown): value is CapturePayload {
   if (typeof markdown !== 'string') return false
   if (!isImageList(candidate.images)) return false
   if (!isCapturedCitation(candidate.citation)) return false
+  if (!isCapturedPdf(candidate.pdf)) return false
   return markdown.trim().length > 0 && markdown.length <= MAX_MARKDOWN
 }
 
@@ -298,7 +352,7 @@ export function capturedFrom(event: MessageEvent, win: Window): CapturePayload |
   if (!isCapturePayload(envelope.payload)) return null
   // 返回**已校验字段的副本**而不是原对象：让「校验的即所用的」在代码层面自明。
   // 结构化克隆已经挡住了 getter/Proxy，这一步是把不变量写进代码而非依赖运行时特性。
-  const { title, url, markdown, images, citation } = envelope.payload
+  const { title, url, markdown, images, citation, pdf, pdf_problem } = envelope.payload
   // images 也要跟着复制一份：漏掉它，页面永远看不到图片清单，冻结这条路
   // 会一声不响地什么都不做 —— 这正是 `protocol.test.ts` 那条「返回的是副本」
   // 断言在本次改动中抓到的。数组本身也复制，避免与来源共享引用。
@@ -311,5 +365,9 @@ export function capturedFrom(event: MessageEvent, win: Window): CapturePayload |
     markdown,
     images: [...images],
     citation: citation ? { ...citation, authors: [...citation.authors] } : null,
+    // pdf 同理（TASK-080）。这是本文件第三次因为「新字段忘了复制」踩坑——images 一次、
+    // citation 一次——所以下面那条用例把「返回的对象里有且只有这些字段」整体钉住了。
+    pdf: pdf ? { ...pdf } : null,
+    pdf_problem: pdf_problem ?? null,
   }
 }

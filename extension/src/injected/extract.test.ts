@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import { readFileSync } from 'node:fs'
 
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { MAX_IMAGES, MAX_MARKDOWN, MAX_TITLE } from '../shared/protocol'
 
 import {
   EXTRACT_OPTIONS,
+  capturePdf,
   collectImages,
   extractCitation,
   extractFromDocument,
@@ -485,5 +486,98 @@ describe('extractCitation', () => {
       'https://example.com/a',
     )
     expect(plain.citation).toBeNull()
+  })
+})
+
+describe('capturePdf', () => {
+  const PAPER = `
+    <meta name="citation_title" content="某篇论文"/>
+    <meta name="citation_arxiv_id" content="2401.00001"/>
+    <meta name="citation_pdf_url" content="https://arxiv.test/pdf/2401.00001"/>
+    <p>正文</p>`
+  const PAGE = 'https://arxiv.test/abs/2401.00001'
+
+  /** 造一个 fetch 替身：给定字节与状态。 */
+  function serving(body: Uint8Array | null, init: { ok?: boolean } = {}) {
+    return vi.fn(async () => {
+      if (!body) throw new TypeError('Failed to fetch')
+      return {
+        ok: init.ok ?? true,
+        arrayBuffer: async () =>
+          body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength),
+      } as unknown as Response
+    })
+  }
+  const pdfBytes = (size = 64) => {
+    const bytes = new Uint8Array(size)
+    bytes.set([0x25, 0x50, 0x44, 0x46, 0x2d]) // %PDF-
+    return bytes
+  }
+
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('fetches the same-origin PDF the page declares, with no extra permission', async () => {
+    const fetcher = serving(pdfBytes(128))
+    vi.stubGlobal('fetch', fetcher)
+    const citation = extractCitation(pageWith(PAPER), PAGE)
+    const { pdf, problem } = await capturePdf(pageWith(PAPER), PAGE, citation)
+    expect(problem).toBeNull()
+    expect(pdf).toMatchObject({ name: '2401.00001.pdf', bytes: 128 })
+    expect(atob(pdf!.base64).slice(0, 5)).toBe('%PDF-')
+    // 不带凭据：扩展承诺不接触任何网站账号。
+    expect(fetcher).toHaveBeenCalledWith('https://arxiv.test/pdf/2401.00001', {
+      credentials: 'omit',
+    })
+  })
+
+  it('never touches a PDF on another origin', async () => {
+    const fetcher = serving(pdfBytes())
+    vi.stubGlobal('fetch', fetcher)
+    const cross = PAPER.replace('https://arxiv.test/pdf/', 'https://cdn.example.com/pdf/')
+    const citation = extractCitation(pageWith(cross), PAGE)
+    const { pdf, problem } = await capturePdf(pageWith(cross), PAGE, citation)
+    expect(pdf).toBeNull()
+    expect(problem).toBe('cross-origin')
+    // 关键：**一次请求都没发**——跨源的字节要经授权过的 service worker，不在这里取。
+    expect(fetcher).not.toHaveBeenCalled()
+  })
+
+  it('refuses what is not actually a PDF, however the server labels it', async () => {
+    // 付费墙常常回 200 加一页 HTML。
+    vi.stubGlobal('fetch', serving(new TextEncoder().encode('<!doctype html><title>登录</title>')))
+    const citation = extractCitation(pageWith(PAPER), PAGE)
+    expect((await capturePdf(pageWith(PAPER), PAGE, citation)).problem).toBe('not-pdf')
+  })
+
+  it('gives up on an oversized PDF instead of shipping bytes the backend will reject', async () => {
+    const huge = pdfBytes(26_214_401)
+    vi.stubGlobal('fetch', serving(huge))
+    const citation = extractCitation(pageWith(PAPER), PAGE)
+    const { pdf, problem } = await capturePdf(pageWith(PAPER), PAGE, citation)
+    expect(pdf).toBeNull()
+    expect(problem).toBe('too-large')
+  })
+
+  it('reports a failed fetch as failed, and does not guess why', async () => {
+    vi.stubGlobal('fetch', serving(null))
+    const citation = extractCitation(pageWith(PAPER), PAGE)
+    expect((await capturePdf(pageWith(PAPER), PAGE, citation)).problem).toBe('failed')
+    vi.stubGlobal('fetch', serving(pdfBytes(), { ok: false }))
+    expect((await capturePdf(pageWith(PAPER), PAGE, citation)).problem).toBe('failed')
+  })
+
+  it('leaves ordinary pages alone, even when they link to a PDF', async () => {
+    const fetcher = serving(pdfBytes())
+    vi.stubGlobal('fetch', fetcher)
+    // 没有 citation_* 的普通网页：不认作文献，就不该因为页面上有 PDF 而去抓。
+    const plain = `<meta name="citation_pdf_url" content="https://arxiv.test/pdf/x"/><p>x</p>`
+    const { pdf, problem } = await capturePdf(pageWith(plain), PAGE, null)
+    expect(pdf).toBeNull()
+    expect(problem).toBeNull()
+    expect(fetcher).not.toHaveBeenCalled()
+    // 是文献但这一页没声明 PDF：也不是问题，就是没有。
+    const noPdf = `<meta name="citation_title" content="某篇论文"/><p>x</p>`
+    const citation = extractCitation(pageWith(noPdf), PAGE)
+    expect(await capturePdf(pageWith(noPdf), PAGE, citation)).toEqual({ pdf: null, problem: null })
   })
 })

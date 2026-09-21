@@ -9,6 +9,7 @@ import {
   capturedFrom,
   imageResultFrom,
   isCapturedCitation,
+  isCapturedPdf,
   isCapturePayload,
   isSafeSourceUrl,
 } from './protocol'
@@ -79,8 +80,19 @@ describe('capturedFrom', () => {
   it('returns a copy, not the object that arrived', () => {
     // 「校验的即所用的」：返回解构后的副本，而不是原对象。
     const result = capturedFrom(event(), window)
-    // 旧版本扩展留下的暂存没有 citation 字段，归一成 null：「认不出」只该有一种写法。
-    expect(result).toEqual({ ...payload, citation: null })
+    // 旧版本扩展留下的暂存没有这些字段，一律归一成 null：「没有」只该有一种写法。
+    expect(result).toEqual({ ...payload, citation: null, pdf: null, pdf_problem: null })
+    // **把字段集整体钉住**：本文件已经三次因为「新字段忘了复制」踩坑（images、citation、
+    // pdf）。往 CapturePayload 加字段却忘了在这里复制，这条就会红。
+    expect(Object.keys(result!).sort()).toEqual([
+      'citation',
+      'images',
+      'markdown',
+      'pdf',
+      'pdf_problem',
+      'title',
+      'url',
+    ])
     expect(result).not.toBe(payload)
   })
 
@@ -254,5 +266,33 @@ describe('isCapturedCitation', () => {
     ['空字符串不算「没有」', { ...ok, doi: '' }],
   ])('rejects %s', (_label, value) => {
     expect(isCapturedCitation(value)).toBe(false)
+  })
+})
+
+describe('isCapturedPdf', () => {
+  // 8 字节的假 PDF：长度与 base64 必须对得上，这正是下面要钉的规则之一。
+  const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 1, 2, 3])
+  const ok = { name: 'paper.pdf', bytes: 8, base64: btoa(String.fromCharCode(...bytes)) }
+
+  it.each([
+    ['没有 PDF（null）', null],
+    ['旧版本扩展没这个字段（undefined）', undefined],
+    ['一份合法的', ok],
+  ])('accepts %s', (_label, value) => {
+    expect(isCapturedPdf(value)).toBe(true)
+  })
+
+  it.each([
+    ['不是对象', 'paper.pdf'],
+    ['是数组', [ok]],
+    ['文件名为空', { ...ok, name: '   ' }],
+    ['文件名过长', { ...ok, name: 'a'.repeat(201) }],
+    ['字节数为 0', { ...ok, bytes: 0 }],
+    ['字节数不是整数', { ...ok, bytes: 8.5 }],
+    ['超过 25 MiB 上限', { ...ok, bytes: 26_214_401 }],
+    ['base64 里有非法字符', { ...ok, base64: '@@@@' }],
+    ['字节数与 base64 长度对不上', { ...ok, bytes: 9 }],
+  ])('rejects %s', (_label, value) => {
+    expect(isCapturedPdf(value)).toBe(false)
   })
 })

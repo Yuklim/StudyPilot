@@ -115,6 +115,7 @@ describe('protocol mirror', () => {
       'isImageList',
       'matchPatternFor',
       'isCapturedCitation',
+      'isCapturedPdf',
       'isCapturePayload',
     ]) {
       expect(body(theirs, name)).toBe(body(mine, name))

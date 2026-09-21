@@ -10,12 +10,15 @@ import {
   MAX_CITATION_STAMP,
   MAX_CITATION_YEAR,
   MAX_IMAGES,
+  MAX_PDF_BYTES,
   MAX_MARKDOWN,
   MAX_TITLE,
   MIN_CITATION_YEAR,
   isSafeImageUrl,
   type CapturedCitation,
+  type CapturedPdf,
   type CapturePayload,
+  type PdfProblem,
 } from '../shared/protocol'
 
 // 在用户当前打开的那个页面里运行，由 popup 在用户点击扩展图标后经
@@ -322,6 +325,76 @@ function hostOf(url: string): string {
   }
 }
 
+/**
+ * 把字节转成 base64。**分块**转：`String.fromCharCode(...bytes)` 在几 MB 的数组上会把
+ * 调用栈撑爆（实测论文 0.7–6.5 MB，最大的那篇转出来 8.6 MB）。
+ */
+function toBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer)
+  const CHUNK = 0x8000
+  let binary = ''
+  for (let at = 0; at < bytes.length; at += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(at, at + CHUNK))
+  }
+  return btoa(binary)
+}
+
+/** 从地址取文件名；没有像样的名字（arXiv 的 `/pdf/1706.03762` 就没有）就补上 `.pdf`。 */
+function pdfNameFor(target: URL): string {
+  const last = target.pathname.split('/').filter(Boolean).pop() ?? ''
+  const name = last.replace(/[^\w.\-]/g, '').slice(0, 180) || 'paper'
+  return /\.pdf$/i.test(name) ? name : `${name}.pdf`
+}
+
+/**
+ * 取这一页自己声明的 PDF（TASK-080）。
+ *
+ * **只取同源的那一份，且只在这一页已被认作文献时才取。** 同源 fetch 不需要任何 host
+ * 权限——用户点扩展图标那一下授予的 `activeTab` 就够了，这是「点一次就把文献拿进来」
+ * 的落点。跨源的 PDF 受 CORS 管，取不到，如实报 `cross-origin` 并退回存正文。
+ *
+ * **不带凭据**（`credentials: 'omit'`）：扩展对用户的承诺是「不接触任何网站账号」，
+ * 所以需要登录才能下载的 PDF 这里拿不到，按 `failed` 退回存正文。这是有意的取舍。
+ *
+ * **不信服务器的 `Content-Type`**：付费墙常常回 200 加一页 HTML，所以自己看 `%PDF-`。
+ */
+export async function capturePdf(
+  doc: Document,
+  pageUrl: string,
+  citation: CapturedCitation | null,
+): Promise<{ pdf: CapturedPdf | null; problem: PdfProblem | null }> {
+  // 不是文献就不抓：普通网页不该因为页面上有个 PDF 链接就被存成 PDF 资料。
+  if (!citation) return { pdf: null, problem: null }
+  const declared = metaValues(doc, 'citation_pdf_url')[0]
+  // 没声明 PDF 不算问题，是这一页本来就没有。
+  if (!declared) return { pdf: null, problem: null }
+  let target: URL
+  let origin: string
+  try {
+    target = new URL(declared, doc.baseURI || pageUrl)
+    origin = new URL(pageUrl).origin
+  } catch {
+    return { pdf: null, problem: 'failed' }
+  }
+  if (target.origin !== origin) return { pdf: null, problem: 'cross-origin' }
+  try {
+    const response = await fetch(target.href, { credentials: 'omit' })
+    if (!response.ok) return { pdf: null, problem: 'failed' }
+    const buffer = await response.arrayBuffer()
+    if (buffer.byteLength > MAX_PDF_BYTES) return { pdf: null, problem: 'too-large' }
+    if (buffer.byteLength < 5) return { pdf: null, problem: 'not-pdf' }
+    const head = String.fromCharCode(...new Uint8Array(buffer.slice(0, 5)))
+    if (head !== '%PDF-') return { pdf: null, problem: 'not-pdf' }
+    return {
+      pdf: { name: pdfNameFor(target), bytes: buffer.byteLength, base64: toBase64(buffer) },
+      problem: null,
+    }
+  } catch {
+    // 网络失败、CORS 被拒、被拦截器掐断都落这里：如实说没拿到，不猜原因。
+    return { pdf: null, problem: 'failed' }
+  }
+}
+
 export function extractFromDocument(doc: Document, url: string): CapturePayload {
   // markdown: true 让 Defuddle 直接把正文转成 Markdown 放进 content。
   //
@@ -347,10 +420,12 @@ if (typeof chrome !== 'undefined' && chrome.runtime?.id) {
   // popup 失焦即关闭。用户点了采集后立刻点向别处时，唯一的接收端已经消失，
   // sendMessage 会 reject —— 那是正常时序，不该在用户页面留下未处理的 rejection。
   // 这一次采集就此静默作废（没有数据外流），用户再点一次即可。
-  chrome.runtime
-    .sendMessage({
-      type: CAPTURE_EXTRACTED,
-      payload: extractFromDocument(document, location.href),
-    })
-    .catch(() => undefined)
+  void (async () => {
+    const payload = extractFromDocument(document, location.href)
+    // PDF 在这里取：与页面同源运行，`activeTab` 已够用，不必再向用户要权限。
+    const { pdf, problem } = await capturePdf(document, location.href, payload.citation ?? null)
+    await chrome.runtime
+      .sendMessage({ type: CAPTURE_EXTRACTED, payload: { ...payload, pdf, pdf_problem: problem } })
+      .catch(() => undefined)
+  })()
 }

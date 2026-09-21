@@ -5,7 +5,7 @@ import { api, ApiError } from '../../api/client'
 import { renderWithRouter } from '../../test/render'
 import { imageFailureText } from './freeze'
 import App from '../../App'
-import { resourceId, sample } from '../resources/fixtures'
+import { resourceId, sample, sampleFile } from '../resources/fixtures'
 
 import {
   CAPTURE_IMAGE_REQUEST,
@@ -473,5 +473,119 @@ describe('capture page · citation', () => {
         ([path, options]) => path === '/api/v1/resources' && options?.method === 'POST',
       ),
     ).toHaveLength(1)
+  })
+})
+
+describe('capture page · pdf', () => {
+  /** 8 字节的假 PDF：`%PDF-` 开头，长度与 base64 对得上（接收端会校验这一点）。 */
+  const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 1, 2, 3])
+  const base64 = btoa(String.fromCharCode(...bytes))
+  const pdf = { name: '2401.00001.pdf', bytes: bytes.length, base64 }
+  const citation = {
+    item_type: 'PREPRINT' as const,
+    authors: ['李维'],
+    issued_year: 2024,
+    issued_date: null,
+    container_title: null,
+    volume: null,
+    issue: null,
+    pages: null,
+    publisher: null,
+    doi: '10.48550/arXiv.2401.00001',
+    isbn: null,
+  }
+  const paper = { ...captured, citation, pdf, pdf_problem: null }
+
+  function backend() {
+    const upload = vi.spyOn(api, 'uploadResource').mockResolvedValue({ data: sampleFile() })
+    const request = vi.spyOn(api, 'request').mockImplementation(async (path, options) => {
+      if (path === '/api/v1/resources' && options?.method === 'POST') return { data: sample() }
+      if (path.endsWith('/citation'))
+        return {
+          data: {
+            resource_id: sampleFile().id,
+            ...citation,
+            abstract: null,
+            version: 1,
+            created_at: '2026-09-21T02:00:00Z',
+            updated_at: '2026-09-21T02:00:00Z',
+          },
+        }
+      if (options?.method === 'PUT') return { data: snapshotSample }
+      return undefined
+    })
+    return { upload, request }
+  }
+
+  it('saves the PDF itself, not the page it was described on', async () => {
+    const { upload, request } = backend()
+    mount()
+    await screen.findByText(/还没有收到扩展发来的内容/)
+    deliver({}, paper)
+    expect(await screen.findByRole('checkbox', { name: /保存这份 PDF/ })).toBeChecked()
+    // 存 PDF 时正文不该还摆在那儿——那一页只是对文献的描述。
+    expect(screen.queryByLabelText(/正文（Markdown/)).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: '保存为资料' }))
+    await waitFor(() => expect(upload).toHaveBeenCalledTimes(1))
+    const form = upload.mock.calls[0]![0]
+    expect(form.get('source_type')).toBe('FILE')
+    const file = form.get('file') as File
+    expect(file.name).toBe('2401.00001.pdf')
+    expect(file.type).toBe('application/pdf')
+    expect(file.size).toBe(8)
+    // 没有快照那一步：不存网页正文。
+    expect(
+      request.mock.calls.filter(([p, o]) => p.endsWith('/snapshot') && o?.method === 'PUT'),
+    ).toEqual([])
+    // 文献信息照样存。
+    await waitFor(() =>
+      expect(request.mock.calls.some(([p]) => p.endsWith('/citation'))).toBe(true),
+    )
+  })
+
+  it('falls back to the page text when the user unticks it', async () => {
+    const { upload, request } = backend()
+    mount()
+    await screen.findByText(/还没有收到扩展发来的内容/)
+    deliver({}, paper)
+    fireEvent.click(await screen.findByRole('checkbox', { name: /保存这份 PDF/ }))
+    // 取消后正文回来了，可编辑。
+    expect(await screen.findByLabelText(/正文（Markdown/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '保存为资料' }))
+    await waitFor(() =>
+      expect(
+        request.mock.calls.some(([p, o]) => p === '/api/v1/resources' && o?.method === 'POST'),
+      ).toBe(true),
+    )
+    expect(upload).not.toHaveBeenCalled()
+  })
+
+  // 四种拿不到 PDF 的原因各说各的话：用户看到的不能是一句笼统的「失败了」，
+  // 因为该怎么办完全不同（换个入口／自己下载／登录后再来）。
+  it.each([
+    ['cross-origin', /PDF 在另一个域名下/],
+    ['too-large', /超过 25 MiB/],
+    ['not-pdf', /取回来的不是 PDF/],
+    ['failed', /没能取下来/],
+  ] as const)('says plainly why a paper came without its PDF: %s', async (problem, said) => {
+    backend()
+    mount()
+    await screen.findByText(/还没有收到扩展发来的内容/)
+    deliver({}, { ...captured, citation, pdf: null, pdf_problem: problem })
+    expect(await screen.findByText(said)).toBeInTheDocument()
+    // 没有 PDF 就照旧存网页正文，正文仍在。
+    expect(screen.getByLabelText(/正文（Markdown/)).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: /保存这份 PDF/ })).toBeNull()
+  })
+
+  it('adds nothing for a page that is not a paper', async () => {
+    backend()
+    mount()
+    await screen.findByText(/还没有收到扩展发来的内容/)
+    deliver()
+    await screen.findByDisplayValue('如何理解数据库索引')
+    expect(screen.queryByRole('checkbox', { name: /保存这份 PDF/ })).toBeNull()
+    expect(screen.getByLabelText(/正文（Markdown/)).toBeInTheDocument()
   })
 })

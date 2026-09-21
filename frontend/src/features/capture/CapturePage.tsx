@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import {
+  createFileResource,
   createResource,
   failureText,
   putResourceSnapshot,
@@ -10,6 +11,7 @@ import {
 
 import { EMPTY_DRAFT, ITEM_TYPE_LABELS, putCitation } from '../resources/citation'
 import { askExtensionForImage, freezeImages, imageFailureText } from './freeze'
+import type { CapturedPdf, PdfProblem } from './protocol'
 import {
   CAPTURE_READY,
   MAX_MARKDOWN,
@@ -29,10 +31,26 @@ import {
  *  3. **创建资料与写快照是两次请求，不是事务。** 第一步成功第二步失败时，必须说清
  *     发生了什么、下一步去哪，不能谎称成功、也不能自动重试。
  */
+/** base64 的字节还原成待上传的文件。 */
+function pdfFile(pdf: CapturedPdf): File {
+  const bytes = Uint8Array.from(atob(pdf.base64), (char) => char.charCodeAt(0))
+  return new File([bytes], pdf.name, { type: 'application/pdf' })
+}
+
+/** 没取到 PDF 时如实说清是哪一种，不含糊成「失败了」。 */
+const pdfProblemText: Record<PdfProblem, string> = {
+  'cross-origin': 'PDF 在另一个域名下，扩展没有那个域名的权限，所以这次存的是网页正文。',
+  'too-large': 'PDF 超过 25 MiB 上限，存不进来，所以这次存的是网页正文。',
+  'not-pdf': '那个地址取回来的不是 PDF（多半是登录页或付费墙），所以这次存的是网页正文。',
+  failed: 'PDF 没能取下来（可能需要登录，或网络不通），所以这次存的是网页正文。',
+}
+
 export function CapturePage() {
   const navigate = useNavigate()
   // 识别到文献时默认勾上：识别到了却默认不存，等于白识别。取消只影响这一次。
   const [saveCitation, setSaveCitation] = useState(true)
+  // 取到 PDF 时默认就存 PDF：用户要的是「点一下，文献进库」。仍然可以改存网页正文。
+  const [savePdf, setSavePdf] = useState(true)
   const [citationMiss, setCitationMiss] = useState<{ id: string; reason: string } | null>(null)
   const [captured, setCaptured] = useState<CapturePayload | null>(null)
   const [title, setTitle] = useState('')
@@ -79,7 +97,8 @@ export function CapturePage() {
     const cleanTitle = title.trim()
     // 与手工录入路径一致（ContentSnapshot.tsx:68,72）：用 trim 判空，但**原样发送**。
     // 采集到的正文不该被这一步悄悄改动。
-    if (!markdown.trim() || markdown.length > MAX_MARKDOWN) {
+    const savingPdf = Boolean(captured.pdf && savePdf)
+    if (!savingPdf && (!markdown.trim() || markdown.length > MAX_MARKDOWN)) {
       setError('正文不能为空，且最多 100 万字。')
       return
     }
@@ -95,6 +114,26 @@ export function CapturePage() {
     setImages(null)
     let created: { id: string } | null = null
     try {
+      // **PDF 这条路**：原件就是这份 PDF，不存网页正文、不冻图片、不留原页地址
+      //（契约不允许 FILE 资料带 source_url）。用户 2026-09-21 定案：「有了 pdf 就不用
+      // 再要拔下来 pdf 那个网页了」。
+      if (savingPdf && captured.pdf) {
+        created = await createFileResource(
+          { ...(cleanTitle ? { title: cleanTitle } : {}) },
+          pdfFile(captured.pdf),
+        )
+        if (captured.citation && saveCitation) {
+          try {
+            await putCitation(created.id, { ...EMPTY_DRAFT, ...captured.citation }, null)
+          } catch (cause) {
+            if (!alive.current) return
+            setCitationMiss({ id: created.id, reason: failureText(cause) })
+            return
+          }
+        }
+        if (alive.current) navigate(`/resources/${created.id}`)
+        return
+      }
       created = await createResource({
         ...(cleanTitle ? { title: cleanTitle } : {}),
         source_type: 'WEB',
@@ -156,6 +195,9 @@ export function CapturePage() {
       }
     }
   }
+
+  // 这次点保存会存成 PDF 原件还是网页正文——界面据它决定显示什么。
+  const savingNow = Boolean(captured?.pdf && savePdf)
 
   return (
     <section className="resource-sheet" aria-labelledby="capture-title">
@@ -239,9 +281,32 @@ export function CapturePage() {
           <fieldset disabled={pending}>
             <legend className="sr-only">采集到的内容</legend>
             <p className="resource-hint">来自：{captured.url}</p>
-            <p className="resource-hint">
-              这是保存当时的副本，不随原文更新。如果你在扩展里选了「连图片一并保存」，正文里的图片会在保存后逐张下载到本机；没选或没有授权时，图片仍指向原网站。
-            </p>
+            {captured.pdf ? (
+              <div className="capture-pdf">
+                <label className="capture-citation-toggle">
+                  <input
+                    type="checkbox"
+                    checked={savePdf}
+                    onChange={(event) => setSavePdf(event.target.checked)}
+                  />
+                  保存这份 PDF（{captured.pdf.name}，{(captured.pdf.bytes / 1048576).toFixed(1)}{' '}
+                  MB）
+                </label>
+                <p className="resource-hint">
+                  {savePdf
+                    ? '存下来的是 PDF 原件，打开资料就能在 StudyPilot 里读，不用再回原网站。这一页的正文不会保存——它只是对这篇文献的描述。'
+                    : '改为保存这一页的网页正文。PDF 不会存下来。'}
+                </p>
+              </div>
+            ) : null}
+            {captured.pdf_problem ? (
+              <p className="resource-hint">{pdfProblemText[captured.pdf_problem]}</p>
+            ) : null}
+            {savingNow ? null : (
+              <p className="resource-hint">
+                这是保存当时的副本，不随原文更新。如果你在扩展里选了「连图片一并保存」，正文里的图片会在保存后逐张下载到本机；没选或没有授权时，图片仍指向原网站。
+              </p>
+            )}
             <label className="resource-field">
               标题
               <input
@@ -252,14 +317,16 @@ export function CapturePage() {
                 placeholder="留空则显示为「未命名资料」"
               />
             </label>
-            <label className="resource-field">
-              正文（Markdown，共 {Array.from(markdown).length} 字）
-              <textarea
-                rows={16}
-                value={markdown}
-                onChange={(event) => setMarkdown(event.target.value)}
-              />
-            </label>
+            {savingNow ? null : (
+              <label className="resource-field">
+                正文（Markdown，共 {Array.from(markdown).length} 字）
+                <textarea
+                  rows={16}
+                  value={markdown}
+                  onChange={(event) => setMarkdown(event.target.value)}
+                />
+              </label>
+            )}
             {captured.citation ? (
               <div className="capture-citation">
                 <label className="capture-citation-toggle">

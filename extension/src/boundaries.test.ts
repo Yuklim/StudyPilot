@@ -85,13 +85,31 @@ describe('extension boundaries', () => {
     }
   })
 
-  it('keeps the network reach confined to the service worker', () => {
-    // 「扩展只有一个地方会主动发请求」这句承诺的机器守卫。popup、注入脚本与中转
-    // 脚本都不许出现 fetch/XMLHttpRequest —— 它们要字节时应当经消息问 worker。
+  it('keeps the network reach to the worker plus one same-origin PDF fetch', () => {
+    // 「扩展只有一个地方会主动发请求」这句承诺在 TASK-080 换了口径，如实改在这里。
+    // 现在是**两处**，各自有各自的约束：
+    //   ① background service worker：取正文图片，需用户显式授予 `<all_urls>` 才够得着；
+    //   ② injected/extract.ts：取这一页**自己声明**的 `citation_pdf_url`，**只在同域**、
+    //      不带凭证。同域 fetch 不需要任何 host 权限，这正是「点一下就好、零额外
+    //      授权」的落点——把它挪去 worker 反而要为跨域申请更大的权力。
+    // 口径放宽一处，门闩就要在那一处查得更细，否则等于没守：下面四条钉住②的形状。
+    const PDF_FETCHER = join(SRC, 'injected', 'extract.ts')
     const offenders = sources()
-      .filter((path) => !path.includes('/background/'))
+      .filter((path) => !path.includes('/background/') && path !== PDF_FETCHER)
       .filter((path) => /\bfetch\s*\(|XMLHttpRequest|navigator\.sendBeacon/.test(code(path)))
     expect(offenders).toEqual([])
+
+    const pdf = code(PDF_FETCHER)
+    // 恰好一个调用点：多出来的那个就是没人审过的第二条出网路径。
+    expect(pdf.match(/\bfetch\s*\(/g) ?? []).toHaveLength(1)
+    expect(pdf).not.toMatch(/XMLHttpRequest|navigator\.sendBeacon/)
+    // 同域判断必须在发请求**之前**：跨域要当场挡回，而不是发出去再让 CORS 兜底——
+    // 后者等于替用户向第三方站点发了一次请求。位置也钉住，不只是「存在」。
+    const guard = pdf.indexOf('target.origin !== origin')
+    expect(guard, '注入脚本丢了同域判断').toBeGreaterThan(-1)
+    expect(guard, '同域判断跑到了 fetch 后面').toBeLessThan(pdf.indexOf('fetch('))
+    expect(pdf).toContain("credentials: 'omit'")
+    expect(pdf).not.toMatch(/credentials: '(include|same-origin)'/)
   })
 
   it('never lets the service worker carry site credentials', () => {
