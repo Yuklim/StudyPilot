@@ -278,12 +278,29 @@ export function isCapturedCitation(value: unknown): value is CapturedCitation | 
  * base64 只做形状与体积校验：真正判断它是不是 PDF 的地方在取字节时（`%PDF-` 魔数），
  * 因为付费墙常常回 200 加一页 HTML。到了这一步还不合格，说明不是本扩展产出的消息。
  */
+/**
+ * `pdf_problem` 只能是契约 14.7 列的四种之一（或没有）。
+ *
+ * 首轮 Review F3：原先它跟着载荷原样透传，TypeScript 的 `PdfProblem` 在运行时不存在，
+ * 于是「载荷必须通过结构校验」（契约 14.3）对这个字段是空话。实际危害有限——它只用来
+ * 查一张固定的文案表——但契约说了要校验的字段就得校验，口径不能和相邻的 `pdf` 不一致。
+ */
+export function isPdfProblem(value: unknown): value is PdfProblem | null {
+  if (value === null || value === undefined) return true
+  return (
+    value === 'cross-origin' || value === 'too-large' || value === 'not-pdf' || value === 'failed'
+  )
+}
+
 export function isCapturedPdf(value: unknown): value is CapturedPdf | null {
   if (value === null || value === undefined) return true
   if (typeof value !== 'object' || Array.isArray(value)) return false
   const candidate = value as Record<string, unknown>
   const { name, bytes, base64 } = candidate
   if (typeof name !== 'string' || !name.trim() || name.length > 200) return false
+  // 契约 14.2 写明必以 `.pdf` 结尾。后端的扩展名白名单本来也会兜住，但契约说了的事
+  // 就该在这里判——否则契约与实现各说各话（首轮 Review F7）。
+  if (!/\.pdf$/i.test(name)) return false
   if (typeof bytes !== 'number' || !Number.isSafeInteger(bytes) || bytes < 1) return false
   if (bytes > MAX_PDF_BYTES) return false
   if (typeof base64 !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) return false
@@ -314,5 +331,6 @@ export function isCapturePayload(value: unknown): value is CapturePayload {
   if (!isImageList(candidate.images)) return false
   if (!isCapturedCitation(candidate.citation)) return false
   if (!isCapturedPdf(candidate.pdf)) return false
+  if (!isPdfProblem(candidate.pdf_problem)) return false
   return markdown.trim().length > 0 && markdown.length <= MAX_MARKDOWN
 }

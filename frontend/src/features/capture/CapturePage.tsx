@@ -52,7 +52,11 @@ export function CapturePage() {
   const [saveCitation, setSaveCitation] = useState(true)
   // 取到 PDF 时默认就存 PDF：用户要的是「点一下，文献进库」。仍然可以改存网页正文。
   const [savePdf, setSavePdf] = useState(true)
-  const [citationMiss, setCitationMiss] = useState<{ id: string; reason: string } | null>(null)
+  const [citationMiss, setCitationMiss] = useState<{
+    id: string
+    reason: string
+    pdf?: boolean
+  } | null>(null)
   const [captured, setCaptured] = useState<CapturePayload | null>(null)
   const [title, setTitle] = useState('')
   const [markdown, setMarkdown] = useState('')
@@ -128,7 +132,7 @@ export function CapturePage() {
             await putCitation(created.id, { ...EMPTY_DRAFT, ...captured.citation }, null)
           } catch (cause) {
             if (!alive.current) return
-            setCitationMiss({ id: created.id, reason: failureText(cause) })
+            setCitationMiss({ id: created.id, reason: failureText(cause), pdf: true })
             return
           }
         }
@@ -239,7 +243,8 @@ export function CapturePage() {
               就是假的（Review 第二轮）。同理，图片那块已经给了「打开这份资料」时这里
               不再重复一个同名按钮。
             */}
-            资料和正文都保存好了，文献信息没存上：{citationMiss.reason}{' '}
+            {citationMiss.pdf ? '资料和 PDF 原件都保存好了' : '资料和正文都保存好了'}
+            ，文献信息没存上：{citationMiss.reason}{' '}
             打开这份资料，在右栏的「信息」里可以自己补。这里不会自动重试，也不会因此重新建一份。
           </p>
           {images ? null : (
@@ -296,7 +301,7 @@ export function CapturePage() {
                 <p className="resource-hint">
                   {savePdf
                     ? '存下来的是 PDF 原件，打开资料就能在 StudyPilot 里读，不用再回原网站。这一页的正文不会保存——它只是对这篇文献的描述。'
-                    : '改为保存这一页的网页正文。PDF 不会存下来。'}
+                    : '改为保存这一页的网页正文。PDF 不会存下来；正文里的图片保留原网站地址（抓 PDF 时没有向你要图片权限）。'}
                 </p>
               </div>
             ) : null}

@@ -544,6 +544,24 @@ describe('capture page · pdf', () => {
     )
   })
 
+  it('says the PDF was saved when only the citation failed to land', async () => {
+    // 首轮 Review F5：这条路上没有存正文，提示不能照抄「资料和正文都保存好了」。
+    const upload = vi.spyOn(api, 'uploadResource').mockResolvedValue({ data: sampleFile() })
+    vi.spyOn(api, 'request').mockImplementation(async (path) => {
+      if (path.endsWith('/citation')) throw new ApiError('VERSION_CONFLICT', 409)
+      return undefined
+    })
+    mount()
+    await screen.findByText(/还没有收到扩展发来的内容/)
+    deliver({}, paper)
+    fireEvent.click(await screen.findByRole('button', { name: '保存为资料' }))
+    await waitFor(() => expect(upload).toHaveBeenCalledTimes(1))
+    expect(await screen.findByText(/资料和 PDF 原件都保存好了/)).toBeInTheDocument()
+    expect(screen.queryByText(/资料和正文都保存好了/)).toBeNull()
+    // 停在这一页，给用户一条去补的路。
+    expect(screen.getByRole('link', { name: '打开这份资料' })).toBeInTheDocument()
+  })
+
   it('falls back to the page text when the user unticks it', async () => {
     const { upload, request } = backend()
     mount()

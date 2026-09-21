@@ -1,3 +1,5 @@
+import type { CapturePayload } from '../shared/protocol'
+
 import type { CaptureOutcome } from './capture'
 
 // popup 的文案。保持与 DOM 解耦，便于测试。
@@ -16,12 +18,30 @@ export function imagePrompt(count: number): string {
 }
 
 /**
- * 交付后的回执：说清到底带走了几张，而不是笼统说「已保存」。
+ * 这一次要不要问「连图片一并保存」（TASK-080 首轮 Review F1）。
+ *
+ * **抓到了 PDF 就不问。** 确认页在 PDF 分支里根本不碰图片，照问只会让用户为一件不会
+ * 发生的事授出 `<all_urls>`——实测 PLOS ONE 那一页正是 5 张图 + PDF 抓取成功。
+ * 代价写明：用户若在确认页取消勾选改存正文，那次的图片保留原网站地址，与「拒绝授权」
+ * 是同一条既有降级路径。比起每篇论文都多点一次授权，这个代价更小。
+ */
+export function shouldAskAboutImages(payload: CapturePayload): boolean {
+  return payload.images.length > 0 && !payload.pdf
+}
+
+/**
+ * 交付后的回执：说清到底带走了什么，而不是笼统说「已保存」。
  *
  * `refused` 区分「本来就没图 / 用户选了只存正文」与「要了图但授权没落地」——
  * 后者用户需要知道**为什么**没带走，否则只会在确认页看到六张全失败。
+ * `pdf` 则区分「这次存的是 PDF 原件」——那条路上正文与图片都不参与。
  */
-export function deliveryText(images: number, refused = false): string {
+export function deliveryText(images: number, refused = false, pdf = false): string {
+  if (pdf) {
+    // 存的是 PDF 原件，不是正文——回执不能照抄正文那一套（同上 F1：原文案说
+    // 「图片会在保存正文之后逐张下载」，而这条路上那件事不会发生）。
+    return '已把这篇文献的 PDF 交给 StudyPilot，请在打开的页面里确认后保存。保存后可直接在 StudyPilot 里阅读。'
+  }
   if (refused) {
     return '已把正文交给 StudyPilot。但浏览器没有授予访问图片所在网站的权限，图片这次没有保存，仍指向原网站。想保存图片的话，重新点一次采集并在弹出的授权框里选允许。'
   }

@@ -372,7 +372,10 @@ function safeName(raw: string): string {
       return '\\/:*?"<>|'.includes(ch) ? ' ' : ch
     })
     .join('')
-  return cleaned.replace(/\s+/g, ' ').trim().slice(0, 180)
+  // 按码点切而不是按 UTF-16 单元：`.slice(0, 180)` 会把代理对劈成半个字符
+  // （emoji、生僻字标题），留下一个孤立代理。同文件的 `bounded()` 也是这么做的。
+  const tidy = cleaned.replace(/\s+/g, ' ').trim()
+  return [...tidy].slice(0, 180).join('')
 }
 
 /** 从地址取文件名；末段没有像样的名字（arXiv 的 `/pdf/1706.03762` 有，PLOS 的没有）就退回标题。 */

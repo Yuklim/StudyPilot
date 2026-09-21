@@ -10,6 +10,7 @@ import {
   imageResultFrom,
   isCapturedCitation,
   isCapturedPdf,
+  isPdfProblem,
   isCapturePayload,
   isSafeSourceUrl,
 } from './protocol'
@@ -292,7 +293,34 @@ describe('isCapturedPdf', () => {
     ['超过 25 MiB 上限', { ...ok, bytes: 26_214_401 }],
     ['base64 里有非法字符', { ...ok, base64: '@@@@' }],
     ['字节数与 base64 长度对不上', { ...ok, bytes: 9 }],
+    // 契约 14.2 写明必以 `.pdf` 结尾（首轮 Review F7）。
+    ['名字不以 .pdf 结尾', { ...ok, name: 'paper.txt' }],
+    ['名字只是 pdf 三个字母', { ...ok, name: 'pdf' }],
   ])('rejects %s', (_label, value) => {
     expect(isCapturedPdf(value)).toBe(false)
+  })
+
+  it('accepts 大写的 .PDF', () => {
+    expect(isCapturedPdf({ ...ok, name: 'paper.PDF' })).toBe(true)
+  })
+})
+
+describe('isPdfProblem', () => {
+  // 契约 14.7 只列四种取值；14.3 要求载荷逐条校验后才使用。首轮 Review F3：
+  // 原先这个字段跟着载荷原样透传，`PdfProblem` 这个类型在运行时根本不存在。
+  it.each([['cross-origin'], ['too-large'], ['not-pdf'], ['failed']])(
+    'accepts the contract value %s',
+    (value) => {
+      expect(isPdfProblem(value)).toBe(true)
+    },
+  )
+
+  it('accepts 没有这个字段', () => {
+    expect(isPdfProblem(null)).toBe(true)
+    expect(isPdfProblem(undefined)).toBe(true)
+  })
+
+  it.each([['paywall'], [''], [0], [{}], [['failed']], [true]])('rejects %s', (value) => {
+    expect(isPdfProblem(value)).toBe(false)
   })
 })
