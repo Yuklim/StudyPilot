@@ -2,7 +2,7 @@ import { manifest } from '../manifest'
 
 import { chromeBridge } from './bridge'
 import { deliverCapture, runCapture, type CaptureOutcome } from './capture'
-import { deliveryText, imagePrompt, outcomeText, popupText } from './popup'
+import { deliveryText, imagePrompt, outcomeText, popupText, shouldAskAboutImages } from './popup'
 
 // 采集分两步，**这不是设计偏好而是浏览器约束**：`chrome.permissions.request` 必须在
 // 用户手势里调用，而提取是异步的、`await` 会消耗掉第一次点击的手势。所以第一次点击
@@ -38,7 +38,7 @@ if (
     note.textContent = '正在交给 StudyPilot…'
     try {
       const { images: count, refused } = await deliverCapture(bridge, outcome.payload, images)
-      note.textContent = deliveryText(count, refused)
+      note.textContent = deliveryText(count, refused, Boolean(outcome.payload.pdf))
     } catch {
       note.textContent = '交给 StudyPilot 时出错了，请再试一次。'
       show(button, true)
@@ -47,15 +47,17 @@ if (
 
   button.addEventListener('click', () => {
     button.disabled = true
-    hint.textContent = '正在读取这一页…'
+    // 这一步现在可能还包含「下载这篇文献的 PDF」，几 MB 要等一会儿——
+    // 光说「正在读取这一页」会让用户以为卡住了（第四轮 Review F2）。
+    hint.textContent = '正在读取这一页…（是文献的话还要下载它的 PDF，可能要等一会儿）'
     runCapture(bridge)
       .then(async (outcome) => {
         if (!outcome.ok) {
           hint.textContent = outcomeText(outcome)
           return
         }
-        // 没有图片就没有要问的：直接交付，保持一次点击的旧手感。
-        if (outcome.payload.images.length === 0) {
+        // 没有图片、或这次要存的是 PDF 原件：都没有要问的，直接交付，保持一次点击的手感。
+        if (!shouldAskAboutImages(outcome.payload)) {
           await deliver(outcome, false)
           return
         }

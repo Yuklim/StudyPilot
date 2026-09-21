@@ -10,12 +10,15 @@ import {
   MAX_CITATION_STAMP,
   MAX_CITATION_YEAR,
   MAX_IMAGES,
+  MAX_PDF_BYTES,
   MAX_MARKDOWN,
   MAX_TITLE,
   MIN_CITATION_YEAR,
   isSafeImageUrl,
   type CapturedCitation,
+  type CapturedPdf,
   type CapturePayload,
+  type PdfProblem,
 } from '../shared/protocol'
 
 // 在用户当前打开的那个页面里运行，由 popup 在用户点击扩展图标后经
@@ -322,6 +325,168 @@ function hostOf(url: string): string {
   }
 }
 
+/**
+ * 把字节转成 base64。**分块**转：`String.fromCharCode(...bytes)` 在几 MB 的数组上会把
+ * 调用栈撑爆（实测论文 0.7–6.5 MB，最大的那篇转出来 8.6 MB）。
+ */
+function toBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer)
+  const CHUNK = 0x8000
+  let binary = ''
+  for (let at = 0; at < bytes.length; at += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(at, at + CHUNK))
+  }
+  return btoa(binary)
+}
+
+/**
+ * PDF 下载自己的时限。
+ *
+ * **为什么非有不可**：`runCapture` 给整次采集的预算是 15 秒（`popup/capture.ts`），
+ * 而 PDF 下载就跑在这段预算里。没有这道时限时，一份下得慢的 PDF 会把整次采集拖超时，
+ * 用户得到的是「可能内容还没加载完」——**连网页正文都没存下**，恰好违背「拿不到 PDF
+ * 就退回存正文」这条设计。超时就当作没拿到，照常退回快照。
+ *
+ * **20 秒是量出来的，不是拍的**：2026-09-21 在本机实测五篇论文，下载耗时
+ * 772 / 1241 / 2520 / 3508 / **9243** ms（最后一个是 arXiv 的 `1706.03762`，2.11 MB）。
+ * 先定的 10 秒会让这一篇经常性地擦边失败。20 秒留出约一倍余量；相应地
+ * `popup/capture.ts` 的整次预算从 15 秒提到 30 秒——有 PDF 要下时，这一步是几 MB 的
+ * 下载而不再只是读一次 DOM，按读 DOM 的尺子量它本身就不对。
+ */
+export const PDF_TIMEOUT_MS = 20_000
+
+/**
+ * 地址末段用作文件名前先看它说不说明问题：PLOS 的 PDF 地址是
+ * `/plosone/article/file?id=…&type=printable`，末段是 `file`——照抄就会把每一篇
+ * 都存成 `file.pdf`（真实站点实测发现）。这类通用词一律退回用标题。
+ */
+const USELESS_NAMES = new Set([
+  'file',
+  'files',
+  'pdf',
+  'download',
+  'get',
+  'view',
+  'fetch',
+  'full',
+  'fulltext',
+  'article',
+  'content',
+  'render',
+  'print',
+  'printable',
+])
+
+/** 只去掉真正会坏事的字符（路径分隔与控制字符，与契约 8.1 的后端口径一致），中文照留。 */
+function safeName(raw: string): string {
+  // 逐字符判而不用正则：控制字符写进正则会被 eslint 的 no-control-regex 拦下，
+  // 而这里正是它说的那种例外——剔除控制字符本身就是目的。
+  const cleaned = [...raw]
+    .map((ch) => {
+      const code = ch.codePointAt(0) ?? 0
+      if (code < 0x20 || code === 0x7f) return ''
+      return '\\/:*?"<>|'.includes(ch) ? ' ' : ch
+    })
+    .join('')
+  return capName(cleaned.replace(/\s+/g, ' ').trim(), 180)
+}
+
+/**
+ * 截到至多 `max` 个 **UTF-16 单元**，且不把代理对劈成半个字符。
+ *
+ * 两头都要管住，所以不能只取其一（第二轮 Review 非阻断项①）：
+ * - 按 UTF-16 直接 `slice` 会在 emoji／生僻字中间切断，留下一个孤立代理；
+ * - 按码点 `[...s].slice(n)` 不会切断，但 n 个码点最多占 2n 个 UTF-16 单元，
+ *   于是 `name.length ≤ 200` 那道协议校验可能被越过，整条载荷被接收端丢掉。
+ */
+function capName(raw: string, max: number): string {
+  let out = ''
+  for (const ch of raw) {
+    if (out.length + ch.length > max) break
+    out += ch
+  }
+  return out
+}
+
+/** 从地址取文件名；末段没有像样的名字（arXiv 的 `/pdf/1706.03762` 有，PLOS 的没有）就退回标题。 */
+function pdfNameFor(target: URL, title: string): string {
+  let last = target.pathname.split('/').filter(Boolean).pop() ?? ''
+  try {
+    last = decodeURIComponent(last)
+  } catch {
+    // 地址里有坏转义就用原样，不为一个文件名让整次采集失败。
+  }
+  const stem = last.replace(/\.pdf$/i, '')
+  const fromPath = USELESS_NAMES.has(stem.toLowerCase()) ? '' : safeName(stem)
+  const name = fromPath || safeName(title) || 'paper'
+  return `${name}.pdf`
+}
+
+/**
+ * 取这一页自己声明的 PDF（TASK-080）。
+ *
+ * **只取同源的那一份，且只在这一页已被认作文献时才取。** 同源 fetch 不需要任何 host
+ * 权限——用户点扩展图标那一下授予的 `activeTab` 就够了，这是「点一次就把文献拿进来」
+ * 的落点。跨源的 PDF 受 CORS 管，取不到，如实报 `cross-origin` 并退回存正文。
+ *
+ * **不带凭据**（`credentials: 'omit'`）：扩展对用户的承诺是「不接触任何网站账号」，
+ * 所以需要登录才能下载的 PDF 这里拿不到，按 `failed` 退回存正文。这是有意的取舍。
+ *
+ * **不信服务器的 `Content-Type`**：付费墙常常回 200 加一页 HTML，所以自己看 `%PDF-`。
+ */
+export async function capturePdf(
+  doc: Document,
+  pageUrl: string,
+  citation: CapturedCitation | null,
+  title = '',
+): Promise<{ pdf: CapturedPdf | null; problem: PdfProblem | null }> {
+  // 不是文献就不抓：普通网页不该因为页面上有个 PDF 链接就被存成 PDF 资料。
+  if (!citation) return { pdf: null, problem: null }
+  const declared = metaValues(doc, 'citation_pdf_url')[0]
+  // 没声明 PDF 不算问题，是这一页本来就没有。
+  if (!declared) return { pdf: null, problem: null }
+  let target: URL
+  let origin: string
+  try {
+    target = new URL(declared, doc.baseURI || pageUrl)
+    origin = new URL(pageUrl).origin
+  } catch {
+    return { pdf: null, problem: 'failed' }
+  }
+  if (target.origin !== origin) return { pdf: null, problem: 'cross-origin' }
+  try {
+    const response = await fetch(target.href, {
+      credentials: 'omit',
+      signal: AbortSignal.timeout(PDF_TIMEOUT_MS),
+    })
+    if (!response.ok) return { pdf: null, problem: 'failed' }
+    const buffer = await response.arrayBuffer()
+    if (buffer.byteLength > MAX_PDF_BYTES) return { pdf: null, problem: 'too-large' }
+    if (buffer.byteLength < 5) return { pdf: null, problem: 'not-pdf' }
+    const head = String.fromCharCode(...new Uint8Array(buffer.slice(0, 5)))
+    if (head !== '%PDF-') return { pdf: null, problem: 'not-pdf' }
+    return {
+      pdf: {
+        name: pdfNameFor(target, title || doc.title),
+        bytes: buffer.byteLength,
+        base64: toBase64(buffer),
+      },
+      problem: null,
+    }
+  } catch (cause) {
+    // 超时与其它失败要分开说：前者「再试一次也许就成」，后者多半是付费墙——
+    // 该怎么办完全不同，笼统一句「没拿到」等于把我们已经知道的信息丢掉。
+    // 不写 `cause instanceof Error`：真实浏览器里 fetch 超时抛的是 `DOMException`
+    // （`name === 'TimeoutError'`）。它的原型链确实经过 `Error.prototype`，所以 instanceof
+    // 也成立——但那条链依赖 WebIDL 的实现细节，而这里只需要一个名字。防御性地读它，
+    // 顺带兼容任何非 Error 的抛出物。（第四轮 Review F1。）
+    const name = (cause as { name?: unknown } | null)?.name
+    if (name === 'TimeoutError' || name === 'AbortError') return { pdf: null, problem: 'slow' }
+    // 网络失败、CORS 被拒、被拦截器掐断都落这里：如实说没拿到，不猜原因。
+    return { pdf: null, problem: 'failed' }
+  }
+}
+
 export function extractFromDocument(doc: Document, url: string): CapturePayload {
   // markdown: true 让 Defuddle 直接把正文转成 Markdown 放进 content。
   //
@@ -347,10 +512,17 @@ if (typeof chrome !== 'undefined' && chrome.runtime?.id) {
   // popup 失焦即关闭。用户点了采集后立刻点向别处时，唯一的接收端已经消失，
   // sendMessage 会 reject —— 那是正常时序，不该在用户页面留下未处理的 rejection。
   // 这一次采集就此静默作废（没有数据外流），用户再点一次即可。
-  chrome.runtime
-    .sendMessage({
-      type: CAPTURE_EXTRACTED,
-      payload: extractFromDocument(document, location.href),
-    })
-    .catch(() => undefined)
+  void (async () => {
+    const payload = extractFromDocument(document, location.href)
+    // PDF 在这里取：与页面同源运行，`activeTab` 已够用，不必再向用户要权限。
+    const { pdf, problem } = await capturePdf(
+      document,
+      location.href,
+      payload.citation ?? null,
+      payload.title,
+    )
+    await chrome.runtime
+      .sendMessage({ type: CAPTURE_EXTRACTED, payload: { ...payload, pdf, pdf_problem: problem } })
+      .catch(() => undefined)
+  })()
 }

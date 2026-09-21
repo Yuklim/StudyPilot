@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import { readFileSync } from 'node:fs'
 
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { MAX_IMAGES, MAX_MARKDOWN, MAX_TITLE } from '../shared/protocol'
+import { isCapturedPdf, MAX_IMAGES, MAX_MARKDOWN, MAX_TITLE } from '../shared/protocol'
 
 import {
   EXTRACT_OPTIONS,
+  capturePdf,
   collectImages,
   extractCitation,
   extractFromDocument,
@@ -485,5 +486,158 @@ describe('extractCitation', () => {
       'https://example.com/a',
     )
     expect(plain.citation).toBeNull()
+  })
+})
+
+describe('capturePdf', () => {
+  const PAPER = `
+    <meta name="citation_title" content="某篇论文"/>
+    <meta name="citation_arxiv_id" content="2401.00001"/>
+    <meta name="citation_pdf_url" content="https://arxiv.test/pdf/2401.00001"/>
+    <p>正文</p>`
+  const PAGE = 'https://arxiv.test/abs/2401.00001'
+
+  /** 造一个 fetch 替身：给定字节与状态。 */
+  function serving(body: Uint8Array | null, init: { ok?: boolean } = {}) {
+    return vi.fn(async () => {
+      if (!body) throw new TypeError('Failed to fetch')
+      return {
+        ok: init.ok ?? true,
+        arrayBuffer: async () =>
+          body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength),
+      } as unknown as Response
+    })
+  }
+  const pdfBytes = (size = 64) => {
+    const bytes = new Uint8Array(size)
+    bytes.set([0x25, 0x50, 0x44, 0x46, 0x2d]) // %PDF-
+    return bytes
+  }
+
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('fetches the same-origin PDF the page declares, with no extra permission', async () => {
+    const fetcher = serving(pdfBytes(128))
+    vi.stubGlobal('fetch', fetcher)
+    const citation = extractCitation(pageWith(PAPER), PAGE)
+    const { pdf, problem } = await capturePdf(pageWith(PAPER), PAGE, citation)
+    expect(problem).toBeNull()
+    expect(pdf).toMatchObject({ name: '2401.00001.pdf', bytes: 128 })
+    expect(atob(pdf!.base64).slice(0, 5)).toBe('%PDF-')
+    // 不带凭据：扩展承诺不接触任何网站账号。**并且自带时限**：整次采集只有 15 秒预算
+    // （popup/capture.ts），下载没有时限的话慢 PDF 会把整次采集拖死，连正文都存不下。
+    expect(fetcher).toHaveBeenCalledWith(
+      'https://arxiv.test/pdf/2401.00001',
+      expect.objectContaining({ credentials: 'omit', signal: expect.any(AbortSignal) }),
+    )
+  })
+
+  it('never touches a PDF on another origin', async () => {
+    const fetcher = serving(pdfBytes())
+    vi.stubGlobal('fetch', fetcher)
+    const cross = PAPER.replace('https://arxiv.test/pdf/', 'https://cdn.example.com/pdf/')
+    const citation = extractCitation(pageWith(cross), PAGE)
+    const { pdf, problem } = await capturePdf(pageWith(cross), PAGE, citation)
+    expect(pdf).toBeNull()
+    expect(problem).toBe('cross-origin')
+    // 关键：**一次请求都没发**——跨源的字节要经授权过的 service worker，不在这里取。
+    expect(fetcher).not.toHaveBeenCalled()
+  })
+
+  it('refuses what is not actually a PDF, however the server labels it', async () => {
+    // 付费墙常常回 200 加一页 HTML。
+    vi.stubGlobal('fetch', serving(new TextEncoder().encode('<!doctype html><title>登录</title>')))
+    const citation = extractCitation(pageWith(PAPER), PAGE)
+    expect((await capturePdf(pageWith(PAPER), PAGE, citation)).problem).toBe('not-pdf')
+  })
+
+  it('gives up on an oversized PDF instead of shipping bytes the backend will reject', async () => {
+    const huge = pdfBytes(26_214_401)
+    vi.stubGlobal('fetch', serving(huge))
+    const citation = extractCitation(pageWith(PAPER), PAGE)
+    const { pdf, problem } = await capturePdf(pageWith(PAPER), PAGE, citation)
+    expect(pdf).toBeNull()
+    expect(problem).toBe('too-large')
+  })
+
+  it('reports a failed fetch as failed, and does not guess why', async () => {
+    vi.stubGlobal('fetch', serving(null))
+    const citation = extractCitation(pageWith(PAPER), PAGE)
+    expect((await capturePdf(pageWith(PAPER), PAGE, citation)).problem).toBe('failed')
+    vi.stubGlobal('fetch', serving(pdfBytes(), { ok: false }))
+    expect((await capturePdf(pageWith(PAPER), PAGE, citation)).problem).toBe('failed')
+  })
+
+  it('names the file after the paper when the address has no name of its own', async () => {
+    // PLOS 的 PDF 地址是 `/plosone/article/file?id=…&type=printable`——末段是 `file`，
+    // 照抄会把每一篇都存成 `file.pdf`（2026-09-21 真实站点实测发现）。
+    vi.stubGlobal('fetch', serving(pdfBytes()))
+    const plos = PAPER.replace(
+      'https://arxiv.test/pdf/2401.00001',
+      'https://arxiv.test/plosone/article/file?id=10.1371/journal.pone.0287795&type=printable',
+    )
+    const citation = extractCitation(pageWith(plos), PAGE)
+    const { pdf } = await capturePdf(pageWith(plos), PAGE, citation, 'A/B 测试: 一份论文')
+    // 真正会坏事的字符（路径分隔、`:`）换成空格；中文与全角标点照留——
+    // 后端对原名的要求只是「去掉控制字符与路径分隔影响」（契约 8.1）。
+    expect(pdf!.name).toBe('A B 测试 一份论文.pdf')
+
+    // 末段本来就说明问题时（arXiv）仍用它，不被标题顶掉。
+    const citation2 = extractCitation(pageWith(PAPER), PAGE)
+    const { pdf: pdf2 } = await capturePdf(pageWith(PAPER), PAGE, citation2, '某篇论文')
+    expect(pdf2!.name).toBe('2401.00001.pdf')
+
+    // 超长标题：切完既不能留下半个字符，也不能越过接收端 `name.length <= 200` 那道校验
+    // （第二轮 Review 非阻断项①②：原先按码点切，180 个 emoji 会占 360 个 UTF-16 单元）。
+    const emoji = PAPER.replace('https://arxiv.test/pdf/2401.00001', 'https://arxiv.test/download')
+    const citationE = extractCitation(pageWith(emoji), PAGE)
+    // 前面那个 `a` 是关键：它让 180 这个偶数边界落在某个代理对**中间**。
+    // 纯 emoji 的标题下，旧写法碰巧也切在完整字符上，钉不住这条。
+    const { pdf: pdfE } = await capturePdf(pageWith(emoji), PAGE, citationE, 'a' + '🙂'.repeat(300))
+    expect(pdfE!.name.length).toBeLessThanOrEqual(200)
+    // 没有孤立代理：能原样编解码回来说明每个代理对都是完整的。
+    expect(
+      [...pdfE!.name].every((ch) => ch.codePointAt(0)! < 0xd800 || ch.codePointAt(0)! > 0xdfff),
+    ).toBe(true)
+    expect(isCapturedPdf(pdfE)).toBe(true)
+
+    // 两头都没有像样的名字时也得有个能存的名字。
+    const bare = PAPER.replace('https://arxiv.test/pdf/2401.00001', 'https://arxiv.test/download')
+    const citation3 = extractCitation(pageWith(bare), PAGE)
+    const { pdf: pdf3 } = await capturePdf(pageWith(bare), PAGE, citation3, '   ')
+    expect(pdf3!.name).toBe('paper.pdf')
+  })
+
+  it('says "slow" rather than swallowing the whole capture when the download drags', async () => {
+    // L3 独立验收指出：下载没有自己的时限时，慢 PDF 会把整次采集拖超时，用户连网页正文
+    // 都拿不到——恰好违背「拿不到 PDF 就退回存正文」。超时必须退回成一种 problem。
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        // **必须是真的 `DOMException`**：浏览器里 fetch 超时抛的就是它，而不是改了
+        // `name` 的普通 Error。用后者测等于那条真实路径从没被执行过（第四轮 Review F1）。
+        throw new DOMException('The operation was aborted due to timeout', 'TimeoutError')
+      }),
+    )
+    const citation = extractCitation(pageWith(PAPER), PAGE)
+    const { pdf, problem } = await capturePdf(pageWith(PAPER), PAGE, citation)
+    expect(pdf).toBeNull()
+    // 不是笼统的 failed：用户据此知道「再试一次也许就成」，而不是以为撞上了付费墙。
+    expect(problem).toBe('slow')
+  })
+
+  it('leaves ordinary pages alone, even when they link to a PDF', async () => {
+    const fetcher = serving(pdfBytes())
+    vi.stubGlobal('fetch', fetcher)
+    // 没有 citation_* 的普通网页：不认作文献，就不该因为页面上有 PDF 而去抓。
+    const plain = `<meta name="citation_pdf_url" content="https://arxiv.test/pdf/x"/><p>x</p>`
+    const { pdf, problem } = await capturePdf(pageWith(plain), PAGE, null)
+    expect(pdf).toBeNull()
+    expect(problem).toBeNull()
+    expect(fetcher).not.toHaveBeenCalled()
+    // 是文献但这一页没声明 PDF：也不是问题，就是没有。
+    const noPdf = `<meta name="citation_title" content="某篇论文"/><p>x</p>`
+    const citation = extractCitation(pageWith(noPdf), PAGE)
+    expect(await capturePdf(pageWith(noPdf), PAGE, citation)).toEqual({ pdf: null, problem: null })
   })
 })

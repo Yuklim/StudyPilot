@@ -32,6 +32,16 @@ export interface CaptureBridge {
   requestImageAccess(origins: string[]): Promise<boolean>
 }
 
+/**
+ * 整次采集的预算。TASK-080 起从 15 秒提到 30 秒：这段预算现在要覆盖「下一份几 MB 的
+ * PDF」，而不再只是读一次 DOM（实测最慢一篇下载 9.2 秒）。
+ *
+ * **必须比注入脚本自己的 `PDF_TIMEOUT_MS`（20 秒）宽**，否则先超时的是外层，注入脚本
+ * 的「超时就退回存正文」永远走不到，用户连正文都拿不到。这条不变量由
+ * `capture.test.ts` 钉住——两位审查者都指出它原先只活在注释里。
+ */
+export const CAPTURE_TIMEOUT_MS = 30_000
+
 export type CaptureOutcome =
   | { ok: true; payload: CapturePayload }
   | { ok: false; reason: 'no-tab' | 'inject-failed' | 'timeout' | 'unusable' | 'unusable-url' }
@@ -42,7 +52,7 @@ export type CaptureOutcome =
  */
 export async function runCapture(
   bridge: CaptureBridge,
-  timeoutMs = 15_000,
+  timeoutMs = CAPTURE_TIMEOUT_MS,
 ): Promise<CaptureOutcome> {
   const tabId = await bridge.activeTabId()
   if (tabId === undefined) return { ok: false, reason: 'no-tab' }

@@ -17,6 +17,7 @@ import {
   MAX_CITATION_STAMP,
   MAX_CITATION_YEAR,
   MAX_IMAGE_BYTES,
+  MAX_PDF_BYTES,
   MIN_CITATION_YEAR,
   MAX_MARKDOWN,
   MAX_TITLE,
@@ -76,6 +77,9 @@ describe('protocol mirror', () => {
     ['MAX_CITATION_LOCATOR', MAX_CITATION_LOCATOR],
     ['MAX_CITATION_NAME', MAX_CITATION_NAME],
     ['MAX_CITATION_CONTAINER', MAX_CITATION_CONTAINER],
+    // TASK-080 的 PDF 上限同理（首轮 Review F2）：`isCapturedPdf` 两份函数体逐字相同，
+    // 但这个常量各自定义，一侧改小就会让合法的 PDF 载荷被静默丢弃而全绿。
+    ['MAX_PDF_BYTES', MAX_PDF_BYTES],
   ])('shares the same %s limit', (name, value) => {
     // 比数值而不是比字面量文本：两边写 1_000_000 还是 1000000 无所谓，数值必须相等。
     // 允许右侧是算式（`10 * 1024 * 1024`）：比的是**数值**，不是写法。
@@ -115,6 +119,8 @@ describe('protocol mirror', () => {
       'isImageList',
       'matchPatternFor',
       'isCapturedCitation',
+      'isCapturedPdf',
+      'isPdfProblem',
       'isCapturePayload',
     ]) {
       expect(body(theirs, name)).toBe(body(mine, name))

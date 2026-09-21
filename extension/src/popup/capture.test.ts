@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import { PDF_TIMEOUT_MS } from '../injected/extract'
 import { CAPTURE_EXTRACTED } from '../shared/protocol'
 
 import {
+  CAPTURE_TIMEOUT_MS,
   deliverCapture,
   extractedPayload,
   originsOf,
@@ -233,5 +235,17 @@ describe('originsOf', () => {
 
   it('ignores an address it cannot parse instead of dropping the whole batch', () => {
     expect(originsOf(['not a url', 'https://cdn.a.test/1.png'])).toEqual(['https://cdn.a.test/*'])
+  })
+})
+
+describe('the two timeouts', () => {
+  it('keeps the outer budget wider than the PDF download it has to contain', () => {
+    // 注入脚本自己给 PDF 下载 20 秒，超时就退回存正文；这段预算要把那一步整个装下。
+    // 反过来（外层先超时）的话，`runCapture` 返回 timeout、什么都不交付——用户连网页
+    // 正文都拿不到，恰好违背「拿不到 PDF 就退回存正文」这条设计。
+    // 两位审查者都指出这条不变量原先只活在注释里，这里把它钉住。
+    expect(CAPTURE_TIMEOUT_MS).toBeGreaterThan(PDF_TIMEOUT_MS)
+    // 还要留得下提取与交付，不是刚好多一毫秒。
+    expect(CAPTURE_TIMEOUT_MS - PDF_TIMEOUT_MS).toBeGreaterThanOrEqual(5_000)
   })
 })

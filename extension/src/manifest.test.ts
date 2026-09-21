@@ -123,13 +123,26 @@ describe('MV3 manifest', () => {
     expect(Object.keys(manifest.background).sort()).toEqual(['service_worker'])
   })
 
-  it('asks for exactly three permissions, and none that reach every site', () => {
+  it('asks for exactly four permissions, and none that reach every site', () => {
     // activeTab is the whole point: it grants the one tab the user just clicked on,
     // and only after that click. Swapping it for a host permission would turn a
     // per-click grant into a standing one, which is what this assertion prevents.
-    expect([...manifest.permissions].sort()).toEqual(['activeTab', 'scripting', 'storage'])
+    //
+    // TASK-080 加了第四个 `unlimitedStorage`：采集文献时要暂存 PDF 的字节，而
+    // storage.local 默认只有 10 MB。**它不触及任何站点**——下面三条断言正是用来
+    // 保证「多加的这一个没有把触角伸到站点上」的。
+    expect([...manifest.permissions].sort()).toEqual([
+      'activeTab',
+      'scripting',
+      'storage',
+      'unlimitedStorage',
+    ])
     expect(manifest.permissions).not.toContain('tabs')
     expect(manifest.permissions).not.toContain('cookies')
+    // 站点访问权只能留在 optional_host_permissions 里，一条都不许挪进来。
+    expect(manifest.permissions.some((name) => name.includes('://') || name === '<all_urls>')).toBe(
+      false,
+    )
   })
 
   it('runs a content script on the local UI origin and nowhere else', () => {
