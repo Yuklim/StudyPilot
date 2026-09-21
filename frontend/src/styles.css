@@ -3205,7 +3205,8 @@ a.source-chip:focus-visible {
    而是让这一列**按剩余空间填满**——顶栏在窄屏会换行变高，任何常数都会在某一档偏掉
    （旧值 220px 就是这么来的）。整条链上的每一层都要 `min-height: 0`，否则 flex 子项
    的默认最小高度＝内容高度，PDF 会把容器顶开、外层跟着出滚动条。
-   只在 `.pdf-page` 下生效：网页/粘贴资料的正文本来就随页面滚动，不动它们。 */
+   只在 `.reader-pdf` 下生效：网页/粘贴资料的正文本来就随页面滚动，不动它们。
+   **类名不能叫 `pdf-page`**——那是每一页 PDF 的类，撞上它的裸规则会把整张页面居中收缩。 */
 .resource-sheet.reader.reader-pdf {
   height: 100dvh;
   display: flex;
