@@ -339,11 +339,54 @@ function toBase64(buffer: ArrayBuffer): string {
   return btoa(binary)
 }
 
-/** 从地址取文件名；没有像样的名字（arXiv 的 `/pdf/1706.03762` 就没有）就补上 `.pdf`。 */
-function pdfNameFor(target: URL): string {
-  const last = target.pathname.split('/').filter(Boolean).pop() ?? ''
-  const name = last.replace(/[^\w.\-]/g, '').slice(0, 180) || 'paper'
-  return /\.pdf$/i.test(name) ? name : `${name}.pdf`
+/**
+ * 地址末段用作文件名前先看它说不说明问题：PLOS 的 PDF 地址是
+ * `/plosone/article/file?id=…&type=printable`，末段是 `file`——照抄就会把每一篇
+ * 都存成 `file.pdf`（真实站点实测发现）。这类通用词一律退回用标题。
+ */
+const USELESS_NAMES = new Set([
+  'file',
+  'files',
+  'pdf',
+  'download',
+  'get',
+  'view',
+  'fetch',
+  'full',
+  'fulltext',
+  'article',
+  'content',
+  'render',
+  'print',
+  'printable',
+])
+
+/** 只去掉真正会坏事的字符（路径分隔与控制字符，与契约 8.1 的后端口径一致），中文照留。 */
+function safeName(raw: string): string {
+  // 逐字符判而不用正则：控制字符写进正则会被 eslint 的 no-control-regex 拦下，
+  // 而这里正是它说的那种例外——剔除控制字符本身就是目的。
+  const cleaned = [...raw]
+    .map((ch) => {
+      const code = ch.codePointAt(0) ?? 0
+      if (code < 0x20 || code === 0x7f) return ''
+      return '\\/:*?"<>|'.includes(ch) ? ' ' : ch
+    })
+    .join('')
+  return cleaned.replace(/\s+/g, ' ').trim().slice(0, 180)
+}
+
+/** 从地址取文件名；末段没有像样的名字（arXiv 的 `/pdf/1706.03762` 有，PLOS 的没有）就退回标题。 */
+function pdfNameFor(target: URL, title: string): string {
+  let last = target.pathname.split('/').filter(Boolean).pop() ?? ''
+  try {
+    last = decodeURIComponent(last)
+  } catch {
+    // 地址里有坏转义就用原样，不为一个文件名让整次采集失败。
+  }
+  const stem = last.replace(/\.pdf$/i, '')
+  const fromPath = USELESS_NAMES.has(stem.toLowerCase()) ? '' : safeName(stem)
+  const name = fromPath || safeName(title) || 'paper'
+  return `${name.slice(0, 180)}.pdf`
 }
 
 /**
@@ -362,6 +405,7 @@ export async function capturePdf(
   doc: Document,
   pageUrl: string,
   citation: CapturedCitation | null,
+  title = '',
 ): Promise<{ pdf: CapturedPdf | null; problem: PdfProblem | null }> {
   // 不是文献就不抓：普通网页不该因为页面上有个 PDF 链接就被存成 PDF 资料。
   if (!citation) return { pdf: null, problem: null }
@@ -386,7 +430,11 @@ export async function capturePdf(
     const head = String.fromCharCode(...new Uint8Array(buffer.slice(0, 5)))
     if (head !== '%PDF-') return { pdf: null, problem: 'not-pdf' }
     return {
-      pdf: { name: pdfNameFor(target), bytes: buffer.byteLength, base64: toBase64(buffer) },
+      pdf: {
+        name: pdfNameFor(target, title || doc.title),
+        bytes: buffer.byteLength,
+        base64: toBase64(buffer),
+      },
       problem: null,
     }
   } catch {
@@ -423,7 +471,12 @@ if (typeof chrome !== 'undefined' && chrome.runtime?.id) {
   void (async () => {
     const payload = extractFromDocument(document, location.href)
     // PDF 在这里取：与页面同源运行，`activeTab` 已够用，不必再向用户要权限。
-    const { pdf, problem } = await capturePdf(document, location.href, payload.citation ?? null)
+    const { pdf, problem } = await capturePdf(
+      document,
+      location.href,
+      payload.citation ?? null,
+      payload.title,
+    )
     await chrome.runtime
       .sendMessage({ type: CAPTURE_EXTRACTED, payload: { ...payload, pdf, pdf_problem: problem } })
       .catch(() => undefined)

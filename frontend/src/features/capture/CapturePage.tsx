@@ -42,7 +42,8 @@ const pdfProblemText: Record<PdfProblem, string> = {
   'cross-origin': 'PDF 在另一个域名下，扩展没有那个域名的权限，所以这次存的是网页正文。',
   'too-large': 'PDF 超过 25 MiB 上限，存不进来，所以这次存的是网页正文。',
   'not-pdf': '那个地址取回来的不是 PDF（多半是登录页或付费墙），所以这次存的是网页正文。',
-  failed: 'PDF 没能取下来（可能需要登录，或网络不通），所以这次存的是网页正文。',
+  failed:
+    'PDF 没能取下来——多数出版社要求先登录才给，而扩展从不带你的账号信息；也可能只是网络不通。这次存的是网页正文。',
 }
 
 export function CapturePage() {

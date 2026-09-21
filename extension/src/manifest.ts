@@ -98,11 +98,12 @@ export const manifest: Manifest = {
   version: buildVersion(),
   version_name: buildVersionName(),
   description:
-    '把你正在看的网页正文保存到本机 StudyPilot。只读取已显示的内容，不接触任何网站账号。正文里的图片可在你确认后一并保存。',
+    '把你正在看的网页保存到本机 StudyPilot：是文献就抓它自己声明的 PDF，普通网页存正文。只读取已显示的内容，不接触任何网站账号。',
   // unlimitedStorage（TASK-080）：采集文献时要把 PDF 的字节暂存一下再交给确认页，
   // 而 storage.local 默认只有 10 MB——实测论文 0.7–6.5 MB，转 base64 后 0.9–8.6 MB，
   // 最大的那篇已经贴着配额。它**不授予任何站点访问权**，只是允许本机多存，
-  // Chrome/Edge 安装时也不为它弹警告。
+  // 按 Chromium 的权限警告表它不产生安装提示，但**本次没有实测**——加载已解压扩展
+  // 不走安装对话框，自动化也触发不了它。用户重新加载后若看到新的权限提示，以实际为准。
   permissions: ['activeTab', 'scripting', 'storage', 'unlimitedStorage'],
   // 安装时不授予；采集到带图页面且用户点「一并保存」时才请求。
   optional_host_permissions: ['<all_urls>'],

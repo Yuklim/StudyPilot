@@ -566,6 +566,32 @@ describe('capturePdf', () => {
     expect((await capturePdf(pageWith(PAPER), PAGE, citation)).problem).toBe('failed')
   })
 
+  it('names the file after the paper when the address has no name of its own', async () => {
+    // PLOS 的 PDF 地址是 `/plosone/article/file?id=…&type=printable`——末段是 `file`，
+    // 照抄会把每一篇都存成 `file.pdf`（2026-09-21 真实站点实测发现）。
+    vi.stubGlobal('fetch', serving(pdfBytes()))
+    const plos = PAPER.replace(
+      'https://arxiv.test/pdf/2401.00001',
+      'https://arxiv.test/plosone/article/file?id=10.1371/journal.pone.0287795&type=printable',
+    )
+    const citation = extractCitation(pageWith(plos), PAGE)
+    const { pdf } = await capturePdf(pageWith(plos), PAGE, citation, 'A/B 测试: 一份论文')
+    // 真正会坏事的字符（路径分隔、`:`）换成空格；中文与全角标点照留——
+    // 后端对原名的要求只是「去掉控制字符与路径分隔影响」（契约 8.1）。
+    expect(pdf!.name).toBe('A B 测试 一份论文.pdf')
+
+    // 末段本来就说明问题时（arXiv）仍用它，不被标题顶掉。
+    const citation2 = extractCitation(pageWith(PAPER), PAGE)
+    const { pdf: pdf2 } = await capturePdf(pageWith(PAPER), PAGE, citation2, '某篇论文')
+    expect(pdf2!.name).toBe('2401.00001.pdf')
+
+    // 两头都没有像样的名字时也得有个能存的名字。
+    const bare = PAPER.replace('https://arxiv.test/pdf/2401.00001', 'https://arxiv.test/download')
+    const citation3 = extractCitation(pageWith(bare), PAGE)
+    const { pdf: pdf3 } = await capturePdf(pageWith(bare), PAGE, citation3, '   ')
+    expect(pdf3!.name).toBe('paper.pdf')
+  })
+
   it('leaves ordinary pages alone, even when they link to a PDF', async () => {
     const fetcher = serving(pdfBytes())
     vi.stubGlobal('fetch', fetcher)
