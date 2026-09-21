@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-079"
-status = "IN_REVIEW"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "改的是写进契约第 14 节的识别门槛（TASK-075 定的那一条），以及第 14.4 节描述的 manifest 顶层键集合（新增 version_name）。两处都落在 docs/contracts/**，命中 risk-policy.json 的 high_risk_paths，属公共契约改动，取最高定 L3：1 Worker → 自动检查 → 独立只读 Reviewer → 独立只读 Integration/Acceptance。门槛放宽会直接改变「哪些页面被当成文献」，误判的代价由用户承担（每篇博客都弹卡片），因此假阳性的反例用例是硬完成条件。"
 risk_flags = ["public-api", "architecture"]
@@ -108,7 +108,7 @@ Zotero 分层：站点专用翻译器 `100` → unAPI `300` → COinS `310` → 
 - DOI 从 `doi.org` 链接读到，且 `dx.doi.org`、大小写、带查询串的形式都能认；非 `10.` 开头的不认。
 - 契约第 14 节的门槛段落改写为实际实现（含「往回拉」规则与 DOI 来源）；第 14.4 节登记新增的 `version_name` 键。
 - **（本条随 2026-09-21 的范围修订改写；改它的依据是用户明确指令 + 写入前登记，见「范围修订」一节。独立验收裁定：不改就会留下一条与产物不符的验收锚点。）** 构建产物的 `version` 为 `0.2.0.<提交数>`；提交数取不到、非数字、带前导零或越界（>65535）时退回 `0.2.0`。`version_name` 为 `<version>+<短 SHA>`，工作区有未提交改动时带 `-dirty`，取不到 git 时退化为 `<version>+dev`。manifest 顶层键白名单用例同步为十个键（这正是它存在的意义）。
-- `docs/开发与运行.md` 写明怎么判断 Chrome 里装的是哪一版。
+- `docs/开发与运行.md` 写明怎么判断 **Chrome/Edge** 里装的是哪一版（本次修订的要害恰是 Edge）。
 - `check_task.py` 必要检查 PASS（extension + contracts）。
 - L3：独立只读 Reviewer 审最终 diff；独立只读 Integration/Acceptance 核完成条件与跨模块证据，**并重点核「真实页面夹具确实取自真实页面」**。
 
@@ -212,20 +212,23 @@ Zotero 分层：站点专用翻译器 `100` → unAPI `300` → COinS `310` → 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：`5abb598` → `3b5cd8e` → `d102dc8` → `d270693` → **最终候选见本次写回的父提交**（本次写回只改文档，仅更正 F-A1 与填写本证据区）。
-- 最终候选上的机械检查：`check_task.py --task … --worktree` → **CHECKS PASS**（profiles=contracts,extension；`product_fingerprint=b3615ae7…`；extension **169 passed**、lint/typecheck/format/build 全过、OpenAPI 校验通过）。四个候选的指纹互异，未拿旧 SHA 充数。**前端与 e2e 未重跑**：本任务一行 `frontend/**` 都没改；独立验收另行核过「前端侧确无识别门槛的实现」（grep `frontend/src/features/capture` 无 `citation_title`/门槛）与「产出的 8 种 item_type 均在前端枚举内」，并判定该口径可信。
-- Review：独立只读 Reviewer（仅 Read/Grep/Glob、无 Bash），**四轮**：
+- 候选 SHA：`5abb598` → `3b5cd8e` → `d102dc8` → `d270693` → `1af333a` → `90eab40` → **最终候选 `b657284`**。（本次写回只改文档：完成条件里一处 Chrome→Chrome/Edge 的措辞，以及填写本证据区。）
+- 最终候选 `b657284` 上的机械检查：`check_task.py --task … --worktree` → **CHECKS PASS**（profiles=contracts,extension；`product_fingerprint=dc4b80d2a5eeec1f2dd4a94cae0e89dca67596c3feec8a41c422c4187361aed6`；extension **170 passed**、lint/typecheck/format/build 全过、OpenAPI 校验通过）。各候选指纹互异（…→`b3615ae7`→`e6c94992`→`dc4b80d2`），未拿旧 SHA 充数——独立验收特别要求核对「本轮改了 `manifest.ts`/`manifest.test.ts`，指纹必须不等于上一轮的 `e6c94992…`」，实测确不相同。**前端与 e2e 未重跑**：本任务一行 `frontend/**` 都没改；独立验收另行核过「前端侧确无识别门槛的实现」（grep `frontend/src/features/capture` 无 `citation_title`/门槛）与「产出的 8 种 item_type 均在前端枚举内」，并判定该口径可信。
+- Review：独立只读 Reviewer（仅 Read/Grep/Glob、无 Bash），**六轮**（第五、六轮针对用户指令触发的范围修订）：
   - 第一轮（`327d2d6..5abb598`）**CHANGES_REQUIRED**：F1 必须修——**`doiFromLinks` 把页面上任何一条 `doi.org` 链接当成本页 DOI，且单独构成强信号**，于是维基条目、论文解读博客、期刊目录页会被判成期刊论文并把**别人作品的 DOI** 静默写进资料（确认页默认勾选）。另有 F2（记录里一条变异表述不实）、F3（构建标记 dirty）、F4（论文名污染出版方）。
   - 第二轮（`5abb598..3b5cd8e`）**CHANGES_REQUIRED**：F6——**修 F1 时引入的回归**，预印本判断挂在 `doi` 之下，带 "Related DOI" 的 arXiv 页（两条 DOI 链接 → 唯一性不成立）会掉到 `OTHER`，而同轮写进契约的「有 arXiv 标识即判预印本」因此不成立。
   - 第三轮（`3b5cd8e..d102dc8`）**PASS**，3 条可选（契约措辞、聚合站形态无用例、记录旧描述易被误读），全部采纳。
-  - 第四轮（`d102dc8..d270693`，结论覆盖 `327d2d6..d270693`）**PASS，No findings**。原文要点：
+  - 第五轮（`1af333a..90eab40`，version 带构建号）**PASS**，3 条非阻断：前导零的声称与实现不符（`/^[0-9]{1,5}$/` 只拦 6 位以上）、用户操作栏仍写着被本次修订推翻的说法、「typecheck 通过」存疑。全部处置，见正文。
+  - 第六轮（`90eab40..b657284`，结论覆盖 `327d2d6..b657284`）**PASS，No findings**。它逐类试过收紧后的 `buildVersion`（`0`/`00`/`0123`/`012345`/`65535`/`65536`/`70000`/`+629`/`629.0`/`1e3`/全角数字/十位长串/空值），确认无漏网输入、两条检查各管一段不冗余；并认可「改完成条件」的裁定，把成立条件说清楚：
+    > 第 6 节禁止的是**借证据区**悄悄改目标/风险/路径/检查，不是禁止任务范围本身变化……本次四个要件齐全：用户明确指令有原话可查、**写入前登记**、改动处就地标注依据、状态回 IN_REVIEW 并重新冻结候选、Reviewer 与验收都对新候选重跑。缺任何一条（尤其「写入前登记」与「就地标注」）就会退化成审查后改验收锚点——那才是该禁的。
+  - 第四轮（`d102dc8..d270693`）**PASS，No findings**。原文要点：
     > 「本轮没改产品代码」属实：`extract.ts:155-292` 与我在 `d102dc8` 读到的逐行一致……新断言非恒真……它也是**唯一**隔离「非 arxiv 域名 + 标识」这条路径的用例，缺口确实补上了。
-- Acceptance：独立只读 Integration/Acceptance（**全新实例**，权限自述：仅 Read/Grep/Glob，无 Write/Edit/Bash）。首轮 **CHANGES_REQUIRED（仅 1 条，文字级；9 条完成条件本身全部满足）**：
+- Acceptance：独立只读 Integration/Acceptance（**全新实例**，权限自述：仅 Read/Grep/Glob，无 Write/Edit/Bash），**四轮**（首轮与第三轮 CHANGES_REQUIRED，第二、四轮 PASS）。最终轮（覆盖 `327d2d6..b657284`）**PASS，No findings**，并确认：完成条件九条全部满足、十个文件全在 `allowed_paths`、识别逻辑与契约门槛自 `d270693` 起逐字未变、八条非阻断遗留齐备。第三轮它裁定的两条（F-A2 完成条件必须随修订改写、F-A3「typecheck 通过」不实）处置见正文。首轮 **CHANGES_REQUIRED（仅 1 条，文字级；9 条完成条件本身全部满足）**：
   - **F-A1**：本记录「这次事故的根因」一节把「arXiv 可能不触发」这条风险说成「TASK-075 的 Reviewer 与独立验收都列成了剩余风险」并加了引号原话——**核不实**，该风险只是主 Agent 自己的遗留第 5 条。已更正，见该节末尾的「更正」段。
   - 对**第 1 点（真实页面实跑不可复核）**的判断：**接受降级表述，且不要求把真实页面副本入库**——「副本的出处同样只能靠证词，可验证性并未提高，还把第三方内容塞进公开仓」；但要求把「用户在 arxiv.org 实测一次」写进**需要用户操作**栏作为硬要求（已照办）。并给了旁证（非证明）：夹具的标题、8 位作者及顺序、v1 日期 2017-06-12、`citation_online_date` 2023-08-02、`10.48550/arXiv.` 前缀均与该论文的公开事实吻合。
   - 对**第 3 点（契约与实现逐条对照）**的判断：契约 `:875-895` 与 `extract.ts:206-292` **逐条一致**——强信号七项、弱信号、往回拉四特征仅压弱信号、链接 DOI 两条件、预印本独立于 `doi` 且排在会议/书章节/学位/报告之后、机构填出版方而论文名不填。**未发现实现宽于契约或契约宽于实现。**
   - 文件集 10 个全在 `allowed_paths`，无越界。
-- 最终状态/风险/用户操作：**ACCEPTED**。L3 执行链走完（Worker → 自动检查 → 独立只读 Reviewer 四轮 → 独立只读 Integration/Acceptance）。风险：改的是写进契约的识别门槛，放宽方向由四组假阳性反例守着；`version_name` 只是人看的标识，不扩大任何授权面。**需要用户操作**：
+- 最终状态/风险/用户操作：**ACCEPTED**。L3 执行链走完（Worker → 自动检查 → 独立只读 Reviewer **六轮** → 独立只读 Integration/Acceptance **四轮**；其中第五轮起是用户指令触发的范围修订重新走的链）。风险：改的是写进契约的识别门槛，放宽方向由四组假阳性反例守着；`version_name` 只是人看的标识，不扩大任何授权面。**需要用户操作**：
   1. **合并 PR**；
   2. **（硬要求，不是可选）合并后在真网页上实测**：一篇普通 arXiv 论文（如 `1706.03762`）、**以及一篇标了 "Related DOI" 的 abs 页**。后者至今**只有推断与用例、没有真实页面证据**，而 F6 正是从这一族冒出来的。**确认装的是哪一版：看版本号的第四段** `0.2.0.<提交数>`（每提交一次必变，且每个浏览器都显示 `version`）。`version_name`（`0.2.0.<提交数>+<短 SHA>`，脏工作区带 `-dirty`）信息更全，但 **Edge 不一定显示它**——用户 2026-09-21 实测如此。
   3. **（硬要求）在 Edge 上点一次「重新加载」确认第四段真的变了**：这次修订的起因正是「照 Chrome 文档设计、没在用户实际使用的浏览器上验证」，所以「它在 Edge 上会不会变」目前**仍只有设计推理、没有实机证据**。
