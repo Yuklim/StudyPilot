@@ -47,7 +47,12 @@ export const MAX_CANVAS_PIXELS = 10_000_000
  * **CSS 尺寸**。两者相等时，高分屏（`devicePixelRatio > 1`）上每个 CSS 像素只有一个采样点，
  * 浏览器把它放大 dpr 倍显示——那就是「糊」。实测 Retina 上像素利用率只有 50%（TASK-082）。
  *
- * 返回值**不低于 1**：低于 1 会比不做还糊。超出预算时按面积开方降，保证 `w*h ≤ 预算`。
+ * 返回值**不低于 1**：低于 1 会比不做还糊。超出预算时按面积开方降。
+ *
+ * **不是无条件的上界**（独立 Review F1）：`density` 下不穿 1，所以当**页面本身的 CSS 面积**
+ * 就超过预算时（大幅面 PDF × 高缩放，例如 A1 页配 `MAX_SCALE`），画布仍等于 CSS 面积、仍会
+ * 超预算。真实上界是 `max(预算, CSS 面积)`。这一档旧代码同样如此，本次不比旧行为更差；
+ * 学习类资料几乎都是 A4/Letter（`MAX_SCALE` 下约 4.4M 像素，远在预算内），故记录后继续。
  */
 export function pixelDensity(cssWidth: number, cssHeight: number, ratio: number): number {
   const wanted = Math.max(1, ratio)
@@ -107,9 +112,16 @@ function useDevicePixelRatio(): number {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
     const query = window.matchMedia(`(resolution: ${ratio}dppx)`)
     const onChange = () => setRatio(window.devicePixelRatio || 1)
-    // Safari 14 之前只有 addListener；本仓其它地方（useSqueezeLayout）也做了同样的兼容。
+    // Safari 14 之前的 MediaQueryList 只有 legacy 的 addListener。
+    // （注：本仓 `useSqueezeLayout` 并**没有**这个兼容分支，先前注释写成「同样的兼容」
+    //   是不实的——独立 Review F2 指出。）
     if (query.addEventListener) query.addEventListener('change', onChange)
     else query.addListener(onChange)
+    // **订阅后立刻对一次**（独立 Review F3）：一是补上首渲染到 effect 之间可能发生的变化；
+    // 二是分数像素比（Windows 125%/150%、浏览器缩放会给出 1.5 甚至 1.7999999523162842）或
+    // 老 Safari 不支持 `resolution` 时，这条查询可能**恒不匹配**、change 永不触发——
+    // 那时至少这一次同步能把值对上，失败模式退回「不跟随换屏」，不比改前更差。
+    onChange()
     return () => {
       if (query.removeEventListener) query.removeEventListener('change', onChange)
       else query.removeListener(onChange)
