@@ -49,10 +49,16 @@ const pdfProblemText: Record<PdfProblem, string> = {
 
 export function CapturePage() {
   const navigate = useNavigate()
-  // 识别到文献时默认勾上：识别到了却默认不存，等于白识别。取消只影响这一次。
-  const [saveCitation, setSaveCitation] = useState(true)
-  // 取到 PDF 时默认就存 PDF：用户要的是「点一下，文献进库」。仍然可以改存网页正文。
-  const [savePdf, setSavePdf] = useState(true)
+  // TASK-084：这里原本有 `saveCitation` 与 `savePdf` 两个勾选框状态。用户 2026-09-21
+  // 「如果是文献的话默认保存 pdf 原文就可以了，不要让用户做太多选择」——对一篇论文来说
+  // 两个框的答案恒为「都要」，摆着只是让人多看两眼。去掉之后：认出文献就存文献信息，
+  // 抓到 PDF 就存 PDF 原件。
+  //
+  // 去掉的代价各自有没有出口，如实记在这里：
+  // - 不存文献信息 → **仍有出口**：存完在资料详情页右栏「信息」Tab 可改可清空（TASK-078）。
+  // - 改存网页正文而不是 PDF → **没有等价出口**，只能重新采集（而重新采集仍会存 PDF）。
+  //   用户在 TASK-080 定案时说过「原文页一般都是对文献的描述，没用」，此路本为极少数
+  //   情形留的后门，不值得为它每次都占一个勾选框。
   const [citationMiss, setCitationMiss] = useState<{
     id: string
     reason: string
@@ -103,7 +109,7 @@ export function CapturePage() {
     const cleanTitle = title.trim()
     // 与手工录入路径一致（ContentSnapshot.tsx:68,72）：用 trim 判空，但**原样发送**。
     // 采集到的正文不该被这一步悄悄改动。
-    const savingPdf = Boolean(captured.pdf && savePdf)
+    const savingPdf = Boolean(captured.pdf)
     if (!savingPdf && (!markdown.trim() || markdown.length > MAX_MARKDOWN)) {
       setError('正文不能为空，且最多 100 万字。')
       return
@@ -128,7 +134,7 @@ export function CapturePage() {
           { ...(cleanTitle ? { title: cleanTitle } : {}) },
           pdfFile(captured.pdf),
         )
-        if (captured.citation && saveCitation) {
+        if (captured.citation) {
           try {
             await putCitation(created.id, { ...EMPTY_DRAFT, ...captured.citation }, null)
           } catch (cause) {
@@ -151,7 +157,7 @@ export function CapturePage() {
       // （Review F5：原先文献写在图片之后，图片部分失败时直接 return，勾了
       // 「一并存下来」的文献既没写也没提，提示里只讲图片）。
       let citationFailure: string | null = null
-      if (captured.citation && saveCitation) {
+      if (captured.citation) {
         try {
           await putCitation(created.id, { ...EMPTY_DRAFT, ...captured.citation }, null)
         } catch (cause) {
@@ -203,13 +209,16 @@ export function CapturePage() {
   }
 
   // 这次点保存会存成 PDF 原件还是网页正文——界面据它决定显示什么。
-  const savingNow = Boolean(captured?.pdf && savePdf)
+  // 抓到 PDF 就是存 PDF——不再有第二种可能，所以这里直接看有没有 PDF。
+  const savingNow = Boolean(captured?.pdf)
 
   return (
     <section className="resource-sheet" aria-labelledby="capture-title">
       <div className="resource-sheet-heading">
         <span className="small-label">FROM THE PAGE YOU WERE READING</span>
-        <h2 id="capture-title">确认要保存的正文</h2>
+        {/* 存 PDF 时这一页确认的不是「正文」——标题跟着变，不然它和下面那句
+            「这一页的正文不会保存」当场互相打架（TASK-084 实测截图发现）。 */}
+        <h2 id="capture-title">{savingNow ? '确认要保存的文献' : '确认要保存的正文'}</h2>
       </div>
 
       {freezing ? (
@@ -289,22 +298,14 @@ export function CapturePage() {
             <legend className="sr-only">采集到的内容</legend>
             <p className="resource-hint">来自：{captured.url}</p>
             {captured.pdf ? (
-              <div className="capture-pdf">
-                <label className="capture-citation-toggle">
-                  <input
-                    type="checkbox"
-                    checked={savePdf}
-                    onChange={(event) => setSavePdf(event.target.checked)}
-                  />
-                  保存这份 PDF（{captured.pdf.name}，{(captured.pdf.bytes / 1048576).toFixed(1)}{' '}
-                  MB）
-                </label>
-                <p className="resource-hint">
-                  {savePdf
-                    ? '存下来的是 PDF 原件，打开资料就能在 StudyPilot 里读，不用再回原网站。这一页的正文不会保存——它只是对这篇文献的描述。'
-                    : '改为保存这一页的网页正文。PDF 不会存下来；正文里的图片保留原网站地址（抓 PDF 时没有向你要图片权限）。'}
-                </p>
-              </div>
+              // TASK-084：陈述句，不是选择题。这里原本是一个默认勾着的勾选框——对一篇
+              // 论文来说它的答案恒为「要」，摆着只是让人多看一眼。
+              <p className="capture-plan">
+                这次会存下：<strong>PDF 原件</strong>（{captured.pdf.name}，
+                {(captured.pdf.bytes / 1048576).toFixed(1)} MB）
+                {captured.citation ? '和下面这份文献信息' : ''}。 打开资料就能在 StudyPilot
+                里读，这一页的正文不会保存——它只是对这篇文献的描述。
+              </p>
             ) : null}
             {captured.pdf_problem ? (
               <p className="resource-hint">{pdfProblemText[captured.pdf_problem]}</p>
@@ -336,14 +337,11 @@ export function CapturePage() {
             )}
             {captured.citation ? (
               <div className="capture-citation">
-                <label className="capture-citation-toggle">
-                  <input
-                    type="checkbox"
-                    checked={saveCitation}
-                    onChange={(event) => setSaveCitation(event.target.checked)}
-                  />
-                  这页看起来是一篇文献，一并存下来
-                </label>
+                {/* TASK-084：勾选框去掉了，这张表**留着**——它不是让你选，是让你一眼核对
+                    认出来的是不是这篇。认错了存完还能在资料的「信息」里改或清空。 */}
+                <p className="capture-citation-head">
+                  {captured.pdf ? '这篇文献的信息：' : '这页看起来是一篇文献，会一并存下来：'}
+                </p>
                 <dl className="reader-info-list">
                   <dt>类型</dt>
                   <dd>{ITEM_TYPE_LABELS[captured.citation.item_type]}</dd>
