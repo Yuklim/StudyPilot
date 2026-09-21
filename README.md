@@ -1,8 +1,8 @@
 # StudyPilot
 
-**面向个人学习者的本地优先阅读手帐。** 把网页、粘贴的内容和原始文件收进自己的资料库，冻结一份正文快照当文章读，再把心得写在资料旁边。
+**面向个人学习者的本地优先阅读手帐。** 把网页、文献和原始文件收进自己的资料库——网页冻结一份正文快照，**学术文献直接把 PDF 原件抓下来、在站内阅读器里读**——再把心得写在资料旁边。
 
-> **StudyPilot** is a local-first reading journal. A Chrome/Edge extension captures the article body of the page you are reading, the backend freezes it as a Markdown snapshot in a local SQLite database, and the frontend renders it as a distraction-free reader with your own notes alongside. Everything runs on `127.0.0.1` — no cloud, no account, no telemetry.
+> **StudyPilot** is a local-first reading journal. A Chrome/Edge extension captures the page you are reading: an ordinary article becomes a frozen Markdown snapshot, while **a recognised paper has its own PDF fetched and stored as the resource itself**, readable in the built-in pdf.js viewer alongside the citation metadata the page declared. Everything is a local SQLite database on `127.0.0.1` — no cloud, no account, no telemetry.
 
 [![CI](https://github.com/Yuklim/StudyPilot/actions/workflows/ci.yml/badge.svg)](https://github.com/Yuklim/StudyPilot/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)
@@ -21,12 +21,14 @@
 
 一条完整链路：
 
-1. **采集** —— 在网页上点扩展图标，读当前页正文并转成 Markdown。页面有图片时会先问一次是否连图片一并保存。**不点确认就不会存进资料库**：抽取结果只是暂存在扩展自己的本地存储里等待转交（`storage` 权限的用途，见下），不会写入数据库。
-2. **确认** —— 打开 StudyPilot 确认页，核对标题与正文后保存为资料。保存下来的正文是一份**冻结快照**，之后原文改版、删除、失效都不影响阅读。
-3. **阅读** —— 资料详情页是一个阅读器：正文居中、两层工具条（常用动作在常驻层，低频动作收进 `⋯`），右侧可展开心得侧栏。
-4. **记录** —— 在资料旁写下理解、疑问和结论；也可以先随手写独立心得，之后再贴到某份资料上。
+1. **采集** —— 在网页上点扩展图标。**普通网页**读正文并转成 Markdown（有图片时先问一次是否一并保存）；**学术文献**则多做一步：从页面自己声明的 `citation_pdf_url` 把 **PDF 原件**抓下来，同时认出作者、年份、期刊、DOI 这些文献信息。**不点确认就不会存进资料库**——抽取结果只是暂存在扩展自己的本地存储里等待转交（`storage` 权限的用途，见下）。
+2. **确认** —— 打开 StudyPilot 确认页核对后保存。网页存成**冻结快照**（原文改版、删除、失效都不影响阅读）；文献存成 **FILE 资料，原件就是那份 PDF**，确认页上不再让你做多余的勾选。
+3. **阅读** —— 资料详情页就是阅读器。网页走正文阅读器（正文居中、两层工具条、右侧可展开心得侧栏）；**PDF 走站内 pdf.js 阅读器**：连续滚动、按需渲染、页码跳转与缩放、按设备像素渲染（高分屏上不发虚）、离开时记住读到哪里。
+4. **记录** —— 在资料旁写下理解、疑问和结论；**选中正文可以直接高亮或「记下这段」**；也可以先随手写独立心得，之后再贴到某份资料上。
 
 另外还有资料库的检索与筛选（类型、状态、排序、主题与标签，筛选条件写进 URL）、主题/标签管理（含使用情况统计与合并），以及保留的旧学习历史入口。
+
+**抓不到 PDF 时会明说原因，不会默默降级。** 跨域、付费墙、超过 25 MiB、取回来的不是 PDF、20 秒没下完——扩展弹窗会停下来告诉你是哪一种，由你决定改存网页正文还是算了。实测多数出版社（Nature、Springer 等）把 PDF 请求转到自家登录域做 cookie 握手，不带凭证的请求跟不过去；**这不是缺陷，是「扩展从不接触你的网站账号」这条承诺的必然结果**。开放获取的站点（arXiv、PLOS 等）抓得到。
 
 ## 截图
 
@@ -35,8 +37,10 @@
 | ![学习概览](docs/images/01-overview.png) **学习概览** —— 每天一小步的入口 | ![沉浸式阅读](docs/images/03-reader.png) **资料详情 = 阅读器** —— 冻结的正文快照、两层工具条 |
 | ![分类整理](docs/images/04-classifications.png) **分类整理** —— 主题与标签，含使用情况 | ![我的心得](docs/images/05-notes.png) **我的心得** —— 独立记录，可后贴到资料 |
 | ![浏览器扩展](docs/images/06-extension-popup.png) **浏览器扩展 popup** —— 采集入口 | ![资料库](docs/images/02-library.png) **资料库** —— 卡片/列表、筛选进 URL |
+| ![站内 PDF 阅读器](docs/images/07-pdf-reader.png) **站内 PDF 阅读器** —— 文献直接读原件：连续滚动、页码与缩放、位置记忆 | |
 
-> 以上截图取自真实运行的实例，数据为演示用途的合成内容。
+> 截图取自真实运行的实例。**01–06 的数据为演示用途的合成内容；07 里的文献是真实的公开预印本**
+> （arXiv:1706.03762），用来说明 PDF 这条链路只有拿真实文献才说得清。
 
 ## 技术栈
 
@@ -170,6 +174,8 @@ scripts/       仓库治理检查工具
 - **复习、统计与 AI 尚未开放**。相关页面会明确显示「未接入」而不是填零。资料库为空时也不会显示示例数据冒充真实内容。
 - **未冻结的图片会按原址加载**。如果一份快照里的图片当时没有随正文一起冻结，阅读时会直接向原网站请求（已加 `referrerpolicy="no-referrer"` 缓解，但原网站仍能看到你的 IP）。
 - **搜索只覆盖标题、来源名称与保存原因**，不搜正文。
+- **出版社站基本抓不到 PDF**。Nature、Springer 这类站点把 PDF 请求转到自家登录域做 cookie 握手，而扩展**从不带你的网站账号信息**，跟不过去。此时弹窗会说清原因并由你决定改存网页正文。开放获取站点（arXiv、PLOS 等）正常。
+- **站内 PDF 阅读器只读，不做文字层的选择、搜索与高亮**。高亮目前只在网页正文快照上可用——PDF 是另一套坐标（页 + 页内位置），尚未实现。
 - **扩展只支持 Chromium 系**（Chrome / Edge），不支持 Firefox 与 Safari。
 - 一次采集最多处理 60 张图片，超出的图片在提取阶段即被截断，确认页不会提及。
 

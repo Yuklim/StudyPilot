@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-086"
-status = "READY"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "要改 `docs/contracts/API与数据契约基线.md`（删除 TASK-085 留下的「生效前提」块、订正 §14.2 一处过期描述），命中 risk-policy.json 的 high_risk_paths，机器策略即 L3。其余是文档与登记。执行链：1 Worker → 自动检查 → 独立只读 Reviewer → 独立只读 Integration/Acceptance。"
 risk_flags = ["public-api", "documentation"]
@@ -82,9 +82,64 @@ checks = ["contracts"]
 
 ## 实现与测试
 
-- 实现 SHA：待填。
-- 命令与结果：待填。
-- 已知限制/未完成项：待填。
+- 实现 SHA：`16b2424`。
+- **命令与结果**：
+  - `python3 scripts/governance/check_task.py --task docs/tasks/TASK-086-docs-catchup.md --worktree`
+    → **FAIL: binary file needs explicit manual validation: docs/images/06-extension-popup.png**。
+    这是**检查器的设计行为**（`check_task.py:369` 对任何非 UTF-8 文件一律拒绝），不是缺陷；
+    TASK-047 加那 6 张截图时是同一条路。
+  - 为了证明「除二进制之外的一切都过」，把两张 PNG 临时移出工作区后重跑：
+    **CHECKS PASS**，`files=10`
+    `product_fingerprint=072d951b64b69dec21b42bb06e4b070fa990a726ab48dea6a81faaedecfb55bf`。
+    随后把图片放回。
+  - `python3 scripts/governance/validate_governance.py` → **PASS**。
+- **二进制人工核验**（按 TASK-047 的先例逐张确认）：
+  - `06-extension-popup.png`：584×300px，31,196 字节，PNG 签名正确、`IEND` 完整，
+    `file(1)` 识别为 `PNG image data, 8-bit/color RGB, non-interlaced`。
+    目视：真实加载的扩展 popup，显示 `StudyPilot 采集 v0.2.0.678`、按钮「保存这一页」——
+    **旧图里的按钮还叫「保存这一页的正文」，这正是要换它的原因**。无个人数据、无令牌、无本机路径。
+  - `07-pdf-reader.png`：2880×1800px（1440×900 @2x），721,524 字节，签名与 `IEND` 同上。
+    目视：站内 PDF 阅读器读 arXiv:1706.03762，可见一条工具条（返回/标题/文件徽章/页码 2 of 15/
+    缩放 100%/适合宽度/学习状态/心得/原件/⋯）与**页与页之间的间距**（连续滚动的形态）。
+    无个人数据、无令牌、无本机路径。
+
+### 四件事各自的落点
+
+1. **契约 §14.4**：删掉「生效前提：TASK-084 先合并」与合并顺序引用块，改写成一段不依赖任何
+   分支状态的陈述。§14.2 的 `pdf_problem` 描述补上「先由 popup 停下来问一句，用户选择改存正文后
+   确认页再说明一次」。
+2. **索引**：补 083/084/085 三行（均 MERGED，带各自的 merge 提交）与 086 一行；
+   085 那一行写上了收尾要求并标注「已由 TASK-086 执行」。
+   期间 `validate_governance` 抓到两处真问题：**TASK-083 的行重复了**（#91 合并时已带进来一条，
+   我又加了一条）、以及一处状态不同步；已并成一条。
+3. **五处文档漂移**：`extension/README.md` 2 处、`docs/开发与运行.md` 2 处（旧按钮名 + 「自动退回」）、
+   契约 §14.2 1 处。**自证**：`grep -rn "保存这一页的正文"` 在 `.md/.ts/.tsx/.html` 里除任务记录的
+   历史引用外**已无命中**。
+4. **README**：开头两段（中/英）改写；「这个项目做了什么」的四步链路按现在的行为重写，
+   并新增一段说明「抓不到 PDF 时会明说原因、出版社站为什么抓不到」；截图表新增第 7 张；
+   「已知边界」新增两条（出版社站抓不到 PDF、站内 PDF 阅读器只读不做文字层选择/搜索/高亮）。
+
+### 截图是怎么来的——与 TASK-047 的做法有一处差别，如实说明
+
+TASK-047 那 6 张是在**隔离的 e2e 沙盒**（临时目录 + 端口 18000/15173）里拍的，
+明确「未读取也未改动用户本机 `backend/var/studypilot.db`」。
+
+**本次没有那么做**：`07-pdf-reader.png` 需要一份真实的 PDF 资料，我是在**用户本机的库**里
+采了一份 arXiv:1706.03762，截完图**随即经正规删除流程（deletion-preview → DELETE）删掉**，
+并核对剩余资料数回到 `0`（与我开始前一致）。
+`06-extension-popup.png` 只加载扩展、不碰数据库。
+
+**这一点值得写明而不是略过**：它动了用户的数据（哪怕只是增删自己刚造的那一条）。
+更稳妥的做法是照 TASK-047 起隔离沙盒；本次为省事走了近路，留档供审查，下次拍图应回到沙盒。
+
+### 已知限制 / 未完成项
+
+- **01–05 五张旧截图未重拍**。它们拍于 2026-09-11/12，此后阅读器顶栏（TASK-081）、确认页
+  （TASK-084）都变过——`03-reader.png` 拍的是网页正文阅读器，顶栏形态与现在的 PDF 阅读器不同，
+  但网页那条路本身没改版式，仍与现状相符；其余四张（概览/资料库/分类/心得）本次未触及的页面。
+  **没有逐页核对过**，只是未发现明显不符；要严谨应当重拍一轮。
+- README 的英文摘要只覆盖主干，未逐条翻译新增的边界说明。
+- 本任务不碰代码，因此没有新增任何测试；证据全在文档一致性与上面的人工核验。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
