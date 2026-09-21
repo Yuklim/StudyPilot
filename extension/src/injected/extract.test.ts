@@ -5,7 +5,13 @@ import { describe, expect, it } from 'vitest'
 
 import { MAX_IMAGES, MAX_MARKDOWN, MAX_TITLE } from '../shared/protocol'
 
-import { EXTRACT_OPTIONS, collectImages, extractFromDocument, normalizeSourceUrl } from './extract'
+import {
+  EXTRACT_OPTIONS,
+  collectImages,
+  extractCitation,
+  extractFromDocument,
+  normalizeSourceUrl,
+} from './extract'
 
 // 一篇典型技术文章的骨架：正文外面裹着导航、页脚、推荐位和广告位。
 // 提取的价值全在于「只留中间那块」——所以断言分两半：正文必须活下来，噪声必须消失。
@@ -168,5 +174,128 @@ describe('extractFromDocument with images', () => {
     const tail = '![尾图](https://cdn.example.com/tail.png)'
     const markdown = `${'x'.repeat(MAX_MARKDOWN)}\n\n${tail}`
     expect(collectImages(markdown.slice(0, MAX_MARKDOWN), 'https://example.com/a')).toEqual([])
+  })
+})
+
+describe('extractCitation', () => {
+  /** 一篇真实形态的期刊论文页：Highwire 那套 citation_* 标签，学术站点几乎都有。 */
+  const HIGHWIRE = `
+    <meta name="citation_journal_title" content="Nature Machine Intelligence">
+    <meta name="citation_author" content="Karpathy, Anna">
+    <meta name="citation_author" content="李维">
+    <meta name="citation_publication_date" content="2024/03/01">
+    <meta name="citation_volume" content="6">
+    <meta name="citation_issue" content="3">
+    <meta name="citation_firstpage" content="245">
+    <meta name="citation_lastpage" content="259">
+    <meta name="citation_doi" content="10.1038/s42256-024-00812-x">
+    <meta name="citation_publisher" content="Springer Nature">
+    <article><p>正文</p></article>`
+
+  it('reads a journal article out of the Highwire tags the page already declares', () => {
+    const found = extractCitation(pageWith(HIGHWIRE), 'https://www.nature.com/articles/s42256')
+    expect(found).toEqual({
+      item_type: 'JOURNAL_ARTICLE',
+      authors: ['Karpathy, Anna', '李维'],
+      issued_year: 2024,
+      issued_date: '2024/03/01',
+      container_title: 'Nature Machine Intelligence',
+      volume: '6',
+      issue: '3',
+      pages: '245-259',
+      publisher: 'Springer Nature',
+      doi: '10.1038/s42256-024-00812-x',
+      isbn: null,
+    })
+  })
+
+  it('calls a DOI without a journal on arxiv.org a preprint, and does not guess elsewhere', () => {
+    const arxiv = `<meta name="citation_doi" content="10.48550/arXiv.2403.01234"><p>x</p>`
+    expect(extractCitation(pageWith(arxiv), 'https://arxiv.org/abs/2403.01234')?.item_type).toBe(
+      'PREPRINT',
+    )
+    // 同样的标签换个域名就不是预印本了——域名是这条推断的唯一依据，别处一律按期刊论文。
+    expect(extractCitation(pageWith(arxiv), 'https://example.com/paper')?.item_type).toBe(
+      'JOURNAL_ARTICLE',
+    )
+  })
+
+  it('accepts a page that only says so in JSON-LD, and survives a broken block next to it', () => {
+    const jsonld = `
+      <script type="application/ld+json">{ 这不是 JSON </script>
+      <script type="application/ld+json">{"@graph":[{"@type":"ScholarlyArticle"}]}</script>
+      <meta name="dc.creator" content="张三">
+      <meta name="dc.date" content="2019-06">
+      <p>正文</p>`
+    const found = extractCitation(pageWith(jsonld), 'https://example.org/a')
+    // schema.org 明说是论文：既然这条声明足以让卡片显示出来，类型上也该信它，
+    // 而不是一边用它放行、一边判成「其他」。
+    expect(found).toMatchObject({
+      item_type: 'JOURNAL_ARTICLE',
+      authors: ['张三'],
+      issued_year: 2019,
+    })
+    expect(found?.issued_date).toBe('2019-06')
+  })
+
+  it('does not let a DC-declaring CMS page pass as a journal article', () => {
+    // `dc.source` 在 DC 规范里常是站点名甚至一段网址。把它当「期刊名」的话，任何声明了
+    // DC 的普通页面都会被判成期刊论文、出处显示成一段地址（Review F3）。
+    const cms = `
+      <meta name="dc.title" content="公司新闻">
+      <meta name="dc.source" content="https://news.example.com">
+      <meta name="dc.creator" content="编辑部">
+      <p>正文</p>`
+    expect(extractCitation(pageWith(cms), 'https://news.example.com/a')).toBeNull()
+  })
+
+  it('calls a chapter a chapter, since the contract has a type for it', () => {
+    const chapter = `
+      <meta name="citation_inbook_title" content="深度学习导论">
+      <meta name="citation_author" content="李维">
+      <p>正文</p>`
+    const found = extractCitation(pageWith(chapter), 'https://books.example.com/c/3')
+    expect(found).toMatchObject({ item_type: 'BOOK_CHAPTER', container_title: '深度学习导论' })
+  })
+
+  it('leaves an ordinary blog alone, even when it has an author and a date', () => {
+    // 门槛就在这里：没有 DOI、没有期刊名、schema.org 也没说它是论文。多数网页是这样，
+    // 给它们摆一块空卡片只会让用户学会无视这一块。
+    const blog = `
+      <meta name="author" content="某人">
+      <meta name="dc.creator" content="某人">
+      <meta name="dc.date" content="2026-01-02">
+      <script type="application/ld+json">{"@type":"BlogPosting"}</script>
+      <article><p>今天读了一篇论文。</p></article>`
+    expect(extractCitation(pageWith(blog), 'https://example.com/blog/x')).toBeNull()
+  })
+
+  it('cuts oversized values down to the contract limits instead of shipping them', () => {
+    const huge = `
+      <meta name="citation_journal_title" content="${'期'.repeat(600)}">
+      <meta name="citation_doi" content="10.1/x">
+      <meta name="citation_volume" content="${'1'.repeat(80)}">
+      <meta name="citation_isbn" content="${'9'.repeat(40)}">
+      <meta name="citation_publication_date" content="0999">
+      ${Array.from({ length: 105 }, (_, at) => `<meta name="citation_author" content="作者${at}">`).join('')}
+      <p>x</p>`
+    const found = extractCitation(pageWith(huge), 'https://example.com/a')!
+    expect([...found.container_title!]).toHaveLength(500)
+    expect([...found.volume!]).toHaveLength(50)
+    expect([...found.isbn!]).toHaveLength(32)
+    expect(found.authors).toHaveLength(100)
+    // 年份越界就是 null，而不是硬塞一个 999 让后端 422。
+    expect(found.issued_year).toBeNull()
+    expect(found.issued_date).toBe('0999')
+  })
+
+  it('rides along in the capture payload, and is null when the page is not a paper', () => {
+    const paper = extractFromDocument(pageWith(HIGHWIRE), 'https://www.nature.com/articles/s42256')
+    expect(paper.citation).toMatchObject({ doi: '10.1038/s42256-024-00812-x' })
+    const plain = extractFromDocument(
+      pageWith('<article><p>普通文章正文。</p></article>'),
+      'https://example.com/a',
+    )
+    expect(plain.citation).toBeNull()
   })
 })

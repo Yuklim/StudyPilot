@@ -9,7 +9,15 @@ import {
   CAPTURE_PAYLOAD,
   CAPTURE_READY,
   MAX_IMAGES,
+  MAX_CITATION_AUTHOR,
+  MAX_CITATION_AUTHORS,
+  MAX_CITATION_CONTAINER,
+  MAX_CITATION_LOCATOR,
+  MAX_CITATION_NAME,
+  MAX_CITATION_STAMP,
+  MAX_CITATION_YEAR,
   MAX_IMAGE_BYTES,
+  MIN_CITATION_YEAR,
   MAX_MARKDOWN,
   MAX_TITLE,
   MAX_URL,
@@ -57,6 +65,17 @@ describe('protocol mirror', () => {
     ['MAX_TITLE', MAX_TITLE],
     ['MAX_IMAGES', MAX_IMAGES],
     ['MAX_IMAGE_BYTES', MAX_IMAGE_BYTES],
+    // TASK-075 的文献上限同样要镜像：逐字比对只看函数体，常量在两份里各自定义，
+    // 改一边照样绿（Review F4）。**收紧**方向尤其无人守——前端那份若把上限调小，
+    // 合法载荷会被静默丢弃，页面停在空态而没有任何红。
+    ['MAX_CITATION_AUTHORS', MAX_CITATION_AUTHORS],
+    ['MAX_CITATION_AUTHOR', MAX_CITATION_AUTHOR],
+    ['MIN_CITATION_YEAR', MIN_CITATION_YEAR],
+    ['MAX_CITATION_YEAR', MAX_CITATION_YEAR],
+    ['MAX_CITATION_STAMP', MAX_CITATION_STAMP],
+    ['MAX_CITATION_LOCATOR', MAX_CITATION_LOCATOR],
+    ['MAX_CITATION_NAME', MAX_CITATION_NAME],
+    ['MAX_CITATION_CONTAINER', MAX_CITATION_CONTAINER],
   ])('shares the same %s limit', (name, value) => {
     // 比数值而不是比字面量文本：两边写 1_000_000 还是 1000000 无所谓，数值必须相等。
     // 允许右侧是算式（`10 * 1024 * 1024`）：比的是**数值**，不是写法。
@@ -95,6 +114,7 @@ describe('protocol mirror', () => {
       'isSafeImageUrl',
       'isImageList',
       'matchPatternFor',
+      'isCapturedCitation',
       'isCapturePayload',
     ]) {
       expect(body(theirs, name)).toBe(body(mine, name))

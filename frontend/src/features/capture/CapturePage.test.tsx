@@ -322,3 +322,156 @@ describe('imageFailureText', () => {
     expect(imageFailureText('VERSION_CONFLICT', 1)).toContain('VERSION_CONFLICT')
   })
 })
+
+describe('capture page · citation', () => {
+  const citation = {
+    item_type: 'JOURNAL_ARTICLE' as const,
+    authors: ['Karpathy, Anna', '李维'],
+    issued_year: 2024,
+    issued_date: '2024/03/01',
+    container_title: 'Nature Machine Intelligence',
+    volume: '6',
+    issue: '3',
+    pages: '245-259',
+    publisher: 'Springer Nature',
+    doi: '10.1038/s42256-024-00812-x',
+    isbn: null,
+  }
+  const paper = { ...captured, citation }
+
+  /** 后端真的会回的那一份文献（`citationAt` 会逐字校验，随便回个 `{}` 会被判不合格）。 */
+  const storedCitation = {
+    resource_id: sample().id,
+    ...citation,
+    abstract: null,
+    version: 1,
+    created_at: '2026-09-20T02:00:00Z',
+    updated_at: '2026-09-20T02:00:00Z',
+  }
+
+  /** 资料与正文都成功；文献那一次由调用方决定怎么回。 */
+  function backend(onCitation: () => unknown = () => ({ data: storedCitation })) {
+    return vi.spyOn(api, 'request').mockImplementation(async (path, options) => {
+      if (path === '/api/v1/resources' && options?.method === 'POST') return { data: sample() }
+      if (path.endsWith('/citation')) return onCitation()
+      if (options?.method === 'PUT') return { data: snapshotSample }
+      return undefined
+    })
+  }
+
+  it('shows what it recognised, ticked, and stores it alongside the resource', async () => {
+    const request = backend()
+    mount()
+    await screen.findByText(/还没有收到扩展发来的内容/)
+    deliver({}, paper)
+    const toggle = await screen.findByRole('checkbox', { name: /一并存下来/ })
+    expect(toggle).toBeChecked()
+    expect(screen.getByText('Karpathy, Anna；李维')).toBeInTheDocument()
+    expect(screen.getByText('Nature Machine Intelligence')).toBeInTheDocument()
+    expect(screen.getByText('期刊论文')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '保存为资料' }))
+    await waitFor(() =>
+      expect(
+        request.mock.calls.some(
+          ([path, options]) => path.endsWith('/citation') && options?.method === 'PUT',
+        ),
+      ).toBe(true),
+    )
+    // 写成功就该离开这一页去资料页——上一版这里的假响应通不过 `citationAt` 校验，
+    // 这条用例实际落在失败分支上，名不副实（Review F2）。
+    await waitFor(() => expect(screen.queryByRole('form', { name: '确认采集内容' })).toBeNull())
+    expect(screen.queryByText(/文献信息没存上/)).toBeNull()
+    const [, options] = request.mock.calls.find(([path]) => path.endsWith('/citation'))!
+    // 整份写入、首次不带 expected_version；空字段不出现。
+    expect(options!.body).toEqual({
+      item_type: 'JOURNAL_ARTICLE',
+      authors: ['Karpathy, Anna', '李维'],
+      issued_year: 2024,
+      issued_date: '2024/03/01',
+      container_title: 'Nature Machine Intelligence',
+      volume: '6',
+      issue: '3',
+      pages: '245-259',
+      publisher: 'Springer Nature',
+      doi: '10.1038/s42256-024-00812-x',
+    })
+  })
+
+  it('writes nothing extra when the user unticks it', async () => {
+    const request = backend()
+    mount()
+    await screen.findByText(/还没有收到扩展发来的内容/)
+    deliver({}, paper)
+    fireEvent.click(await screen.findByRole('checkbox', { name: /一并存下来/ }))
+    fireEvent.click(screen.getByRole('button', { name: '保存为资料' }))
+    await waitFor(() =>
+      expect(request.mock.calls.some(([path]) => path === '/api/v1/resources')).toBe(true),
+    )
+    expect(request.mock.calls.filter(([path]) => path.endsWith('/citation'))).toEqual([])
+  })
+
+  it('adds nothing at all to the page when the page is not a paper', async () => {
+    backend()
+    mount()
+    await screen.findByText(/还没有收到扩展发来的内容/)
+    deliver()
+    await screen.findByDisplayValue('如何理解数据库索引')
+    expect(screen.queryByRole('checkbox', { name: /一并存下来/ })).toBeNull()
+    expect(screen.queryByText(/这页看起来是一篇文献/)).toBeNull()
+  })
+
+  it('tells both truths when the images and the citation each failed, and still only once', async () => {
+    // Review 第二轮指出：这个组合状态当时没有任何用例，而文案里「只有文献信息没存上」
+    // 在这里恰好是假的。两块提示都该在，「打开这份资料」只该有一个。
+    const withImage = { ...paper, images: ['https://cdn.example.com/a.png'] }
+    // 假扮中转脚本，答「这张取不到」——页面不这么问一句，冻结会一直等下去。
+    vi.spyOn(window, 'postMessage').mockImplementation((message: unknown) => {
+      const envelope = message as { type?: string; url?: string }
+      if (envelope?.type !== CAPTURE_IMAGE_REQUEST || !envelope.url) return
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: { type: CAPTURE_IMAGE_RESULT, url: envelope.url, result: { ok: false } },
+          origin: window.location.origin,
+          source: window,
+        }),
+      )
+    })
+    vi.spyOn(api, 'request').mockImplementation(async (path, options) => {
+      if (path === '/api/v1/resources' && options?.method === 'POST') return { data: sample() }
+      if (path.endsWith('/citation')) throw new ApiError('UNKNOWN_ERROR', 500)
+      if (options?.method === 'PUT') return { data: snapshotSample }
+      return undefined
+    })
+    mount()
+    await screen.findByText(/还没有收到扩展发来的内容/)
+    deliver({}, withImage)
+    fireEvent.click(await screen.findByRole('button', { name: '保存为资料' }))
+    await screen.findByText(/文献信息没存上/)
+    expect(screen.queryByText(/只有文献信息没存上/)).toBeNull()
+    expect(screen.queryByRole('form', { name: '确认采集内容' })).toBeNull()
+    expect(screen.getAllByRole('link', { name: '打开这份资料' })).toHaveLength(1)
+  })
+
+  it('keeps the resource when only the citation fails to save, and says where to fix it', async () => {
+    const request = backend(() => {
+      throw new ApiError('UNKNOWN_ERROR', 500)
+    })
+    mount()
+    await screen.findByText(/还没有收到扩展发来的内容/)
+    deliver({}, paper)
+    fireEvent.click(await screen.findByRole('button', { name: '保存为资料' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/文献信息没存上/)
+    expect(screen.getByRole('link', { name: '打开这份资料' })).toBeInTheDocument()
+    // **表单必须消失**：留着它，用户再点一次「保存为资料」会静默新建第二份资料 +
+    // 第二份快照 + 重下全部图片。图片分支当初就是为这个缺陷改的，这里不能再犯（Review F1）。
+    expect(screen.queryByRole('form', { name: '确认采集内容' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '保存为资料' })).toBeNull()
+    // 不因为这次失败重新建一份资料。
+    expect(
+      request.mock.calls.filter(
+        ([path, options]) => path === '/api/v1/resources' && options?.method === 'POST',
+      ),
+    ).toHaveLength(1)
+  })
+})

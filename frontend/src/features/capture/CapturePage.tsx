@@ -8,6 +8,7 @@ import {
   uploadSnapshotAsset,
 } from '../resources/api'
 
+import { EMPTY_DRAFT, ITEM_TYPE_LABELS, putCitation } from '../resources/citation'
 import { askExtensionForImage, freezeImages, imageFailureText } from './freeze'
 import {
   CAPTURE_READY,
@@ -30,6 +31,9 @@ import {
  */
 export function CapturePage() {
   const navigate = useNavigate()
+  // 识别到文献时默认勾上：识别到了却默认不存，等于白识别。取消只影响这一次。
+  const [saveCitation, setSaveCitation] = useState(true)
+  const [citationMiss, setCitationMiss] = useState<{ id: string; reason: string } | null>(null)
   const [captured, setCaptured] = useState<CapturePayload | null>(null)
   const [title, setTitle] = useState('')
   const [markdown, setMarkdown] = useState('')
@@ -87,6 +91,7 @@ export function CapturePage() {
     setPending(true)
     setError('')
     setPartial(null)
+    setCitationMiss(null)
     setImages(null)
     let created: { id: string } | null = null
     try {
@@ -96,6 +101,19 @@ export function CapturePage() {
         source_url: captured.url,
       })
       const snapshot = await putResourceSnapshot(created.id, markdown)
+      // 文献信息与图片是两件互不相干的附加物，**谁失败都不该把另一件跳过**。
+      // 先写文献（一次小请求），失败只记下来继续冻图片，末尾一起如实汇报
+      // （Review F5：原先文献写在图片之后，图片部分失败时直接 return，勾了
+      // 「一并存下来」的文献既没写也没提，提示里只讲图片）。
+      let citationFailure: string | null = null
+      if (captured.citation && saveCitation) {
+        try {
+          await putCitation(created.id, { ...EMPTY_DRAFT, ...captured.citation }, null)
+        } catch (cause) {
+          citationFailure = failureText(cause)
+        }
+      }
+      if (!alive.current) return
       // 图片必须在正文写成之后：上传资产要带**快照**版本作前置条件。
       if (captured.images.length > 0) {
         if (alive.current) setFreezing({ done: 0, total: captured.images.length })
@@ -112,8 +130,13 @@ export function CapturePage() {
         // 这件事咽掉，而用户此刻还能重新采集。全部成功才走。
         if (result.failed > 0) {
           setImages({ id: created.id, ...result })
+          if (citationFailure) setCitationMiss({ id: created.id, reason: citationFailure })
           return
         }
+      }
+      if (citationFailure) {
+        setCitationMiss({ id: created.id, reason: citationFailure })
+        return
       }
       if (alive.current) navigate(`/resources/${created.id}`)
     } catch (cause) {
@@ -165,6 +188,25 @@ export function CapturePage() {
         </div>
       ) : null}
 
+      {citationMiss ? (
+        <div className="resource-error">
+          <p role="alert">
+            {/*
+              不写「**只有**文献信息没存上」：图片也可能同时没冻上，那句话在组合状态下
+              就是假的（Review 第二轮）。同理，图片那块已经给了「打开这份资料」时这里
+              不再重复一个同名按钮。
+            */}
+            资料和正文都保存好了，文献信息没存上：{citationMiss.reason}{' '}
+            打开这份资料，在右栏的「信息」里可以自己补。这里不会自动重试，也不会因此重新建一份。
+          </p>
+          {images ? null : (
+            <Link className="journal-button" to={`/resources/${citationMiss.id}`}>
+              打开这份资料
+            </Link>
+          )}
+        </div>
+      ) : null}
+
       {partial ? (
         <div className="resource-error">
           <p role="alert">
@@ -189,7 +231,7 @@ export function CapturePage() {
           还没有收到扩展发来的内容。请在想保存的网页上点一次 StudyPilot 扩展图标；
           这一页会等着接收。直接关掉也不会保存任何东西。
         </p>
-      ) : images ? null : (
+      ) : images || citationMiss ? null : (
         // 图片部分失败时**不再渲染表单**：留着它，用户看完「2 张里 1 张没保存」
         // 再点一次「保存为资料」，会静默新建第二份资料 + 第二份快照并重下全部图片。
         // 同页的 partial 分支早就是这么处理的（替换掉表单），这里补齐同样的处置。
@@ -218,6 +260,49 @@ export function CapturePage() {
                 onChange={(event) => setMarkdown(event.target.value)}
               />
             </label>
+            {captured.citation ? (
+              <div className="capture-citation">
+                <label className="capture-citation-toggle">
+                  <input
+                    type="checkbox"
+                    checked={saveCitation}
+                    onChange={(event) => setSaveCitation(event.target.checked)}
+                  />
+                  这页看起来是一篇文献，一并存下来
+                </label>
+                <dl className="reader-info-list">
+                  <dt>类型</dt>
+                  <dd>{ITEM_TYPE_LABELS[captured.citation.item_type]}</dd>
+                  {captured.citation.authors.length > 0 ? (
+                    <>
+                      <dt>作者</dt>
+                      <dd>{captured.citation.authors.join('；')}</dd>
+                    </>
+                  ) : null}
+                  {captured.citation.issued_year !== null ? (
+                    <>
+                      <dt>年份</dt>
+                      <dd>{captured.citation.issued_year}</dd>
+                    </>
+                  ) : null}
+                  {captured.citation.container_title ? (
+                    <>
+                      <dt>出处</dt>
+                      <dd>{captured.citation.container_title}</dd>
+                    </>
+                  ) : null}
+                  {captured.citation.doi ? (
+                    <>
+                      <dt>DOI</dt>
+                      <dd>{captured.citation.doi}</dd>
+                    </>
+                  ) : null}
+                </dl>
+                <p className="resource-hint">
+                  识别可能不准，而且只看这一页自己声明的内容，没有联网核对。存下来之后在资料的「信息」里随时能改或清空。
+                </p>
+              </div>
+            ) : null}
             {error ? <p role="alert">{error}</p> : null}
             <div className="resource-actions">
               <button type="submit" className="journal-button primary">

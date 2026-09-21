@@ -8,6 +8,7 @@ import {
   MAX_URL,
   capturedFrom,
   imageResultFrom,
+  isCapturedCitation,
   isCapturePayload,
   isSafeSourceUrl,
 } from './protocol'
@@ -78,8 +79,34 @@ describe('capturedFrom', () => {
   it('returns a copy, not the object that arrived', () => {
     // 「校验的即所用的」：返回解构后的副本，而不是原对象。
     const result = capturedFrom(event(), window)
-    expect(result).toEqual(payload)
+    // 旧版本扩展留下的暂存没有 citation 字段，归一成 null：「认不出」只该有一种写法。
+    expect(result).toEqual({ ...payload, citation: null })
     expect(result).not.toBe(payload)
+  })
+
+  it('copies the citation too, down to its authors array', () => {
+    // 上一次漏掉的是 images；这次是同一类错误的新面孔，所以一并钉住。
+    const citation = {
+      item_type: 'JOURNAL_ARTICLE',
+      authors: ['李维'],
+      issued_year: 2024,
+      issued_date: null,
+      container_title: 'Nature',
+      volume: null,
+      issue: null,
+      pages: null,
+      publisher: null,
+      doi: '10.1/x',
+      isbn: null,
+    }
+    const withCitation = { ...payload, citation }
+    const result = capturedFrom(
+      event({ data: { type: CAPTURE_PAYLOAD, payload: withCitation } }),
+      window,
+    )
+    expect(result?.citation).toEqual(citation)
+    expect(result?.citation).not.toBe(citation)
+    expect(result?.citation?.authors).not.toBe(citation.authors)
   })
 
   it.each([
@@ -175,5 +202,57 @@ describe('imageResultFrom', () => {
       ok: false,
       reason: undefined,
     })
+  })
+})
+
+describe('isCapturedCitation', () => {
+  // 契约第 14 节的分工：扩展那份靠逐字比对保证「两份一样」，前端这份把规则逐条钉成
+  // 行为断言，保证「这一份符合规格」。每条拒收都对应后端 contracts.py 里的一条约束。
+  const ok = {
+    item_type: 'BOOK',
+    authors: ['李维'],
+    issued_year: 2024,
+    issued_date: '2024',
+    container_title: null,
+    volume: null,
+    issue: null,
+    pages: null,
+    publisher: null,
+    doi: null,
+    isbn: '978-7',
+  }
+
+  it.each([
+    ['认不出（null）', null],
+    ['旧版本扩展没这个字段（undefined）', undefined],
+    ['一份完整的', ok],
+    ['一位作者都没有', { ...ok, authors: [] }],
+    ['刚好 100 位作者', { ...ok, authors: Array.from({ length: 100 }, () => '李') }],
+    ['年份下界', { ...ok, issued_year: 1000 }],
+    ['年份上界', { ...ok, issued_year: 2200 }],
+  ])('accepts %s', (_label, value) => {
+    expect(isCapturedCitation(value)).toBe(true)
+  })
+
+  it.each([
+    ['不是对象', '文献'],
+    ['是数组', [ok]],
+    ['类型不在九种里', { ...ok, item_type: 'PAPER' }],
+    ['作者不是数组', { ...ok, authors: '李维' }],
+    ['101 位作者', { ...ok, authors: Array.from({ length: 101 }, () => '李') }],
+    ['作者名 201 字', { ...ok, authors: ['李'.repeat(201)] }],
+    ['作者名只有空白', { ...ok, authors: ['   '] }],
+    ['年份 999', { ...ok, issued_year: 999 }],
+    ['年份 2201', { ...ok, issued_year: 2201 }],
+    ['年份不是整数', { ...ok, issued_year: 2024.5 }],
+    ['年份是字符串', { ...ok, issued_year: '2024' }],
+    ['出版日期 33 字', { ...ok, issued_date: '2'.repeat(33) }],
+    ['出处 501 字', { ...ok, container_title: '刊'.repeat(501) }],
+    ['卷 51 字', { ...ok, volume: '1'.repeat(51) }],
+    ['DOI 201 字', { ...ok, doi: '1'.repeat(201) }],
+    ['ISBN 33 字', { ...ok, isbn: '9'.repeat(33) }],
+    ['空字符串不算「没有」', { ...ok, doi: '' }],
+  ])('rejects %s', (_label, value) => {
+    expect(isCapturedCitation(value)).toBe(false)
   })
 })
