@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-079"
-status = "READY"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "改的是写进契约第 14 节的识别门槛（TASK-075 定的那一条），以及第 14.4 节描述的 manifest 顶层键集合（新增 version_name）。两处都落在 docs/contracts/**，命中 risk-policy.json 的 high_risk_paths，属公共契约改动，取最高定 L3：1 Worker → 自动检查 → 独立只读 Reviewer → 独立只读 Integration/Acceptance。门槛放宽会直接改变「哪些页面被当成文献」，误判的代价由用户承担（每篇博客都弹卡片），因此假阳性的反例用例是硬完成条件。"
 risk_flags = ["public-api", "architecture"]
@@ -105,9 +105,36 @@ Zotero 分层：站点专用翻译器 `100` → unAPI `300` → COinS `310` → 
 
 ## 实现与测试
 
-- 实现 SHA：待填。
-- 命令与结果：待填。
-- 已知限制/未完成项：待填。
+- 实现 SHA：`730cc5f`（控制面登记 `76831a4`）。变更摘要：
+  - **`doiFromLinks(doc)`（新）**：页面上任何指向 `doi.org`／`dx.doi.org`、路径以 `10.` 开头的链接即为该页声明的 DOI。arXiv 正是这一种（`<a id="arxiv-doi-link" href="https://doi.org/10.48550/arXiv.…">`）。坏地址跳过不中断。
+  - **`looksLikeBlog(doc)`（新）**：照搬 Zotero 的三条启发式（`#wp-block-library-css`、`#wp-block-library-inline-css`、`.yoast-schema-graph`）加 `generator` 含 wordpress/blogger/wooframework。
+  - **门槛重写**：强信号（DOI／期刊会议书名／学位论文或报告机构／`citation_arxiv_id`／schema 类型）任一命中即认；弱信号（光有 `citation_title`）也认，但遇博客特征时被压制。**只压弱信号**——用 WordPress 搭的期刊站不受影响。
+  - **类型映射补全**：会议论文、书章节（`citation_inbook_title`/`citation_book_title` 且无期刊名）、学位论文（机构或名称）、报告（机构）；有 `citation_arxiv_id` 或 arxiv 域名且无期刊名 → 预印本。学位论文/报告的机构填进出版方（契约里没有单独的机构字段）。
+  - **`version_name`**：`manifest.ts` 新增字段与纯函数 `buildVersionName(commit?)`，`vite.config.ts` 构建时用 `git rev-parse --short HEAD` 注入；拿不到 git 退化为 `+dev`。实测构建产物为 `"version_name": "0.2.0+76831a4"`，与当时 HEAD 一致。
+  - **契约**：第 14 节门槛段整段重写（强/弱信号、往回拉、DOI 来源、为什么不是更严的门槛）；第 14.4 节登记第十个键。`docs/开发与运行.md` 写明怎么判断装的是哪一版、以及 `relay.js` 需要刷新页面。
+- **真实页面实跑验证**（本任务的验收锚点）：把 `https://arxiv.org/abs/1706.03762` 的**未经改动的原始 HTML**（43 KB，2026-09-21 取样）喂给 `extractCitation`，输出：
+  ```json
+  {"item_type":"PREPRINT","authors":["Vaswani, Ashish","Shazeer, Noam","Parmar, Niki","Uszkoreit, Jakob","Jones, Llion","Gomez, Aidan N.","Kaiser, Lukasz","Polosukhin, Illia"],"issued_year":2017,"issued_date":"2017/06/12","container_title":null,"volume":null,"issue":null,"pages":null,"publisher":null,"doi":"10.48550/arXiv.1706.03762","isbn":null}
+  ```
+  用例里的夹具是照这份真实页面**逐字抄的标签集**，并用上述实跑核对过一致（实跑脚本是临时的，跑完即删，未提交——真实页面是第三方内容，不进仓库）。
+- 新测试 7 条（extension 161 → **167**）与判别性：
+  - 真实 arXiv 标签集 → PREPRINT/8 位作者/2017/DOI；
+  - DOI 链接的五种形态（`doi.org`、`dx.doi.org`、大小写、非 `10.` 开头、非 doi.org 域名）；
+  - 光有 `citation_title` 即认（类型 `OTHER`）；
+  - 博客平台特征压制弱信号、但**有期刊名时照常认**（含 yoast 与 wp-block-library 两种特征）；
+  - 会议/学位论文/报告/书章节四种信号的类型映射，以及机构填进出版方；
+  - `buildVersionName` 的正常与退化（空、空白、`HEAD`、非 SHA 一律 `+dev`），并断言前缀与 `manifest.version` 同源。
+  - **变异实测（4 个变异全被抓）**：把门槛改回 TASK-075 的写法 → 「光有 citation_title 即认」与类型映射两条红（**即 arXiv 会再次认不出**）；去掉页面 DOI 链接的读取 → 真实 arXiv 与 DOI 形态两条红；去掉博客往回拉 → 假阳性那条红；`version_name` 不注入 SHA → 版本那条红。
+- 命令与结果（本机 macOS 25.5.0，工作区在 `730cc5f`）：
+  - `python3 scripts/governance/check_task.py --task docs/tasks/TASK-079-citation-recall.md --worktree` → **CHECKS PASS**（profiles=contracts,extension；`product_fingerprint=32dd2281…`；extension **167 passed**、lint/typecheck/format/build 全过；OpenAPI 模型校验通过）。
+  - `npm run build`（extension）→ 产物 manifest 含 `"version_name": "0.2.0+76831a4"`。
+  - **前端与 e2e 未重跑，理由如实说明**：本任务一行 `frontend/**` 都没改（`check_task` 的自动选组也只选了 contracts 与 extension），`CapturedCitation` 的字段集与上限一字未动，前端那份平行实现与确认页不受影响。
+- 已知限制/未完成项：
+  - **不做 unAPI / COinS / 正文里找 DOI**：Zotero 另有这三层（优先级 300/310/320），本次只对齐了 Embedded Metadata 那一层。
+  - **不做站点专用识别**：Zotero 有 600+ 个站点翻译器，arXiv 的那个还走网络调 API；我们不出网也不做这层。后果是某些站点（尤其只在 HTML 表格里写元数据、既无 `citation_*` 也无 DOI 链接的老期刊站）仍认不出。
+  - **类型判断比 Zotero 保守**：光有 `citation_title` 时它猜 journalArticle，我们判 `OTHER`（类型直接显示在确认页卡片上，猜错比留空刺眼）。
+  - **`citation_arxiv_id` 本身没有存处**：契约的文献字段里没有 arXiv 编号字段，它只用于判类型。
+  - 仍**没有真实扩展的端到端验证**（与 TASK-075 同）；本次的真实页面实跑只覆盖提取器这一层。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
