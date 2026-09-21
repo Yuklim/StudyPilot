@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-079"
-status = "IN_REVIEW"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "改的是写进契约第 14 节的识别门槛（TASK-075 定的那一条），以及第 14.4 节描述的 manifest 顶层键集合（新增 version_name）。两处都落在 docs/contracts/**，命中 risk-policy.json 的 high_risk_paths，属公共契约改动，取最高定 L3：1 Worker → 自动检查 → 独立只读 Reviewer → 独立只读 Integration/Acceptance。门槛放宽会直接改变「哪些页面被当成文献」，误判的代价由用户承担（每篇博客都弹卡片），因此假阳性的反例用例是硬完成条件。"
 risk_flags = ["public-api", "architecture"]
@@ -34,7 +34,9 @@ checks = ["contracts"]
 
 TASK-075 把识别门槛定成「有 DOI／有期刊会议名／schema.org 明说是论文」。而 arXiv 的 abs 页（实测 `1706.03762`）只发这些 meta：`citation_title`、`citation_author`×8、`citation_date`、`citation_online_date`、`citation_arxiv_id`、`citation_abstract`、`citation_pdf_url`——**没有 `citation_doi`，没有 `citation_journal_title`，没有 JSON-LD，没有 DC**。三条门槛一条不满足，于是返回 `null`。
 
-TASK-075 的 Reviewer 与独立验收都把这条列成了剩余风险（原话：「arXiv abs 页若实际不发 `citation_doi`/JSON-LD，PREPRINT 分支在真实站点可能从不触发，仅用例内成立」），主 Agent 也写进了非阻断遗留——**但没有人去验证一个真实页面**。用户第一次实测就撞上了。教训记在这里：把「可能在真实站点不成立」写进遗留，不等于处置了它；当一个功能的价值完全取决于真实页面的形态时，用真实页面的标签集做夹具是**完成条件**，不是可选项。
+TASK-075 的记录把这条列为**主 Agent 自己的非阻断遗留第 5 条**（`TASK-075-extension-citation.md:161`：「arXiv 的 PREPRINT 分支可能在真实站点从不触发……合并后人工试一次即可确认」），**没有人去验证一个真实页面**。用户第一次实测就撞上了。教训记在这里：把「可能在真实站点不成立」写进遗留，不等于处置了它；当一个功能的价值完全取决于真实页面的形态时，用真实页面的标签集做夹具是**完成条件**，不是可选项。
+
+**更正（本任务独立验收 F-A1）**：本段原先写的是「TASK-075 的 Reviewer 与独立验收**都把这条列成了剩余风险**」并加了引号「原话」。**核实不实**——验收去 TASK-075 里查过：那句「原话」在该文件中不存在（grep 命中 0），该风险只出现在主 Agent 的遗留第 5 条且无归属标记；两轮 Review 与验收的原文要点从未提及「PREPRINT 在真实站点可能从不触发」，只提过**另一件事**（arXiv 域名正则不被 `evil-arxiv.org` 绕过）。这等于把旧审查的覆盖面说宽了，**而这句话恰好写在我批评自己「说得比证据宽」的那一段里**。归属已改正。
 
 ### 调研依据（Zotero，2026-09-21 实查）
 
@@ -180,10 +182,29 @@ Zotero 分层：站点专用翻译器 `100` → unAPI `300` → COinS `310` → 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：待填
-- Review：待填
-- Acceptance：待填
-- 最终状态/风险/用户操作：待填
-- 非阻断遗留项：待填
+- 候选 SHA：`5abb598` → `3b5cd8e` → `d102dc8` → `d270693` → **最终候选见本次写回的父提交**（本次写回只改文档，仅更正 F-A1 与填写本证据区）。
+- 最终候选上的机械检查：`check_task.py --task … --worktree` → **CHECKS PASS**（profiles=contracts,extension；`product_fingerprint=b3615ae7…`；extension **169 passed**、lint/typecheck/format/build 全过、OpenAPI 校验通过）。四个候选的指纹互异，未拿旧 SHA 充数。**前端与 e2e 未重跑**：本任务一行 `frontend/**` 都没改；独立验收另行核过「前端侧确无识别门槛的实现」（grep `frontend/src/features/capture` 无 `citation_title`/门槛）与「产出的 8 种 item_type 均在前端枚举内」，并判定该口径可信。
+- Review：独立只读 Reviewer（仅 Read/Grep/Glob、无 Bash），**四轮**：
+  - 第一轮（`327d2d6..5abb598`）**CHANGES_REQUIRED**：F1 必须修——**`doiFromLinks` 把页面上任何一条 `doi.org` 链接当成本页 DOI，且单独构成强信号**，于是维基条目、论文解读博客、期刊目录页会被判成期刊论文并把**别人作品的 DOI** 静默写进资料（确认页默认勾选）。另有 F2（记录里一条变异表述不实）、F3（构建标记 dirty）、F4（论文名污染出版方）。
+  - 第二轮（`5abb598..3b5cd8e`）**CHANGES_REQUIRED**：F6——**修 F1 时引入的回归**，预印本判断挂在 `doi` 之下，带 "Related DOI" 的 arXiv 页（两条 DOI 链接 → 唯一性不成立）会掉到 `OTHER`，而同轮写进契约的「有 arXiv 标识即判预印本」因此不成立。
+  - 第三轮（`3b5cd8e..d102dc8`）**PASS**，3 条可选（契约措辞、聚合站形态无用例、记录旧描述易被误读），全部采纳。
+  - 第四轮（`d102dc8..d270693`，结论覆盖 `327d2d6..d270693`）**PASS，No findings**。原文要点：
+    > 「本轮没改产品代码」属实：`extract.ts:155-292` 与我在 `d102dc8` 读到的逐行一致……新断言非恒真……它也是**唯一**隔离「非 arxiv 域名 + 标识」这条路径的用例，缺口确实补上了。
+- Acceptance：独立只读 Integration/Acceptance（**全新实例**，权限自述：仅 Read/Grep/Glob，无 Write/Edit/Bash）。首轮 **CHANGES_REQUIRED（仅 1 条，文字级；9 条完成条件本身全部满足）**：
+  - **F-A1**：本记录「这次事故的根因」一节把「arXiv 可能不触发」这条风险说成「TASK-075 的 Reviewer 与独立验收都列成了剩余风险」并加了引号原话——**核不实**，该风险只是主 Agent 自己的遗留第 5 条。已更正，见该节末尾的「更正」段。
+  - 对**第 1 点（真实页面实跑不可复核）**的判断：**接受降级表述，且不要求把真实页面副本入库**——「副本的出处同样只能靠证词，可验证性并未提高，还把第三方内容塞进公开仓」；但要求把「用户在 arxiv.org 实测一次」写进**需要用户操作**栏作为硬要求（已照办）。并给了旁证（非证明）：夹具的标题、8 位作者及顺序、v1 日期 2017-06-12、`citation_online_date` 2023-08-02、`10.48550/arXiv.` 前缀均与该论文的公开事实吻合。
+  - 对**第 3 点（契约与实现逐条对照）**的判断：契约 `:875-895` 与 `extract.ts:206-292` **逐条一致**——强信号七项、弱信号、往回拉四特征仅压弱信号、链接 DOI 两条件、预印本独立于 `doi` 且排在会议/书章节/学位/报告之后、机构填出版方而论文名不填。**未发现实现宽于契约或契约宽于实现。**
+  - 文件集 10 个全在 `allowed_paths`，无越界。
+- 最终状态/风险/用户操作：**ACCEPTED**。L3 执行链走完（Worker → 自动检查 → 独立只读 Reviewer 四轮 → 独立只读 Integration/Acceptance）。风险：改的是写进契约的识别门槛，放宽方向由四组假阳性反例守着；`version_name` 只是人看的标识，不扩大任何授权面。**需要用户操作**：
+  1. **合并 PR**；
+  2. **（硬要求，不是可选）合并后在真网页上实测**：一篇普通 arXiv 论文（如 `1706.03762`）、**以及一篇标了 "Related DOI" 的 abs 页**。后者至今**只有推断与用例、没有真实页面证据**，而 F6 正是从这一族冒出来的。扩展详情页现在显示 `0.2.0+<短 SHA>`，可据此确认装的是哪一版（脏工作区构建会带 `-dirty`）。
+- 非阻断遗留项：
+  1. **`version_name` 的构建注入没有任何自动化守卫**：`vite.config.ts` 那行删掉后 169 条全绿，构建产物系人工核对（实测 `0.2.0+5abb598-dirty`）。**重评触发**：下次动 `vite.config.ts` 或该字段时补一条守卫。
+  2. **DOI 去重不归一大小写**：同一 DOI 大小写不同会被算成两个，导致唯一性不成立而**取不到** DOI（fail-closed，不会取错）。**重评触发**：真实站点上出现这种写法。
+  3. **`git describe --always` 在仓库打第一个 tag 后会返回 `v…-g<sha>` 形态**，不匹配 `buildVersionName` 的正则而静默退化成 `+dev`（退化可见、不影响构建）。**重评触发**：仓库打第一个 tag 时。
+  4. **`www.doi.org` 与 `citation_cover_date` 写进了契约/实现但没有用例**；`docs/开发与运行.md` 未说明 `-dirty` 形态。**重评触发**：下次动提取器或该文档时顺手补。
+  5. **不做 unAPI / COinS / 正文里找 DOI**：Zotero 另有这三层（优先级 300/310/320），本次只对齐了 Embedded Metadata 那一层。
+  6. **无真实扩展的端到端自动化**（沿袭 TASK-038/040/075）。
+  7. **TASK-079 自己的 MERGED 登记**留给下一个任务（按用户 2026-09-20 的要求，登记类小活不单开 PR）。
 - 日期与决定日志：2026-09-21 用户实测 arXiv 未识别 → 要求调研 Zotero 并「保证效果」→ 主 Agent 实查 Zotero 三处源码与真实 arXiv 页面，确认 DOI 就在页面上、不联网不损失可存字段 → 用户确认要效果 → 登记 TASK-079。
 <!-- EVIDENCE:END -->
