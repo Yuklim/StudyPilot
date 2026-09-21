@@ -33,6 +33,11 @@ allowed_paths = [
   "docs/tasks/TASK-079-citation-recall.md",
   "docs/tasks/TASK-080-capture-pdf.md",
   "docs/tasks/任务索引.md",
+  # 范围修订 1（2026-09-21，写入前登记）——见「范围修订」一节
+  "extension/src/boundaries.test.ts",
+  "extension/README.md",
+  "extension/AGENTS.md",
+  "README.md",
 ]
 checks = ["frontend", "contracts"]
 ```
@@ -89,6 +94,28 @@ checks = ["frontend", "contracts"]
 - **抓到的字节必须自己校验是不是 PDF**（`%PDF-` 开头 + 媒体类型），不信服务器的 `Content-Type`——付费墙常常回 200 + 一页 HTML。
 - **退回快照时也要把文献信息存下**：拿不到 PDF 不影响作者/年份/DOI 的价值。
 
+### 范围修订 1（2026-09-21，实现中途、写入前登记）
+
+实现到一半，`extension/src/boundaries.test.ts` 的两道门闩报警，二者都**报得对**：
+
+1. **「扩展只有一个地方会主动发请求」**（门闩：`/background/` 之外不得出现 `fetch(`）。本任务
+   的 `capturePdf` 有意把 fetch 放进注入脚本——那正是「点一下就好、零额外授权」的落点
+   （同域 PDF 在页面上下文里不需要任何 host 权限）。**这不是绕开门闩，是这句承诺的口径
+   真的变了**，必须同时改断言、改三处宣称，并在契约里写清新口径。
+2. **「三处宣称必须点名 manifest 申请的每一项 reach」**。本任务给 `permissions` 加了
+   `unlimitedStorage`（暂存 base64 后的 PDF，10 MB 默认配额不够），三处宣称还停在旧的三项。
+
+因此把这四个路径加入 `allowed_paths`：门闩本身，以及它守着的三处宣称。
+
+**改断言的边界（自缚）**：新口径不是「随便哪里都能发请求」，而是
+**「注入脚本只能同域取这一页自己声明的 PDF、且不带凭证」**。门闩要比原来查得更细而不是更松——
+除 `/background/` 外只放行 `injected/extract.ts` 这一个文件，且该文件必须同时满足：
+只有一个 fetch 调用点、带同域判断、带 `credentials: 'omit'`。少任何一条都要红。
+把门闩删掉或改成恒真，属 AGENTS.md §2 的「降低断言来通过检查」，不做。
+
+**仍然不做的**：`<all_urls>` 依旧留在 `optional_host_permissions`，不变成安装时授予的永久权限
+（见上面的「非目标」）。`unlimitedStorage` 与站点访问权无关，它只允许本机多存。
+
 ## 完成条件
 
 - arXiv 这类同域 PDF：**一次点击、无额外授权**，产物是 FILE 资料，原件是那份 PDF，打开即进站内阅读器；文献信息一并存下。有用例。
@@ -97,6 +124,8 @@ checks = ["frontend", "contracts"]
 - 确认页在保存前让用户看得出「这次会存成 PDF 原件还是网页正文」，且能选择不抓 PDF。
 - 契约第 14 节同步新字段与「同域直取、跨域退回」的规则；若采用 `unlimitedStorage`，第 14.4 节同步权限集合并说明它不扩大站点权力。
 - 两份平行实现的逐字比对守卫保持绿。
+- `boundaries.test.ts` 的网络门闩改为「只放行注入脚本的同域无凭证取件」后仍能报警：删掉同域判断、
+  或多加一个 fetch 调用点、或去掉 `credentials: 'omit'`，任一都要让它变红（实现时逐条验证）。
 - 用真实 Edge 在**真实线上页面**上实测并回写结果（至少：arXiv 一篇、出版社站一篇、普通网页一篇）——TASK-079 的教训：这类功能的成败取决于真实页面的形态。
 - `check_task.py` 必要检查 PASS（extension + frontend + contracts）。
 - L3：独立只读 Reviewer 审最终 diff；独立只读 Integration/Acceptance 核完成条件与跨模块证据。
