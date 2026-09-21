@@ -160,14 +160,63 @@ checks = ["frontend"]
    PDF，值得单开一个任务收敛（例如缩放折进一个下拉）。本任务不做。
 - **没有 WEB 资料的实机对照**：本机库里当前没有 WEB 资料，`非 PDF 页不受影响` 由单测（网页 +
    非 PDF 文件两种）与 e2e 的「非 PDF 原件保持既有行为」覆盖，未在真实浏览器里再看一眼网页资料页。
-- 过程中一度把「缩放显示 50%/210%」当成自己改出的回归，追查后确认是**测量假象**——那两次截图
-   正好撞上 Vite 热重载我刚写入的改动；连跑三次均为 100%。如实记下，免得后人照着那个错判去找。
+- 过程中一度读到「缩放显示 50%/210%」并当成自己改出的回归。随后连跑三次都是 100%，加日志确认
+   `scale` 状态始终为 1，**故当时的读数不可复现，成因未查清**（怀疑与 Vite 热重载撞上有关，但没有
+   证据，不下结论）。后来独立 Review 的 F1 暴露出 `fitWidth` 确有量错的问题——两者是否同源同样
+   没有查证。如实记下，免得后人照着一个未证实的解释去找。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：待填
-- Review：待填
+- **最终候选 SHA**：见下方「Review 之后的修正」末尾。首轮候选 `caa0743`。
+- **Review（L2 独立只读，一轮）**：**CHANGES_REQUIRED**，两条必须修复，**都由实机实测确认成立**。
+
+### Review 报告原文
+
+> ## 结论：CHANGES_REQUIRED（2 条必须修复）
+>
+> **F1 类名撞车，顶栏/阅读区在宽屏被收窄居中（必须修复）**
+> `ResourceDetail.tsx:436` 给 `section` 加的页级修饰类叫 `pdf-page`，与 `PdfReader.tsx:383` 每一页 PDF 的 `.pdf-page` **同名**。于是 `styles.css:3182-3189` 的裸选择器 `.pdf-page{display:flex;align-items:center;justify-content:center;…}` 也命中整张 sheet。`styles.css:3205-3210` 只覆盖了 `height/display/flex-direction/overflow`，**没有覆盖 `align-items`**。结果：`.resource-sheet.reader.pdf-page` 是 `flex-direction:column; align-items:center`，其子项 `.reader-toolbar`、`.reader-panel`、`.reader-body` 都按 fit-content 收缩并居中，而不是铺满视口宽。
+> 影响两条：① 1440px 下顶栏只有内容宽（约 950–1000px）、居中，「← 返回资料库」不在最左——与草图和 TASK-052 口径都不符。② `PdfReader.tsx:240-246` 的 `fitWidth()` 取 `.pdf-reader-pages` 的 `clientWidth`，而该列现在是被内容撑出来的，于是 **「适合宽度」不再适合窗口宽度，每点一次反而略缩**。该行为在单测与 e2e 里**都没有守卫**，记录里「行为不变」是断言而非证据。
+>
+> **F2 `overflow:hidden` 把工具条面板剪掉且无法滚动（必须修复）**
+> `styles.css:3205-3210` 给 sheet 加了 `height:100vh; overflow:hidden`。而顶栏面板是顶栏的**兄弟节点**，`.reader-panel` 没有 `max-height`/`overflow`。于是在 PDF 页上点学习状态徽章、`⋯ → 编辑资料 / 编辑标签` 时，面板超出视口的部分被剪掉且**鼠标/触控板无法滚动**（`overflow:hidden` 只允许程序化滚动），**「保存」按钮鼠标点不到**。改前页面随文档滚动，这些面板一律够得着，属本次新引入。记录里「外层滚动条消失」因此要改口径：不是内容正好放得下，是超出被剪掉了。
+>
+> ## 非阻断（建议顺手处理）
+> - `ResourceDetail.tsx:340` `pdfOriginal` 取自 `item`，而 `item` 在每次 `refreshed()`→`retry()` 时被置空。于是保存学习记录、编辑标签等动作会让 `pdfMode` 与 `.pdf-page` **短暂翻回非 PDF 形态**，`PdfReader` 被销毁、回来重下重解析。改 `item` → `toolbarItem` 一行可解。
+> - 失败分支早于 `tools` 返回，顶栏留下一个空的 `.reader-toolbar-pdf`，白吃一个 8px gap。
+> - `height:100vh` 未用 `100dvh`，移动端浏览器地址栏会吃掉底部一截。
+>
+> ## 已核对通过的部分
+> **非 PDF 未被改坏**：`pdfMode` 由 `Boolean(pdfOriginal)` 驱动，WEB/PASTE 在构造上到不了；新用例钉了两类，另有既有的读取中/失败、菜单/面板/心得展开、图标化反向守卫全部跑在非 PDF 资料上，**覆盖充分**。**`createPortal`**：三态判定严密，挂载点卸载最坏只是一帧投进已脱离文档的节点随即自愈，用 state 存节点不破坏 `memo`、无闭环。**多列形态**：PDF 页上目录栏恒不出现；心得两列在 `stretch` 下正常。**TASK-073 行为**：状态与算法一行未动，受影响的只有依赖布局宽度的 `fitWidth`（见 F1）。**数字自洽**，唯一要改写的是「外层滚动条消失」的成因。**无障碍**：`headingSlot` 仍落在唯一的 `h1` 上，窄屏 `clip-path` 隐藏与本仓既有做法一致。
+>
+> ## 剩余风险
+> F1 的具体表现我**未能在真实浏览器里确认**（无 Bash）；请实现方按上面给的两项测量复核后再决定是改代码还是驳回该 finding。
+
+### Review 之后的修正（均先实测复核，再动手）
+
+**F1 成立，实测确认**（真实 Edge，1440×900）：顶栏宽 **950px、左边距 245px**（不是通栏），
+`getComputedStyle(sheet).alignItems === 'center'`；点「适合宽度」**100% → 97% → 95%**，越点越小。
+修法：页级修饰类从 `pdf-page` 改名为 **`reader-pdf`**（根治撞名，而不是补一条 `align-items` 覆盖）。
+修后实测：顶栏 **1440px / 左 0**，`alignItems: normal`，「适合宽度」**100% → 219%，再点保持 219%**。
+补了一条守卫用例钉住类名，变异验证：改回 `pdf-page` → 变红。
+
+**F2 成立，实测确认**（1440×720）：点学习状态徽章后面板伸到 **1595px**、超出视口 875px，
+「保存」按钮在 **981px** 处，`overflow: hidden` 下滚不过去。
+修法：sheet 的 `overflow` 改为 **`auto`**（正常阅读时内容恰好铺满、仍不出滚动条；只有面板这类
+超高内容才可滚）。修后实测：sheet 可滚 917px，滚动后「保存」按钮完整在视口内（顶 20 / 底 64）。
+**记录里「外层滚动条消失」的口径按 Reviewer 的要求改正**：它指的是**正常阅读时**内容恰好铺满，
+不是把超出的内容剪掉。
+
+**三条非阻断项一并处理**：`pdfOriginal` 改用 `toolbarItem`（不再在刷新时把 PDF 卸载重下）；
+`.reader-toolbar-pdf:empty { display: none }`（失败分支下空挂载点不占位）；`100vh` → `100dvh`。
+
+修正后：`check_task.py` **CHECKS PASS**，前端单测 **320 项**，`e2e/pdf-reader.spec.ts` **3 passed**，
+1440 与 390 两档的实测数字与上表一致（647px / 613px，均无外层滚动条）。
+
+**未加专门用例的一项**：`pdfOriginal` 改用 `toolbarItem` 没有单独用例。它不是新行为——工具条本身
+早就为「跨刷新活着」改用了 `toolbarItem` 并有既有用例守着，这次只是让 PDF 模式接上同一套机制。
+如实写明，供 Reviewer 判断是否足够。
 - 最终状态/风险/用户操作：待填
 - 非阻断遗留项：待填
 - 日期与决定日志：2026-09-21 用户指出 PDF 阅读器与草图不符、要求按草图来 → 主 Agent 摆出三处差异

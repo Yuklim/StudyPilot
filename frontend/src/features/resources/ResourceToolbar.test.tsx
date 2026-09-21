@@ -126,6 +126,19 @@ describe('reader toolbar · PDF 页（TASK-081）', () => {
     expect(original.textContent).toBe('原件')
   })
 
+  it('does not name the page-level class after the per-page one', async () => {
+    // `.pdf-page` 是 `PdfReader` 给**每一页 PDF** 用的类，它的裸选择器里带
+    // `align-items: center`。页级修饰类若同名，那条规则会连整张 sheet 一起命中：
+    // 顶栏收成内容宽并居中（实测 1440 视口下只有 950px、左边距 245px），
+    // `fitWidth` 量到的也不再是窗口宽，「适合宽度」每点一次反而缩一点
+    // （100%→97%→95%）。这是独立 Review F1 抓到、我在真实 Edge 里实测确认的缺陷。
+    mount(pdfResource())
+    await screen.findByRole('button', { name: '更多操作' })
+    const sheet = document.querySelector('.resource-sheet')!
+    expect(sheet.classList.contains('reader-pdf')).toBe(true)
+    expect(sheet.classList.contains('pdf-page')).toBe(false)
+  })
+
   it('keeps the controls the sketch did not draw', async () => {
     // 用户 2026-09-21：「都放在顶部工具条吧」——草图没画学习状态与 `⋯`，但它们是
     // TASK-073 之前就有的入口（`⋯` 里装着元数据/标签/编辑/删除），不能因为草图没画就删掉。

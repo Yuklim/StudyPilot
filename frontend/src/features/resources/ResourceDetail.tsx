@@ -337,7 +337,13 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
   const receiveHighlightCount = useCallback((total: number) => setHighlightCount(total), [])
 
   // --- TASK-073：FILE 资料的原件是 PDF 时，站内直接读 ---
-  const pdfOriginal = isPdfOriginal(item?.original_file ?? null) ? item!.original_file! : null
+  // 取 `toolbarItem` 而不是 `item`：后者在每次 `retry()` 时被置空（见上面那段注释），
+  // 用它会让 PDF 页在「保存学习记录 / 改标签」这类会触发刷新的动作里短暂翻回非 PDF
+  // 形态——版式跳一下，`PdfReader` 连同已解析的文档一起卸载、回来重下重解析。
+  // 工具条本身早就为此改用 `toolbarItem`，这里跟上（独立 Review 非阻断项）。
+  const pdfOriginal = isPdfOriginal(toolbarItem?.original_file ?? null)
+    ? toolbarItem!.original_file!
+    : null
   /**
    * 顶栏里给 PDF 控件留的挂载点（TASK-081）。放 state 而不是 ref：ref 的变化不会触发
    * 重渲染，`PdfReader` 就永远收不到这个节点。首帧它是 `null`，`PdfReader` 那一侧据此
@@ -433,7 +439,10 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
   return (
     <section
       className={`resource-sheet reader${notesOpen ? ' notes-open' : ''}${
-        pdfOriginal ? ' pdf-page' : ''
+        // 类名**不能叫 `pdf-page`**：那是 `PdfReader` 给每一页 PDF 用的类，
+        // 裸选择器 `.pdf-page { align-items: center }` 会连整张页面一起命中，
+        // 顶栏因此收成内容宽并居中，「适合宽度」也跟着量错（独立 Review F1）。
+        pdfOriginal ? ' reader-pdf' : ''
       }`}
       aria-label="资料内容"
     >

@@ -2660,6 +2660,10 @@ a.source-chip:focus-visible {
   display: flex;
   align-items: center;
 }
+/* 阅读器落在失败分支时不投递控件，这个挂载点会是空的——空着就别占那 8px 间距。 */
+.reader-toolbar-pdf:empty {
+  display: none;
+}
 
 .reader-toolbar-buttons {
   display: flex;
@@ -3202,13 +3206,17 @@ a.source-chip:focus-visible {
    （旧值 220px 就是这么来的）。整条链上的每一层都要 `min-height: 0`，否则 flex 子项
    的默认最小高度＝内容高度，PDF 会把容器顶开、外层跟着出滚动条。
    只在 `.pdf-page` 下生效：网页/粘贴资料的正文本来就随页面滚动，不动它们。 */
-.resource-sheet.reader.pdf-page {
-  height: 100vh;
+.resource-sheet.reader.reader-pdf {
+  height: 100dvh;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  /* **不是 `hidden`**：顶栏的面板（学习状态、编辑资料、编辑标签）是顶栏的兄弟节点，
+     内容高时会伸到视口之外——`hidden` 会把「保存」按钮剪掉且**滚不过去**（独立 Review
+     F2 实测：学习面板伸到 1595px，保存按钮在 981px 处够不到）。`auto` 下正常阅读时
+     内容恰好铺满、不出滚动条，只有面板展开这类超高内容才可滚。 */
+  overflow: auto;
 }
-.resource-sheet.reader.pdf-page .reader-body {
+.resource-sheet.reader.reader-pdf .reader-body {
   flex: 1;
   min-height: 0;
   align-items: stretch;
@@ -3217,16 +3225,16 @@ a.source-chip:focus-visible {
   padding-top: 8px;
   padding-bottom: 8px;
 }
-.resource-sheet.reader.pdf-page .reader-main {
+.resource-sheet.reader.reader-pdf .reader-main {
   min-height: 0;
   display: flex;
   flex-direction: column;
 }
-.resource-sheet.reader.pdf-page .pdf-reader.in-toolbar {
+.resource-sheet.reader.reader-pdf .pdf-reader.in-toolbar {
   flex: 1;
   min-height: 0;
 }
-.resource-sheet.reader.pdf-page .pdf-reader-pages {
+.resource-sheet.reader.reader-pdf .pdf-reader-pages {
   flex: 1;
   min-height: 0;
   max-height: none;
