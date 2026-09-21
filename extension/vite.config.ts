@@ -5,7 +5,19 @@ import { defineConfig } from 'vitest/config'
 // it the build prints a forward-compatibility warning on every run.
 import { execFileSync } from 'node:child_process'
 
-import { buildVersionName, manifest, POPUP_PAGE } from './src/manifest.ts'
+import { buildVersion, buildVersionName, manifest, POPUP_PAGE } from './src/manifest.ts'
+
+/** 仓库的提交数，作为 `version` 的构建号。拿不到就退回去掉第四段的版本。 */
+function commitCount(): string {
+  try {
+    return execFileSync('git', ['rev-list', '--count', 'HEAD'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim()
+  } catch {
+    return ''
+  }
+}
 
 function headCommit(): string {
   try {
@@ -33,8 +45,17 @@ const emitManifest: Plugin = {
       // 构建时把当前 commit 的短 SHA 写进 version_name：装进 Chrome 之后，扩展详情页
       // 上就能一眼看出装的是哪一版。拿不到 git 时 buildVersionName 退化为 `+dev`。
       source:
-        JSON.stringify({ ...manifest, version_name: buildVersionName(headCommit()) }, null, 2) +
-        '\n',
+        JSON.stringify(
+          {
+            ...manifest,
+            // 每次提交都会让这个数变，点「更新」就能看出换版了——不依赖浏览器显不显示
+            // version_name（Edge 的扩展页是自家 UI，用户 2026-09-21 实测它没显示）。
+            version: buildVersion(commitCount()),
+            version_name: buildVersionName(headCommit(), commitCount()),
+          },
+          null,
+          2,
+        ) + '\n',
     })
   },
 }
