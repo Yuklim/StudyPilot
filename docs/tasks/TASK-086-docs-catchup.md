@@ -13,6 +13,12 @@ allowed_paths = [
   "README.md",
   "docs/contracts/API与数据契约基线.md",
   "docs/开发与运行.md",
+  # 范围修订 1：用户 2026-09-21「重拍然后更新」
+  "docs/images/01-overview.png",
+  "docs/images/02-library.png",
+  "docs/images/03-reader.png",
+  "docs/images/04-classifications.png",
+  "docs/images/05-notes.png",
   "docs/images/06-extension-popup.png",
   "docs/images/07-pdf-reader.png",
   "extension/README.md",
@@ -50,10 +56,23 @@ checks = ["contracts"]
    **文献信息**（TASK-075/078）、**高亮**（TASK-071/072）。同时换掉已经过期的扩展 popup 截图，
    补一张 PDF 阅读器截图。
 
+### 范围修订 1（2026-09-21，写入前登记）
+
+主 Agent 在汇报里主动说明「01–05 五张旧截图拍于 2026-09-11/12，此后阅读器顶栏（TASK-081）与
+确认页（TASK-084）都变过，**没有逐页核对**，要严谨应当重拍一轮」，并问是否顺手重拍。
+用户：**「重拍然后更新」**。
+
+因此把 01–05 纳入范围。**并且这次回到隔离沙盒**——上一轮拍 07 时我在用户本机库里采了一份论文
+（截完即删、核对剩余为 0），但那比 TASK-047 的做法差，我当时自己写下「下次拍图应回到沙盒」，
+这一轮执行：用 `playwright.config.ts` 已有的 e2e 沙盒（临时目录 + 端口 18000/15173），
+**全程不读也不写用户本机 `backend/var/studypilot.db`**。
+
+新增路径：`docs/images/01-overview.png` … `05-notes.png`。
+
 ### 非目标 / 禁止范围
 
-- **不改任何行为**：本任务只动文档、截图与登记，不碰 `.ts`/`.tsx`/`.py`。
-- 不重做其它截图（01–05 仍与现状相符）。
+- **不改任何行为**：本任务只动文档、截图与登记，不碰 `.ts`/`.tsx`/`.py`（一次性截图脚本除外，
+  它不入库）。
 - 不改 README 的整体结构与语气。
 
 ### 主 Agent 登记的决定（Review 可挑战）
