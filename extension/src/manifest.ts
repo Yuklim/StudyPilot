@@ -61,7 +61,11 @@ export type Manifest = {
  */
 export function buildVersion(commitCount?: string): string {
   const count = (commitCount ?? '').trim()
-  return /^[0-9]{1,5}$/.test(count) && Number(count) <= 65535 ? `${VERSION}.${count}` : VERSION
+  // 前导零也要拦：Chrome/Edge 的 version 段不接受 `032` 这类写法。`git rev-list --count`
+  // 永远不产出前导零，所以这条目前不可达——但函数声称「不生成装不上的版本」，那就该
+  // 真的做到（第五轮 Review 指出原正则只拦得住 6 位以上）。
+  const ok = /^(0|[1-9][0-9]{0,4})$/.test(count) && Number(count) <= 65535
+  return ok ? `${VERSION}.${count}` : VERSION
 }
 
 /**

@@ -38,10 +38,11 @@ describe('MV3 manifest', () => {
     expect(buildVersion('629')).toBe('0.2.0.629')
     expect(buildVersion('1')).toBe('0.2.0.1')
     // Chrome/Edge 要求每段 0–65535；越界、非数字、空值一律退回三段，不生成一个装不上的版本。
-    for (const bad of ['', '   ', undefined, '65536', '70000', 'abc', '-1', '1.2', '012345']) {
+    for (const bad of ['', '   ', undefined, '65536', '70000', 'abc', '-1', '1.2', '0123']) {
       expect(buildVersion(bad)).toBe('0.2.0')
     }
     expect(buildVersion('65535')).toBe('0.2.0.65535')
+    expect(buildVersion('0')).toBe('0.2.0.0')
     // 源码里的 manifest 不带构建号（构建时才注入），所以与 package.json 仍然对得上。
     expect(manifest.version).toBe(buildVersion())
   })
