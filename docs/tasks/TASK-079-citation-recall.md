@@ -105,6 +105,8 @@ Zotero 分层：站点专用翻译器 `100` → unAPI `300` → COinS `310` → 
 
 ## 实现与测试
 
+> **读本节前先看这句**：下面「实现 SHA `730cc5f`」那一段记的是**第一候选**，其中 DOI 来源与测试条数已被后面两轮修正推翻/取代。**现行规则以契约第 14 节、以及本节末尾两轮修正为准。**
+
 - 实现 SHA：`730cc5f`（控制面登记 `76831a4`）。变更摘要：
   - **`doiFromLinks(doc)`（新）**：页面上任何指向 `doi.org`／`dx.doi.org`、路径以 `10.` 开头的链接即为该页声明的 DOI。**⚠️ 这一条已被下文「第一轮 Review F1 的修正」推翻**，现行规则是「强信号前提 + 全页唯一」，读到这里请直接看下文。arXiv 正是这一种（`<a id="arxiv-doi-link" href="https://doi.org/10.48550/arXiv.…">`）。坏地址跳过不中断。
   - **`looksLikeBlog(doc)`（新）**：照搬 Zotero 的三条启发式（`#wp-block-library-css`、`#wp-block-library-inline-css`、`.yoast-schema-graph`）加 `generator` 含 wordpress/blogger/wooframework。
@@ -164,6 +166,16 @@ Zotero 分层：站点专用翻译器 `100` → unAPI `300` → COinS `310` → 
   - `Set` 去重：`http`/`https`、`www.`/`dx.` 差异不影响（只存 `pathname`）；**大小写会算成两个**，但失败方向是 fail-closed（取不到，不会取错）——列入非阻断遗留。
   - 四组反例与论文名那条：均非恒真。
 - 修正后重跑：`check_task.py --worktree` → **CHECKS PASS**（`product_fingerprint=538bad82…`；extension **169 passed**）。
+
+### 第三轮 Review 的三条可选建议（第四候选，全部采纳）
+
+结论 PASS、覆盖最终候选；三条均标「可选」，但这个任务里我已经两次栽在「写了规则却没有守卫／说法比实现宽」上，所以全做了：
+
+- **契约措辞**：第 14 节那句「有 `citation_arxiv_id` 或 arxiv 域名且无期刊名时判预印本」补上「**在会议名、书名、学位论文、报告这些更明确的出处信号之后**判」——实现里这几支确实排在预印本之前，原措辞严格读会与实现不符（触发需页面同时发会议名与 arXiv 标识，罕见，且结果更具体、不是降级）。
+- **覆盖缺口**：契约写的是「arXiv **标识或**域名」，而两条新用例都同时具备二者，**「非 arxiv 域名 + `citation_arxiv_id`」（聚合站/镜像站形态）没有任何用例守着**。已补，**变异实测**：把判断改成只认域名、不认标识即红。
+- **记录可读性**：在「实现与测试」小节开头加了一句总指路——第一候选那一段的 DOI 来源与测试条数已被后两轮推翻/取代，现行规则以契约第 14 节与本节末尾的修正为准。Reviewer 指出单看「强信号（DOI／…）」那一行仍可能被误读成含链接 DOI，这句话一次性封死。
+- **Reviewer 对类型链新顺序的复核结论**（我点名请它挑战的）：「arXiv 镜像页带 `citation_journal_title` → `!journal` 为假 → 判期刊论文，**你的意图守住了**」；「`inbook && !journal` 在前、预印本在后**是对的**——会议/书章节/学位论文/报告都是页面明说的具体出处，比『默认算预印本』更具体」。
+- 重跑：`check_task.py --worktree` → **CHECKS PASS**（`product_fingerprint=b3615ae7…`；extension **169 passed**）。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据

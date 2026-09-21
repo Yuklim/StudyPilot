@@ -279,6 +279,16 @@ describe('extractCitation', () => {
     const found = extractCitation(pageWith(relatedDoi), 'https://arxiv.org/abs/1706.03762')
     expect(found).toMatchObject({ item_type: 'PREPRINT', doi: null })
 
+    // 聚合站/镜像站：不在 arxiv.org 域名下，但页面自己发了 citation_arxiv_id——
+    // 按契约「有 arXiv 标识或 arxiv 域名」，标识本身就够（第二轮 Review 指出这条
+    // 规则当时没有用例守着）。
+    const mirror = `
+      <meta name="citation_title" content="某预印本"/>
+      <meta name="citation_arxiv_id" content="2401.00002"/><p>x</p>`
+    expect(
+      extractCitation(pageWith(mirror), 'https://papers.example.com/2401.00002'),
+    ).toMatchObject({ item_type: 'PREPRINT' })
+
     // 连 DOI 链接都没有的 arXiv 页同样是预印本，不该落到「其他」。
     const noDoi = `
       <meta name="citation_title" content="某预印本"/>

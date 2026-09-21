@@ -890,7 +890,7 @@ TASK-038 新增。这是本文件里**第一份非 HTTP 契约**：它约束的�
 
 **仍然不推导**：Zotero 会在无 DOI 时按 `10.48550/arXiv.<id>` 自行拼出一个，本实现不这么做——页面没声明的值不填。
 
-**其余几条实现细则**（一并写明，免得实现与契约各说各话）：`citation_arxiv_id` 或 `arxiv.org` 域名且无期刊名时判预印本；`citation_dissertation_institution` 与 `citation_technical_report_institution` 既作类型信号也填进出版方（契约里没有单独的机构字段），而 `citation_dissertation_name` 是**论文名**，只作类型信号、不填出版方。
+**其余几条实现细则**（一并写明，免得实现与契约各说各话）：`citation_arxiv_id` 或 `arxiv.org` 域名且无期刊名时判预印本（**在会议名、书名、学位论文、报告这些更明确的出处信号之后**判：页面明说了具体出处就按它说的算）；`citation_dissertation_institution` 与 `citation_technical_report_institution` 既作类型信号也填进出版方（契约里没有单独的机构字段），而 `citation_dissertation_name` 是**论文名**，只作类型信号、不填出版方。
 
 **不联网核对**——与 14.4 的「扩展只读已渲染的 DOM」同源，识别只看这一页自己写了什么。
 
