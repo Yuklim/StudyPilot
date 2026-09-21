@@ -38,6 +38,8 @@ allowed_paths = [
   "extension/README.md",
   "extension/AGENTS.md",
   "README.md",
+  # 范围修订 2（2026-09-21，首轮 Review F1 之后、写入前登记）
+  "extension/src/popup/main.ts",
 ]
 checks = ["frontend", "contracts"]
 ```
@@ -115,6 +117,23 @@ checks = ["frontend", "contracts"]
 
 **仍然不做的**：`<all_urls>` 依旧留在 `optional_host_permissions`，不变成安装时授予的永久权限
 （见上面的「非目标」）。`unlimitedStorage` 与站点访问权无关，它只允许本机多存。
+
+### 范围修订 2（2026-09-21，首轮 Review F1 之后、写入前登记）
+
+Reviewer 指出一条真缺陷：popup 仍按 `payload.images.length > 0` 弹图片授权框，而确认页走 PDF 分支时
+**在冻图之前就 return**，图片一张不碰。于是「既抓得到 PDF、正文里又有图」的页面会被要求授出
+`<all_urls>`——**零收益**，还被告知「图片会在保存正文之后逐张下载」这件不会发生的事。
+
+这直接违背本任务的完成条件「一次点击、无额外授权」与用户「不要过多点击授权、以体验为主」的定案。
+实测确认不是理论问题：PLOS ONE 那一页 `images: 5` 且 PDF 抓取成功，正好踩中；
+arXiv 图片数为 0，所以首轮端到端实测没暴露它。
+
+修在哪：判断逻辑放进 `popup.ts`（可测的纯函数 `shouldAskAboutImages`），`main.ts` 只改一行接线——
+因此需要把 `extension/src/popup/main.ts` 纳入 `allowed_paths`（它是 popup 的 DOM 接线入口，原本不在范围内）。
+
+**取舍写明**：抓到 PDF 时不再问图片，于是用户若在确认页取消勾选、改存网页正文，那一次的图片会保留
+原网站地址（与「拒绝授权」是同一条既有降级路径，不产生新形态）。确认页据此加一句说明。
+反过来的做法——照问不误——要用户为几乎总是用不上的权限多点一次，与用户定案相反。
 
 ## 完成条件
 
