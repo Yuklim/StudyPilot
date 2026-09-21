@@ -410,7 +410,10 @@ describe('capture page · citation', () => {
     deliver({}, paper)
     await screen.findByText(/这页看起来是一篇文献/)
     expect(screen.queryByRole('checkbox')).toBeNull()
-    expect(screen.queryByText(/一并存下来$/)).toBeNull()
+    // 不再用「文案以某个标点结尾」这种判据（改一个符号就假红／假绿，独立 Review F4）：
+    // 直接断言这一块里**没有任何可点的开关**。
+    const block = screen.getByText(/这页看起来是一篇文献/).closest('div')!
+    expect(block.querySelectorAll('input, button, select')).toHaveLength(0)
   })
 
   it('adds nothing at all to the page when the page is not a paper', async () => {
@@ -602,7 +605,9 @@ describe('capture page · pdf', () => {
     expect(await screen.findByText(said)).toBeInTheDocument()
     // 没有 PDF 就照旧存网页正文，正文仍在。
     expect(screen.getByLabelText(/正文（Markdown/)).toBeInTheDocument()
-    expect(screen.queryByRole('checkbox', { name: /保存这份 PDF/ })).toBeNull()
+    // **不加 name 过滤**：这一档的载荷带着 citation，改前这里其实有「一并存下来」那个框，
+    // 加了 `name: /保存这份 PDF/` 就变成恒真、对本次改动没有判别力（独立 Review F3）。
+    expect(screen.queryByRole('checkbox')).toBeNull()
   })
 
   it('adds nothing for a page that is not a paper', async () => {
@@ -611,7 +616,7 @@ describe('capture page · pdf', () => {
     await screen.findByText(/还没有收到扩展发来的内容/)
     deliver()
     await screen.findByDisplayValue('如何理解数据库索引')
-    expect(screen.queryByRole('checkbox', { name: /保存这份 PDF/ })).toBeNull()
+    expect(screen.queryByRole('checkbox')).toBeNull()
     expect(screen.getByLabelText(/正文（Markdown/)).toBeInTheDocument()
   })
 })
