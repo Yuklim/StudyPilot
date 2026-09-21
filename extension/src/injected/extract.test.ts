@@ -266,6 +266,28 @@ describe('extractCitation', () => {
     }
   })
 
+  it('still calls an arXiv page a preprint when its DOI cannot be adopted', () => {
+    // 第二轮 Review F6：上一版把预印本那一支挂在 `… || doi` 里面，于是没有可采纳 DOI 的
+    // arXiv 页会掉到「其他」。最实际的例子就是**带 "Related DOI" 的 abs 页**——作者填了
+    // 已发表的 DOI，页面上就有两条不同的 doi.org 链接，唯一性不成立、doi 取不到。
+    const relatedDoi = `
+      <meta name="citation_title" content="Attention Is All You Need"/>
+      <meta name="citation_arxiv_id" content="1706.03762"/>
+      <a href="https://doi.org/10.48550/arXiv.1706.03762">arXiv DOI</a>
+      <a href="https://doi.org/10.5555/3295222.3295349">Related DOI</a>
+      <p>正文</p>`
+    const found = extractCitation(pageWith(relatedDoi), 'https://arxiv.org/abs/1706.03762')
+    expect(found).toMatchObject({ item_type: 'PREPRINT', doi: null })
+
+    // 连 DOI 链接都没有的 arXiv 页同样是预印本，不该落到「其他」。
+    const noDoi = `
+      <meta name="citation_title" content="某预印本"/>
+      <meta name="citation_arxiv_id" content="2401.00001"/><p>x</p>`
+    expect(extractCitation(pageWith(noDoi), 'https://arxiv.org/abs/2401.00001')?.item_type).toBe(
+      'PREPRINT',
+    )
+  })
+
   it('never adopts a DOI that belongs to something else on the page', () => {
     // 第一轮 Review F1：维基条目、论文解读博客、期刊目录页的参考文献区里全是**别人的**
     // DOI。把第一个捡来当本页的 DOI，就是把别人作品的编号静默写进这份资料——而确认页

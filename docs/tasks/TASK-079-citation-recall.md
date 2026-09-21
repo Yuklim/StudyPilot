@@ -106,7 +106,7 @@ Zotero 分层：站点专用翻译器 `100` → unAPI `300` → COinS `310` → 
 ## 实现与测试
 
 - 实现 SHA：`730cc5f`（控制面登记 `76831a4`）。变更摘要：
-  - **`doiFromLinks(doc)`（新）**：页面上任何指向 `doi.org`／`dx.doi.org`、路径以 `10.` 开头的链接即为该页声明的 DOI。arXiv 正是这一种（`<a id="arxiv-doi-link" href="https://doi.org/10.48550/arXiv.…">`）。坏地址跳过不中断。
+  - **`doiFromLinks(doc)`（新）**：页面上任何指向 `doi.org`／`dx.doi.org`、路径以 `10.` 开头的链接即为该页声明的 DOI。**⚠️ 这一条已被下文「第一轮 Review F1 的修正」推翻**，现行规则是「强信号前提 + 全页唯一」，读到这里请直接看下文。arXiv 正是这一种（`<a id="arxiv-doi-link" href="https://doi.org/10.48550/arXiv.…">`）。坏地址跳过不中断。
   - **`looksLikeBlog(doc)`（新）**：照搬 Zotero 的三条启发式（`#wp-block-library-css`、`#wp-block-library-inline-css`、`.yoast-schema-graph`）加 `generator` 含 wordpress/blogger/wooframework。
   - **门槛重写**：强信号（DOI／期刊会议书名／学位论文或报告机构／`citation_arxiv_id`／schema 类型）任一命中即认；弱信号（光有 `citation_title`）也认，但遇博客特征时被压制。**只压弱信号**——用 WordPress 搭的期刊站不受影响。
   - **类型映射补全**：会议论文、书章节（`citation_inbook_title`/`citation_book_title` 且无期刊名）、学位论文（机构或名称）、报告（机构）；有 `citation_arxiv_id` 或 arxiv 域名且无期刊名 → 预印本。学位论文/报告的机构填进出版方（契约里没有单独的机构字段）。
@@ -119,7 +119,7 @@ Zotero 分层：站点专用翻译器 `100` → unAPI `300` → COinS `310` → 
   用例里的夹具是照这份真实页面**逐字抄的标签集**，并用上述实跑核对过一致（实跑脚本是临时的，跑完即删，未提交——真实页面是第三方内容，不进仓库）。
 
   **这条证据的口径，如实降级（第一轮 Review 的明确判断）**：实跑脚本已删、真实 HTML 不在仓库里，**Reviewer 与独立验收都无法复核它**，它是主 Agent 的证词而非可复核证据。仓库内的夹具只能支撑「给定这组标签 → PREPRINT/8 作者/2017/页面 DOI」，**不能独立支撑「arXiv 一定会被认出」**。因此「用户在 `arxiv.org` 上实测一次」是**合并后必须做的验证**，不是可选项——TASK-075 正是在同一环上翻的车。`version_name` 这次正好让「装的是哪一版」可确认。
-- 新测试 7 条（extension 161 → **167**）与判别性：
+- 新测试 7 条（extension 161 → **167**）与判别性（**条数已被后续两轮修正取代，最终为 169**，见下文各轮）：
   - 真实 arXiv 标签集 → PREPRINT/8 位作者/2017/DOI；
   - DOI 链接的五种形态（`doi.org`、`dx.doi.org`、大小写、非 `10.` 开头、非 doi.org 域名）；
   - 光有 `citation_title` 即认（类型 `OTHER`）；

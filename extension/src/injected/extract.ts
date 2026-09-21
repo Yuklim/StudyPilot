@@ -277,13 +277,19 @@ export function extractCitation(doc: Document, url: string): CapturedCitation | 
           ? 'CONFERENCE_PAPER'
           : inbook && !journal
             ? 'BOOK_CHAPTER'
-            : says('scholarlyarticle') || journal || doi
-              ? // 预印本：有 arXiv 标识或来自 arxiv 域名，且没有期刊名。有期刊名说明它已经
-                // 正式发表，那就是期刊论文。
-                !journal && (arxivId || /(^|\.)arxiv\.org$/i.test(hostOf(url)))
-                ? 'PREPRINT'
-                : 'JOURNAL_ARTICLE'
-              : 'OTHER'
+            : // 预印本：有 arXiv 标识或来自 arxiv 域名，且没有期刊名。有期刊名说明它已经
+              // 正式发表，那就是期刊论文。
+              //
+              // **这一支必须独立于 `doi`**（第二轮 Review F6）：上一版把它挂在
+              // `says(...) || journal || doi` 里面，于是「有 citation_arxiv_id 但没有可采纳
+              // DOI」的页面会掉到 OTHER。最实际的例子正是本任务的目标页面族——arXiv 上带
+              // "Related DOI" 的 abs 页有两条不同的 doi.org 链接，唯一性不成立、`doi` 为空，
+              // 结果卡片显示「其他」。契约里写的「有 arxiv 标识即判预印本」也才真正成立。
+              !journal && (arxivId || /(^|\.)arxiv\.org$/i.test(hostOf(url)))
+              ? 'PREPRINT'
+              : says('scholarlyarticle') || journal || doi
+                ? 'JOURNAL_ARTICLE'
+                : 'OTHER'
   return {
     item_type,
     authors,

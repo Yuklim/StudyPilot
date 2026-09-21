@@ -874,7 +874,7 @@ TASK-038 新增。这是本文件里**第一份非 HTTP 契约**：它约束的�
 
 **识别门槛**（扩展侧，TASK-079 按 Zotero 的 Embedded Metadata 口径重定）：
 
-- **强信号**——DOI、期刊/会议/书名、学位论文或报告的机构（`citation_dissertation_institution`/`citation_technical_report_institution`）、`citation_arxiv_id`、或 JSON-LD 明说是 `ScholarlyArticle`/`Book`/`Thesis`/`Report`：任一命中即认。
+- **强信号**——DOI、期刊/会议/书名、学位论文或报告的机构（`citation_dissertation_institution`/`citation_technical_report_institution`）、学位论文名（`citation_dissertation_name`）、`citation_arxiv_id`、或 JSON-LD 明说是 `ScholarlyArticle`/`Book`/`Thesis`/`Report`：任一命中即认。
 - **弱信号**——只有 `citation_title`：也认。`citation_*` 是 Highwire 那套**专门发给 Google Scholar 索引**的学术标签，它自己就是信号。
 - **往回拉**——认出博客平台特征（`#wp-block-library-css`、`#wp-block-library-inline-css`、`.yoast-schema-graph`，或 `generator` 含 wordpress/blogger/wooframework）时，**只压制弱信号**：光有 `citation_title` 的页面不认，有强信号的不受影响（否则用 WordPress 搭的期刊站会被误伤）。
 - 完全没有 `citation_*`、没有 DOI、没有 JSON-LD 的普通网页一律不认。
