@@ -2,7 +2,15 @@ import { manifest } from '../manifest'
 
 import { chromeBridge } from './bridge'
 import { deliverCapture, runCapture, type CaptureOutcome } from './capture'
-import { deliveryText, imagePrompt, outcomeText, popupText, shouldAskAboutImages } from './popup'
+import {
+  deliveryText,
+  imagePrompt,
+  needsPdfDecision,
+  outcomeText,
+  pdfFailureText,
+  popupText,
+  shouldAskAboutImages,
+} from './popup'
 
 // 采集分两步，**这不是设计偏好而是浏览器约束**：`chrome.permissions.request` 必须在
 // 用户手势里调用，而提取是异步的、`await` 会消耗掉第一次点击的手势。所以第一次点击
@@ -16,8 +24,17 @@ const button = document.querySelector('#capture')
 const choices = document.querySelector('#choices')
 const withImages = document.querySelector('#with-images')
 const textOnly = document.querySelector('#text-only')
+const pdfFailed = document.querySelector('#pdf-failed')
+const pdfReason = document.querySelector('#pdf-reason')
+const saveText = document.querySelector('#save-text')
+const giveUp = document.querySelector('#give-up')
 
-if (status) status.textContent = popupText(manifest.version)
+// **版本要取浏览器实际装着的那一份**（TASK-085 范围修订 1）：源码里的 `manifest.version`
+// 是 `buildVersion()` 的无参调用，运行时拿不到构建号，于是 popup 一直显示 `0.2.0`，
+// 而扩展管理页显示 `0.2.0.638+…`——用户早先抱怨过这个不一致，TASK-079 只修好了管理页那边。
+const installed =
+  typeof chrome !== 'undefined' ? chrome.runtime?.getManifest?.()?.version : undefined
+if (status) status.textContent = popupText(installed || manifest.version)
 
 function show(element: Element | null, visible: boolean) {
   if (element instanceof HTMLElement) element.hidden = !visible
@@ -27,11 +44,16 @@ if (
   button instanceof HTMLButtonElement &&
   withImages instanceof HTMLButtonElement &&
   textOnly instanceof HTMLButtonElement &&
+  saveText instanceof HTMLButtonElement &&
+  giveUp instanceof HTMLButtonElement &&
+  pdfReason instanceof HTMLElement &&
   hint
 ) {
   const bridge = chromeBridge()
-  // 收进常量：`hint` 的窄化在异步函数体里会丢失，而它在这个分支里已确定非空。
+  // 收进常量：窄化在（提升的）函数声明体里会丢失，而它们在这个分支里已确定非空。
   const note = hint
+  const imagesButton = withImages
+  const textButton = textOnly
 
   async function deliver(outcome: Extract<CaptureOutcome, { ok: true }>, images: boolean) {
     show(choices, false)
@@ -56,16 +78,27 @@ if (
           hint.textContent = outcomeText(outcome)
           return
         }
-        // 没有图片、或这次要存的是 PDF 原件：都没有要问的，直接交付，保持一次点击的手感。
-        if (!shouldAskAboutImages(outcome.payload)) {
-          await deliver(outcome, false)
+        // 是文献、试过但没拿到 PDF：**停在这里**把原因说清，让用户决定（TASK-085，
+        // 用户 2026-09-21 选的方案 A）。一旦往下走打开确认页，popup 就没了。
+        const problem = outcome.payload.pdf_problem
+        if (needsPdfDecision(outcome.payload) && problem) {
+          hint.textContent = ''
+          pdfReason.textContent = `⚠ ${pdfFailureText(problem)}`
+          show(button, false)
+          show(pdfFailed, true)
+          saveText.onclick = () => {
+            show(pdfFailed, false)
+            void askImagesThenDeliver(outcome)
+          }
+          giveUp.onclick = () => {
+            show(pdfFailed, false)
+            // 把采集按钮放回来：否则这一次 popup 里再也点不了第二次（独立 Review 非阻断②）。
+            show(button, true)
+            note.textContent = '这次什么都没保存。想改主意就再点一次。'
+          }
           return
         }
-        hint.textContent = imagePrompt(outcome.payload.images.length)
-        show(button, false)
-        show(choices, true)
-        withImages.onclick = () => void deliver(outcome, true)
-        textOnly.onclick = () => void deliver(outcome, false)
+        await askImagesThenDeliver(outcome)
       })
       .catch(() => {
         hint.textContent = '读取这一页时出错了，请再试一次。'
@@ -74,4 +107,17 @@ if (
         button.disabled = false
       })
   })
+
+  /** 有图就先问一次权限，没图就直接交付。两条路都由这里收口。 */
+  async function askImagesThenDeliver(outcome: Extract<CaptureOutcome, { ok: true }>) {
+    if (!shouldAskAboutImages(outcome.payload)) {
+      await deliver(outcome, false)
+      return
+    }
+    note.textContent = imagePrompt(outcome.payload.images.length)
+    show(button, false)
+    show(choices, true)
+    imagesButton.onclick = () => void deliver(outcome, true)
+    textButton.onclick = () => void deliver(outcome, false)
+  }
 }

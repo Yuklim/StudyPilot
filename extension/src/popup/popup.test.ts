@@ -2,7 +2,15 @@ import { describe, expect, it } from 'vitest'
 
 import type { CapturePayload } from '../shared/protocol'
 
-import { deliveryText, imagePrompt, outcomeText, popupText, shouldAskAboutImages } from './popup'
+import {
+  deliveryText,
+  imagePrompt,
+  needsPdfDecision,
+  outcomeText,
+  pdfFailureText,
+  popupText,
+  shouldAskAboutImages,
+} from './popup'
 
 /** 一份最小载荷；各用例只改它关心的那两个字段。 */
 function payload(overrides: Partial<CapturePayload> = {}): CapturePayload {
@@ -49,6 +57,58 @@ describe('imagePrompt', () => {
     expect(text).toContain('12 张图片')
     expect(text).toContain('权限')
     expect(text).toContain('不授权也能保存正文')
+  })
+})
+
+describe('needsPdfDecision（TASK-085）', () => {
+  const citation = {
+    item_type: 'PREPRINT' as const,
+    authors: [],
+    issued_year: null,
+    issued_date: null,
+    container_title: null,
+    volume: null,
+    issue: null,
+    pages: null,
+    publisher: null,
+    doi: null,
+    isbn: null,
+  }
+
+  it('stops only when a paper was tried and came back without its PDF', () => {
+    // 这是「停在 popup 里问一句」的唯一入口：是文献、试过、没拿到。
+    expect(needsPdfDecision(payload({ citation, pdf_problem: 'failed' }))).toBe(true)
+    // 拿到了就不该停——用户要的是一次点击。
+    expect(
+      needsPdfDecision(
+        payload({ citation, pdf: { name: 'a.pdf', bytes: 3, base64: 'AAAA' }, pdf_problem: null }),
+      ),
+    ).toBe(false)
+    // 这一页本来就没声明 PDF：不是失败，是没有。
+    expect(needsPdfDecision(payload({ citation }))).toBe(false)
+    // 不是文献：一个字都不该变（普通网页的路径）。
+    expect(needsPdfDecision(payload({ pdf_problem: 'failed' }))).toBe(false)
+    expect(needsPdfDecision(payload())).toBe(false)
+  })
+})
+
+describe('pdfFailureText（TASK-085）', () => {
+  it.each([
+    ['cross-origin', /另一个域名/],
+    ['too-large', /25 MiB/],
+    ['not-pdf', /不是 PDF/],
+    ['slow', /20 秒内没下完/],
+    ['failed', /先登录/],
+  ] as const)('says what actually happened: %s', (problem, said) => {
+    // 五种原因各说各的话：该怎么办完全不同（换个入口／自己下载／登录后再来／再试一次）。
+    expect(pdfFailureText(problem)).toMatch(said)
+  })
+
+  it('never reuses the same sentence for two different reasons', () => {
+    const all = (['cross-origin', 'too-large', 'not-pdf', 'slow', 'failed'] as const).map(
+      pdfFailureText,
+    )
+    expect(new Set(all).size).toBe(all.length)
   })
 })
 
