@@ -37,12 +37,20 @@ const citation = {
 }
 
 /** `runCapture` 的返回值由各用例摆布；`deliverCapture` 记录它有没有被调用、带不带图。 */
-const runCapture = vi.fn()
-const deliverCapture = vi.fn(async () => ({ images: 0, refused: false }))
+const runCapture = vi.fn<(bridge: unknown) => Promise<unknown>>()
+const deliverCapture =
+  vi.fn<
+    (
+      bridge: unknown,
+      payload: CapturePayload,
+      images: boolean,
+    ) => Promise<{ images: number; refused: boolean }>
+  >()
 
 vi.mock('./capture', () => ({
-  runCapture: (...args: unknown[]) => runCapture(...args),
-  deliverCapture: (...args: unknown[]) => deliverCapture(...args),
+  runCapture: (bridge: unknown) => runCapture(bridge),
+  deliverCapture: (bridge: unknown, payload: CapturePayload, images: boolean) =>
+    deliverCapture(bridge, payload, images),
 }))
 vi.mock('./bridge', () => ({ chromeBridge: () => ({}) }))
 
