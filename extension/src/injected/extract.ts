@@ -340,6 +340,22 @@ function toBase64(buffer: ArrayBuffer): string {
 }
 
 /**
+ * PDF 下载自己的时限。
+ *
+ * **为什么非有不可**：`runCapture` 给整次采集的预算是 15 秒（`popup/capture.ts`），
+ * 而 PDF 下载就跑在这段预算里。没有这道时限时，一份下得慢的 PDF 会把整次采集拖超时，
+ * 用户得到的是「可能内容还没加载完」——**连网页正文都没存下**，恰好违背「拿不到 PDF
+ * 就退回存正文」这条设计。超时就当作没拿到，照常退回快照。
+ *
+ * **20 秒是量出来的，不是拍的**：2026-09-21 在本机实测五篇论文，下载耗时
+ * 772 / 1241 / 2520 / 3508 / **9243** ms（最后一个是 arXiv 的 `1706.03762`，2.11 MB）。
+ * 先定的 10 秒会让这一篇经常性地擦边失败。20 秒留出约一倍余量；相应地
+ * `popup/capture.ts` 的整次预算从 15 秒提到 30 秒——有 PDF 要下时，这一步是几 MB 的
+ * 下载而不再只是读一次 DOM，按读 DOM 的尺子量它本身就不对。
+ */
+const PDF_TIMEOUT_MS = 20_000
+
+/**
  * 地址末段用作文件名前先看它说不说明问题：PLOS 的 PDF 地址是
  * `/plosone/article/file?id=…&type=printable`，末段是 `file`——照抄就会把每一篇
  * 都存成 `file.pdf`（真实站点实测发现）。这类通用词一律退回用标题。
@@ -439,7 +455,10 @@ export async function capturePdf(
   }
   if (target.origin !== origin) return { pdf: null, problem: 'cross-origin' }
   try {
-    const response = await fetch(target.href, { credentials: 'omit' })
+    const response = await fetch(target.href, {
+      credentials: 'omit',
+      signal: AbortSignal.timeout(PDF_TIMEOUT_MS),
+    })
     if (!response.ok) return { pdf: null, problem: 'failed' }
     const buffer = await response.arrayBuffer()
     if (buffer.byteLength > MAX_PDF_BYTES) return { pdf: null, problem: 'too-large' }
@@ -454,7 +473,12 @@ export async function capturePdf(
       },
       problem: null,
     }
-  } catch {
+  } catch (cause) {
+    // 超时与其它失败要分开说：前者「再试一次也许就成」，后者多半是付费墙——
+    // 该怎么办完全不同，笼统一句「没拿到」等于把我们已经知道的信息丢掉。
+    const timedOut =
+      cause instanceof Error && (cause.name === 'TimeoutError' || cause.name === 'AbortError')
+    if (timedOut) return { pdf: null, problem: 'slow' }
     // 网络失败、CORS 被拒、被拦截器掐断都落这里：如实说没拿到，不猜原因。
     return { pdf: null, problem: 'failed' }
   }

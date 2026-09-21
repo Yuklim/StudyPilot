@@ -585,6 +585,7 @@ describe('capture page · pdf', () => {
     ['cross-origin', /PDF 在另一个域名下/],
     ['too-large', /超过 25 MiB/],
     ['not-pdf', /取回来的不是 PDF/],
+    ['slow', /20 秒内没下完/],
     ['failed', /没能取下来/],
   ] as const)('says plainly why a paper came without its PDF: %s', async (problem, said) => {
     backend()

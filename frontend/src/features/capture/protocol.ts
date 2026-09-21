@@ -94,7 +94,7 @@ export interface CapturedPdf {
 }
 
 /** 没能取到 PDF 的原因，确认页据此如实说明；`null` 表示这一页本来就不是文献。 */
-export type PdfProblem = 'cross-origin' | 'too-large' | 'not-pdf' | 'failed'
+export type PdfProblem = 'cross-origin' | 'too-large' | 'not-pdf' | 'slow' | 'failed'
 
 export interface CapturePayload {
   title: string
@@ -270,7 +270,11 @@ export function isCapturedCitation(value: unknown): value is CapturedCitation | 
 export function isPdfProblem(value: unknown): value is PdfProblem | null {
   if (value === null || value === undefined) return true
   return (
-    value === 'cross-origin' || value === 'too-large' || value === 'not-pdf' || value === 'failed'
+    value === 'cross-origin' ||
+    value === 'too-large' ||
+    value === 'not-pdf' ||
+    value === 'slow' ||
+    value === 'failed'
   )
 }
 

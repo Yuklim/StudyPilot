@@ -524,10 +524,12 @@ describe('capturePdf', () => {
     expect(problem).toBeNull()
     expect(pdf).toMatchObject({ name: '2401.00001.pdf', bytes: 128 })
     expect(atob(pdf!.base64).slice(0, 5)).toBe('%PDF-')
-    // 不带凭据：扩展承诺不接触任何网站账号。
-    expect(fetcher).toHaveBeenCalledWith('https://arxiv.test/pdf/2401.00001', {
-      credentials: 'omit',
-    })
+    // 不带凭据：扩展承诺不接触任何网站账号。**并且自带时限**：整次采集只有 15 秒预算
+    // （popup/capture.ts），下载没有时限的话慢 PDF 会把整次采集拖死，连正文都存不下。
+    expect(fetcher).toHaveBeenCalledWith(
+      'https://arxiv.test/pdf/2401.00001',
+      expect.objectContaining({ credentials: 'omit', signal: expect.any(AbortSignal) }),
+    )
   })
 
   it('never touches a PDF on another origin', async () => {
@@ -604,6 +606,24 @@ describe('capturePdf', () => {
     const citation3 = extractCitation(pageWith(bare), PAGE)
     const { pdf: pdf3 } = await capturePdf(pageWith(bare), PAGE, citation3, '   ')
     expect(pdf3!.name).toBe('paper.pdf')
+  })
+
+  it('says "slow" rather than swallowing the whole capture when the download drags', async () => {
+    // L3 独立验收指出：下载没有自己的时限时，慢 PDF 会把整次采集拖超时，用户连网页正文
+    // 都拿不到——恰好违背「拿不到 PDF 就退回存正文」。超时必须退回成一种 problem。
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        const error = new Error('The operation was aborted due to timeout')
+        error.name = 'TimeoutError'
+        throw error
+      }),
+    )
+    const citation = extractCitation(pageWith(PAPER), PAGE)
+    const { pdf, problem } = await capturePdf(pageWith(PAPER), PAGE, citation)
+    expect(pdf).toBeNull()
+    // 不是笼统的 failed：用户据此知道「再试一次也许就成」，而不是以为撞上了付费墙。
+    expect(problem).toBe('slow')
   })
 
   it('leaves ordinary pages alone, even when they link to a PDF', async () => {

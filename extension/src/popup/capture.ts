@@ -42,7 +42,10 @@ export type CaptureOutcome =
  */
 export async function runCapture(
   bridge: CaptureBridge,
-  timeoutMs = 15_000,
+  // TASK-080 起从 15 秒提到 30 秒：这段预算现在要覆盖「下一份几 MB 的 PDF」，而不再
+  // 只是读一次 DOM。实测最慢一篇下载 9.2 秒，注入脚本自带 20 秒时限（extract.ts 的
+  // `PDF_TIMEOUT_MS`），这里必须比它宽，否则先超时的是外层，用户连正文都拿不到。
+  timeoutMs = 30_000,
 ): Promise<CaptureOutcome> {
   const tabId = await bridge.activeTabId()
   if (tabId === undefined) return { ok: false, reason: 'no-tab' }

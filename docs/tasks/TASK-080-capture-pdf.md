@@ -247,8 +247,15 @@ arXiv 图片数为 0，所以首轮端到端实测没暴露它。
 
 ### 冻结候选之后补做的运行证据（登记时列的两条风险，由此从推算变为实测）
 
-1. **端到端真实链路**（真实 Edge + 真实 arXiv + 真实本机后端，2026-09-21）：
-   注入脚本在隔离世界采到 `Attention Is All You Need` 的 2.11 MB PDF → 真实 `/capture` 确认页
+1. **端到端（真实 Edge + 真实 arXiv + 真实本机后端，2026-09-21）。先说清这一跑覆盖了哪几跳**
+   ——L3 独立验收指出原文没交代清楚，这里补上：
+   **跑到的**：注入脚本（构建后的 `dist/extract.js`，在 CDP `Page.createIsolatedWorld` 建的隔离世界里
+   运行，与 `chrome.scripting.executeScript` 的运行环境同构）→ 载荷 → 真实 `/capture` 页的
+   `postMessage` 接收与校验 → 建 FILE 资料 → 真实后端 → 站内 PDF 阅读器。
+   **没跑到的**：`点扩展图标 → popup → chrome.storage.local → relay 内容脚本` 这一段。
+   点图标授予 `activeTab` 自动化触发不了（该限制自 TASK-037 起一直存在），
+   这一段仍需用户实机确认。`chrome.storage.local` 的容量另由下面第 2 条单独实测。
+   跑通的链路是：注入脚本在隔离世界采到 `Attention Is All You Need` 的 2.11 MB PDF → 真实 `/capture` 确认页
    （勾选框默认勾上、正文框不显示）→ 保存 → 后端存下
    `source_type=FILE`、`source_url=null`、原件 `1706.03762.pdf` / 2,215,244 字节 /
    `application/pdf` / `READY`，文献信息 `PREPRINT` + `10.48550/arXiv.1706.03762` + 2017 →
@@ -257,10 +264,25 @@ arXiv 图片数为 0，所以首轮端到端实测没暴露它。
 2. **暂存配额（登记风险 1）**：在真实 Edge 里加载真实扩展，于其 service worker 中
    `chrome.storage.local.set` 写入 **8 / 12 / 35 MB** 均成功并原样读回；
    `chrome.permissions.getAll()` 返回的正是 `activeTab`/`storage`/`unlimitedStorage`/`scripting` 四项。
-   35 MB 覆盖了 25 MiB 原件 base64 后约 34.9 MB 的最坏情况。
+   35 MB（36,700,160 字节）覆盖了 25 MiB 原件 base64 后的 34,952,536 字符这一最坏情况。
 3. **跨窗口传输体积（登记风险 2）**：向真实 `/capture` 页 postMessage 一份合规的
-   **33.3 MB base64**（26,214,400 字节，恰好契约上限），接收端校验通过并渲染出勾选框，
+   **34,952,536 字符的 base64**（源自 26,214,400 字节 = 25 MiB，恰好契约上限；按 MiB 记是 33.3，
+   按十进制 MB 记是 34.9，下文统一用字符数），接收端校验通过并渲染出勾选框，
    耗时 **204 ms**；确认页显示「保存这份 PDF（huge.pdf，25.0 MB）」。**未点保存**，不往库里塞测试数据。
+
+4. **真实论文的体积与下载耗时**（2026-09-21，同上测法，五篇各自在其页面上同域取一次）：
+
+   | 论文 | 原件 | base64 后 | 下载耗时 |
+   | --- | --- | --- | --- |
+   | arXiv 1706.03762 Attention | 2.11 MB | 2.82 MB | **9,243 ms** |
+   | arXiv 1512.03385 ResNet | 0.78 MB | 1.04 MB | 1,241 ms |
+   | arXiv 1810.04805 BERT | 0.74 MB | 0.99 MB | 772 ms |
+   | arXiv 2005.14165 GPT-3 | **6.45 MB** | **8.61 MB** | 2,520 ms |
+   | PLOS ONE 0287795 | 0.86 MB | 1.15 MB | 3,508 ms |
+
+   这组数字是 `manifest.ts` 注释、契约 14.4 与本记录里「0.74–6.45 MB / base64 后 0.99–8.61 MB」
+   的出处（L3 独立验收指出原先无出处可追）。**最慢那一篇 9.2 秒**直接推翻了首版定的
+   10 秒下载时限——见下面「验收发现的实现修改」。
 
 ### Review（L3 独立只读，三轮，同一位 Reviewer）
 
@@ -335,9 +357,50 @@ arXiv 图片数为 0，所以首轮端到端实测没暴露它。
 >
 > **剩余风险/声明**：我仅有 Read/Grep/Glob，无法执行 git，故"`e85fcea..0fe1927` 只含这三个文件"依据主 Agent 报告；我核的是当前工作区内容。变异验证（改回旧写法变红）亦未由我复跑，证据来自主 Agent 报称——但我已从代码独立推出同一结论。
 
-### Acceptance（L3 独立只读验收）
+### Acceptance（L3 独立只读验收，独立于实现者与 Reviewer）
 
-- 待填。
+对候选 `0fe1927`（证据写回后 `bfbde5a`）：**ACCEPTED**，完成条件九条逐条达成；报告原文：
+
+> **只读证明**：本 Agent 仅有 Read/Grep/Glob，无写工具、无 Bash，未改动任何文件。核对对象：工作区当前内容（候选 `0fe1927`／基线 `9bd2b41`），无法执行 git，故文件清单依赖 `check_task.py` 的机械范围校验（`scripts/governance/check_task.py:347` 越界即抛错，CHECKS PASS 即覆盖 allowed_paths）。
+>
+> **结论：ACCEPTED**（完成条件全部达成；1 条建议补记的已知限制，2 项建议合并前人工确认）
+>
+> 逐条：
+> 1. arXiv 同域直取 **达成**：`extension/src/injected/extract.ts:421-461`（同域判断在 fetch 前、`credentials:'omit'`、`%PDF-` 自校验）＋用例 `extract.test.ts:519-535`；零授权由 `popup.ts:29`＋`popup.test.ts:70` 钉住；FILE 产物与阅读器落点 `CapturePage.tsx:125-139` → `ResourceDetail.tsx:79`；文献信息经 `citation_store.require_resource`（FILE+READY 允许）成立。
+> 2. 四种退回 **达成，各有两处用例**：`extract.test.ts:536/547/554/562`（cross-origin 还断言 fetcher 未被调用）＋确认页文案 `CapturePage.test.tsx:584-598` 的 it.each 四条。
+> 3. 普通网页不变 **达成**：`extract.ts:428`（无 citation 即返回，不发请求）＋`extract.test.ts:612-616`、`CapturePage.test.tsx:599-607`，另有维基/wordpress 两页实测。
+> 4. 确认页可见可改 **达成**：`CapturePage.tsx:290-307`（名称＋MB＋取消勾选说明），用例 `CapturePage.test.tsx:520-580`。
+> 5. 契约一致 **达成**：14.2 新增 `pdf`/`pdf_problem`＋`CapturedPdf` 表；14.4 四项权限与 `permissions: ['activeTab','scripting','storage','unlimitedStorage']`（`manifest.ts:107`）逐字相符，判断式与 `popup.ts:29` 一致；14.7 规则与代码逐条对得上；25 MiB＝26,214,400 三处同值。未发现现在不成立的句子。
+> 6. 逐字比对守卫 **达成**：`protocol.test.ts:82`（MAX_PDF_BYTES 进常量表）、`:122-123`（`isCapturedPdf`/`isPdfProblem` 进函数体比对）。
+> 7. 真实实测 **达成**：7 页覆盖 arXiv×2／出版社×3／普通网页×2，超出最低要求。
+> 8. `check_task.py` **达成**（extension 组由 `extension/` 路径自动并入，与记录所述三组一致）；索引第 24 行 IN_ACCEPTANCE 与 status 一致，TASK-079 已登记 MERGED。
+> 9. 门闩四种变异 **逐条对得上**：删同域判断→`boundaries.test.ts:109`；挪到 fetch 后→`:110`；多一个调用点→`:104`；`omit`→`include`→`:111-112`。口径确实收紧而非放松。
+>
+> **发现（非阻断，建议补一行已知限制）**：`capturePdf` 自身没有超时／`AbortSignal`，整个 PDF 下载算在 `capture.ts:45` 的 15 s 预算内。慢速或大 PDF 会让**整次采集超时**（`runCapture` 返回 `timeout`，什么都不交付），而不是退回快照，用户看到的是「可能内容还没加载完」——与真实原因无关。首轮 Review F6 原文提过这条路径，但二轮以 35 MB／204 ms 的**体积**证据关闭，**延迟**这一面未被处理，「已知限制／遗留项」也没有承接。实际风险：arXiv 数秒可下，出版社站快速失败，概率低；无数据损失、无安全面；修它要新增一种 problem 取值，属「可记录后继续」。
+>
+> **不自洽之处（均属精度问题，非造假）**：
+> - 6.45 MB／8.61 MB 这组数字出现在契约 14.4、`manifest.ts:103`、遗留项 4，但「真实浏览器实测」表里最大的成功样本只有 2.11 MB，该测量无出处可追。
+> - EVIDENCE 第 1 条称「端到端真实链路」，叙述却从「注入脚本在隔离世界（CDP）」直接跳到「真实 `/capture` 确认页」——**点扩展图标 → popup → `storage.local` → relay → postMessage** 这一段是否在同一次跑通，记录没写明；第 2 条的真实扩展只用于 `storage.local` 写入容量。
+> - 同一个量在记录里一处写 33.3 MB（MiB 口径）、一处写 34.9 MB（十进制），读起来像两个数。三者都不影响结论，`25.0 MB` 与 `CapturePage.tsx:298` 的 `bytes/1048576` 显示逻辑反而精确吻合。
+>
+> **遗留清单评估**：6 条如实，`unlimitedStorage` 无安装提示实测这条在记录、契约、`manifest.ts` 注释三处都标了「不是本次观察到的事实」，没有把推算写成实测；未发现把该修的塞进遗留——唯一漏记的是上面那条超时语义。
+>
+> **建议用户合并前人工确认**：① 在真实 Edge 上**点一次扩展图标**走完整条（arXiv 一篇＋一篇带图的开放获取论文），确认 popup→storage→relay 这一跳与「不再弹图片授权」在真实点击下成立；② 重新加载扩展时留意是否出现新的权限提示（`unlimitedStorage` 未实测）；③ 若手边有 >10 MB 的论文，顺手试一次，即可同时闭掉遗留项 4 与上面的超时疑虑。
+
+### 验收之后的实现修改（形成候选 `0fe1927` 之后的新候选）
+
+验收提的那条**不是记一笔就算的**，所以改了代码而不是塞进遗留清单：
+
+- **`capturePdf` 有了自己的时限**：`AbortSignal.timeout(PDF_TIMEOUT_MS)`，超时单列为**新的第五种**
+  `pdf_problem = 'slow'`，照常退回存正文。不并进 `failed`：超时是「再试一次也许就成」，
+  而 `failed` 多半是付费墙，该怎么办完全不同——`pdf_problem` 存在的意义就是不把已知信息丢掉。
+- **时限由实测定，且首版被实测否掉**：先定 10 秒，随后量出 `1706.03762` 在本机要 **9,243 ms**，
+  10 秒会让这一篇经常性擦边失败。改为 **20 秒**（约一倍余量），并把 `runCapture` 的整次预算
+  从 15 秒提到 **30 秒**——有 PDF 要下时这一步是几 MB 的下载，按「读一次 DOM」的尺子量它本就不对；
+  外层必须比内层宽，否则先超时的是外层，用户连正文都拿不到。
+- 契约 14.2／14.7 同步第五种取值与两个时限；两份协议的 `isPdfProblem`、确认页文案与用例同步。
+- 记录里验收指出的三处不精确已逐条改正：端到端那一跑写明了**跑到哪几跳、哪一跳没跑**；
+  33.3／34.9 两个口径统一为字符数；0.74–6.45 MB 那组数字补上了五篇论文的实测出处表（上面第 4 条）。
 
 ### 最终状态 / 风险 / 用户操作
 
@@ -349,9 +412,9 @@ arXiv 图片数为 0，所以首轮端到端实测没暴露它。
    `shouldAskAboutImages` 并有用例；接线本身靠 PLOS ONE / Nature / 维基三页真实浏览器实测支撑。
 2. **`extract.test.ts` 里一句注释说「编解码回来」，实际是直接扫码点区间**（三轮非阻断项，Reviewer 判「不必改」）。
 3. **`capName` 在截断点恰为空格时可能留下尾随空格**（`foo .pdf`）（同上，不违反 `name.trim()` 非空）。
-4. **大体积链路只验到两头**：`chrome.storage.local` 35 MB 与 postMessage 33.3 MB 都实测通过，
+4. **大体积链路只验到两头**：`chrome.storage.local` 35 MB 与 postMessage 34,952,536 字符都实测通过，
    但「注入脚本 → popup 的 `chrome.runtime` 那一跳」与「25 MiB 原件的上传段」未用真实大 PDF 走通，
-   真实实测过的最大原件是 6.45 MB。
+   真实实测过的最大原件是 6.45 MB（arXiv 2005.14165，base64 后 8.61 MB）。
 5. **`unlimitedStorage` 是否在安装时多一条权限提示，未实测**：加载已解压扩展不走安装对话框。
 6. **出版社站基本拿不到 PDF**（Nature、Springer 因跨域身份握手），属「不碰登录态」的必然结果，不修。
 
