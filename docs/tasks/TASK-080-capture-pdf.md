@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-080"
-status = "IN_REVIEW"
+status = "IN_ACCEPTANCE"
 risk = "L3"
 risk_reason = "要给契约第 14 节的 CapturePayload 增加携带 PDF 的字段（两份平行实现 + 逐字比对守卫），并可能动第 14.4 节的 manifest 权限集合（`unlimitedStorage`）。改动落在 docs/contracts/**，命中 risk-policy.json 的 high_risk_paths；同时改变「采集一篇文献」这个核心动作的产物形态（WEB+快照 → FILE+原件），属跨模块的产品语义变化。取最高定 L3：1 Worker → 自动检查 → 独立只读 Reviewer → 独立只读 Integration/Acceptance。"
 risk_flags = ["public-api", "architecture"]
@@ -238,10 +238,129 @@ arXiv 图片数为 0，所以首轮端到端实测没暴露它。
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：待填
-- Review：待填
-- Acceptance：待填
-- 最终状态/风险/用户操作：待填
-- 非阻断遗留项：待填
-- 日期与决定日志：2026-09-21 用户提出「抓 PDF 而不是抓原文页、要 Zotero 那样在自己的阅读器里读」→ 主 Agent 反问三点、用户逐条定案 → 用户补充「以体验为主、不要过多授权」→ 主 Agent 实测 arXiv 的 PDF 同域可直取 → 登记 TASK-080。
+- **候选 SHA**：`0fe1927522d0e0ef04a8b79e829ee40a2c34a625`（基线 `9bd2b41`）。
+  候选链：`1c6fb7d`（首轮）→ `e85fcea`（首轮 Review F1–F5/F7 修正）→ `0fe1927`（二轮非阻断项①②③）。
+- **检查**：`python3 scripts/governance/check_task.py --task docs/tasks/TASK-080-capture-pdf.md --worktree`
+  → **CHECKS PASS**（11 条，contracts/extension/frontend 三组），`files=23`
+  `product_fingerprint=16e757d25d233a415133e9e98f3d6f9149d14af12f4acfea73210a7ab641e538`。
+  单测：扩展 181、前端 779。
+
+### 冻结候选之后补做的运行证据（登记时列的两条风险，由此从推算变为实测）
+
+1. **端到端真实链路**（真实 Edge + 真实 arXiv + 真实本机后端，2026-09-21）：
+   注入脚本在隔离世界采到 `Attention Is All You Need` 的 2.11 MB PDF → 真实 `/capture` 确认页
+   （勾选框默认勾上、正文框不显示）→ 保存 → 后端存下
+   `source_type=FILE`、`source_url=null`、原件 `1706.03762.pdf` / 2,215,244 字节 /
+   `application/pdf` / `READY`，文献信息 `PREPRINT` + `10.48550/arXiv.1706.03762` + 2017 →
+   **站内 PDF 阅读器渲染成功**：15 页，画布 612×792，截图确认是论文正文。
+   这条正是用户要的那件事（「zotero 做的是直接抓下来 pdf 在自己的阅读器里阅读」）。
+2. **暂存配额（登记风险 1）**：在真实 Edge 里加载真实扩展，于其 service worker 中
+   `chrome.storage.local.set` 写入 **8 / 12 / 35 MB** 均成功并原样读回；
+   `chrome.permissions.getAll()` 返回的正是 `activeTab`/`storage`/`unlimitedStorage`/`scripting` 四项。
+   35 MB 覆盖了 25 MiB 原件 base64 后约 34.9 MB 的最坏情况。
+3. **跨窗口传输体积（登记风险 2）**：向真实 `/capture` 页 postMessage 一份合规的
+   **33.3 MB base64**（26,214,400 字节，恰好契约上限），接收端校验通过并渲染出勾选框，
+   耗时 **204 ms**；确认页显示「保存这份 PDF（huge.pdf，25.0 MB）」。**未点保存**，不往库里塞测试数据。
+
+### Review（L3 独立只读，三轮，同一位 Reviewer）
+
+**第一轮**（候选 `1c6fb7d`）：**CHANGES_REQUIRED**。报告原文：
+
+> **只读证明**：本 Agent 仅有 `Read`/`Grep`/`Glob`，无写工具、无 Bash。候选 `1c6fb7d`／基线 `9bd2b41`。**覆盖声明**：无 Bash 即无法执行 `git diff base..candidate`，我审的是 20 个在范围路径的**最终文件内容**及其调用链（popup→capture→bridge→relay→CapturePage→api），未机械比对逐行增量——这是本轮的真实覆盖边界。
+>
+> ### 必须修复
+>
+> **F1 `extension/src/popup/main.ts:58-66` + `popup.ts:15,31` ↔ `CapturePage.tsx:121-137`：PDF 路径下仍向用户索取用不上的站点权限，并对用户说了假话。**
+> popup 未被本任务改动，仍按 `payload.images.length > 0` 弹「一并保存需要授予读取网站数据的权限」，用户点允许即触发 `chrome.permissions.request`（真实的持久 origin 授权）；而确认页 `savingPdf` 为真时**在冻图之前就 return**，images 一张不碰。随后 `deliveryText` 还告诉用户「图片会在保存正文之后逐张下载」——该行为不存在。
+> 触发：任何**既抓得到 PDF、正文里又有图**的页面。任务记录自己列的 PLOS ONE 就是这一类（正文含插图且 PDF 抓取成功）；arXiv 无图才碰巧不显。
+> 影响：①直接违背本任务完成条件「一次点击、无额外授权」与用户「不要过多点击授权、以体验为主」的定案；②让用户为零收益授出站点权限；③回执文案不实。
+> 修复方向：认出 `payload.pdf` 时跳过图片询问（或改问法），`main.ts`/`popup.ts` 需范围修订登记。
+>
+> ### 应修复（低成本，与本仓既有教训同族）
+>
+> **F2 `extension/src/shared/protocol.test.ts:62-78`：`MAX_PDF_BYTES` 没进镜像常量比对清单。** 逐字比对只覆盖函数体，`isCapturedPdf` 两份文本相同但常量各自定义（`extension/src/shared/protocol.ts:94`、`frontend/.../protocol.ts:77`）。该文件第 68-70 行的注释正是上次 Review F4 为同一问题留下的：一侧改小，合法载荷被静默丢弃、页面停空态且全绿。加一行即可。
+>
+> **F3 `pdf_problem` 未过信任边界校验。** 契约 14.2 规定取值四选一、14.3 要求「载荷必须通过结构校验」，但 `isCapturePayload`（两份 `protocol.ts:307/289`）只校验 `pdf`，`capturedFrom` 第 371 行 `pdf_problem ?? null` 原样透传，类型 `PdfProblem` 在运行时是假的。实际危害有限（仅作固定 Record 查键，未知值渲染成空 `<p>`，无注入面），但这是契约与实现不一致，且与同文件对 `citation`/`pdf` 的口径不齐。
+>
+> **F4 三处权限宣称里仍有一句不成立**：`extension/README.md:40` 与 `extension/AGENTS.md:25` 都写「manifest 顶层键**恰好**是 …/`action` **九个**」并漏列 `version_name`，而 `manifest.test.ts:86-99` 断言的是**十个**。这两段正是本任务改写的句子（`unlimitedStorage` 就补在同一句里），改一半留一半。门闩只查「权限项是否被提及」，查不到键数，所以不会自己报警。
+>
+> ### 可记录后继续
+>
+> - **F5 `CapturePage.tsx:242`**：`citationMiss` 提示写死「资料和**正文**都保存好了」，PDF 路径根本没存正文。该页曾为同类精确性删掉「只有」二字，口径应一致。无用例覆盖 PDF 路径下 `putCitation` 失败。
+> - **F6 登记时的「跨窗口传输体积」风险未闭环**：实测只到 base64 8.6 MB，25 MiB（≈33 MB base64）这条链未验。若 `sendMessage` 承受不住，`extract.ts:480-483` 的 `.catch(() => undefined)` 静默作废 → `capture.ts:72` 15 秒超时 → popup 说「可能内容还没加载完」，与真实原因无关，用户无从判断。建议要么实测一份大 PDF，要么在记录里降级为明示的已知限制。
+> - **F7** `isCapturedPdf` 未强制契约 14.2 写明的「必以 `.pdf` 结尾」；实际由 `files.ts:24` 的扩展名白名单兜住，伪造载荷最多得到一个 `.txt` 命名的 PDF 原件，无安全影响。
+> - 索引 `任务索引.md:24` 仍为 `READY`，记录 `status = IN_REVIEW`（主 Agent 写回 EVIDENCE 时一并补齐）。
+>
+> ### 逐条核实为真（问题 1-3、6）
+>
+> - **门闩确实更细，未发现新口子**（`boundaries.test.ts:88-113`）：非 `/background/` 且非 `extract.ts` 的文件仍被 `fetch(`/`XMLHttpRequest`/`sendBeacon` 全量扫描；对 `extract.ts` 另加四条。记录声称的四种变异与门闩代码逐条对得上：删同域判断 → `toBeGreaterThan(-1)` 红；挪到 fetch 后 → `toBeLessThan` 红；多一个调用点 → `toHaveLength(1)` 红；`omit`→`include` → `toContain`+`not.toMatch` 双红。已知残余（属既有的「源码文本辅助防线」，不视为缺陷）：保留 `target.origin !== origin` 字面量但让它不 return 的语义性绕过查不出；`indexOf('fetch(')` 只认无空格写法（失败方向安全）。
+> - **`unlimitedStorage` 名副其实**：它只解配额，不含站点可达性；`manifest.test.ts:126-146` 以「恰好四项」+ 无 `://`/`<all_urls>` 双重钉死。记录如实写明「是否产生安装提示未实测」，未冒充事实。
+> - **`capturePdf` 分支正确**：同域判断在 `fetch` 之前（`extract.ts:423` vs `425`）且用例断言 fetcher **未被调用**；`too-large` 在 `toBase64` 之前返回，不会先把 25 MiB 转码；`%PDF-` 自校验不信 `Content-Type`；四个 `pdf_problem` 取值与契约 14.7 一致。`toBase64` 分块 0x8000 安全；`safeName`/`pdfNameFor` 的空标题、坏转义、通用末段、超长（≤184 UTF-16 < `fileIssue` 的 255、< 守卫的 200）均有界，`.pdf` 后缀恒成立。唯一噪声：`slice(0,180)` 按 UTF-16 切可能切断代理对，产生孤立代理的文件名（多字节标题的极端情形，不阻断）。
+> - **两份协议同步**（除 F2 的常量缺口）：`isCapturedPdf` 已进逐字比对清单；`Math.ceil(bytes/3)*4 === len` 配合「末尾恰好 p 个 `=`、且没有 p+1 个」在数学上唯一确定字节数（我按 bytes∈{1,2,3} 对 len=4 逐一验证过），`bytes: 9` 那条用例正是钉住补齐位的那一条，不能被只比长度的平凡实现骗过。
+> - **测试绑住了行为**：`extract.test.ts:519-608` 断言了 `credentials: 'omit'` 的实参、跨域零请求、文件名三种来源；`CapturePage.test.tsx:520-590` 断言 multipart 的 `source_type=FILE`/文件名/大小、**没有 snapshot PUT**、取消勾选后回落 WEB 且 `upload` 未被调用、四种 problem 各自文案。未被平凡实现骗过。未覆盖：PDF 路径 `putCitation` 失败（F5）、`byteLength < 5`、恰好 25 MiB 边界。
+>
+> **剩余风险**：出版社站因跨域重定向拿不到 PDF（记录已追到根因，属「不碰登录态」的必然结果，不应修）；大体积 PDF 的传输链未验（F6）；`unlimitedStorage` 的安装提示未实机确认（记录已如实标注）。
+
+**第二轮**（`1c6fb7d..e85fcea` 增量）：**PASS，带 4 条非阻断项**。报告原文：
+
+> **运行器只读证明**：本轮仅有 Read/Grep/Glob，无 Write/Edit/Bash；未改动任何文件。复核对象为新候选 `e85fcea`（相对 `1c6fb7d` 的增量 + 受影响上下文），按你给的清单逐文件读现内容判断。
+>
+> **结论：PASS**（带 4 条非阻断项）
+>
+> 1. **F1 已真修**。`/Users/yuklimching/Desktop/StudyPilot/extension/src/popup/popup.ts:29` `images.length>0 && !payload.pdf`，`main.ts:58` 用它做唯一提问闸口，`main.ts:41` 回执传 `Boolean(outcome.payload.pdf)`，`deliveryText` 的 PDF 分支不再承诺「逐张下载」。代价告知成立：`CapturePage.tsx:304` 在用户取消勾选的那一刻显示「正文里的图片保留原网站地址（抓 PDF 时没有向你要图片权限）」，与 `deliverCapture` 的 `images: []`（capture.ts:107）一致，不存在界面承诺而载荷没有的情况；降级形态与「拒绝授权」同路，可接受。未引入新问题：`isCapturePayload` 保证 markdown 非空，取消勾选不会走到「正文不能为空」死路。
+> 2. **F2/F3/F4/F5/F7 均落实、无改一半**：MAX_PDF_BYTES 进镜像常量表且正则可匹配（`protocol.test.ts:82`）；`isPdfProblem` 两份函数体逐字相同并进比对清单（:123）、已接入 `isCapturePayload`；`extension/README.md:40` 与 `extension/AGENTS.md:25` 的十个键集合与 `manifest.test.ts` 白名单逐项相符、`permissions` 同步为四项；citationMiss 的 `pdf` 位与文案分叉；`.pdf` 后缀判定两侧一致且大小写不敏感有用例。
+> 3. **新用例确实绑住行为**：`shouldAskAboutImages` 有图+PDF → false（回退成旧判断必红）；PDF 路径 citation 失败那条断言「资料和 PDF 原件都保存好了」且显式否定旧文案，去掉 `pdf: true` 必红。
+> 4. **范围修订 2 与实际相符**：`main.ts` 已登记（TASK-080 记录 :42），其余改动文件均在原 allowed_paths 或修订 1 内，未见越界。**限制**：无 Bash，我无法独立枚举 `1c6fb7d..e85fcea` 的文件清单，此条依赖你给的变更列表。
+> 5. **F6 可以关闭为阻断项，但保留一行已知限制**：35 MB 写入成功覆盖了上限（25 MiB→base64 约 34.9 MB），204 ms 覆盖了 postMessage+校验，两条登记时的未知都被真实数字回答。未覆盖的是注入脚本→popup 的 `chrome.runtime` 那一跳与 25 MiB 原件的上传段，真实实测最大仍是 8.6 MB——写进「已知限制」即可。
+>
+> **非阻断项**：① `extension/src/injected/extract.ts:392` 仍是 `${name.slice(0, 180)}.pdf`，按 UTF-16 切，emoji 密集的长标题仍可能留下孤立代理（safeName 本身已按码点切）；不建议直接删这行（会让 `name.length ≤ 200` 失去兜底导致整条载荷被丢弃），影响只是文件名里一个替换字符。② 码点切法无用例绑定。③ 契约 14.6/14.7 未写「抓到 PDF 就不请求图片权限」这条新授权面行为（现有表述不假，只是没同步）；补它会产生新候选，建议记为遗留。④ `main.ts` 接线无用例（既有结构如此），靠你报的 PLOS ONE/Nature/维基三页实测支撑，我无法复验该实测。
+>
+> **继承范围**：首轮对 `base..1c6fb7d` 的全部结论继续有效——`capturePdf` 的同域判断/`credentials: 'omit'`/`%PDF-` 魔数/25 MiB 分因、boundaries 网络门闩的四条变异验证、`isCapturedPdf` 的 base64 自洽校验、`capturedFrom` 的字段复制、确认页 FILE 上传与 partial 口径、manifest 权限断言——这些代码本轮未被触及。本轮只审上列变更文件及其调用链。
+>
+> **剩余风险**：PDF 存在时用户若想要「网页正文 + 冻结图片」已无可达路径（重采也不会再问），这是已告知、用户定案方向内的取舍；出版社站取不到 PDF 的既有限制不变。
+
+**第三轮**（`e85fcea..0fe1927` 增量，处理二轮非阻断项①②③）：**PASS，无阻断项**。报告原文：
+
+> ## 结论：PASS
+>
+> **1. `capName`（extension/src/injected/extract.ts:386-393）** 两个边界都成立：`for...of` 按码点取 `ch`，只在 `out.length + ch.length <= max` 时整体追加，代理对要么整进要么整不进，且 `out.length` 恒 ≤ `max`。奇数 `max` 遇 2 单元字符时提前 `break`（不跳过该字符去凑后面的 BMP 字符），结果偏短但仍合法；空串、`max=0`/负值均返回 `''`，无反例。`pdfNameFor`：三条来源（`safeName(stem)`、`safeName(title)`、`'paper'`）分别 ≤180/≤180/5，加 `.pdf` 后 `name.length ≤ 184 < 200`，第二次 slice 确属冗余，去掉后恒成立。
+>
+> **2. 断言判别性成立，可从代码确认。** 旧写法下 `'a'+🙂×300` → 码点切成 `'a'+179 emoji`（359 单元），再 `slice(0,180)` 切在索引 179 = 某代理对高位，留下孤立代理 → 第二条断言必红；纯 emoji 时 180 落在低位，完整、长度 184，两条都绿。故 `a` 前缀确为判别关键。长度断言与 `isCapturedPdf` 则挡住"只按码点切"那一种退化。
+>
+> **3. 契约一致。** §14.4:932-938 的判断式与 popup.ts:29 逐字相符，用例在 popup.test.ts:70，取消勾选的说明见 CapturePage.tsx:304；"只减少请求的权限"属实（无新增权限项）。§14.7:998 回指正确。无夸大或遗漏。
+>
+> **No blocking findings.** 仅两处文字瑕疵（不必改）：extract.test.ts:596 注释说"编解码回来"，实际是直接扫码点区间；`capName` 在截断点恰为空格时可能留下尾随空格（`foo .pdf`），属既有行为、不违反 `name.trim()` 非空。
+>
+> **继承范围**：`e85fcea` 全量结论（抓取判定、同源与 `credentials:'omit'`、四种 `pdf_problem`、协议守卫、存储与暂存代价、FILE 资料路径、前端确认页分支）原样继承，本轮未重审。
+>
+> **剩余风险/声明**：我仅有 Read/Grep/Glob，无法执行 git，故"`e85fcea..0fe1927` 只含这三个文件"依据主 Agent 报告；我核的是当前工作区内容。变异验证（改回旧写法变红）亦未由我复跑，证据来自主 Agent 报称——但我已从代码独立推出同一结论。
+
+### Acceptance（L3 独立只读验收）
+
+- 待填。
+
+### 最终状态 / 风险 / 用户操作
+
+- 待填。
+
+### 非阻断遗留项（已明确处置，不在本任务修）
+
+1. **`main.ts` 的 DOM 接线没有用例**（二轮非阻断项④）。该文件历来只做接线，判断逻辑已抽成
+   `shouldAskAboutImages` 并有用例；接线本身靠 PLOS ONE / Nature / 维基三页真实浏览器实测支撑。
+2. **`extract.test.ts` 里一句注释说「编解码回来」，实际是直接扫码点区间**（三轮非阻断项，Reviewer 判「不必改」）。
+3. **`capName` 在截断点恰为空格时可能留下尾随空格**（`foo .pdf`）（同上，不违反 `name.trim()` 非空）。
+4. **大体积链路只验到两头**：`chrome.storage.local` 35 MB 与 postMessage 33.3 MB 都实测通过，
+   但「注入脚本 → popup 的 `chrome.runtime` 那一跳」与「25 MiB 原件的上传段」未用真实大 PDF 走通，
+   真实实测过的最大原件是 6.45 MB。
+5. **`unlimitedStorage` 是否在安装时多一条权限提示，未实测**：加载已解压扩展不走安装对话框。
+6. **出版社站基本拿不到 PDF**（Nature、Springer 因跨域身份握手），属「不碰登录态」的必然结果，不修。
+
+### 日期与决定日志
+
+- 2026-09-21 用户提出「抓 PDF 而不是抓原文页、要 Zotero 那样在自己的阅读器里读」→ 主 Agent 反问三点、
+  用户逐条定案 → 用户补充「以体验为主、不要过多授权」→ 主 Agent 实测 arXiv 的 PDF 同域可直取 → 登记 TASK-080。
+- 2026-09-21 实现中途登记**范围修订 1**（门闩与三处权限宣称）→ 实现 → 真实站点实测发现 PLOS 文件名与
+  Nature/Springer 的跨域身份握手 → 冻结候选 `1c6fb7d`。
+- 2026-09-21 首轮 Review 报 **F1**（PDF 路径仍索取用不上的图片权限）→ 登记**范围修订 2** → 修 F1–F5/F7
+  → `e85fcea` → 二轮 PASS + 4 条非阻断项 → 处理①②③ → `0fe1927` → 三轮 PASS，无阻断项。
 <!-- EVIDENCE:END -->
