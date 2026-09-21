@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-080"
-status = "IN_ACCEPTANCE"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "要给契约第 14 节的 CapturePayload 增加携带 PDF 的字段（两份平行实现 + 逐字比对守卫），并可能动第 14.4 节的 manifest 权限集合（`unlimitedStorage`）。改动落在 docs/contracts/**，命中 risk-policy.json 的 high_risk_paths；同时改变「采集一篇文献」这个核心动作的产物形态（WEB+快照 → FILE+原件），属跨模块的产品语义变化。取最高定 L3：1 Worker → 自动检查 → 独立只读 Reviewer → 独立只读 Integration/Acceptance。"
 risk_flags = ["public-api", "architecture"]
@@ -259,12 +259,15 @@ arXiv 图片数为 0，所以首轮端到端实测没暴露它。
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- **候选 SHA**：`0fe1927522d0e0ef04a8b79e829ee40a2c34a625`（基线 `9bd2b41`）。
-  候选链：`1c6fb7d`（首轮）→ `e85fcea`（首轮 Review F1–F5/F7 修正）→ `0fe1927`（二轮非阻断项①②③）。
-- **检查**：`python3 scripts/governance/check_task.py --task docs/tasks/TASK-080-capture-pdf.md --worktree`
-  → **CHECKS PASS**（11 条，contracts/extension/frontend 三组），`files=23`
-  `product_fingerprint=16e757d25d233a415133e9e98f3d6f9149d14af12f4acfea73210a7ab641e538`。
-  单测：扩展 181、前端 779。
+- **最终候选 SHA**：`6fb4fcd8f82aaed4cb6e48b656be8b6d8684ff3e`（基线 `9bd2b41`）。
+  候选链：`1c6fb7d`（首轮）→ `e85fcea`（首轮 Review F1–F5/F7）→ `0fe1927`（二轮非阻断项①②③）
+  → `40fbe4f`（验收发现的下载超时）→ `6fb4fcd`（四轮 Review F1–F3 与验收复核的两条必修）。
+- **检查（对最终候选重跑）**：`python3 scripts/governance/check_task.py --task docs/tasks/TASK-080-capture-pdf.md --worktree`
+  → **CHECKS PASS**（11 条，contracts/extension/frontend 三组），`files=25`
+  `product_fingerprint=a4305091217d7643bd9e6b91b6bec22b936b9f22275da00ef8641c89d92b1532`。
+  单测：扩展 **183**、前端 **781**。
+  （旧的那一组 `0fe1927` / `files=23` / `16e757d…` / 181 / 779 已作废——L3 独立验收指出
+  「按 §6 旧 SHA 的 PASS 不能代表新候选」，这是它最后一条未完成动作。）
 
 ### 冻结候选之后补做的运行证据（登记时列的两条风险，由此从推算变为实测）
 
@@ -378,6 +381,32 @@ arXiv 图片数为 0，所以首轮端到端实测没暴露它。
 >
 > **剩余风险/声明**：我仅有 Read/Grep/Glob，无法执行 git，故"`e85fcea..0fe1927` 只含这三个文件"依据主 Agent 报告；我核的是当前工作区内容。变异验证（改回旧写法变红）亦未由我复跑，证据来自主 Agent 报称——但我已从代码独立推出同一结论。
 
+**第四轮**（`0fe1927..40fbe4f`，下载超时那次改动）：**PASS，3 条非阻断项**。报告原文：
+
+> ## 结论：PASS（增量）
+>
+> **1. `AbortSignal.timeout` 的错误类型——不会落空。** Chrome/Edge 中 fetch 以信号的 abort reason 拒绝，即 `DOMException`，`name === 'TimeoutError'`（手动 abort 才是 `AbortError`）。按 WebIDL，`DOMException.prototype` 的原型就是 `Error.prototype`，Chrome/Edge/Node/jsdom 均满足，故 `cause instanceof Error` 为真，不会把超时误判成 `failed`。注入脚本与 `fetch` 同一 realm，无跨 realm instanceof 陷阱。附带：若 `AbortSignal.timeout` 不存在（Chrome <103），它在 `try` 内抛出 → 落 `failed`，不崩。
+>
+> **F1（非阻断，建议）** extract.test.ts:617 用的是改了 `name` 的普通 `Error`，真正的 `DOMException` 分支从未被执行——正是你最不确定的那一处没被用例覆盖。一行可解：改成 `new DOMException('…', 'TimeoutError')`；或干脆去掉 `instanceof Error`，防御性读 `.name`，整类疑问消失。
+>
+> **2. 30 秒可接受。** 只有本就卡住的普通采集多等 15 秒，且 popup 全程有提示。**F2（非阻断）** main.ts:50 的提示始终是「正在读取这一页…」，下载几 MB 时这句话已不属实，建议下载阶段换句文案。你没想到的替代方案（注入脚本先回一个「已提取、开始下载」再延长外层预算）要新增一种消息，收益不抵复杂度，不建议。**F3（非阻断）** 默认 30_000 与「外层必须比内层宽」这条不变量无用例钉住：capture.test.ts 全部显式传 timeout，`PDF_TIMEOUT_MS` 未导出，目前只靠注释与契约守着。
+>
+> **3. 清单无遗漏。** 两份 `protocol.ts` 的类型与守卫逐字一致，且 `isPdfProblem` 函数体由 extension/src/shared/protocol.test.ts:123 机械比对；CapturePage 的 `Record<PdfProblem, string>` 由类型强制穷尽；frontend/src/features/capture/protocol.test.ts:311、CapturePage.test.tsx:588 五值齐；契约 14.2:859「五者之一」与 14.7:993 新行均已改，全仓无残留的「四者之一」。时限定法（实测 9.2s → 20s 约一倍余量，30 > 20 + 提取）有据、已写进契约。
+>
+> **4. 用例绑住了行为。** 反向由 `serving(null)`（抛 `TypeError`）钉在 `failed`（extract.test.ts:503/564），故「一律 slow」「凡 Error 即 slow」都会红；去掉 name 判断则新用例红。平凡实现骗不过，唯一缺口即 F1。
+
+**第五轮**（`40fbe4f..6fb4fcd`，落实四轮 F1–F3 与验收的文本必修）：**PASS，无阻断项**。报告原文：
+
+> ## 结论：PASS（增量，最后一轮）— No blocking findings
+>
+> **① 防御性读名字无新坑。** `(cause as {name?: unknown} | null)?.name`：`cause` 为 `null`/`undefined` 时可选链短路得 `undefined` → 落 `failed`；原始值（`0`、`''`、字符串、symbol）会装箱取属性，`?.` 只对 nullish 短路，均不抛、得 `undefined` → `failed`。严格相等比 `'TimeoutError'`，`unknown` 类型下不会误配。唯一理论例外是抛出物带一个**会抛的 `name` getter**——那要页面自己替换 `fetch` 才可能，且旧写法 `cause.name` 同样暴露，无回归，不值得处理。用例改为真 `DOMException`（extract.test.ts:619），F1 缺口确已堵上；负向仍由 `serving(null)` 的 `TypeError` → `failed` 守着。
+>
+> **② 只在测试期发生。** `import { PDF_TIMEOUT_MS }` 只出现在 capture.test.ts:3；生产 `capture.ts`/`main.ts` 不引用 extract。两个产物入口分开（`vite.config.ts` 打 popup，`vite.injected.config.ts` 单独打 extract 的 IIFE），测试文件不是构建输入，Defuddle 不会进 popup 产物。**一条可选提示（非阻断）**：extension 的 vitest 默认 `environment: 'node'`（vite.config.ts:72），capture.test.ts 因此在无 DOM 环境下加载 `defuddle/full`；现在能过说明它模块顶层不碰 DOM，但将来 defuddle 升级若改了这点，红的会是一个与它无关的 popup 用例。把两个常量挪进 `shared/` 可一劳永逸，现在不必动。
+>
+> **③ 5000 ms 余量站得住。** 外层要装下注入 + Defuddle 解析 + ≤20 s 下载 + base64（25 MiB 量级）+ 消息 + `storage.local` 落盘；当前实际余量 10 s，断言只是下限，防的是「只多一毫秒」那种退化。取值与差值双断言，变异验证的报错文本与代码一致。
+>
+> **④ 无残留改一半。** 全仓 `四种/四者` 只剩与本任务无关的用法（四种位图类型、旧任务记录、门闩四种变异），以及 TASK-080 EVIDENCE 里三轮报告**原文**——那本就不该动，处理正确。契约 14.7:986「五种原因」与下方五行表格已自洽，14.2:859、两份 `isPdfProblem` JSDoc、两处测试注释均已改齐。两份 `protocol.ts` 的守卫函数体仍由 protocol.test.ts:123 机械比对。F2 文案见 main.ts:52。
+
 ### Acceptance（L3 独立只读验收，独立于实现者与 Reviewer）
 
 对候选 `0fe1927`（证据写回后 `bfbde5a`）：**ACCEPTED**，完成条件九条逐条达成；报告原文：
@@ -408,6 +437,33 @@ arXiv 图片数为 0，所以首轮端到端实测没暴露它。
 >
 > **建议用户合并前人工确认**：① 在真实 Edge 上**点一次扩展图标**走完整条（arXiv 一篇＋一篇带图的开放获取论文），确认 popup→storage→relay 这一跳与「不再弹图片授权」在真实点击下成立；② 重新加载扩展时留意是否出现新的权限提示（`unlimitedStorage` 未实测）；③ 若手边有 >10 MB 的论文，顺手试一次，即可同时闭掉遗留项 4 与上面的超时疑虑。
 
+**验收第二轮**（对 `40fbe4f`）：**CHANGES_REQUIRED**（两条文本必修 + 一条证据缺口，代码行为本身达成）。报告原文：
+
+> **结论：CHANGES_REQUIRED（两条文本必修 + 一条证据缺口），代码行为本身达成**
+>
+> 1. **第 2 条完成条件：行为与用例齐整，文字不齐整。** 五种各有两侧用例：`extract.test.ts:611-627`（`TimeoutError` → `slow`，且明确否定 `failed`）＋`CapturePage.test.tsx:584-589` 的 it.each 五条；`isPdfProblem` 两份同步（`extension/src/shared/protocol.ts:294`、`frontend/src/features/capture/protocol.ts:276`）＋`protocol.test.ts:311`。但「四种」仍留在五处：**契约 `docs/contracts/API与数据契约基线.md:986`「四种原因」紧接五行表格——契约自相矛盾，必改**；两份 `protocol.ts` 的 `isPdfProblem` JSDoc（:282 / :264）都写「契约 14.7 列的四种之一」，两份一致所以逐字比对守卫照样绿（正是它的已知盲区「两份一起错」）；`frontend/.../protocol.test.ts:309` 与 `CapturePage.test.tsx:582` 注释同；记录完成条件 141 行仍写「四种情形」，且没有登记范围修订 3。这与首轮 F4「改一半留一半」同族，成本一个词。
+> 2. **`runCapture` 15→30 秒：不超范围，不必退回。** `extension/src/popup/capture.ts` 在 allowed_paths；外层宽于内层 20 秒是修复本任务自己引入风险的必要条件，退回只改 PDF 侧反而要引入双时限更复杂。已在契约 14.7:993 显式披露，等待期间 popup 有「正在读取这一页…」（`main.ts:50`），非静默。**非阻断建议**：「外层 > 内层」目前只是注释，`PDF_TIMEOUT_MS` 未导出、无断言；有人调回 15 秒会静默复发，值得一条守卫。
+> 3. **三处改正到位**：跑到/没跑到的跳已逐条写明（:250-257，明确把点图标→popup→storage→relay 归入需用户实机确认）；口径统一为 34,952,536 字符（:267-270）；五篇出处表（:273-281）与 `manifest.ts:103`、契约 14.4、遗留项 4 的 0.74–6.45／0.99–8.61 MB 逐一对得上，9,243 ms 与 20 秒时限、10 秒被否的叙述自洽。**新的「说得比做得多」只剩上面那批「四种」。** 另：`AbortError`（如页面跳转导致的中止）也会被报成 `slow`，属可接受的宽松归类。
+> 4. **证据缺口（必补）**：EVIDENCE 候选仍是 `0fe1927`，检查仍是那一次（`files=23`、`fingerprint=16e757d…`、扩展 181／前端 779）。`40fbe4f` **没有对应的 `check_task.py` 结果**，按 §6 不能用旧 SHA 的 PASS 代表新候选；改完「四种」文本后一并重跑并写回即可。
+
+**验收第三轮**（对最终候选 `6fb4fcd`）：**ACCEPTED**。报告原文：
+
+> **结论：ACCEPTED**——唯一未完成动作是把 EVIDENCE 里的候选与检查换成新的那一组。
+>
+> ① **完成条件全部达成（第 2 条现为五种，齐整）**：契约 `API与数据契约基线.md:986` 已改「五种原因」并紧接五行表；两侧用例各五条（`extract.test.ts:611-627` 现抛**真 `DOMException`**，`CapturePage.test.tsx:584-589`，`protocol.test.ts:311`）；两份 `isPdfProblem` 同步（`extension/.../protocol.ts:294`、`frontend/.../protocol.ts:276`），两份 JSDoc 同改「五种」——逐字比对守卫因此仍绿且不再是「两份一起错」。守卫已落地且判别性成立：`capture.test.ts:247,249`（15_000 会让 `>` 与差值≥5000 双红），`PDF_TIMEOUT_MS`/`CAPTURE_TIMEOUT_MS` 均已导出。popup 文案 `main.ts:52` 与 30 秒等待相符。门闩四条未被新改动破坏（仍单一 `fetch(`、同域判断在前、`credentials:'omit'`）。
+>
+> ② **范围修订 3 如实**：登记在正文（:138-157，EVIDENCE 区外）、完成条件同步（:162）、两处越范围改动逐条明示，代价「普通采集卡住要多等 15 秒」写明，并如实标注越权判断来自独立验收而非自决。**没有把该修的塞进遗留**——遗留仍是那 6 条（接线无用例、两处文字瑕疵、大体积链路两头、安装提示未实测、出版社站），性质都属确实不该在本任务修。
+>
+> ③ **仅剩一处「说得比做得多」**：EVIDENCE `:262-267` 的候选仍是 `0fe1927`、检查仍是 `files=23`／`16e757d…`／181/779，与被测内容（`6fb4fcd`、`files=25`、`a4305091…`、183/781）不符；按 §6 旧 SHA 的 PASS 不能代表新候选，写回即闭合。三轮 Review 原文里的「四种」保持不动是对的，那是历史原文。其余未发现新的不实或推算冒充实测。
+>
+> ④ **给用户的人工确认清单（最终版）**：
+> 1. 在真实 Edge 上**点一次扩展图标**走完整条（arXiv 一篇 + 一篇带图的开放获取论文如 PLOS）——记录明确标注「点图标→popup→`storage.local`→relay」这一段自动化跑不到，且要顺带确认抓到 PDF 时**不再弹图片授权框**。
+> 2. 重新加载扩展时留意是否多出权限提示（`unlimitedStorage` 的安装提示始终未实测，三处均已如实标注）。
+> 3. 试一篇大/慢的 PDF（arXiv 2005.14165，6.45 MB）：期望**要么成功，要么确认页显示「20 秒内没下完」并存下网页正文**，绝不该再出现整次采集什么都不交付；同时留意等待期间 popup 的新提示是否让人安心。
+> 4. 合并后留意一次：若日常采集常见 `slow`，说明 20/30 秒对你的网络仍偏紧，可回报调整。
+>
+> **剩余风险**：出版社站取不到 PDF（不碰登录态的必然结果）；`chrome.runtime` 那一跳与 25 MiB 上传段仍未用真实大 PDF 走通；门闩与三处宣称仍是源码文本防线。
+
 ### 验收之后的实现修改（形成候选 `0fe1927` 之后的新候选）
 
 验收提的那条**不是记一笔就算的**，所以改了代码而不是塞进遗留清单：
@@ -425,7 +481,23 @@ arXiv 图片数为 0，所以首轮端到端实测没暴露它。
 
 ### 最终状态 / 风险 / 用户操作
 
-- 待填。
+- **状态：ACCEPTED**，等待用户合并（只有用户本人可以合并）。
+- **执行链已走完**：1 Worker（主 Agent 亲自实施，路径与角色登记在案）→ 自动检查 CHECKS PASS
+  → 独立只读 Reviewer **五轮**（首轮 CHANGES_REQUIRED，抓到 F1「PDF 路径仍索取用不上的站点权限」这条真缺陷）
+  → 独立只读 Acceptance **三轮**（首轮 ACCEPTED 并指出下载超时会拖垮整次采集，二轮 CHANGES_REQUIRED
+  指出契约自相矛盾与证据缺口，三轮 ACCEPTED）。
+- **剩余风险**：① 出版社站基本拿不到 PDF（跨域身份握手，不修）；② `点图标 → popup → storage → relay`
+  这一跳与 25 MiB 原件的上传段未用真实大 PDF 走通；③ 门闩与三处权限宣称仍是源码文本防线，
+  挡常见模式而非有意规避。
+- **需要用户做的事**（自动化够不到的部分，按独立验收的最终清单）：
+  1. 在真实 Edge 上**点一次扩展图标**走完整条：arXiv 一篇 + 一篇带图的开放获取论文（如 PLOS），
+     确认抓到 PDF 时**不再弹图片授权框**。
+  2. 重新加载扩展时留意是否多出权限提示（`unlimitedStorage` 的安装提示始终未实测）。
+  3. 试一篇大/慢的 PDF（arXiv `2005.14165`，6.45 MB）：期望**要么成功，要么确认页显示
+     「20 秒内没下完」并存下网页正文**，绝不该再出现整次采集什么都不交付。
+  4. 合并后若日常采集常见 `slow`，说明 20/30 秒对当前网络仍偏紧，回报一下即可调。
+  5. 实测过程中在真实库里建了一份「Attention Is All You Need」（2.11 MB PDF）测试资料，
+     要删的话由用户决定——那是用户数据，主 Agent 不自行删除。
 
 ### 非阻断遗留项（已明确处置，不在本任务修）
 
@@ -438,6 +510,18 @@ arXiv 图片数为 0，所以首轮端到端实测没暴露它。
    真实实测过的最大原件是 6.45 MB（arXiv 2005.14165，base64 后 8.61 MB）。
 5. **`unlimitedStorage` 是否在安装时多一条权限提示，未实测**：加载已解压扩展不走安装对话框。
 6. **出版社站基本拿不到 PDF**（Nature、Springer 因跨域身份握手），属「不碰登录态」的必然结果，不修。
+7. **`capture.test.ts` 为用那条时限守卫而 import 了 `injected/extract`**，于是在 vitest 的 node 环境下
+   加载 `defuddle/full`（第五轮 Review 的可选提示）。目前能过，说明 defuddle 模块顶层不碰 DOM；
+   将来它若改变这一点，红的会是一个与它无关的 popup 用例。把两个时限常量挪进 `shared/` 可一劳永逸，
+   本任务不动——那会牵动两份平行协议的镜像清单。
+8. **`AbortError`（例如采集中途页面跳转导致的中止）也会被报成 `slow`**（验收第二轮指出），
+   属可接受的宽松归类：两者对用户的下一步一样——再试一次。
+
+### 最终实测复核（最终候选的构建产物，2026-09-21）
+
+最终候选改过时限与超时判定，故把 `dist/extract.js` 重新构建后又在真实线上页面跑了一遍：
+arXiv `1706.03762` 仍抓到 2.11 MB（`1706.03762.pdf`）；PLOS ONE 仍抓到 0.86 MB 且文件名取自标题；
+Nature 与 Springer 仍是 `failed` 退回存正文；维基百科仍不认作文献。无回归。
 
 ### 日期与决定日志
 
