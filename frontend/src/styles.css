@@ -2643,6 +2643,9 @@ a.source-chip:focus-visible {
   min-width: 0;
 }
 /* 顶栏里的 `h1`：和按钮同高、一行截断。**不换行**——换行等于把省下来的高度还回去。 */
+.reader-toolbar-title .source-chip {
+  flex: 0 0 auto;
+}
 .reader-title.inline {
   font-size: 1rem;
   font-weight: 600;

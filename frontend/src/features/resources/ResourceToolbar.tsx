@@ -247,12 +247,13 @@ export function ResourceToolbar({
               在窄屏隐藏），窄屏仍只有徽章——顶栏不会因为一个长文件名而撑高。 */}
           {pdfMode && (
             <div className="reader-toolbar-title">
-              <span className={`source-chip ${resource.source_type.toLowerCase()}`}>
-                {sourceLabels[resource.source_type]}
-              </span>
+              {/* 顺序按草图：标题在前、来源徽章在后。 */}
               <h1 className="reader-title inline" ref={headingSlot} tabIndex={-1}>
                 {resourceTitle(resource)}
               </h1>
+              <span className={`source-chip ${resource.source_type.toLowerCase()}`}>
+                {sourceLabels[resource.source_type]}
+              </span>
             </div>
           )}
           <div className="reader-toolbar-buttons">
