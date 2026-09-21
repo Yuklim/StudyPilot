@@ -152,6 +152,19 @@ Zotero 分层：站点专用翻译器 `100` → unAPI `300` → COinS `310` → 
   - 第 4 点（真实页面实跑）：「是**不可独立复核的口头证词**……夹具本身不能独立支撑『arXiv 会被认出』。可接受的口径是把它降级表述，并把『用户在 arxiv.org 实测一次』列为合并后必须做的验证。」——已照此改写实现记录里的那一段。
 - 修正后重跑：`check_task.py --worktree` → **CHECKS PASS**（`product_fingerprint=3e632e2d…`；extension **168 passed**）。
 
+### 第二轮 Review F6 的修正（第三候选）
+
+结论 CHANGES_REQUIRED（1 条必须修）。Reviewer 先确认了 F1–F4 四条都真修住、四组反例与论文名那条均非恒真（并逐条给出了变异对照），然后抓到**我修 F1 时引入的回归**：
+
+- **F6（必须修→已修，回归，且正落在本任务的目标页面族上）** 类型链的入口是 `says('scholarlyarticle') || journal || doi`，**`arxivId` 不在其中**。F1 把链接 DOI 收紧成「强信号前提 + 全页唯一」之后，「有 `citation_arxiv_id` 但没有可采纳 DOI」的页面就掉进了 `OTHER`。最实际的触发：**arXiv 上带 "Related DOI" 的 abs 页**——作者填了已发表的 DOI，页面上就有两条不同的 `doi.org` 链接，唯一性不成立、`doi` 为空，于是卡片显示「其他」且无 DOI。而我在同一轮刚写进契约的那句「有 `citation_arxiv_id` 或 arxiv 域名且无期刊名时判预印本」**实现并不成立**——契约说了实现没做，属不可让渡的那一类。已把预印本提成独立于 `doi` 的分支，补两条回归用例（带 Related DOI 的页、完全没有 DOI 链接的 arXiv 页），**变异实测**：挂回 `doi` 之下即红。
+- **这条的教训**：`1706.03762` 只有一条 DOI 链接，所以夹具与我那次 `grep | sort -u | wc -l` 都测不到这一族——**用一个真实页面验证过，不等于验证过这一类页面**。
+- **顺带处置的非阻断**：契约强信号清单补上 `citation_dissertation_name`（TASK-075 以来的既有行为，之前漏写）；记录里第一候选的两处旧描述（「任何 doi.org 链接即为本页 DOI」、测试条数 167）加了「已被后续修正推翻/取代」的指路，免得日后被当成现行规则读。
+- **Reviewer 回答我点名的三个问题**，要点如实记录：
+  - 新假阴：「出版社页基本都发 `citation_doi`，而 `declaredDoi` 优先、不受唯一性影响，损失仅限『无 `citation_doi` 又多 DOI』的罕见页，且只丢 DOI 字段、类型仍由 `journal` 决定。**真正的假阴不在那儿，在 arXiv 带 Related DOI 的那一族（F6）**。」
+  - `Set` 去重：`http`/`https`、`www.`/`dx.` 差异不影响（只存 `pathname`）；**大小写会算成两个**，但失败方向是 fail-closed（取不到，不会取错）——列入非阻断遗留。
+  - 四组反例与论文名那条：均非恒真。
+- 修正后重跑：`check_task.py --worktree` → **CHECKS PASS**（`product_fingerprint=538bad82…`；extension **169 passed**）。
+
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
