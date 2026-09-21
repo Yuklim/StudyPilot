@@ -359,13 +359,15 @@ describe('capture page · citation', () => {
     })
   }
 
-  it('shows what it recognised, ticked, and stores it alongside the resource', async () => {
+  it('shows what it recognised and stores it, without asking', async () => {
     const request = backend()
     mount()
     await screen.findByText(/还没有收到扩展发来的内容/)
     deliver({}, paper)
-    const toggle = await screen.findByRole('checkbox', { name: /一并存下来/ })
-    expect(toggle).toBeChecked()
+    // TASK-084：明细表留着（让人核对认出来的是不是这篇），但**没有勾选框**——
+    // 用户 2026-09-21：「不要让用户做太多选择」。
+    await screen.findByText(/这页看起来是一篇文献，会一并存下来/)
+    expect(screen.queryByRole('checkbox')).toBeNull()
     expect(screen.getByText('Karpathy, Anna；李维')).toBeInTheDocument()
     expect(screen.getByText('Nature Machine Intelligence')).toBeInTheDocument()
     expect(screen.getByText('期刊论文')).toBeInTheDocument()
@@ -398,17 +400,17 @@ describe('capture page · citation', () => {
     })
   })
 
-  it('writes nothing extra when the user unticks it', async () => {
-    const request = backend()
+  it('leaves no way to turn the citation off, because there is one downstream', async () => {
+    // TASK-084 去掉了「取消勾选就不写文献信息」这条路。它可以去，是因为**下游还有出口**：
+    // 存完之后在资料详情页右栏「信息」Tab 里随时能改或清空（TASK-078）。
+    // 这条用例钉住「确认页上不再有任何可关的开关」，免得有人日后又加回来一个。
+    backend()
     mount()
     await screen.findByText(/还没有收到扩展发来的内容/)
     deliver({}, paper)
-    fireEvent.click(await screen.findByRole('checkbox', { name: /一并存下来/ }))
-    fireEvent.click(screen.getByRole('button', { name: '保存为资料' }))
-    await waitFor(() =>
-      expect(request.mock.calls.some(([path]) => path === '/api/v1/resources')).toBe(true),
-    )
-    expect(request.mock.calls.filter(([path]) => path.endsWith('/citation'))).toEqual([])
+    await screen.findByText(/这页看起来是一篇文献/)
+    expect(screen.queryByRole('checkbox')).toBeNull()
+    expect(screen.queryByText(/一并存下来$/)).toBeNull()
   })
 
   it('adds nothing at all to the page when the page is not a paper', async () => {
@@ -522,7 +524,9 @@ describe('capture page · pdf', () => {
     mount()
     await screen.findByText(/还没有收到扩展发来的内容/)
     deliver({}, paper)
-    expect(await screen.findByRole('checkbox', { name: /保存这份 PDF/ })).toBeChecked()
+    // TASK-084：这里原本是个默认勾着的勾选框，现在是一句陈述。
+    expect(await screen.findByText(/这次会存下/)).toHaveTextContent('2401.00001.pdf')
+    expect(screen.queryByRole('checkbox')).toBeNull()
     // 存 PDF 时正文不该还摆在那儿——那一页只是对文献的描述。
     expect(screen.queryByLabelText(/正文（Markdown/)).toBeNull()
 
@@ -562,21 +566,24 @@ describe('capture page · pdf', () => {
     expect(screen.getByRole('link', { name: '打开这份资料' })).toBeInTheDocument()
   })
 
-  it('falls back to the page text when the user unticks it', async () => {
-    const { upload, request } = backend()
+  it('always saves the PDF when there is one, with nothing to switch', async () => {
+    // TASK-084 去掉了「取消勾选改存网页正文」这条路。**它没有等价出口**（只能重新采集，
+    // 而重新采集仍会存 PDF）——这一点如实登记在任务记录里。用户 2026-09-21 定的方向是
+    // 「如果是文献的话默认保存 pdf 原文就可以了」，而 TASK-080 定案时他说过
+    // 「原文页一般都是对文献的描述，没用」。
+    const { upload } = backend()
     mount()
     await screen.findByText(/还没有收到扩展发来的内容/)
     deliver({}, paper)
-    fireEvent.click(await screen.findByRole('checkbox', { name: /保存这份 PDF/ }))
-    // 取消后正文回来了，可编辑。
-    expect(await screen.findByLabelText(/正文（Markdown/)).toBeInTheDocument()
+    await screen.findByText(/这次会存下/)
+    // 页面标题也跟着变：存 PDF 时这一页确认的不是「正文」。
+    expect(screen.getByRole('heading', { name: '确认要保存的文献' })).toBeInTheDocument()
+    // 没有开关，也没有正文框可编辑。
+    expect(screen.queryByRole('checkbox')).toBeNull()
+    expect(screen.queryByLabelText(/正文（Markdown/)).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '保存为资料' }))
-    await waitFor(() =>
-      expect(
-        request.mock.calls.some(([p, o]) => p === '/api/v1/resources' && o?.method === 'POST'),
-      ).toBe(true),
-    )
-    expect(upload).not.toHaveBeenCalled()
+    // 走的就是 multipart 上传那条路。
+    await waitFor(() => expect(upload).toHaveBeenCalledTimes(1))
   })
 
   // 五种拿不到 PDF 的原因各说各的话：用户看到的不能是一句笼统的「失败了」，
