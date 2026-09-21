@@ -139,6 +139,16 @@ checks = ["contracts"]
   - 重跑 `check_task.py --worktree`（同样先移出 PNG）→ **CHECKS PASS**，`files=15`
     `product_fingerprint=eec82cbf06e13ec48c507c87bc8cc73d40aa5518fb18c2c30e03e01e658b737f`；
     `validate_governance.py` → **PASS**。
+- **第四轮（Review PASS 后主 Agent 自己又查出的同类漂移）**：`extension/README.md` 的「用法」
+  只描述了**网页正文**那条路——而认出文献时扩展根本不问图片
+  （`extension/src/popup/popup.ts:58` 的 `shouldAskAboutImages` 在 `payload.pdf` 非空时返回
+  `false`），确认页标题也不同。照原文操作的人在论文页上会等一个不会出现的提问。已补上文献
+  分支（含抓不到时 popup 停下来问），并在「未确认的采集会暂存」那条补上「抓到的 PDF 也一起留着」
+  ——`docs/开发与运行.md` 早就这么写了，两份文档原本不一致。
+  同时发现一处**本任务不能动的同类残留**，记入遗留项：`extension/src/popup/popup.ts:55`
+  的注释里仍写着「**前提是 TASK-084 先合并**」。它与契约 §14.4 那句「生效前提」是同一种东西，
+  而 TASK-084 已于 2026-09-21 合并（`f0c5e21`）。但它在 `.ts` 里，**本任务的非目标明确写了
+  不碰 `.ts`/`.tsx`/`.py`**，因此不在这里改；建议下一个任务顺手删掉那半句。
 - **二进制人工核验**（按 TASK-047 的先例逐张确认）：
   - `06-extension-popup.png`：584×300px，31,196 字节，PNG 签名正确、`IEND` 完整，
     `file(1)` 识别为 `PNG image data, 8-bit/color RGB, non-interlaced`。
