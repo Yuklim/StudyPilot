@@ -33,8 +33,13 @@
         opacity: 0.6;
         cursor: default;
       }
-      #choices button + button {
+      #choices button + button,
+      #pdf-failed button + button {
         margin-top: 6px;
+      }
+      #pdf-reason {
+        margin: 0 0 10px;
+        color: #8a4b2f;
       }
       button.secondary {
         background: transparent;
@@ -47,10 +52,19 @@
   </head>
   <body>
     <h1 id="status">正在载入…</h1>
-    <button type="button" id="capture">保存这一页的正文</button>
+    <!-- 文案不再写死「正文」：点下去之前扩展还不知道这一页会存成 PDF 原件还是网页正文
+         （TASK-085）。 -->
+    <button type="button" id="capture">保存这一页</button>
     <div id="choices" hidden>
       <button type="button" id="with-images">连图片一并保存</button>
       <button type="button" id="text-only" class="secondary">只保存正文</button>
+    </div>
+    <!-- 是文献、试过但没拿到 PDF 时停在这里（TASK-085，用户 2026-09-21 选的方案 A）。
+         不能先开确认页再在 popup 上写字——标签页一开，popup 当场被浏览器关掉。 -->
+    <div id="pdf-failed" hidden>
+      <p id="pdf-reason"></p>
+      <button type="button" id="save-text">改存这一页的正文</button>
+      <button type="button" id="give-up" class="secondary">算了</button>
     </div>
     <p id="hint">读取的是你眼前这一页已经显示出来的内容，不会登录、不会读取任何网站的账号信息。</p>
     <script type="module" src="/src/popup/main.ts"></script>

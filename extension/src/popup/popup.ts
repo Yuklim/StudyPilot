@@ -1,4 +1,4 @@
-import type { CapturePayload } from '../shared/protocol'
+import type { CapturePayload, PdfProblem } from '../shared/protocol'
 
 import type { CaptureOutcome } from './capture'
 
@@ -18,12 +18,42 @@ export function imagePrompt(count: number): string {
 }
 
 /**
+ * 这一次要不要停下来问「PDF 没拿到，怎么办」（TASK-085）。
+ *
+ * 判据是**「是文献」且「试过但没拿到」**：`pdf_problem` 只在认出文献且这一页声明了
+ * `citation_pdf_url` 时才非空，写成双重判据是让意图显式，也挡住将来别处误设该字段。
+ *
+ * 为什么必须停在 popup 里：`deliverCapture` 一旦打开确认页标签页，popup 就被浏览器关掉，
+ * 之后往它上面写什么都看不见——TASK-080 加的 PDF 回执正是这么消失的。
+ */
+export function needsPdfDecision(payload: CapturePayload): boolean {
+  return Boolean(payload.citation && payload.pdf_problem)
+}
+
+/** PDF 没拿到时，在 popup 上把原因说成人话。与确认页那套同源，但更短。 */
+export function pdfFailureText(problem: PdfProblem): string {
+  switch (problem) {
+    case 'cross-origin':
+      return 'PDF 放在另一个域名下，扩展没有那个域名的权限，所以没能取下来。'
+    case 'too-large':
+      return 'PDF 超过 25 MiB 上限，存不进来。'
+    case 'not-pdf':
+      return '那个地址取回来的不是 PDF，多半是登录页或付费墙。'
+    case 'slow':
+      return 'PDF 20 秒内没下完（文件大或网络慢）。稍后再采集一次多半能成。'
+    case 'failed':
+      return 'PDF 没能取下来——多数出版社要求先登录才给，而扩展从不带你的账号信息。'
+  }
+}
+
+/**
  * 这一次要不要问「连图片一并保存」（TASK-080 首轮 Review F1）。
  *
  * **抓到了 PDF 就不问。** 确认页在 PDF 分支里根本不碰图片，照问只会让用户为一件不会
  * 发生的事授出 `<all_urls>`——实测 PLOS ONE 那一页正是 5 张图 + PDF 抓取成功。
- * 代价写明：用户若在确认页取消勾选改存正文，那次的图片保留原网站地址，与「拒绝授权」
- * 是同一条既有降级路径。比起每篇论文都多点一次授权，这个代价更小。
+ * （TASK-084 起确认页上已经没有「改存网页正文」的勾选框了，所以这条路上不会再有
+ * 「用户取消勾选」那一步——原注释里那句已随之失效，TASK-085 订正。）
+ * 抓不到 PDF 时的去向改由 popup 自己问，见 `needsPdfDecision`。
  */
 export function shouldAskAboutImages(payload: CapturePayload): boolean {
   return payload.images.length > 0 && !payload.pdf
