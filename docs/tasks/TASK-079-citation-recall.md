@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-079"
-status = "ACCEPTED"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "改的是写进契约第 14 节的识别门槛（TASK-075 定的那一条），以及第 14.4 节描述的 manifest 顶层键集合（新增 version_name）。两处都落在 docs/contracts/**，命中 risk-policy.json 的 high_risk_paths，属公共契约改动，取最高定 L3：1 Worker → 自动检查 → 独立只读 Reviewer → 独立只读 Integration/Acceptance。门槛放宽会直接改变「哪些页面被当成文献」，误判的代价由用户承担（每篇博客都弹卡片），因此假阳性的反例用例是硬完成条件。"
 risk_flags = ["public-api", "architecture"]
@@ -78,11 +78,22 @@ Zotero 分层：站点专用翻译器 `100` → unAPI `300` → COinS `310` → 
 依赖：TASK-075 已合并（merge `327d2d6`）。基线即 `327d2d6`。
 并行：否。本任务持有 `docs/tasks/任务索引.md`。
 
+### 范围修订（ACCEPTED 之后、合并之前，用户明确指令，写入前登记）
+
+2026-09-21 用户在 Edge 里更新扩展后反馈「页面上还是显示 0.2.0」，随后给出明确指令：**「采用 以后更新完版本后点击更新就能更新版本的设计」**。
+
+起因与判断：`version_name` 按 Chrome 官方文档是「有则替代 `version` 显示」，但**用户用的是 Edge，其扩展页是 Edge 自己的 UI，是否显示该字段我没有验证过**——我照 Chrome 文档设计却没在用户实际使用的浏览器上确认，这是本次要修正的疏忽。用户要的是**不依赖任何浏览器 UI 细节**的办法：版本号本身每次构建都变。
+
+做法：`version` 字段构建时注入**提交数**作为第四段（`git rev-list --count HEAD`，当前 628 → `0.2.0.628`）。它单调递增、每提交一次必变，且符合 Chrome/Edge 对 `version` 的格式要求（至多四段整数、每段 0–65535）。`version_name` 保留并携带短 SHA 与 `-dirty`，作为更精确的标识。
+
+**本任务已是 ACCEPTED，此修订形成新候选**：状态回到 IN_REVIEW，按 AGENTS.md 第 6 节请同一 Reviewer 做 `previous_candidate..new_candidate` 增量验证，并请独立验收重新确认覆盖最终候选。
+
 ### 主 Agent 登记的实现决定（非用户决定，Review 可挑战）
 
 - **弱信号页面的类型判 `OTHER` 而不是像 Zotero 那样猜 `journalArticle`**：Zotero 猜错了用户在自己的库里改；我们这里类型会直接显示在确认页的卡片上，猜错比留空更刺眼。有明确信号时才给明确类型。
 - **DOI 链接的识别规则**：`href` 指向 `doi.org`（含 `dx.doi.org`）且路径以 `10.` 开头时取其路径为 DOI。页面上多个时取第一个。
 - **「往回拉」只压制弱信号**：与 Zotero 的优先级一致；否则一个用 WordPress 搭的期刊站会被误伤。
+- **用提交数而不是时间戳或自增文件做第四段**：提交数由仓库历史唯一决定，不依赖构建时钟、不需要维护额外的计数文件，且天然单调。代价是**同一提交重复构建时版本不变**（此时靠 `version_name` 的 `-dirty` 与 SHA 区分），以及**不同分支的提交数可能相同**。
 
 ## 完成条件
 
