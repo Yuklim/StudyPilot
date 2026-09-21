@@ -190,6 +190,20 @@ Zotero 分层：站点专用翻译器 `100` → unAPI `300` → COinS `310` → 
 - **Reviewer 对类型链新顺序的复核结论**（我点名请它挑战的）：「arXiv 镜像页带 `citation_journal_title` → `!journal` 为假 → 判期刊论文，**你的意图守住了**」；「`inbook && !journal` 在前、预印本在后**是对的**——会议/书章节/学位论文/报告都是页面明说的具体出处，比『默认算预印本』更具体」。
 - 重跑：`check_task.py --worktree` → **CHECKS PASS**（`product_fingerprint=b3615ae7…`；extension **169 passed**）。
 
+### 范围修订的实现（第五候选）
+
+- 实现 SHA：`4267123`（控制面登记 `a7a8908`）。
+  - **`buildVersion(commitCount?)`（新，纯函数）**：`0.2.0` + 提交数作为第四段。越界（>65535）、非数字、前导零、空值一律**退回三段**，不生成一个装不上的版本。
+  - **`buildVersionName(commit?, commitCount?)`**：改为 `${buildVersion(count)}+${sha}`，于是两者一致（`0.2.0.629+a7a8908-dirty`）。
+  - **`vite.config.ts`**：新增 `commitCount()`（`git rev-list --count HEAD`，同样丢 stderr、失败退化），构建时同时注入 `version` 与 `version_name`。
+  - **实测构建产物**：`"version": "0.2.0.629"`、`"version_name": "0.2.0.629+a7a8908-dirty"`。
+  - 契约第 14.4 节改写（两个字段各自的职责与「为什么两个都要」）、`docs/开发与运行.md` 改写判断办法（**看第四段那个数**，因为 Edge 不一定显示 `version_name`）。
+- **实施中的一个自造错误，如实记**：给用例加导入时我用了个粗糙的字符串替换，把 `buildVersion` 插进了 `node:fs` 的导入里（`import { buildVersion, existsSync, readFileSync } from 'node:fs'`），typecheck 通过而运行时报 `buildVersion is not a function`。用例立刻红、当场改正——但这说明**批量文本替换改导入是危险动作**，下次直接定位到目标导入块。
+- 新测试：`buildVersion` 的正常值、`65535` 边界、六种非法输入（空、空白、`undefined`、`65536`、`70000`、`abc`、`-1`、`1.2`、`012345`）一律退回三段，以及「源码里的 manifest 不带构建号、因此与 package.json 仍对得上」。`buildVersionName` 增加带构建号的组合断言。extension **169 → 170**。
+- **变异实测**：去掉构建号（`buildVersion` 直接返回 `VERSION`）→ 红；去掉 `<= 65535` 的越界检查 → 红。
+- 重跑：`check_task.py --worktree` → **CHECKS PASS**（`product_fingerprint=e6c94992…`；extension **170 passed**）。
+- **这次修订的起因值得记在明处**：我照 Chrome 的文档设计了 `version_name`，却**没有在用户实际使用的浏览器（Edge）上验证**，于是用户点了更新仍看到 `0.2.0`。与本任务的主线缺陷（把「可能在真实站点不成立」写进遗留就算处置）是同一个毛病的两种形态：**文档说的不等于用户那里发生的**。
+
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
