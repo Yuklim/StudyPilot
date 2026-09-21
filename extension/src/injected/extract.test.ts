@@ -209,6 +209,194 @@ describe('extractCitation', () => {
     })
   })
 
+  /**
+   * **`arxiv.org/abs/1706.03762` 的真实标签集**（2026-09-21 从真实页面取样，逐字照抄）。
+   *
+   * 这份夹具是本任务的验收锚点：TASK-075 的门槛要求 DOI 或期刊名，而这一页两样都不发——
+   * 功能在测试里全绿、在真实站点一次都不触发，用户第一次实测就撞上了。真实页面的形态
+   * 决定功能成败时，真实页面的标签集就是完成条件，不是可选项。
+   */
+  const ARXIV_REAL = `
+    <meta name="citation_title" content="Attention Is All You Need"/>
+    <meta name="citation_author" content="Vaswani, Ashish"/>
+    <meta name="citation_author" content="Shazeer, Noam"/>
+    <meta name="citation_author" content="Parmar, Niki"/>
+    <meta name="citation_author" content="Uszkoreit, Jakob"/>
+    <meta name="citation_author" content="Jones, Llion"/>
+    <meta name="citation_author" content="Gomez, Aidan N."/>
+    <meta name="citation_author" content="Kaiser, Lukasz"/>
+    <meta name="citation_author" content="Polosukhin, Illia"/>
+    <meta name="citation_date" content="2017/06/12"/>
+    <meta name="citation_online_date" content="2023/08/02"/>
+    <meta name="citation_pdf_url" content="https://arxiv.org/pdf/1706.03762"/>
+    <meta name="citation_arxiv_id" content="1706.03762"/>
+    <meta name="citation_abstract" content="The dominant sequence transduction models…"/>
+    <table><tr><td class="tablecell arxivdoi">
+      <a href="https://doi.org/10.48550/arXiv.1706.03762" id="arxiv-doi-link">https://doi.org/10.48550/arXiv.1706.03762</a>
+    </td></tr></table>
+    <blockquote class="abstract"><p>正文</p></blockquote>`
+
+  it('recognises the real arXiv abs page the user tried, DOI and all', () => {
+    const found = extractCitation(pageWith(ARXIV_REAL), 'https://arxiv.org/abs/1706.03762')
+    expect(found).toMatchObject({
+      item_type: 'PREPRINT',
+      issued_year: 2017,
+      issued_date: '2017/06/12',
+      // DOI 不是推出来的，是这一页自己在链接里写着的。
+      doi: '10.48550/arXiv.1706.03762',
+      container_title: null,
+    })
+    expect(found?.authors).toHaveLength(8)
+    expect(found?.authors[0]).toBe('Vaswani, Ashish')
+  })
+
+  it('reads a DOI the page declares in a link, in the shapes publishers actually use', () => {
+    const shapes: [string, string | null][] = [
+      ['https://doi.org/10.1038/s42256-024-00812-x', '10.1038/s42256-024-00812-x'],
+      ['http://dx.doi.org/10.1000/182', '10.1000/182'],
+      ['https://DOI.org/10.1/UPPER', '10.1/UPPER'],
+      ['https://doi.org/not-a-doi', null],
+      ['https://example.com/10.1/x', null],
+    ]
+    for (const [href, expected] of shapes) {
+      // 链接里的 DOI 只在页面**已凭强信号被认定为文献**时才取（见下一条用例），
+      // 所以这里给一个期刊名。
+      const page = `<a href="${href}">链接</a><meta name="citation_title" content="标题"/><meta name="citation_journal_title" content="某刊"/><p>x</p>`
+      expect(extractCitation(pageWith(page), 'https://example.com/a')?.doi ?? null).toBe(expected)
+    }
+  })
+
+  it('still calls an arXiv page a preprint when its DOI cannot be adopted', () => {
+    // 第二轮 Review F6：上一版把预印本那一支挂在 `… || doi` 里面，于是没有可采纳 DOI 的
+    // arXiv 页会掉到「其他」。最实际的例子就是**带 "Related DOI" 的 abs 页**——作者填了
+    // 已发表的 DOI，页面上就有两条不同的 doi.org 链接，唯一性不成立、doi 取不到。
+    const relatedDoi = `
+      <meta name="citation_title" content="Attention Is All You Need"/>
+      <meta name="citation_arxiv_id" content="1706.03762"/>
+      <a href="https://doi.org/10.48550/arXiv.1706.03762">arXiv DOI</a>
+      <a href="https://doi.org/10.5555/3295222.3295349">Related DOI</a>
+      <p>正文</p>`
+    const found = extractCitation(pageWith(relatedDoi), 'https://arxiv.org/abs/1706.03762')
+    expect(found).toMatchObject({ item_type: 'PREPRINT', doi: null })
+
+    // 聚合站/镜像站：不在 arxiv.org 域名下，但页面自己发了 citation_arxiv_id——
+    // 按契约「有 arXiv 标识或 arxiv 域名」，标识本身就够（第二轮 Review 指出这条
+    // 规则当时没有用例守着）。
+    const mirror = `
+      <meta name="citation_title" content="某预印本"/>
+      <meta name="citation_arxiv_id" content="2401.00002"/><p>x</p>`
+    expect(
+      extractCitation(pageWith(mirror), 'https://papers.example.com/2401.00002'),
+    ).toMatchObject({ item_type: 'PREPRINT' })
+
+    // 连 DOI 链接都没有的 arXiv 页同样是预印本，不该落到「其他」。
+    const noDoi = `
+      <meta name="citation_title" content="某预印本"/>
+      <meta name="citation_arxiv_id" content="2401.00001"/><p>x</p>`
+    expect(extractCitation(pageWith(noDoi), 'https://arxiv.org/abs/2401.00001')?.item_type).toBe(
+      'PREPRINT',
+    )
+  })
+
+  it('never adopts a DOI that belongs to something else on the page', () => {
+    // 第一轮 Review F1：维基条目、论文解读博客、期刊目录页的参考文献区里全是**别人的**
+    // DOI。把第一个捡来当本页的 DOI，就是把别人作品的编号静默写进这份资料——而确认页
+    // 默认勾选，用户看一串编号根本分辨不出。
+    const encyclopedia = `
+      <h1>Transformer（机器学习模型）</h1>
+      <ol>
+        <li><a href="https://doi.org/10.1038/s42256-024-00812-x">参考文献一</a></li>
+        <li><a href="https://doi.org/10.48550/arXiv.1706.03762">参考文献二</a></li>
+      </ol>
+      <p>正文</p>`
+    // 没有任何 citation_* / schema：整页根本不算文献。
+    expect(
+      extractCitation(pageWith(encyclopedia), 'https://wiki.example.org/Transformer'),
+    ).toBeNull()
+
+    // 弱信号（光有 citation_title）够格被认成文献，但**不够格**让我们认领一个链接里的 DOI。
+    const weakWithLink = `
+      <meta name="citation_title" content="我读《Attention Is All You Need》"/>
+      <a href="https://doi.org/10.48550/arXiv.1706.03762">原文</a><p>正文</p>`
+    const weak = extractCitation(pageWith(weakWithLink), 'https://blog.example.com/a')
+    expect(weak).not.toBeNull()
+    expect(weak?.doi).toBeNull()
+
+    // 强信号但页面上有多个 DOI：到底哪个是自己的无从判断，一个都不取。
+    const manyLinks = `
+      <meta name="citation_title" content="某篇论文"/>
+      <meta name="citation_journal_title" content="某某学报"/>
+      <a href="https://doi.org/10.1/a">参考一</a><a href="https://doi.org/10.2/b">参考二</a>
+      <p>正文</p>`
+    expect(extractCitation(pageWith(manyLinks), 'https://journal.example.com/a')?.doi).toBeNull()
+
+    // 同一个 DOI 出现多次（arXiv 就是链接文字与 href 各一处）仍算唯一。
+    const repeated = `
+      <meta name="citation_title" content="某篇论文"/>
+      <meta name="citation_journal_title" content="某某学报"/>
+      <a href="https://doi.org/10.1/a">10.1/a</a><a href="https://doi.org/10.1/a">再来一次</a>
+      <p>正文</p>`
+    expect(extractCitation(pageWith(repeated), 'https://journal.example.com/b')?.doi).toBe('10.1/a')
+  })
+
+  it('takes a bare citation_title as enough, the way Zotero does', () => {
+    // Zotero 的 Embedded Metadata 就是这个门槛（`hwTypeGuess = journalArticle`）。我们只在
+    // 类型上更保守：没有别的信号时判 OTHER，因为类型会直接显示在确认页的卡片上。
+    const bare = `<meta name="citation_title" content="某篇论文"/><meta name="citation_author" content="李维"/><p>x</p>`
+    expect(extractCitation(pageWith(bare), 'https://repo.example.edu/1')).toMatchObject({
+      item_type: 'OTHER',
+      authors: ['李维'],
+    })
+  })
+
+  it('pulls a blog-platform page back, but never one with a real journal signal', () => {
+    // Zotero 的优先级：平台特征压得住「光有 citation_title 的猜测」，压不住明确的期刊信号。
+    // 否则一个用 WordPress 搭的期刊站会被误伤。
+    const weakOnBlog = `
+      <meta name="generator" content="WordPress 6.5"/>
+      <meta name="citation_title" content="我读了一篇论文"/>
+      <p>正文</p>`
+    expect(extractCitation(pageWith(weakOnBlog), 'https://blog.example.com/a')).toBeNull()
+
+    const strongOnBlog = `
+      <meta name="generator" content="WordPress 6.5"/>
+      <meta name="citation_title" content="某篇论文"/>
+      <meta name="citation_journal_title" content="某某学报"/>
+      <p>正文</p>`
+    expect(extractCitation(pageWith(strongOnBlog), 'https://journal.example.com/a')).toMatchObject({
+      item_type: 'JOURNAL_ARTICLE',
+      container_title: '某某学报',
+    })
+
+    // Yoast 与 WordPress 的块样式同样算平台特征（照 Zotero 的那三条）。
+    const yoast = `<div class="yoast-schema-graph"></div><meta name="citation_title" content="随笔"/><p>x</p>`
+    expect(extractCitation(pageWith(yoast), 'https://blog.example.com/b')).toBeNull()
+    const wpCss = `<link id="wp-block-library-css"/><meta name="citation_title" content="随笔"/><p>x</p>`
+    expect(extractCitation(pageWith(wpCss), 'https://blog.example.com/c')).toBeNull()
+  })
+
+  it('maps the rest of the Highwire signals the way Zotero does', () => {
+    const cases: [string, string, string | null][] = [
+      ['citation_conference_title', '某某会议', 'CONFERENCE_PAPER'],
+      ['citation_dissertation_institution', '某某大学', 'THESIS'],
+      ['citation_technical_report_institution', '某某研究所', 'REPORT'],
+      ['citation_book_title', '某某手册', 'BOOK_CHAPTER'],
+    ]
+    for (const [tag, value, type] of cases) {
+      const page = `<meta name="citation_title" content="标题"/><meta name="${tag}" content="${value}"/><p>x</p>`
+      expect(extractCitation(pageWith(page), 'https://example.com/a')?.item_type).toBe(type)
+    }
+    // 学位论文与报告的机构进「出版方」——契约里没有单独的机构字段。
+    const thesis = `<meta name="citation_dissertation_institution" content="某某大学"/><p>x</p>`
+    expect(extractCitation(pageWith(thesis), 'https://example.edu/t')?.publisher).toBe('某某大学')
+    // 但 `citation_dissertation_name` 是**论文名**不是机构：它只作类型信号，填进出版方
+    // 会污染字段（第一轮 Review F4）。
+    const named = `<meta name="citation_dissertation_name" content="论某某问题的研究"/><p>x</p>`
+    const found = extractCitation(pageWith(named), 'https://example.edu/n')
+    expect(found?.item_type).toBe('THESIS')
+    expect(found?.publisher).toBeNull()
+  })
+
   it('calls a DOI without a journal on arxiv.org a preprint, and does not guess elsewhere', () => {
     const arxiv = `<meta name="citation_doi" content="10.48550/arXiv.2403.01234"><p>x</p>`
     expect(extractCitation(pageWith(arxiv), 'https://arxiv.org/abs/2403.01234')?.item_type).toBe(

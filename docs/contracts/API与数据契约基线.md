@@ -872,7 +872,27 @@ TASK-038 新增。这是本文件里**第一份非 HTTP 契约**：它约束的�
 
 **上限在扩展侧就收口**：超长的值在产出时即截断到上限，不送进页面再被拒——否则用户在确认页上看到的与最终存下的不是同一份，而这一块的全部价值就在于「你看到的就是要存的」。接收端的 `isCapturedCitation` 则**判整块不合格**而不截断：到了那一步还超限，说明不是本扩展产出的消息。
 
-**识别门槛**（扩展侧）：有 DOI、或有期刊/会议名、或 JSON-LD 明说是 `ScholarlyArticle`/`Book`/`Thesis`/`Report` 之一，才认为这一页是文献；只有作者和日期的普通博客不算。**不联网核对**——与 14.4 的「扩展只读已渲染的 DOM」同源，识别只看这一页自己写了什么。
+**识别门槛**（扩展侧，TASK-079 按 Zotero 的 Embedded Metadata 口径重定）：
+
+- **强信号**——DOI、期刊/会议/书名、学位论文或报告的机构（`citation_dissertation_institution`/`citation_technical_report_institution`）、学位论文名（`citation_dissertation_name`）、`citation_arxiv_id`、或 JSON-LD 明说是 `ScholarlyArticle`/`Book`/`Thesis`/`Report`：任一命中即认。
+- **弱信号**——只有 `citation_title`：也认。`citation_*` 是 Highwire 那套**专门发给 Google Scholar 索引**的学术标签，它自己就是信号。
+- **往回拉**——认出博客平台特征（`#wp-block-library-css`、`#wp-block-library-inline-css`、`.yoast-schema-graph`，或 `generator` 含 wordpress/blogger/wooframework）时，**只压制弱信号**：光有 `citation_title` 的页面不认，有强信号的不受影响（否则用 WordPress 搭的期刊站会被误伤）。
+- 完全没有 `citation_*`、没有 DOI、没有 JSON-LD 的普通网页一律不认。
+
+**为什么不是更严的门槛**：TASK-075 曾要求「DOI 或期刊名」，而 arXiv 的 abs 页两样都不发（实测 `1706.03762` 只有 `citation_title`/`citation_author`/`citation_date`/`citation_arxiv_id` 等），于是预印本在真实站点一次都认不出来。Zotero 的通用兜底只要求 `citation_title`，防误判靠「往回拉」而不是抬门槛——本节照此对齐。
+
+**DOI 的来源**：首选 `citation_doi` / `dc.identifier.doi`。两者都没有时，才看页面上指向 `doi.org`（含 `dx.doi.org`、`www.doi.org`）且路径以 `10.` 开头的链接，且**必须同时满足两条**：
+
+- 这一页**已凭 meta 里的强信号**被认定为文献——链接本身**不作**认定依据；
+- 整页**只有唯一一个**这样的 DOI（同一个 DOI 出现多次仍算唯一）。
+
+否则一个都不取。理由：维基条目、论文解读博客、期刊目录页的参考文献区里全是**别人的** DOI，捡第一个就是把别人作品的编号写进这份资料，而确认页默认勾选、用户看一串编号分辨不出。arXiv 满足这两条（`citation_arxiv_id` 是强信号；其 abs 页实测只有一个 DOI 链接）。
+
+**仍然不推导**：Zotero 会在无 DOI 时按 `10.48550/arXiv.<id>` 自行拼出一个，本实现不这么做——页面没声明的值不填。
+
+**其余几条实现细则**（一并写明，免得实现与契约各说各话）：`citation_arxiv_id` 或 `arxiv.org` 域名且无期刊名时判预印本（**在会议名、书名、学位论文、报告这些更明确的出处信号之后**判：页面明说了具体出处就按它说的算）；`citation_dissertation_institution` 与 `citation_technical_report_institution` 既作类型信号也填进出版方（契约里没有单独的机构字段），而 `citation_dissertation_name` 是**论文名**，只作类型信号、不填出版方。
+
+**不联网核对**——与 14.4 的「扩展只读已渲染的 DOM」同源，识别只看这一页自己写了什么。
 
 **作者只认结构化来源**（`citation_author`、`DC.creator` 这类可重复的标签）。正文提取器也给一个自由格式的作者字符串，但「张三, 李四」与「张三（某机构）」无从区分，拆错了比不填更糟。
 
@@ -897,7 +917,13 @@ TASK-038 新增。这是本文件里**第一份非 HTTP 契约**：它约束的�
 
 **同时新增 background service worker**，它是扩展**唯一**会主动发出网络请求的地方。理由是 MV3 下内容脚本的跨源请求受 CORS 管，而图床普遍不发 CORS 头，只有持 host 权限的 service worker 取得到（这正是 4.13 所说「只有扩展能可靠取回图片字节」的具体含义）。它的职责被限死为一件事：收到取图请求 → 取字节 → 回传；取图时 `credentials: 'omit'`，**不带任何站点凭证**，因此需要登录才能看到的图片取不到——这是「凭证始终由浏览器持有」的直接后果，不是缺陷。
 
-`extension/src/manifest.test.ts` 以白名单断言锁住 manifest 的顶层键集合，任何新增键都会让测试失败（本次两个新键正是这样被迫显式登记的）；另有一条断言钉住「站点权限必须留在 optional 里」，把 `<all_urls>` 挪进 `host_permissions` 会立刻变红。
+**TASK-079：`version` 与新增的第十个键 `version_name` 都由构建时注入**，键集合之外不扩大任何授权面。
+
+- `version`：源码里是 `0.2.0`，构建时追加**仓库提交数**作为第四段（`0.2.0.629`）。它是**每个浏览器都会显示**的那一个，所以让它本身随提交变——用户才能在点「更新／重新加载」后一眼看出换没换版。格式符合 Chrome/Edge 的要求（至多四段整数、每段 0–65535）；提交数取不到或越界时退回三段。
+- `version_name`：构建时写入 `<version>+<commit 短 SHA>`，工作区有未提交改动时带 `-dirty`；拿不到 git 时为 `+dev`。它回答「到底是**哪一个**提交」。
+- **为什么两个都要**：Chrome 文档称 `version_name` 有则替代 `version` 显示，但**Edge 的扩展页是它自己的 UI，没有这个保证**——用户 2026-09-21 在 Edge 上实测更新后仍显示 `0.2.0`。因此「变没变」交给 `version`（普遍显示），「是哪一版」交给 `version_name`（信息更全）。
+
+`extension/src/manifest.test.ts` 以白名单断言锁住 manifest 的顶层键集合，任何新增键都会让测试失败（TASK-040 的两个新键与 TASK-079 的 `version_name` 正是这样被迫显式登记的）；另有一条断言钉住「站点权限必须留在 optional 里」，把 `<all_urls>` 挪进 `host_permissions` 会立刻变红。
 
 ### 14.5 本阶段的边界
 

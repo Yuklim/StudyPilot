@@ -37,6 +37,8 @@ export type Manifest = {
   manifest_version: 3
   name: string
   version: string
+  /** 人看的版本标识，Chrome 扩展详情页直接显示。见 `buildVersionName`。 */
+  version_name: string
   description: string
   permissions: string[]
   optional_host_permissions: string[]
@@ -44,6 +46,46 @@ export type Manifest = {
   content_scripts: { matches: string[]; js: string[]; run_at: string }[]
   action: { default_popup: string; default_title: string }
 }
+
+/**
+ * 构建号：把仓库的提交数放进 `version` 的第四段（`0.2.0.628`）。
+ *
+ * **这是「点了更新能不能看出换版」的落点**。`version_name` 按 Chrome 文档「有则替代
+ * `version` 显示」，但用户实际用的是 Edge，其扩展页是自家 UI、是否显示该字段没有验证过
+ * ——用户 2026-09-21 在 Edge 上更新后仍看到 `0.2.0`。`version` 则是每个浏览器都会显示的
+ * 那一个，所以让它本身变。
+ *
+ * 用提交数而不是时间戳：它由仓库历史唯一决定，不依赖构建时钟、不需要额外的计数文件，
+ * 且天然单调（Chrome/Edge 要求 `version` 至多四段整数、每段 0–65535，提交数远在其内）。
+ * 代价：同一提交重复构建时这个数不变——那时靠 `version_name` 的短 SHA 与 `-dirty` 区分。
+ */
+export function buildVersion(commitCount?: string): string {
+  const count = (commitCount ?? '').trim()
+  // 前导零也要拦：Chrome/Edge 的 version 段不接受 `032` 这类写法。`git rev-list --count`
+  // 永远不产出前导零，所以这条目前不可达——但函数声称「不生成装不上的版本」，那就该
+  // 真的做到（第五轮 Review 指出原正则只拦得住 6 位以上）。
+  const ok = /^(0|[1-9][0-9]{0,4})$/.test(count) && Number(count) <= 65535
+  return ok ? `${VERSION}.${count}` : VERSION
+}
+
+/**
+ * 「我装的到底是哪一版」——光靠 `0.2.0` 这个手写常量回答不了。
+ *
+ * `version` 现在带上了构建号（见 `buildVersion`），但它只说「第几次提交」，说不出是**哪一个**
+ * 提交。`version_name` 没有格式限制，用来携带短 SHA 与 `-dirty`，两者配合：前者保证「变没变」
+ * 一眼可见，后者回答「到底是哪一版」。
+ *
+ * 构建时由 `vite.config.ts` 注入当前 commit 的短 SHA；工作区有未提交改动时带 `-dirty`
+ * 后缀（否则「改了没提交就构建」会指向一个不含该改动的 commit）。拿不到 git（打包好的
+ * 源码、CI 的浅克隆）时退化为 `dev`，**不猜、不留空**。
+ */
+export function buildVersionName(commit?: string, commitCount?: string): string {
+  const stamp = (commit ?? '').trim()
+  const valid = /^[0-9a-f]{7,40}(-dirty)?$/i.test(stamp)
+  return `${buildVersion(commitCount)}+${valid ? stamp : 'dev'}`
+}
+
+const VERSION = '0.2.0'
 
 export const POPUP_PAGE = 'popup.html'
 export const RELAY_SCRIPT = 'relay.js'
@@ -53,7 +95,8 @@ export const BACKGROUND_SCRIPT = 'background.js'
 export const manifest: Manifest = {
   manifest_version: 3,
   name: 'StudyPilot 采集',
-  version: '0.2.0',
+  version: buildVersion(),
+  version_name: buildVersionName(),
   description:
     '把你正在看的网页正文保存到本机 StudyPilot。只读取已显示的内容，不接触任何网站账号。正文里的图片可在你确认后一并保存。',
   permissions: ['activeTab', 'scripting', 'storage'],

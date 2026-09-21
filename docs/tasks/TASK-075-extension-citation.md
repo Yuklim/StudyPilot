@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-075"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "要给 CapturePayload 增加字段，而它是契约第 14 节定义的**非 HTTP 公共契约**（扩展与 /capture 页面之间的 postMessage 消息），两份平行实现还有一道逐字比对的机器守卫。改动落在 docs/contracts/** —— risk-policy.json 的 high_risk_paths 命中，且属「公共契约 + 跨模块（extension 与 frontend 各一份实现）」，取最高定 L3：1 Worker → 自动检查 → 独立只读 Reviewer → 独立只读 Integration/Acceptance。登记前主 Agent 曾对用户说「只动 extension/**、与前端不相交」，核对契约第 14 节后发现该说法错误，已当面更正并按 L3 登记。"
 risk_flags = ["public-api", "architecture"]
@@ -152,7 +152,7 @@ checks = ["frontend", "contracts"]
     > 检查口径可信：工作区干净、`--worktree` 跑在最终候选；`product_fingerprint` 随候选变化（a676…→faca…），非旧 SHA 复用；测试数与三次候选增量自洽；未见 NOT_RUN 充 PASS。
     > 文件集：13 个文件全在 `allowed_paths` 内，无越界；TASK-078 已登记 MERGED。「citation 改可选」的理由可核（那两个文件未被修改且构造无 citation），三段修正记述未见超出实际。
   这次五处对照正是 Reviewer 自己指出「两份一起错只能靠人与后端对照」的那件事——交给独立验收做了，结论是没有对不上的地方。
-- 最终状态/风险/用户操作：**ACCEPTED**。L3 执行链走完（1 Worker → 自动检查 → 独立只读 Reviewer 三轮 → 独立只读 Integration/Acceptance）。风险：本任务改的是**写进契约的非 HTTP 公共契约**，但只增字段、不改既有语义，且新字段可缺省（旧暂存兼容）；扩展侧新增的是纯读取逻辑，不发任何网络请求。**需要用户操作：① 合并 PR；② 合并后在真网页上人工试一次**（找一篇 arXiv 或期刊论文页点扩展图标）——真扩展链路仓库里一直没有自动化，这一条只能人工兜住。
+- 最终状态/风险/用户操作：**MERGED**——2026-09-21 用户已合并 PR #86，merge `327d2d6`（状态登记并入 TASK-079 控制面提交）。**用户随即按本记录的要求做了人工验证，在 `arxiv.org/abs/1706.03762` 上发现识别未触发**——正是本记录非阻断遗留第 5 条预告的那个风险；根因与修复见 TASK-079。此前为 ACCEPTED：L3 执行链走完（1 Worker → 自动检查 → 独立只读 Reviewer 三轮 → 独立只读 Integration/Acceptance）。风险：本任务改的是**写进契约的非 HTTP 公共契约**，但只增字段、不改既有语义，且新字段可缺省（旧暂存兼容）；扩展侧新增的是纯读取逻辑，不发任何网络请求。**需要用户操作：① 合并 PR；② 合并后在真网页上人工试一次**（找一篇 arXiv 或期刊论文页点扩展图标）——真扩展链路仓库里一直没有自动化，这一条只能人工兜住。
 - 非阻断遗留项：
   1. **（验收 N2，守卫缺口）** `CITATION_ITEM_TYPES` 的九个值既不在数值镜像名单、也不在函数体逐字比对范围内：前端那份若少一种类型，合法载荷会被**静默丢弃**而两侧全绿。同 F4 那一族的剩余缺口。**重评触发**：下次动两份 protocol 中的任何一份时顺手把枚举也纳入比对。
   2. **（验收 N1，完成条件的覆盖缺口）** 完成条件第 6 条括号里举了「`citation_doi` 是一段脚本」，但**没有对应用例**（超长作者名也只在接收端有断言，提取端靠截断）。实际风险低（纯文本、React 转义、长度已收口），但这是我写的条件而没写的用例，如实登记。**重评触发**：下次动提取器时补上。
