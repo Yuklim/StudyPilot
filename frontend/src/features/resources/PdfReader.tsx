@@ -30,6 +30,33 @@ import {
 
 /** 视口上下各多渲染这么多页，滚动时不至于看见白页。 */
 const NEAR_PAGES = 2
+/**
+ * 一张画布最多开多少像素（TASK-082）。
+ *
+ * 两头都要管：**浏览器对 canvas 面积有硬上限**（Safari 约 16.7M 像素，撞上直接画不出来），
+ * 以及**内存**——一张画布约 `像素数 × 4` 字节，而阅读器同时渲染视口上下各 `NEAR_PAGES` 页。
+ * 10M 是量出来的：Retina 上「适合宽度」那一档需要 9.3M，刚好放得下、保持完全清晰；
+ * 再往上缩放时按面积比降密度，而不是无上限地开。
+ */
+export const MAX_CANVAS_PIXELS = 10_000_000
+
+/**
+ * 这一页该按多少倍像素密度画。
+ *
+ * **为什么需要这个**：`node.width` 是画布的**像素**尺寸，而 CSS 的 `width: 100%` 决定它的
+ * **CSS 尺寸**。两者相等时，高分屏（`devicePixelRatio > 1`）上每个 CSS 像素只有一个采样点，
+ * 浏览器把它放大 dpr 倍显示——那就是「糊」。实测 Retina 上像素利用率只有 50%（TASK-082）。
+ *
+ * 返回值**不低于 1**：低于 1 会比不做还糊。超出预算时按面积开方降，保证 `w*h ≤ 预算`。
+ */
+export function pixelDensity(cssWidth: number, cssHeight: number, ratio: number): number {
+  const wanted = Math.max(1, ratio)
+  const area = cssWidth * cssHeight
+  if (area <= 0) return wanted
+  const affordable = Math.sqrt(MAX_CANVAS_PIXELS / area)
+  return Math.max(1, Math.min(wanted, affordable))
+}
+
 const MIN_SCALE = 0.5
 const MAX_SCALE = 3
 
@@ -65,6 +92,32 @@ function classify(cause: unknown): Failure {
   return { kind: 'read', detail: failureText(cause) }
 }
 
+/**
+ * 跟随 `devicePixelRatio`。把窗口从内置高分屏拖到外接的普通屏（或反过来）时它会变，
+ * 不重渲染的话就会一直糊着、或者白白多画四倍像素。
+ *
+ * 用 `matchMedia('(resolution: Xdppx)')` 而不是轮询：这个查询在**当前**像素比下为真，
+ * 一旦变了就立刻失配、触发 change。每次变化后重新订阅新的值。
+ */
+function useDevicePixelRatio(): number {
+  const [ratio, setRatio] = useState(() =>
+    typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1,
+  )
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+    const query = window.matchMedia(`(resolution: ${ratio}dppx)`)
+    const onChange = () => setRatio(window.devicePixelRatio || 1)
+    // Safari 14 之前只有 addListener；本仓其它地方（useSqueezeLayout）也做了同样的兼容。
+    if (query.addEventListener) query.addEventListener('change', onChange)
+    else query.addListener(onChange)
+    return () => {
+      if (query.removeEventListener) query.removeEventListener('change', onChange)
+      else query.removeListener(onChange)
+    }
+  }, [ratio])
+  return ratio
+}
+
 export function PdfReader({
   resourceId,
   file,
@@ -94,6 +147,7 @@ export function PdfReader({
   const [sizes, setSizes] = useState<{ width: number; height: number }[]>([])
   const [scale, setScale] = useState(1)
   const [page, setPage] = useState(1)
+  const ratio = useDevicePixelRatio()
   const container = useRef<HTMLDivElement>(null)
   const restored = useRef(false)
   /** 最近一次「跳到第 N 页」的意图：滚动稳定在 `top` 上时页码就按它显示。 */
@@ -310,6 +364,7 @@ export function PdfReader({
           width={size.width * scale}
           height={size.height * scale}
           scale={scale}
+          ratio={ratio}
           near={Math.abs(index + 1 - page) <= NEAR_PAGES}
         />
       ))}
@@ -340,6 +395,7 @@ function PdfPageView({
   width,
   height,
   scale,
+  ratio,
   near,
 }: {
   doc: Doc | null
@@ -347,6 +403,8 @@ function PdfPageView({
   width: number
   height: number
   scale: number
+  /** 屏幕的设备像素比；画布按它加密，CSS 尺寸不变（TASK-082）。 */
+  ratio: number
   near: boolean
 }) {
   const canvas = useRef<HTMLCanvasElement>(null)
@@ -359,10 +417,15 @@ function PdfPageView({
       // rejection（只污染控制台，但没必要留着）。
       const target = await doc.getPage(number).catch(() => null)
       if (!alive || !target) return
-      const viewport = target.getViewport({ scale })
+      // 先按 CSS 尺寸量这一页，据此决定能加多少密度，再按加密后的比例要视口。
+      const css = target.getViewport({ scale })
+      const density = pixelDensity(css.width, css.height, ratio)
+      const viewport = target.getViewport({ scale: scale * density })
       const node = canvas.current
       const context = node?.getContext('2d')
       if (!node || !context) return
+      // 画布开到设备像素；显示尺寸由 CSS 的 `width/height: 100%` 锁在 `.pdf-page` 的框上，
+      // 所以这里**不设**内联尺寸——一旦两边都写，缩放时它们会各自舍入、互相打架。
       node.width = Math.floor(viewport.width)
       node.height = Math.floor(viewport.height)
       const render = target.render({ canvasContext: context, viewport })
@@ -378,7 +441,7 @@ function PdfPageView({
       alive = false
       task?.cancel()
     }
-  }, [doc, number, scale, near])
+  }, [doc, number, scale, ratio, near])
   return (
     <div className="pdf-page" style={{ width, height }} data-page={number}>
       {near ? (
