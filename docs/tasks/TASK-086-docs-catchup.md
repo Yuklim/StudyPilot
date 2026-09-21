@@ -128,6 +128,17 @@ checks = ["contracts"]
     `frontend npm run test -- --run` **793 passed（36 个文件）**、
     `extension npm run test -- --run` **196 passed（9 个文件）**；本任务不碰代码，所以这三个数字
     对应的基线就是 main 的 `9c64e71`，表头已照此改写（原写 `f609145` / 550 / 539 / 145）。
+- **第三轮（第一轮 Review 的 F1 + 一处观感）**：
+  - **F1（必须修复，Reviewer 抓到）**：`docs/开发与运行.md:194` —— 本任务第一轮**自己重写过的
+    同一句话**里，仍写着确认页显示「保存这份 PDF」。那个勾选框已被已合并的 TASK-084 删除
+    （`CapturePage.tsx:221` 标题改为「确认要保存的文献」，`:303-308` 换成陈述句）。
+    **这正是本任务要清除的同一类漂移，却在修它的过程中被漏在原地**。已按实装文案改写。
+  - 索引里 083/084/085/086 四行原来排成 083 → 086 → 085 → 084（083 那行是 #91 合并时带进来的，
+    我把新三行插在了它下面），与 AGENTS.md §3「按最新在上插行」不符，已重排为 086 → 085 → 084 → 083。
+    仅调整行序，四行内容一字未动。
+  - 重跑 `check_task.py --worktree`（同样先移出 PNG）→ **CHECKS PASS**，`files=15`
+    `product_fingerprint=eec82cbf06e13ec48c507c87bc8cc73d40aa5518fb18c2c30e03e01e658b737f`；
+    `validate_governance.py` → **PASS**。
 - **二进制人工核验**（按 TASK-047 的先例逐张确认）：
   - `06-extension-popup.png`：584×300px，31,196 字节，PNG 签名正确、`IEND` 完整，
     `file(1)` 识别为 `PNG image data, 8-bit/color RGB, non-interlaced`。
@@ -220,8 +231,33 @@ TASK-047 那 6 张是在**隔离的 e2e 沙盒**（临时目录 + 端口 18000/1
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：待填
-- Review：待填
+- 候选 SHA：第一次送审 `3e4903a`（base `9c64e71`）；修掉 F1 后的新候选见下一条 Review 记录。
+- Review（第一轮，独立只读 Reviewer，审 `9c64e71..3e4903a` 全量最终 diff，**报告原文**）：
+
+  > ## 结论：CHANGES_REQUIRED（1 条必须修复，改一句话即可）
+  >
+  > **只读证明**：本 Agent 仅授予 Read/Grep/Glob，无 Write/Edit/Bash，未改动、未提交任何文件。
+  > **范围**：`9c64e71..3e4903a` 全量最终 diff（16 文件：7 PNG + 9 文本，无任何代码文件，全部落在 allowed_paths 内）；逐条回源码核对，未复用记录的结论。
+  >
+  > ### 必须修复（F1）
+  > `/Users/yuklimching/Desktop/StudyPilot/docs/开发与运行.md:194` —— 本任务重写的**同一句话**里仍写「…确认页上显示**「保存这份 PDF」**」。该勾选框已由已合并的 TASK-084（`f0c5e21`）删除：`frontend/src/features/capture/CapturePage.tsx:221` 标题为「确认要保存的文献」，`:303-308` 是陈述句「这次会存下：**PDF 原件**（name，X MB）…」，全仓再无此 UI 文案。触发：任何按该文档采文献的用户；成本：一句话；性质正是本任务要清除的同一类漂移。
+  >
+  > ### 已逐条核实为真（No findings）
+  > 契约 §14.4 重写后不再依赖任何未合并分支，语义未变；§14.2 新措辞与代码精确相符（`extract.ts:444` 保证 `pdf_problem` 仅在已认出文献时非空 → popup 必然停下来问；`CapturePage.tsx:310` 确认页仍会再说明一次）。旧按钮名全仓仅余任务记录历史引用（`extension/popup.html:57` = 「保存这一页」）。Alembic 至 `0008`、「一条工具条」（`ResourceToolbar.tsx:537` TASK-067 搬迁注释）、02 默认列表（`ResourceLibrary.tsx:100`）、25 MiB/20 s（`protocol.ts:94`、`extract.ts:356`）均属实。索引 083/084/085/086 各一行、无重复、状态与各自记录 `status` 一致；#93=`9c64e71` 经 reflog 证实。七张图逐张目视：03 一条顶栏+2 条心得、05 两栏、02 列表 5 份、06「保存这一页」、07 真实 arXiv:1706.03762，与 README 图注及「01–06 合成、07 真实预印本」声明相符，**无个人数据、令牌、本机路径、账号痕迹**。沙盒声明与 `backend/tests/run_browser_server.py`（TemporaryDirectory + 18000/15173）一致；`_shots.spec.ts` 确未入库、工作区已移除；「脚本静默失败出废图」留痕与脚本内 `must()` 实现吻合；实现 SHA `16b2424→d755b4d` 的 amend 说明与 reflog 一致。未发现把未执行说成通过。
+  >
+  > ### 剩余风险 / 下一步
+  > 1. 检查证据绑在 `96d384e`，候选 `3e4903a`（仅记录写回）未重跑 `check_task.py`——建议 Integration 在候选上跑一次或写明复用理由。2. 索引行序 083 位于 086/085/084 之上，与「最新在上」惯例不符（仅观感）。3. 记录称「86 个任务号」，实缺 TASK-054，实为 85；README「80 余份」不受影响。4. 07 仍是第一轮在用户实库采集后拍的，记录已如实留痕且已按流程删除，与范围修订一致，不要求返工。
+  > 修完 F1 形成新候选后，我可只复核 `previous_candidate..new_candidate`，本轮其余覆盖可继承。
+
+- 主 Agent 对 Review 的处置：
+  - **F1 已修**（见「第三轮」）。
+  - 剩余风险 1（检查绑在 `96d384e`）：**已在新候选上重跑** `check_task.py`（CHECKS PASS，
+    `files=15`、`product_fingerprint=eec82cb…`）与 `validate_governance.py`（PASS），不需复用理由。
+  - 剩余风险 2（索引行序）：**已重排**为 086 → 085 → 084 → 083。
+  - 剩余风险 3（任务号份数）：**Reviewer 这条算错了**。`docs/tasks/` 的任务号是 TASK-000–086 共 87 个
+    编号、缺 TASK-054，实得 **86** 个，与记录一致；`ls docs/tasks | grep -oE '^TASK-[0-9]{3}' |
+    sort -u | wc -l` → `86`。README 的「80 余份」两种算法下都成立，无需改动。
+  - 剩余风险 4：接受，不返工。
 - Acceptance：待填
 - 最终状态/风险/用户操作：待填
 - 非阻断遗留项：待填
