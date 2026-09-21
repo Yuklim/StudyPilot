@@ -54,6 +54,9 @@ export function ResourceToolbar({
   outlineOpen = true,
   onToggleOutline,
   readingPercent = null,
+  pdfMode = false,
+  pdfSlotRef,
+  headingSlot,
 }: {
   resource: Resource
   /** 元数据被改动后重新读取这份资料。 */
@@ -80,6 +83,20 @@ export function ResourceToolbar({
    * 进度 N%」按钮——点开学习面板并预填，写入仍要用户按保存（用户选定「一键写入」而非自动同步）。
    */
   readingPercent?: number | null
+  /**
+   * 这一份是站内能读的 PDF（TASK-081）。为真时顶栏收下三样原本在别处的东西：
+   * 标题与来源徽章（原本在正文列顶部的 `ReaderHeader`）、PDF 的页码/缩放/「适合宽度」
+   * （原本是阅读器自己的一条控件栏）、以及把「心得」「原件」从图标换成文字。
+   *
+   * **为什么只对 PDF 这么做**：用户 2026-09-21 的理由是「pdf 阅读器要留出足够的空间，
+   * 上面的工具栏太大了」——实测 720px 视口里顶部三层吃掉 213px（29.6%）。网页/粘贴
+   * 资料的正文本来就随页面滚动，不存在这个问题，所以它们保持 TASK-052 的现状不动。
+   */
+  pdfMode?: boolean
+  /** PDF 控件的挂载点（`PdfReader` 用 portal 投递过来）。 */
+  pdfSlotRef?: (node: HTMLDivElement | null) => void
+  /** pdfMode 下页面 `h1` 长在顶栏里，路由焦点也就落在这里。 */
+  headingSlot?: (element: HTMLHeadingElement | null) => void
   /**
    * 这份资料有没有正文快照；`null` = 还没读到。菜单据此在「替换正文/粘贴正文」之间取
    * 文案，并决定「删除正文…」出不出现——**没有正文时不该有一个删除它的入口**。
@@ -224,7 +241,24 @@ export function ResourceToolbar({
             <span aria-hidden="true">← </span>
             <span className="reader-back-text">返回资料库</span>
           </Link>
+          {/* TASK-081：PDF 页把标题与来源徽章收进顶栏。TASK-052 当初把它们移出去，
+              理由是窄屏下「返回·类型·标题」+ 四个按钮要排两行、顶栏实测 123px；那条
+              理由对 PDF 依然成立，所以这里**只在宽屏显示标题**（`.reader-toolbar-title`
+              在窄屏隐藏），窄屏仍只有徽章——顶栏不会因为一个长文件名而撑高。 */}
+          {pdfMode && (
+            <div className="reader-toolbar-title">
+              {/* 顺序按草图：标题在前、来源徽章在后。 */}
+              <h1 className="reader-title inline" ref={headingSlot} tabIndex={-1}>
+                {resourceTitle(resource)}
+              </h1>
+              <span className={`source-chip ${resource.source_type.toLowerCase()}`}>
+                {sourceLabels[resource.source_type]}
+              </span>
+            </div>
+          )}
           <div className="reader-toolbar-buttons">
+            {/* 页码/缩放/「适合宽度」由 `PdfReader` 投递进来（它持有当前页与缩放的状态）。 */}
+            {pdfMode && <div className="reader-toolbar-pdf" ref={pdfSlotRef} />}
             <button
               type="button"
               className="journal-button reader-status"
@@ -279,13 +313,13 @@ export function ResourceToolbar({
             <button
               type="button"
               ref={notesButtonRef}
-              className="journal-button icon-button reader-notes-toggle"
+              className={`journal-button reader-notes-toggle${pdfMode ? '' : ' icon-button'}`}
               aria-expanded={notesOpen}
               aria-label="心得"
               title="心得"
               onClick={onNotesClick}
             >
-              <Icon name="note" />
+              {pdfMode ? '心得' : <Icon name="note" />}
               {notesCount !== null && notesCount > 0 && (
                 <span className="notes-badge" aria-hidden="true">
                   {notesCount}
@@ -297,6 +331,7 @@ export function ResourceToolbar({
               link={link}
               open={panel === 'original'}
               onOpen={() => openPanel('original')}
+              text={pdfMode}
             />
             <button
               type="button"
@@ -588,11 +623,20 @@ function OriginalEntry({
   link,
   open,
   onOpen,
+  text = false,
 }: {
   resource: Resource
   link: string | null
   open: boolean
   onOpen: () => void
+  /**
+   * 用文字而不是图标（TASK-081 的 pdfMode）。
+   *
+   * 文案仍是「原件」而**不是**草图上的「下载原件」：这个按钮点开的是原件面板
+   * （文件名、大小、状态、下载），不是当场开始下载。按草图写「下载原件」会让标签
+   * 承诺一件它不做的事——此处有意偏离草图，理由记在任务记录里。
+   */
+  text?: boolean
 }) {
   if (resource.source_type === 'WEB') {
     if (!link)
@@ -603,7 +647,7 @@ function OriginalEntry({
       )
     return (
       <a
-        className="journal-button icon-button"
+        className={`journal-button${text ? '' : ' icon-button'}`}
         href={link}
         target="_blank"
         rel="noopener noreferrer"
@@ -611,7 +655,7 @@ function OriginalEntry({
         aria-label="原网页"
         title="原网页（在新标签页打开）"
       >
-        <Icon name="external" />
+        {text ? '原网页' : <Icon name="external" />}
       </a>
     )
   }
@@ -619,13 +663,13 @@ function OriginalEntry({
   return (
     <button
       type="button"
-      className="journal-button icon-button"
+      className={`journal-button${text ? '' : ' icon-button'}`}
       aria-expanded={open}
       aria-label={label}
       title={label}
       onClick={onOpen}
     >
-      <Icon name={resource.source_type === 'FILE' ? 'file' : 'paste'} />
+      {text ? label : <Icon name={resource.source_type === 'FILE' ? 'file' : 'paste'} />}
     </button>
   )
 }

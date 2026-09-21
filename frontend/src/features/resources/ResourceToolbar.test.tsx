@@ -7,6 +7,28 @@ import { renderWithRouter } from '../../test/render'
 import { resourceId, sample, sampleFile, samplePage } from './fixtures'
 import { statusLabels, type Resource } from './api'
 
+// pdf.js 在 jsdom 里跑不了（没有 canvas、没有 worker）。这里要验的不是渲染，而是
+// **顶栏装配**：PDF 页的标题、页码、缩放到底在不在同一条工具条上。
+vi.mock('pdfjs-dist', () => ({
+  GlobalWorkerOptions: { workerSrc: '' },
+  getDocument: () => ({
+    promise: Promise.resolve({
+      numPages: 2,
+      getPage: () =>
+        Promise.resolve({
+          getViewport: ({ scale }: { scale: number }) => ({
+            width: 600 * scale,
+            height: 800 * scale,
+          }),
+          render: () => ({ promise: Promise.resolve(), cancel: () => {} }),
+          cleanup: () => {},
+        }),
+      destroy: () => Promise.resolve(),
+    }),
+  }),
+}))
+vi.mock('pdfjs-dist/build/pdf.worker.min.mjs?url', () => ({ default: 'worker.js' }))
+
 const detailPath = `/api/v1/resources/${resourceId}`
 const body = '# 冻结的标题\n\n正文一段。\n'
 const snapshot = {
@@ -54,6 +76,95 @@ function mount(item: Resource = sample(), notesTotal = 0) {
   })
   renderWithRouter(<App />, `/resources/${resourceId}`)
 }
+
+/** 一份原件是 PDF 的 FILE 资料，外加它的字节。 */
+function pdfResource() {
+  const bytes = new Blob([new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d])], {
+    type: 'application/pdf',
+  })
+  vi.spyOn(api, 'downloadOriginal').mockResolvedValue({ blob: bytes, fileName: 'p.pdf' })
+  return sampleFile({
+    title: '一份合成论文',
+    original_file: {
+      id: '00000000-0000-4000-8000-000000000002',
+      status: 'READY',
+      original_name: 'p.pdf',
+      size_bytes: bytes.size,
+      media_type: 'application/pdf',
+    },
+  })
+}
+
+describe('reader toolbar · PDF 页（TASK-081）', () => {
+  it('puts the title, the source badge and the PDF controls on one toolbar', async () => {
+    mount(pdfResource())
+    const toolbar = await screen
+      .findByRole('button', { name: '更多操作' })
+      .then((b) => b.closest('.reader-toolbar')!)
+    // 标题与来源徽章进了顶栏——这正是省下那 64px 的地方。
+    expect(within(toolbar as HTMLElement).getByRole('heading', { level: 1 })).toHaveTextContent(
+      '一份合成论文',
+    )
+    // 页码与缩放也在同一条上，而不是底下自成一条。
+    await waitFor(() =>
+      expect(within(toolbar as HTMLElement).getByLabelText('页码')).toBeInTheDocument(),
+    )
+    expect(
+      within(toolbar as HTMLElement).getByRole('button', { name: '适合宽度' }),
+    ).toBeInTheDocument()
+    // 正文列里不再有第二个标题块：一页两个 h1 既是无障碍问题，也正是要省掉的高度。
+    expect(document.querySelectorAll('h1')).toHaveLength(1)
+    expect(document.querySelector('.reader-header')).toBeNull()
+  })
+
+  it('spells out 心得 and 原件 instead of showing bare icons', async () => {
+    mount(pdfResource())
+    const notes = await screen.findByRole('button', { name: '心得' })
+    expect(notes.textContent).toBe('心得')
+    expect(notes).not.toHaveClass('icon-button')
+    const original = screen.getByRole('button', { name: '原件' })
+    expect(original.textContent).toBe('原件')
+  })
+
+  it('does not name the page-level class after the per-page one', async () => {
+    // `.pdf-page` 是 `PdfReader` 给**每一页 PDF** 用的类，它的裸选择器里带
+    // `align-items: center`。页级修饰类若同名，那条规则会连整张 sheet 一起命中：
+    // 顶栏收成内容宽并居中（实测 1440 视口下只有 950px、左边距 245px），
+    // `fitWidth` 量到的也不再是窗口宽，「适合宽度」每点一次反而缩一点
+    // （100%→97%→95%）。这是独立 Review F1 抓到、我在真实 Edge 里实测确认的缺陷。
+    mount(pdfResource())
+    await screen.findByRole('button', { name: '更多操作' })
+    const sheet = document.querySelector('.resource-sheet')!
+    expect(sheet.classList.contains('reader-pdf')).toBe(true)
+    expect(sheet.classList.contains('pdf-page')).toBe(false)
+  })
+
+  it('keeps the controls the sketch did not draw', async () => {
+    // 用户 2026-09-21：「都放在顶部工具条吧」——草图没画学习状态与 `⋯`，但它们是
+    // TASK-073 之前就有的入口（`⋯` 里装着元数据/标签/编辑/删除），不能因为草图没画就删掉。
+    mount(pdfResource())
+    expect(await screen.findByRole('button', { name: /未开始/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '更多操作' })).toBeInTheDocument()
+  })
+})
+
+describe('reader toolbar · 非 PDF 页不受影响（TASK-081）', () => {
+  it.each([
+    ['网页资料', () => sample()],
+    ['非 PDF 的文件资料', () => sampleFile()],
+  ])('keeps %s exactly as it was', async (_label, make) => {
+    mount(make())
+    await screen.findByRole('button', { name: '更多操作' })
+    // 大标题块仍在正文列里（TASK-052 的口径），顶栏里没有内联标题。
+    expect(document.querySelector('.reader-header')).not.toBeNull()
+    expect(document.querySelector('.reader-toolbar-title')).toBeNull()
+    expect(document.querySelector('.reader-toolbar-pdf')).toBeNull()
+    // 心得仍是图标按钮：`textContent` 为空正是「图标化」那条既有守卫的判据。
+    const notes = screen.getByRole('button', { name: '心得' })
+    expect(notes).toHaveClass('icon-button')
+    expect(notes.textContent).toBe('')
+  })
+})
 
 const more = () => screen.getByRole('button', { name: '更多操作' })
 // **状态徽章按真值表取名，不写字面量。** 初稿写的是 `/未开始|在读|读完|归档/`，
