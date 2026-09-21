@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-086"
-status = "IN_ACCEPTANCE"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "要改 `docs/contracts/API与数据契约基线.md`（删除 TASK-085 留下的「生效前提」块、订正 §14.2 一处过期描述），命中 risk-policy.json 的 high_risk_paths，机器策略即 L3。其余是文档与登记。执行链：1 Worker → 自动检查 → 独立只读 Reviewer → 独立只读 Integration/Acceptance。"
 risk_flags = ["public-api", "documentation"]
@@ -314,8 +314,41 @@ TASK-047 那 6 张是在**隔离的 e2e 沙盒**（临时目录 + 端口 18000/1
   > - **记录里缺第四轮的检查留痕**：`第四轮` 段只写了改动与遗留项，未写本轮的 `check_task.py`（`files=15`、`e04ba71a…`）与 `validate_governance.py` 结果；记录中最新的指纹 `eec82cb…` 已不对应候选 `4672105`。请在 EVIDENCE 写回时一并补上（属证据写回，按 §6 不需再开一轮 Review）。
   > - 建议把 `popup.ts:55` 与「07 取自用户实库（已删）」一并填进 EVIDENCE 的「非阻断遗留项」，避免收尾时遗失。
   > - 机械检查我无权限复跑，按 §6 复用；无可疑迹象。建议独立 Integration 在 `4672105` 上亲自执行一次。
-- Acceptance：待填
-- 最终状态/风险/用户操作：待填
+- Acceptance（独立只读 Integration/Acceptance，独立于实现者与 Reviewer，核 `9c64e71..d7f1cec`，**报告原文**）：
+
+  > ## 结论：PASS（最终候选 `4672105`；记录状态提交 `d7f1cec`）
+  >
+  > **只读证明**：本 Agent 仅授予 Read/Grep/Glob，无 Write/Edit、无 Bash；未改动、未提交任何文件。独立于实现者与 Reviewer。
+  >
+  > **核对范围**：`9c64e71..d7f1cec` 全量文本 diff + 三次增量 + 7 张 PNG 逐张目视 + 回源码抽查；按 §4 不重跑全套测试。另经 blob 哈希链核实：`d7f1cec` 仅改任务记录与索引行（README/契约/开发与运行/extension README 的最终 blob 与 `4672105` 逐一相同），**产品内容与 Reviewer PASS 的候选一致**。
+  >
+  > **完成条件逐条**
+  > 1. §14.4 无「生效前提／合并顺序」块，全节不依赖未合并分支（`API与数据契约基线.md:938-949`）；§14.2:859 与 `extract.ts:444` 保证（`pdf_problem` 非空⇒已认出文献⇒popup 必停）相符 — 达成。
+  > 2. 索引 086/085/084/083 各一行，状态与四份记录 TOML 逐一一致（086=IN_ACCEPTANCE，其余 MERGED），带 merge 提交 — 达成。
+  > 3. 五处漂移全改；`grep 保存这一页的正文` 仅剩任务记录历史引用，`popup.html:57` 实装即「保存这一页」— 达成。
+  > 4. README 三块能力齐备（PDF 直抓+pdf.js 阅读器/文献信息/高亮），逐句抽查属实：25 MiB=`MAX_PDF_BYTES 26_214_400`、20 s=`PDF_TIMEOUT_MS`、Alembic 至 `0008`（实有 8 个迁移）、36+9 个测试文件与实际文件数吻合、86 个任务号（缺 054）、Nature/Springer cookie 握手有 TASK-080 实测支撑、PDF 只读无文字层=`PdfReader.tsx:25`。七张图：06 按钮「保存这一页」、07 为真实 arXiv:1706.03762（2/15 页、间距可见）、01–06 全合成，图注与「01–06 合成、07 真实预印本」声明相符，**无个人数据／令牌／本机路径／账号痕迹** — 达成。
+  > 5. 检查证据自洽：`files=15` = 9 个文本 + 6 张移出的 PNG 记为删除（第一轮 `files=10` 同法成立）；`check_task.py:359` 的指纹**排除任务记录与索引**，故第三轮（改 `开发与运行.md`）、第四轮（改 `extension/README.md`）指纹必变，`ee18975→eec82cb→e04ba71` 与各轮改动一一对应。未见把 NOT_RUN／FAIL 说成 PASS（二进制 FAIL 如实登记并说明成因）— 达成。
+  > 6. Reviewer 配置 `.claude/agents/reviewer.md` 为 `tools: Read, Grep, Glob`（运行器只读）；三轮报告原文完整写回，主 Agent 处置逐条对应，含 Reviewer 自撤的「86 个任务号」一条（我独立点算确认是 86）— 达成。
+  > 7. 四项非阻断遗留全部如实在册；`popup.ts:55` 那半句我已验证确实仍在源码里，未被淡化；`frontend/e2e/_shots.spec.ts` 确未入库、工作区已无此文件 — 达成。
+  >
+  > **Findings：无阻断项**，三条非阻断观察：
+  > - N1（措辞，可选）：`docs/开发与运行.md:194`、`extension/README.md:5` 写「抓不到 PDF 时弹窗会先停下来」，严格说只覆盖五种 `pdf_problem`；文献页**根本没声明** `citation_pdf_url` 时不会停（契约称其为常态，README 已精确枚举五种）。不误导用户操作，不必返工。
+  > - N2：7 张 PNG 因检查器设计（`check_task.py:369` 拒非 UTF-8）始终在机械检查之外，只有人工核验；我已独立复看七张，结论一致。
+  > - N3：我无 Bash，无法复跑 `check_task.py`/`validate_governance.py`（第三轮 Reviewer 建议由 Integration 执行）；按 §6 复用，并以上述文件数与指纹链算术做了独立自洽性验证，无可疑迹象。
+  >
+  > **剩余风险**：README 测试数字为手抄、代码再变会过期（已登记）；`popup.ts:55` 陈旧注释待下个任务清除。
+  >
+  > **给用户的下一步**：按既定指令本次未推 PR——请亲自过一遍 `README.md` 与 `docs/images/01–07`，确认后再由你决定推 PR/合并；合并后把 086 状态与索引行更新并入下一个任务的控制面提交，并顺手删掉 `extension/src/popup/popup.ts:55` 的「前提是 TASK-084 先合并」。
+
+- 主 Agent 对验收的处置：N1 接受为措辞层面的非阻断项（见遗留项 5），不返工——「弹窗会先停下来」写在「抓到/抓不到 PDF」的语境里，
+  没声明 `citation_pdf_url` 的页面走的是普通网页那条路，文档对它的描述仍然成立。N2/N3 为流程事实，不需处置。
+- 最终状态/风险/用户操作：**ACCEPTED**（L3 执行链走完：4 轮实现 → 每轮机械检查 → 独立只读
+  Reviewer 三轮（1 条必须修复 F1，已修）→ 独立只读 Integration/Acceptance PASS）。
+  风险：本任务不改任何行为，风险集中在「文档说错」本身；两次同类漏改都由 Review/自查抓回并留痕。
+  **等待用户操作**：按既定指令本次不主动推 PR——请先亲自过一遍 `README.md`（仓库门面）与
+  `docs/images/01`–`07`，确认后再由你决定是否推 PR 与合并。合并后 086 的 MERGED 登记按 §5
+  并入下一个任务的控制面提交，并建议顺手删掉 `extension/src/popup/popup.ts:55` 的
+  「前提是 TASK-084 先合并」。
 - 非阻断遗留项：
   1. **`extension/src/popup/popup.ts:55` 的注释里仍写「前提是 TASK-084 先合并」**——与本任务
      从契约 §14.4 删掉的那句「生效前提」是同一种东西，而 TASK-084 已于 2026-09-21 合并
@@ -327,6 +360,9 @@ TASK-047 那 6 张是在**隔离的 e2e 沙盒**（临时目录 + 端口 18000/1
   3. **拍图脚本按登记不入库**，这五张图目前无法一键重现；是否把它收进 `frontend/e2e/`
      需要另开任务（要改本任务的非目标）。
   4. README 的测试结果表是手工抄录的真实输出，无机器校验，代码再变会再次过期。
+  5. **验收 N1（措辞）**：「抓不到 PDF 时弹窗会先停下来」严格说只覆盖五种 `pdf_problem`；
+     文献页根本没声明 `citation_pdf_url` 时走的是普通网页那条路、不会停。两份文档在
+     「抓到/抓不到」的语境里成立，不返工，留档。
 - 日期与决定日志：2026-09-21 用户合并 #91/#92/#93 后要求「把这些收尾做了，同时 github 主页也
   相应更新一下新内容」→ 登记 TASK-086。
 <!-- EVIDENCE:END -->
