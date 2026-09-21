@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-081"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L2"
 risk_reason = "只改前端的阅读器版式：把已有控件搬进同一条工具条、去掉 PDF 页的大标题块。不动任何公共契约、不动数据含义、不动后端与迁移，也不新增接口调用。不命中 risk-policy.json 的 high_risk_paths。唯一超出「局部修复」的地方是它改的 `ResourceToolbar.tsx` 为所有资料类型共用——因此不定 L1：需要一位独立 Reviewer 确认非 PDF 资料页没被顺带改坏。执行链：1 Worker → 自动检查 → 1 独立只读 Reviewer。"
 risk_flags = ["business"]
@@ -240,7 +240,7 @@ checks = ["frontend"]
 
 ### 最终状态 / 风险 / 用户操作
 
-- **状态：ACCEPTED**，等待用户合并（只有用户本人可以合并）。
+- **状态：MERGED**——用户 2026-09-21 合并 PR #89，merge 提交 `7bce666`。
 - **执行链已走完**（L2）：1 Worker（主 Agent 亲自实施）→ 自动检查 CHECKS PASS
   → 独立只读 Reviewer 两轮（首轮 CHANGES_REQUIRED，抓到两条**真缺陷**：类名撞车致顶栏收窄
   且「适合宽度」失准、`overflow: hidden` 致顶栏面板被裁剪且滚不过去；二轮 PASS）。
