@@ -353,7 +353,7 @@ function toBase64(buffer: ArrayBuffer): string {
  * `popup/capture.ts` 的整次预算从 15 秒提到 30 秒——有 PDF 要下时，这一步是几 MB 的
  * 下载而不再只是读一次 DOM，按读 DOM 的尺子量它本身就不对。
  */
-const PDF_TIMEOUT_MS = 20_000
+export const PDF_TIMEOUT_MS = 20_000
 
 /**
  * 地址末段用作文件名前先看它说不说明问题：PLOS 的 PDF 地址是
@@ -476,9 +476,12 @@ export async function capturePdf(
   } catch (cause) {
     // 超时与其它失败要分开说：前者「再试一次也许就成」，后者多半是付费墙——
     // 该怎么办完全不同，笼统一句「没拿到」等于把我们已经知道的信息丢掉。
-    const timedOut =
-      cause instanceof Error && (cause.name === 'TimeoutError' || cause.name === 'AbortError')
-    if (timedOut) return { pdf: null, problem: 'slow' }
+    // 不写 `cause instanceof Error`：真实浏览器里 fetch 超时抛的是 `DOMException`
+    // （`name === 'TimeoutError'`）。它的原型链确实经过 `Error.prototype`，所以 instanceof
+    // 也成立——但那条链依赖 WebIDL 的实现细节，而这里只需要一个名字。防御性地读它，
+    // 顺带兼容任何非 Error 的抛出物。（第四轮 Review F1。）
+    const name = (cause as { name?: unknown } | null)?.name
+    if (name === 'TimeoutError' || name === 'AbortError') return { pdf: null, problem: 'slow' }
     // 网络失败、CORS 被拒、被拦截器掐断都落这里：如实说没拿到，不猜原因。
     return { pdf: null, problem: 'failed' }
   }

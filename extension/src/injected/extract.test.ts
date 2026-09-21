@@ -614,9 +614,9 @@ describe('capturePdf', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => {
-        const error = new Error('The operation was aborted due to timeout')
-        error.name = 'TimeoutError'
-        throw error
+        // **必须是真的 `DOMException`**：浏览器里 fetch 超时抛的就是它，而不是改了
+        // `name` 的普通 Error。用后者测等于那条真实路径从没被执行过（第四轮 Review F1）。
+        throw new DOMException('The operation was aborted due to timeout', 'TimeoutError')
       }),
     )
     const citation = extractCitation(pageWith(PAPER), PAGE)

@@ -579,7 +579,7 @@ describe('capture page · pdf', () => {
     expect(upload).not.toHaveBeenCalled()
   })
 
-  // 四种拿不到 PDF 的原因各说各的话：用户看到的不能是一句笼统的「失败了」，
+  // 五种拿不到 PDF 的原因各说各的话：用户看到的不能是一句笼统的「失败了」，
   // 因为该怎么办完全不同（换个入口／自己下载／登录后再来）。
   it.each([
     ['cross-origin', /PDF 在另一个域名下/],

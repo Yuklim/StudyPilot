@@ -306,7 +306,7 @@ describe('isCapturedPdf', () => {
 })
 
 describe('isPdfProblem', () => {
-  // 契约 14.7 只列四种取值；14.3 要求载荷逐条校验后才使用。首轮 Review F3：
+  // 契约 14.7 只列五种取值；14.3 要求载荷逐条校验后才使用。首轮 Review F3：
   // 原先这个字段跟着载荷原样透传，`PdfProblem` 这个类型在运行时根本不存在。
   it.each([['cross-origin'], ['too-large'], ['not-pdf'], ['slow'], ['failed']])(
     'accepts the contract value %s',

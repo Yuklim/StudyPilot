@@ -279,7 +279,7 @@ export function isCapturedCitation(value: unknown): value is CapturedCitation | 
  * 因为付费墙常常回 200 加一页 HTML。到了这一步还不合格，说明不是本扩展产出的消息。
  */
 /**
- * `pdf_problem` 只能是契约 14.7 列的四种之一（或没有）。
+ * `pdf_problem` 只能是契约 14.7 列的五种之一（或没有）。
  *
  * 首轮 Review F3：原先它跟着载荷原样透传，TypeScript 的 `PdfProblem` 在运行时不存在，
  * 于是「载荷必须通过结构校验」（契约 14.3）对这个字段是空话。实际危害有限——它只用来

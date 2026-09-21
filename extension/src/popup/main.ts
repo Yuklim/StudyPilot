@@ -47,7 +47,9 @@ if (
 
   button.addEventListener('click', () => {
     button.disabled = true
-    hint.textContent = '正在读取这一页…'
+    // 这一步现在可能还包含「下载这篇文献的 PDF」，几 MB 要等一会儿——
+    // 光说「正在读取这一页」会让用户以为卡住了（第四轮 Review F2）。
+    hint.textContent = '正在读取这一页…（是文献的话还要下载它的 PDF，可能要等一会儿）'
     runCapture(bridge)
       .then(async (outcome) => {
         if (!outcome.ok) {
