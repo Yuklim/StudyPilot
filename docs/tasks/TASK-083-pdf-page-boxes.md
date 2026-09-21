@@ -17,6 +17,9 @@ allowed_paths = [
   "docs/tasks/TASK-082-pdf-crisp.md",
   "docs/tasks/TASK-083-pdf-page-boxes.md",
   "docs/tasks/任务索引.md",
+  # 范围修订 1（2026-09-21，写入前登记）：现有夹具只有 2 页、且两页都在渲染窗口内，
+  # 压不出这个缺陷；需要一份页数足够多的合成 PDF 才能让 e2e 真正看住它。
+  "frontend/e2e/fixtures/sample-long.pdf",
 ]
 checks = ["frontend"]
 ```
