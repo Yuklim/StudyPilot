@@ -37,6 +37,8 @@ export type Manifest = {
   manifest_version: 3
   name: string
   version: string
+  /** 人看的版本标识，Chrome 扩展详情页直接显示。见 `buildVersionName`。 */
+  version_name: string
   description: string
   permissions: string[]
   optional_host_permissions: string[]
@@ -44,6 +46,23 @@ export type Manifest = {
   content_scripts: { matches: string[]; js: string[]; run_at: string }[]
   action: { default_popup: string; default_title: string }
 }
+
+/**
+ * 「我装的到底是哪一版」——`version` 回答不了这个问题。
+ *
+ * 它是手写常量，一个月里改过十几次扩展代码也不会变（用户 2026-09-21 就是这么被绊住的：
+ * 「还是 0.2.0 版本，为什么重新加载更新不了」）。Chrome 的 `version` 字段又只接受数字点
+ * 分格式，塞不进 commit SHA。`version_name` 没有这个限制，且在扩展详情页直接可见。
+ *
+ * 构建时由 `vite.config.ts` 注入当前 commit 的短 SHA；拿不到 git（打包好的源码、CI 的浅
+ * 克隆）时退化为 `dev`，**不猜、不留空**。
+ */
+export function buildVersionName(commit?: string): string {
+  const stamp = (commit ?? '').trim()
+  return `${VERSION}+${/^[0-9a-f]{7,40}$/i.test(stamp) ? stamp : 'dev'}`
+}
+
+const VERSION = '0.2.0'
 
 export const POPUP_PAGE = 'popup.html'
 export const RELAY_SCRIPT = 'relay.js'
@@ -53,7 +72,8 @@ export const BACKGROUND_SCRIPT = 'background.js'
 export const manifest: Manifest = {
   manifest_version: 3,
   name: 'StudyPilot 采集',
-  version: '0.2.0',
+  version: VERSION,
+  version_name: buildVersionName(),
   description:
     '把你正在看的网页正文保存到本机 StudyPilot。只读取已显示的内容，不接触任何网站账号。正文里的图片可在你确认后一并保存。',
   permissions: ['activeTab', 'scripting', 'storage'],

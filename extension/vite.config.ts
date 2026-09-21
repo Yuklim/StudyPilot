@@ -3,7 +3,18 @@ import { defineConfig } from 'vitest/config'
 
 // The explicit `.ts` extension keeps Vite's native config loader happy; without
 // it the build prints a forward-compatibility warning on every run.
-import { manifest, POPUP_PAGE } from './src/manifest.ts'
+import { execFileSync } from 'node:child_process'
+
+import { buildVersionName, manifest, POPUP_PAGE } from './src/manifest.ts'
+
+function headCommit(): string {
+  try {
+    return execFileSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim()
+  } catch {
+    // 没有 git（源码包、浅克隆）时不算失败：版本名退化成 `+dev`，构建照常。
+    return ''
+  }
+}
 
 // Emitting the manifest from `src/manifest.ts` keeps one source of truth: the
 // tests assert against the same module the build ships.
@@ -13,7 +24,11 @@ const emitManifest: Plugin = {
     this.emitFile({
       type: 'asset',
       fileName: 'manifest.json',
-      source: JSON.stringify(manifest, null, 2) + '\n',
+      // 构建时把当前 commit 的短 SHA 写进 version_name：装进 Chrome 之后，扩展详情页
+      // 上就能一眼看出装的是哪一版。拿不到 git 时 buildVersionName 退化为 `+dev`。
+      source:
+        JSON.stringify({ ...manifest, version_name: buildVersionName(headCommit()) }, null, 2) +
+        '\n',
     })
   },
 }

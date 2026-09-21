@@ -152,6 +152,48 @@ function schemaTypes(doc: Document): string[] {
   return types
 }
 
+/**
+ * 页面上声明的 DOI：任何指向 `doi.org` 的链接。
+ *
+ * arXiv 的 abs 页**不发 `citation_doi`**，但它在正文里放了一个
+ * `<a id="arxiv-doi-link" href="https://doi.org/10.48550/arXiv.1706.03762">`——DOI 就写在
+ * 页面上，只是不在 meta 里（2026-09-21 实测）。很多出版社页面也这么展示。读它既拿到了
+ * 效果，又不必像 Zotero 那样按 `10.48550/arXiv.<id>` 的规律**代页面生成**一个它没说过的值。
+ */
+function doiFromLinks(doc: Document): string | undefined {
+  for (const node of doc.querySelectorAll('a[href]')) {
+    const href = node.getAttribute('href') ?? ''
+    try {
+      const link = new URL(href, doc.baseURI || 'https://example.invalid/')
+      if (!/^(www\.|dx\.)?doi\.org$/i.test(link.hostname)) continue
+      const target = decodeURIComponent(link.pathname.replace(/^\//, ''))
+      if (target.startsWith('10.')) return target
+    } catch {
+      // 页面上的坏地址很常见，跳过它继续看下一个。
+    }
+  }
+  return undefined
+}
+
+/**
+ * 这一页看起来是不是博客平台搭的。
+ *
+ * 照搬 Zotero `Embedded Metadata.js` 的启发式（`#wp-block-library-css`、
+ * `.yoast-schema-graph`、`generator` 含 wordpress/blogger/wooframework）。它**不是**用来
+ * 抬高门槛的，而是 Zotero 优先级链里「光有 citation_title 的猜测输给平台特征」那一环：
+ * 只压制弱信号，有期刊名/DOI 这类强信号的页面不受影响——否则一个用 WordPress 搭的期刊站
+ * 会被误伤。
+ */
+function looksLikeBlog(doc: Document): boolean {
+  if (
+    doc.getElementById('wp-block-library-css') ||
+    doc.getElementById('wp-block-library-inline-css') ||
+    doc.getElementsByClassName('yoast-schema-graph').length
+  )
+    return true
+  return metaValues(doc, 'generator').some((value) => /wordpress|blogger|wooframework/i.test(value))
+}
+
 export function extractCitation(doc: Document, url: string): CapturedCitation | null {
   const first = (...names: string[]) => {
     for (const name of names) {
@@ -160,48 +202,70 @@ export function extractCitation(doc: Document, url: string): CapturedCitation | 
     }
     return undefined
   }
-  const doi = bounded(first('citation_doi', 'dc.identifier.doi'), MAX_CITATION_NAME)
-  // **不认 `dc.source`**：DC 规范里它常是站点名甚至一段网址，把它算成「期刊名」会让
-  // 任何声明了 DC 的普通 CMS 页面被判成期刊论文、出处显示成一段地址（Review F3）。
-  // 契约第 14 节写的门槛就是「期刊或会议名」，实现不该比契约宽。
-  const inbook = first('citation_inbook_title')
-  const container = bounded(
-    first('citation_journal_title', 'citation_conference_title') ?? inbook,
-    MAX_CITATION_CONTAINER,
+  const doi = bounded(
+    first('citation_doi', 'dc.identifier.doi') ?? doiFromLinks(doc),
+    MAX_CITATION_NAME,
   )
+  // **不认 `dc.source`**：DC 规范里它常是站点名甚至一段网址，把它算成「期刊名」会让
+  // 任何声明了 DC 的普通 CMS 页面被判成期刊论文、出处显示成一段地址。
+  const inbook = first('citation_inbook_title', 'citation_book_title')
+  const journal = first('citation_journal_title')
+  const conference = first('citation_conference_title', 'citation_conference')
+  const thesisPlace = first('citation_dissertation_institution', 'citation_dissertation_name')
+  const reportPlace = first('citation_technical_report_institution')
+  const arxivId = first('citation_arxiv_id')
+  const container = bounded(journal ?? conference ?? inbook, MAX_CITATION_CONTAINER)
   const types = schemaTypes(doc)
   const says = (...wanted: string[]) => wanted.some((type) => types.includes(type))
 
-  // **门槛**：有 DOI、或有期刊/会议名、或 schema.org 明说是论文/书，才算认出了文献。
-  // 只有作者和日期的普通博客不算——否则每篇博客都弹这块卡片，用户很快就会无视它。
-  if (!doi && !container && !says('scholarlyarticle', 'book', 'thesis', 'report')) return null
+  // **门槛**（TASK-079，照 Zotero 的 Embedded Metadata 口径）：
+  // 强信号——DOI、期刊/会议/书名、学位论文或报告的机构、schema.org 明说是论文书学位论文报告；
+  // 弱信号——光有 `citation_title`。`citation_*` 是 Highwire 那套**专门发给 Google Scholar**
+  // 的学术标签，所以它自己就是信号；上一版额外要求 DOI 或期刊名，直接把预印本挡在了门外
+  // （arXiv 两样都不发，用户实测撞到）。弱信号遇上博客平台特征则不认。
+  const strong = Boolean(
+    doi ||
+    container ||
+    thesisPlace ||
+    reportPlace ||
+    arxivId ||
+    says('scholarlyarticle', 'book', 'thesis', 'report'),
+  )
+  const weak = Boolean(first('citation_title'))
+  if (!strong && !(weak && !looksLikeBlog(doc))) return null
 
   const authors = metaValues(doc, 'citation_author')
     .concat(metaValues(doc, 'dc.creator'))
     .map((name) => bounded(name, MAX_CITATION_AUTHOR))
     .filter((name): name is string => name !== null)
     .slice(0, MAX_CITATION_AUTHORS)
-  const stamp = first('citation_publication_date', 'citation_date', 'dc.date')
+  const stamp = first(
+    'citation_publication_date',
+    'citation_cover_date',
+    'citation_date',
+    'citation_online_date',
+    'dc.date',
+  )
   const year = Number((stamp ?? '').slice(0, 4))
   const firstPage = first('citation_firstpage')
   const lastPage = first('citation_lastpage')
-  const conference = Boolean(first('citation_conference_title'))
-  // 页面明说自己是什么，就按它说的算——既然这些声明足以让我们把卡片显示出来，
-  // 就没有理由在类型上又不信它。都没说时才看 DOI/期刊，最后才落到 OTHER。
+  // 页面明说自己是什么，就按它说的算；都没说时才看手里的信号，最后才落到 OTHER。
+  // 与 Zotero 的一处有意分歧：光有 `citation_title` 时它猜 journalArticle，我们判 OTHER——
+  // 那个类型会直接显示在确认页的卡片上，猜错比留空更刺眼。
   const item_type: CapturedCitation['item_type'] = says('book')
     ? 'BOOK'
-    : says('thesis') || first('citation_dissertation_name')
+    : says('thesis') || thesisPlace
       ? 'THESIS'
-      : says('report')
+      : says('report') || reportPlace
         ? 'REPORT'
         : conference
           ? 'CONFERENCE_PAPER'
-          : inbook
+          : inbook && !journal
             ? 'BOOK_CHAPTER'
-            : says('scholarlyarticle') || container || doi
-              ? // arXiv 这类预印本站点也给 DOI，但没有期刊名：有 DOI 无期刊 + 域名是
-                // arxiv 就按预印本算，别的一律按期刊论文。
-                !container && /(^|\.)arxiv\.org$/i.test(hostOf(url))
+            : says('scholarlyarticle') || journal || doi
+              ? // 预印本：有 arXiv 标识或来自 arxiv 域名，且没有期刊名。有期刊名说明它已经
+                // 正式发表，那就是期刊论文。
+                !journal && (arxivId || /(^|\.)arxiv\.org$/i.test(hostOf(url)))
                 ? 'PREPRINT'
                 : 'JOURNAL_ARTICLE'
               : 'OTHER'
@@ -220,7 +284,10 @@ export function extractCitation(doc: Document, url: string): CapturedCitation | 
       firstPage && lastPage ? `${firstPage}-${lastPage}` : (firstPage ?? lastPage),
       MAX_CITATION_LOCATOR,
     ),
-    publisher: bounded(first('citation_publisher', 'dc.publisher'), MAX_CITATION_NAME),
+    publisher: bounded(
+      first('citation_publisher', 'dc.publisher') ?? thesisPlace ?? reportPlace,
+      MAX_CITATION_NAME,
+    ),
     doi,
     isbn: bounded(first('citation_isbn', 'dc.identifier.isbn'), MAX_CITATION_STAMP),
   }

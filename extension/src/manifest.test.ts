@@ -3,7 +3,14 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
-import { BACKGROUND_SCRIPT, EXTRACT_SCRIPT, POPUP_PAGE, RELAY_SCRIPT, manifest } from './manifest'
+import {
+  BACKGROUND_SCRIPT,
+  EXTRACT_SCRIPT,
+  POPUP_PAGE,
+  RELAY_SCRIPT,
+  manifest,
+  buildVersionName,
+} from './manifest'
 import { UI_ORIGIN } from './shared/protocol'
 import { ENTRIES, outputName } from '../vite.injected.config'
 
@@ -23,17 +30,34 @@ describe('MV3 manifest', () => {
     expect(manifest.version).toBe(pkg.version)
   })
 
+  it('stamps the build with the commit, and says "dev" instead of guessing', () => {
+    // 「我装的是哪一版」在这之前无法回答：version 是手写常量，改十次代码也不动。
+    expect(buildVersionName('327d2d6')).toBe('0.2.0+327d2d6')
+    expect(buildVersionName('327d2d68df130c2ff281141f0c1c8425ca7601f9')).toMatch(
+      /^0\.2\.0\+327d2d6/,
+    )
+    // 拿不到 git、或拿到的不像 SHA 时退化，不留空也不瞎填。
+    for (const bad of ['', '   ', undefined, 'HEAD', 'not-a-sha', '12345']) {
+      expect(buildVersionName(bad)).toBe('0.2.0+dev')
+    }
+    // 与 version 同源：改了 version 而忘了这里，前缀对不上就会红。
+    expect(buildVersionName('327d2d6').startsWith(manifest.version + '+')).toBe(true)
+  })
+
   it('points at a popup page that actually exists', () => {
     expect(existsSync(projectFile(POPUP_PAGE))).toBe(true)
   })
 
-  it('declares exactly these nine keys and nothing else', () => {
+  it('declares exactly these ten keys and nothing else', () => {
     // A whitelist on purpose: naming the dangerous keys instead would miss
     // `optional_permissions`, `optional_host_permissions`, `externally_connectable`,
     // `web_accessible_resources`, `content_security_policy`, `background`,
     // `declarative_net_request` and every key Chrome adds later — all of which grant
     // reach just as effectively. Any new top-level key fails here, which forces the
     // change to be deliberate and reviewed.
+    //
+    // TASK-079 加了第十个键 `version_name`：它**不扩大任何授权面**（只是人看的版本标识），
+    // 但照样必须在这里显式登记——白名单的价值正在于「新键一律先变红」，不区分危险与否。
     //
     // TASK-040 加了两个键，都是**有意**的授权面变化，各自另有一条专门的断言在下面：
     // `optional_host_permissions`（取图，安装时不授予）与 `background`（唯一会发出
@@ -48,6 +72,7 @@ describe('MV3 manifest', () => {
         'name',
         'optional_host_permissions',
         'permissions',
+        'version_name',
         'version',
       ].sort(),
     )
