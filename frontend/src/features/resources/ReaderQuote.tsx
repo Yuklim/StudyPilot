@@ -100,7 +100,9 @@ export function ReaderQuote({
   return (
     <div className="reader-quote" style={{ top, left }}>
       {!markable && typeof canMark === 'function' && (
-        <span className="reader-quote-note">跨页只能记下这段</span>
+        // 文案要同时盖住「跨页」与「一端落在页外的空隙」两种情况（独立 Review F2）：
+        // 两者都是「选区没有整个落在同一页的文字层里」。
+        <span className="reader-quote-note">选区跨页或落到页外，只能记下这段</span>
       )}
       {markable && (
         <>

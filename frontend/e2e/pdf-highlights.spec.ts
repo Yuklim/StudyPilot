@@ -13,6 +13,8 @@ import { expect, test, type Page } from '@playwright/test'
  */
 
 const FIXTURE = fileURLToPath(new URL('./fixtures/sample.pdf', import.meta.url))
+/** 十二页、每页一行「StudyPilot page N」：第 9 页在 ±2 页的渲染窗口之外，专为「跳到未渲染的页」而用。 */
+const LONG_FIXTURE = fileURLToPath(new URL('./fixtures/sample-long.pdf', import.meta.url))
 
 async function call(page: Page, path: string, method = 'GET', body?: unknown) {
   return page.evaluate(
@@ -32,9 +34,9 @@ async function call(page: Page, path: string, method = 'GET', body?: unknown) {
   )
 }
 
-async function seedPdf(page: Page, title: string) {
+async function seedPdf(page: Page, title: string, fixture = FIXTURE) {
   await page.goto('/resources')
-  const bytes = [...readFileSync(FIXTURE)]
+  const bytes = [...readFileSync(fixture)]
   return page.evaluate(
     async ([name, data]) => {
       const bootstrap = await fetch('/api/v1/local-session', {
@@ -153,7 +155,7 @@ test('a selection that crosses two pages can be quoted but not marked', async ({
   })
   await expect(page.getByRole('button', { name: '记下这段' })).toBeVisible()
   expect(await page.getByRole('button', { name: '标下来' }).count()).toBe(0)
-  await expect(page.getByText('跨页只能记下这段')).toBeVisible()
+  await expect(page.getByText('选区跨页或落到页外，只能记下这段')).toBeVisible()
 
   // 引文照走：两页的文字都进了草稿，但没有高亮被创建。
   await page.getByRole('button', { name: '记下这段' }).click()
@@ -187,4 +189,40 @@ test('quoting a passage on a PDF page pairs the saved note with its highlight', 
       return rows.map((row) => [row.page_number, row.note_id !== null])
     })
     .toEqual([[1, true]])
+})
+
+test('a highlight on a page outside the render window is not called lost, and jumps there', async ({
+  page,
+}) => {
+  // 视口外的页没有文字层，那条高亮只是「还没看」：不判孤立，给「跳到第 N 页」；
+  // 跳过去、那一页渲染完，就在那一页里定位上色。
+  const id = await seedPdf(page, 'PDF 高亮 · D', LONG_FIXTURE)
+  const made = await call(page, `/resources/${id}/highlights`, 'POST', {
+    exact: 'StudyPilot page 9',
+    prefix: null,
+    suffix: null,
+    start_offset: 0,
+    end_offset: 17,
+    page_number: 9,
+  })
+  expect(made.status).toBe(201)
+
+  await page.goto(`/resources/${id}`)
+  await expect(page.getByLabel('第 1 页')).toBeVisible()
+  await expect(page.getByLabel('页码')).toHaveValue('1')
+  // 第 9 页还没渲染：没有它的文字层。
+  expect(await page.locator('.pdf-page[data-page="9"] .pdf-text-layer').count()).toBe(0)
+
+  await openHighlights(page)
+  const list = page.getByRole('list', { name: '高亮列表' })
+  await expect(list).toContainText('第 9 页')
+  expect(await page.locator('.reader-highlight-orphan').count()).toBe(0)
+  expect(await painted(page)).toEqual([])
+
+  await list.getByRole('button', { name: '跳到第 9 页' }).click()
+  await expect.poll(() => page.getByLabel('页码').inputValue()).toBe('9')
+  // 渲染完成后在那一页里定位上色；「跳到第 9 页」让位给「跳到正文」。
+  await expect.poll(() => painted(page), { timeout: 10_000 }).toEqual(['StudyPilot page 9'])
+  await expect(list.getByRole('button', { name: '跳到正文' })).toBeVisible()
+  expect(await page.locator('.reader-highlight-orphan').count()).toBe(0)
 })

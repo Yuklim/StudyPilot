@@ -567,14 +567,14 @@ describe('按选区判能不能标（TASK-089）', () => {
     fireEvent.mouseDown(button)
     fireEvent.click(button)
     expect(onMark).toHaveBeenCalledWith(expect.any(Range))
-    expect(screen.queryByText('跨页只能记下这段')).toBeNull()
+    expect(screen.queryByText('选区跨页或落到页外，只能记下这段')).toBeNull()
   })
 
   it('keeps only 「记下这段」 and says why when the predicate refuses (cross-page)', () => {
     const { span, onQuote } = harness(() => false)
     selectText('同一页里的一句', span.firstChild)
     expect(screen.queryByRole('button', { name: '标下来' })).toBeNull()
-    expect(screen.getByText('跨页只能记下这段')).toBeInTheDocument()
+    expect(screen.getByText('选区跨页或落到页外，只能记下这段')).toBeInTheDocument()
     // 引文照走。
     const button = screen.getByRole('button', { name: '记下这段' })
     fireEvent.mouseDown(button)
