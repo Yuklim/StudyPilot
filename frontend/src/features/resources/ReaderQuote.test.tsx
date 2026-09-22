@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { api, ApiError } from '../../api/client'
@@ -7,6 +7,7 @@ import { renderWithRouter } from '../../test/render'
 import { resourceId, sample, samplePage } from './fixtures'
 import { readPosition, writePosition } from './readerPosition'
 import { readSelection, toQuote } from './quoteSelection'
+import { ReaderQuote } from './ReaderQuote'
 
 // TASK-068：「记下这段」（正文选区 → 心得草稿）与「记为学习进度」（阅读位置 → 学习表单预填）。
 // 都走整页（App + 路由 + 真正的 markdown 渲染），选区用 mock 的 `window.getSelection`。
@@ -456,5 +457,78 @@ describe('删除资料', () => {
     const dialog = await screen.findByRole('dialog', { name: /^删除/ })
     fireEvent.click(within(dialog).getByRole('button', { name: '删除' }))
     await waitFor(() => expect(readPosition(resourceId)).toBeNull())
+  })
+})
+
+describe('PDF 上的胶囊（TASK-087）', () => {
+  /**
+   * 直接渲染组件（不走整页）：PDF 那条路的正文根是 `.pdf-reader-pages`，里面是 pdf.js
+   * 文字层的 span。这里造一个同形状的 DOM，验的是**正文根可换**与**按钮少一个**。
+   */
+  function harness(canMark: boolean) {
+    const host = document.createElement('div')
+    const pages = document.createElement('div')
+    pages.className = 'pdf-reader-pages'
+    const span = document.createElement('span')
+    span.textContent = '注意力机制在算什么'
+    pages.append(span)
+    host.append(pages)
+    document.body.append(host)
+    const onQuote = vi.fn()
+    const onMark = vi.fn()
+    render(
+      <ReaderQuote
+        container={host}
+        selector=".pdf-reader-pages"
+        canMark={canMark}
+        onQuote={onQuote}
+        onMark={onMark}
+      />,
+    )
+    return { host, pages, span, onQuote, onMark }
+  }
+
+  it('reads the selection from the pdf text layer, not from the snapshot body', () => {
+    const { span, onQuote } = harness(false)
+    selectText('注意力机制在算什么', span.firstChild)
+    const button = screen.getByRole('button', { name: '记下这段' })
+    fireEvent.mouseDown(button)
+    fireEvent.click(button)
+    // 引文照走 Markdown 引用；PDF 上没有锚点可取，`range` 交出去也不会被拿去标高亮。
+    expect(onQuote).toHaveBeenCalledWith('> 注意力机制在算什么', expect.anything())
+  })
+
+  it('hides 「标下来」 where there is nowhere to put a highlight', () => {
+    const { span, onMark } = harness(false)
+    selectText('注意力机制在算什么', span.firstChild)
+    expect(screen.queryByRole('button', { name: '标下来' })).toBeNull()
+    expect(onMark).not.toHaveBeenCalled()
+    // 分隔线跟着一起消失，胶囊里不留一条孤零零的竖线。
+    expect(document.querySelector('.reader-quote-divider')).toBeNull()
+  })
+
+  it('still offers both hands where highlights do have a home', () => {
+    const { span } = harness(true)
+    selectText('注意力机制在算什么', span.firstChild)
+    expect(screen.getByRole('button', { name: '标下来' })).not.toBeNull()
+    expect(screen.getByRole('button', { name: '记下这段' })).not.toBeNull()
+  })
+
+  it('follows a selection that scrolls inside the reader, not just the window', () => {
+    // PDF 在 `.pdf-reader-pages` 这个内层容器里滚，而 scroll 事件不冒泡：只听 window
+    // 的话，滚动时胶囊会钉在原地不动。
+    const { pages, span } = harness(false)
+    selectText('注意力机制在算什么', span.firstChild)
+    expect(screen.queryByRole('button', { name: '记下这段' })).not.toBeNull()
+    // 选区没了之后只发一个内层滚动事件：胶囊必须跟着重算、随之消失。
+    vi.spyOn(window, 'getSelection').mockReturnValue({
+      isCollapsed: true,
+      rangeCount: 0,
+      anchorNode: null,
+      focusNode: null,
+      toString: () => '',
+    } as unknown as Selection)
+    fireEvent.scroll(pages)
+    expect(screen.queryByRole('button', { name: '记下这段' })).toBeNull()
   })
 })

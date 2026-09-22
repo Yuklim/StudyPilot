@@ -3203,6 +3203,36 @@ a.source-chip:focus-visible {
   width: 100%;
   height: 100%;
 }
+/* --- 文字层（TASK-087） ---
+   pdf.js 把每段文字放成一个绝对定位的透明 span 叠在 canvas 上，这一页于是能选中、复制，
+   浏览器自带的页内查找也能命中。**只抄本项目真正需要的几条**，不引整包
+   `pdfjs-dist/web/pdf_viewer.css`——那份样式带着一大批与本站设计冲突的规则。
+   （`.pdf-page` 要 `position: relative`，绝对定位的层才有参照。） */
+.pdf-page {
+  position: relative;
+}
+.pdf-text-layer {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  line-height: 1;
+  text-align: initial;
+  transform-origin: 0 0;
+  forced-color-adjust: none;
+  text-size-adjust: none;
+}
+.pdf-text-layer span {
+  position: absolute;
+  white-space: pre;
+  /* 字本身不可见——看得见的是下面 canvas 画出来的那一份；这一层只负责被选中。 */
+  color: transparent;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+/* 选中要看得见：canvas 在下面，所以只能靠选区自己的底色。 */
+.pdf-text-layer span::selection {
+  background: var(--mark);
+}
 /* 远离视口的页只占位：canvas 交还给浏览器，几十页的文档才不会把内存吃满。 */
 .pdf-page-placeholder {
   font-size: 13px;

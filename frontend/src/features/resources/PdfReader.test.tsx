@@ -19,26 +19,57 @@ const pages = [
 ]
 let opened: { fail?: unknown } = {}
 
-vi.mock('pdfjs-dist', () => ({
-  GlobalWorkerOptions: { workerSrc: '' },
-  getDocument: () => ({
-    promise: opened.fail
-      ? Promise.reject(opened.fail)
-      : Promise.resolve({
-          numPages: pages.length,
-          getPage: (number: number) =>
-            Promise.resolve({
-              getViewport: ({ scale }: { scale: number }) => ({
-                width: pages[number - 1]!.width * scale,
-                height: pages[number - 1]!.height * scale,
+vi.mock('pdfjs-dist', () => {
+  /**
+   * 文字层的替身（TASK-087）：真的 `TextLayer` 要量字体、算变换，jsdom 里做不了。
+   * 这里只保留我们依赖的那件事——**把每段文字放成容器里的一个 span**，
+   * 真实排版由 e2e 在 Chromium 里验。
+   */
+  class TextLayer {
+    private options: {
+      textContentSource: { items: { str: string }[] }
+      container: HTMLElement
+    }
+    constructor(options: {
+      textContentSource: { items: { str: string }[] }
+      container: HTMLElement
+    }) {
+      this.options = options
+    }
+    render() {
+      for (const item of this.options.textContentSource.items) {
+        const span = document.createElement('span')
+        span.textContent = item.str
+        this.options.container.append(span)
+      }
+      return Promise.resolve()
+    }
+    cancel() {}
+  }
+  return {
+    GlobalWorkerOptions: { workerSrc: '' },
+    TextLayer,
+    getDocument: () => ({
+      promise: opened.fail
+        ? Promise.reject(opened.fail)
+        : Promise.resolve({
+            numPages: pages.length,
+            getPage: (number: number) =>
+              Promise.resolve({
+                getViewport: ({ scale }: { scale: number }) => ({
+                  width: pages[number - 1]!.width * scale,
+                  height: pages[number - 1]!.height * scale,
+                }),
+                render: () => ({ promise: Promise.resolve(), cancel: () => {} }),
+                getTextContent: () =>
+                  Promise.resolve({ items: [{ str: `第 ${number} 页的文字` }], styles: {} }),
+                cleanup: () => {},
               }),
-              render: () => ({ promise: Promise.resolve(), cancel: () => {} }),
-              cleanup: () => {},
-            }),
-          destroy: () => Promise.resolve(),
-        }),
-  }),
-}))
+            destroy: () => Promise.resolve(),
+          }),
+    }),
+  }
+})
 vi.mock('pdfjs-dist/build/pdf.worker.min.mjs?url', () => ({ default: 'worker.js' }))
 
 const resourceId = '018f1f58-4eb2-4a0d-a716-fb81b1960001'
@@ -274,5 +305,68 @@ describe('in-app pdf reader', () => {
     render(<PdfReader resourceId={resourceId} file={file} />)
     await screen.findByLabelText('第 1 页')
     expect((screen.getByLabelText('页码') as HTMLInputElement).value).toBe('1')
+  })
+})
+
+describe('文字层（TASK-087）', () => {
+  /** jsdom 没装 canvas 包，`getContext` 返回 null 会让整段渲染早退——文字层也就不挂。 */
+  function stubCanvas() {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
+      {} as unknown as CanvasRenderingContext2D,
+    )
+  }
+
+  it('puts the page text on top of the canvas so it can be selected', async () => {
+    vi.spyOn(api, 'downloadOriginal').mockResolvedValue({ blob: bytes(), fileName: 'paper.pdf' })
+    stubCanvas()
+    render(<PdfReader resourceId={resourceId} file={file} />)
+    await screen.findByLabelText('第 1 页')
+    const first = document.querySelector('.pdf-page[data-page="1"] .pdf-text-layer')
+    await waitFor(() => expect(first?.textContent).toContain('第 1 页的文字'))
+    // 文字层必须在这一页的框里、与 canvas 同级——选区落在它上面才算「落在正文里」。
+    expect(first?.parentElement?.querySelector('canvas')).not.toBeNull()
+  })
+
+  it('scales the text by what the canvas actually shows, not by the raw zoom', async () => {
+    // 全局 `box-sizing: border-box` 让 `.pdf-page` 的 1px 边框吃掉内容宽度，canvas 按 100%
+    // 跟着缩。字号若按 `scale` 换算，文字层会比 canvas 宽 2px，右边的选区整体偏出去。
+    vi.spyOn(api, 'downloadOriginal').mockResolvedValue({ blob: bytes(), fileName: 'paper.pdf' })
+    stubCanvas()
+    // jsdom 里所有盒子都是 0×0，取不到显示宽度时退回 CSS 宽度（600 ÷ 600 = 1）。
+    render(<PdfReader resourceId={resourceId} file={file} />)
+    await screen.findByLabelText('第 1 页')
+    const layer = document.querySelector<HTMLElement>('.pdf-page[data-page="1"] .pdf-text-layer')
+    await waitFor(() => expect(layer?.style.getPropertyValue('--total-scale-factor')).toBe('1'))
+    // `setLayerDimensions` 用 `round()` 算宽高，少了步长整条 calc 会失效、层撑不到一页大。
+    expect(layer?.style.getPropertyValue('--scale-round-x')).toBe('1px')
+    expect(layer?.style.getPropertyValue('--scale-round-y')).toBe('1px')
+  })
+
+  it('drops the text layer on pages that are far from the viewport', async () => {
+    // 与 canvas 同生命周期：离视口远的页只占位。常驻会把几十页的 DOM 撑爆。
+    vi.spyOn(api, 'downloadOriginal').mockResolvedValue({ blob: bytes(), fileName: 'paper.pdf' })
+    stubCanvas()
+    const extra = [
+      { width: 600, height: 800 },
+      { width: 600, height: 800 },
+      { width: 600, height: 800 },
+    ]
+    pages.push(...extra)
+    try {
+      render(<PdfReader resourceId={resourceId} file={file} />)
+      await screen.findByLabelText('第 1 页')
+      await waitFor(() =>
+        expect(document.querySelectorAll('.pdf-text-layer').length).toBeGreaterThan(0),
+      )
+      // 停在第 1 页：只有 1–3 页在渲染窗口内（NEAR_PAGES = 2），4–6 页只占位。
+      expect(document.querySelectorAll('.pdf-page')).toHaveLength(6)
+      expect(document.querySelectorAll('.pdf-text-layer')).toHaveLength(3)
+      expect(document.querySelector('.pdf-page[data-page="6"] .pdf-text-layer')).toBeNull()
+      expect(
+        document.querySelector('.pdf-page[data-page="6"] .pdf-page-placeholder'),
+      ).not.toBeNull()
+    } finally {
+      pages.length -= extra.length
+    }
   })
 })

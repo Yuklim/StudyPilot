@@ -291,6 +291,14 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
     },
     [mark],
   )
+  /**
+   * PDF 上的「记下这段」（TASK-087）：只把引文送进心得草稿，**不标高亮**。
+   *
+   * 高亮的锚点取自 `.snapshot-rendered`，PDF 资料根本没有快照（契约 §4.15 也要求先有
+   * READY 快照）。`mark` 本身取不到正文根时会早退，但这里显式分开：靠另一个函数的早退
+   * 来表达「这条路不该标高亮」，读代码的人看不出这是有意的。
+   */
+  const takeQuoteOnly = useCallback((quote: string) => takeQuote(quote), [takeQuote])
   const takeQuoteAndMark = useCallback(
     (quote: string, range: Range | null) => {
       takeQuote(quote)
@@ -504,8 +512,16 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
                 **PDF 例外（TASK-081）**：那一页的标题长在顶栏里，这里不再重复一个 `h1`
                 ——一页两个 `h1` 既是无障碍问题，也正是要省掉的那 64px。 */}
             {!pdfOriginal && <ReaderHeader resource={toolbarItem} headingSlot={headingSlot} />}
-            {/* 「记下这段」浮动胶囊（TASK-068）：读正文里的选区，送进右栏心得草稿。 */}
-            <ReaderQuote container={readerMain} onQuote={takeQuoteAndMark} onMark={takeMark} />
+            {/* 「记下这段」浮动胶囊（TASK-068）：读正文里的选区，送进右栏心得草稿。
+                **PDF 走另一套参数**（TASK-087）：正文根是 `.pdf-reader-pages`（文字层在里面），
+                且只出「记下这段」——PDF 上还没有高亮的落点，引文也就不去标高亮。 */}
+            <ReaderQuote
+              container={readerMain}
+              selector={pdfOriginal ? '.pdf-reader-pages' : '.snapshot-rendered'}
+              canMark={!pdfOriginal}
+              onQuote={pdfOriginal ? takeQuoteOnly : takeQuoteAndMark}
+              onMark={takeMark}
+            />
             {/* 标签与「收下它是因为」TASK-067 起在右栏「信息」Tab（用户 2026-09-17 选定），
                 不再占正文顶部；正文紧接标题。 */}
             {/* 正文**紧接着上下文层**、默认占满——这是「正文优先」的全部意义。

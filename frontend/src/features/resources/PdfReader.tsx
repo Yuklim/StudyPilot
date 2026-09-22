@@ -22,8 +22,14 @@ import {
  * **连续滚动 + 按需渲染。** 一份几十页的 PDF 不该等全渲染完才给看：先量出每页尺寸占好位，
  * 只渲染视口附近的页，远离视口的页把 canvas 释放掉，免得大文档把内存吃满。
  *
- * **只读。** 不做选中、标注、文本层搜索：高亮的锚点是快照正文的字符偏移，PDF 是另一套坐标
- * （页 + 页内位置），那是后续任务要动契约的事。
+ * **可以选中文字，但还不能高亮**（TASK-087）。每页在 canvas 之上叠一层 pdf.js 的文字层：
+ * 一批绝对定位的透明 `span`，于是这一页能被选中、复制，浏览器自带的页内查找也能命中，
+ * 「记下这段」因此在 PDF 上可用。**高亮仍然不行**——它的锚点是快照正文的字符偏移，而 PDF
+ * 是另一套坐标（页 + 页内位置），契约 §4.15 还要求「必须有 READY 的正文快照」，PDF 资料没有。
+ * 那是下一个要动契约的任务。
+ *
+ * 文字层与 canvas **同生命周期**：只给视口附近的页渲染，离开即一起卸载。代价是选中之后
+ * 滚很远，浏览器会把选区丢掉；换成常驻会把几十页的 DOM 撑爆，不值。
  *
  * pdf.js 是打包进来的 npm 依赖，worker 也一起打包——本机应用在运行时不该依赖外网。
  */
@@ -76,13 +82,39 @@ type PdfPage = {
     canvasContext: CanvasRenderingContext2D
     viewport: { width: number; height: number }
   }) => { promise: Promise<void>; cancel: () => void }
+  /**
+   * 这一页的文字（TASK-087）。**可选**：我们对 pdf.js 只用结构化类型，测试替身给不给随它，
+   * 给不出来就是这一页没有文字层——canvas 照常可读，只是选不中。
+   */
+  getTextContent?: () => Promise<unknown>
   cleanup: () => void
 }
+/** pdf.js 的 `TextLayer`（5.x 起从主包导出）。同样只描述我们真正调到的部分。 */
+type TextLayerClass = new (options: {
+  textContentSource: unknown
+  container: HTMLElement
+  viewport: unknown
+}) => { render: () => Promise<void>; cancel: () => void }
 type Failure = { kind: 'password' | 'broken' | 'read'; detail: string }
 
-/** pdf.js 按需加载：它体积不小，没有 PDF 的资料不该为它买单。 */
+/**
+ * pdf.js 按需加载：它体积不小，没有 PDF 的资料不该为它买单。
+ *
+ * **只加载一次**，文档与文字层共用同一个模块对象——两处各写一次 `import()` 会让打包器与
+ * 测试替身各自解析一遍，文字层那次就可能拿到另一个实例。
+ */
+let pdfjsOnce: Promise<{
+  GlobalWorkerOptions: { workerSrc: string }
+  getDocument: (options: { data: ArrayBuffer }) => { promise: Promise<unknown> }
+  TextLayer?: TextLayerClass
+}> | null = null
+function loadPdfjs() {
+  pdfjsOnce ??= import('pdfjs-dist') as unknown as NonNullable<typeof pdfjsOnce>
+  return pdfjsOnce
+}
+
 async function openDocument(bytes: ArrayBuffer): Promise<Doc> {
-  const pdfjs = await import('pdfjs-dist')
+  const pdfjs = await loadPdfjs()
   const worker = await import('pdfjs-dist/build/pdf.worker.min.mjs?url')
   pdfjs.GlobalWorkerOptions.workerSrc = worker.default
   return (await pdfjs.getDocument({ data: bytes }).promise) as unknown as Doc
@@ -420,10 +452,53 @@ function PdfPageView({
   near: boolean
 }) {
   const canvas = useRef<HTMLCanvasElement>(null)
+  const textLayer = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!doc || !near) return
     let alive = true
     let task: { cancel: () => void } | null = null
+    let text: { cancel: () => void } | null = null
+    /**
+     * 把这一页的文字放到 canvas 之上（TASK-087）。
+     *
+     * `TextLayer` 把每个 span 的 left/top 写成**页面百分比**，只有字号按
+     * `--total-scale-factor` 从 PDF 点换算成 CSS 像素，所以这个变量必须等于「这一页此刻
+     * 显示出来的 CSS 宽度 ÷ 它在 scale=1 时的宽度」。**不能直接用 `scale`**：全局
+     * `box-sizing: border-box` 让 `.pdf-page` 的 1px 边框吃掉内容宽度，canvas 按 100% 跟着
+     * 缩，用 `scale` 会让文字层比 canvas 宽 2px、右边的选区整体偏出去。
+     *
+     * `--scale-round-*` 是 `setLayerDimensions` 里 `round()` 的步长；缺了它整条 `calc`
+     * 失效，层撑不到一页大。
+     */
+    const drawText = async (target: PdfPage, cssViewport: { width: number; height: number }) => {
+      const layer = textLayer.current
+      const node = canvas.current
+      if (!layer || !node || typeof target.getTextContent !== 'function') return
+      const { TextLayer: Layer } = await loadPdfjs()
+      if (!alive || typeof Layer !== 'function') return
+      const source = await target.getTextContent().catch(() => null)
+      if (!alive || !source) return
+      const unit = target.getViewport({ scale: 1 })
+      const shown = node.getBoundingClientRect().width || cssViewport.width
+      layer.replaceChildren()
+      layer.style.setProperty(
+        '--total-scale-factor',
+        String(unit.width > 0 ? shown / unit.width : 1),
+      )
+      layer.style.setProperty('--scale-round-x', '1px')
+      layer.style.setProperty('--scale-round-y', '1px')
+      const drawn = new Layer({
+        textContentSource: source,
+        container: layer,
+        viewport: cssViewport,
+      })
+      text = drawn
+      try {
+        await drawn.render()
+      } catch {
+        // 取消文字层同样会抛，属正常路径。
+      }
+    }
     void (async () => {
       // 卸载或换文件时文档已被 `destroy()`，这里的 `getPage` 会抛；没人接就是一条未捕获的
       // rejection（只污染控制台，但没必要留着）。
@@ -447,17 +522,24 @@ function PdfPageView({
       } catch {
         // 取消渲染会抛，属正常路径。
       }
+      // 文字层放在画完之后：`cleanup()` 会把这一页的资源交还，取文字必须赶在它之前。
+      if (alive) await drawText(target, css)
       target.cleanup()
     })()
     return () => {
       alive = false
       task?.cancel()
+      text?.cancel()
     }
   }, [doc, number, scale, ratio, near])
   return (
     <div className="pdf-page" style={{ width, height }} data-page={number}>
       {near ? (
-        <canvas ref={canvas} aria-label={`第 ${number} 页`} />
+        <>
+          <canvas ref={canvas} aria-label={`第 ${number} 页`} />
+          {/* 文字层：透明 span 叠在画面上，让这一页能选中、复制、被页内查找命中。 */}
+          <div className="pdf-text-layer" ref={textLayer} />
+        </>
       ) : (
         <span className="pdf-page-placeholder" aria-hidden="true">
           {number}

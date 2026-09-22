@@ -161,3 +161,46 @@ test('a non-PDF original keeps the existing behaviour', async ({ page }) => {
   await expect(page.getByRole('tab', { name: /高亮/ })).toHaveCount(0)
   await expect(page.getByText(/还没有保存正文|原件/).first()).toBeVisible()
 })
+
+test('text on a PDF page can be selected and quoted into a note', async ({ page }) => {
+  // **TASK-087 只能在真浏览器里验**：jsdom 没有选区、没有布局，文字层对不对得齐、
+  // 选不选得中，单测都看不见。
+  const id = await seedPdf(page, 'PDF 阅读器 · 文字层')
+  await page.goto(`/resources/${id}`)
+  await expect(page.getByLabel('第 1 页')).toBeVisible()
+
+  // ① 这一页的文字真的进了文字层（夹具第一页写的是 StudyPilot page one）。
+  const layer = page.locator('.pdf-page[data-page="1"] .pdf-text-layer')
+  await expect(layer).toContainText('StudyPilot page one')
+
+  // ② 文字层与 canvas 严丝合缝——差一点点，选区就会偏在字的旁边。
+  const boxes = await page.locator('.pdf-page[data-page="1"]').evaluate((node) => {
+    const canvas = node.querySelector('canvas')!.getBoundingClientRect()
+    const text = node.querySelector('.pdf-text-layer')!.getBoundingClientRect()
+    return { canvas, text }
+  })
+  expect(Math.abs(boxes.text.left - boxes.canvas.left)).toBeLessThan(1.5)
+  expect(Math.abs(boxes.text.top - boxes.canvas.top)).toBeLessThan(1.5)
+  expect(Math.abs(boxes.text.width - boxes.canvas.width)).toBeLessThan(1.5)
+
+  // ③ 选中那一行：真的选区，`selectionchange` 由浏览器自己发。
+  await page.evaluate(() => {
+    const span = [...document.querySelectorAll('.pdf-text-layer span')].find((node) =>
+      node.textContent?.includes('StudyPilot page one'),
+    )!
+    const range = document.createRange()
+    range.selectNodeContents(span)
+    const selection = window.getSelection()!
+    selection.removeAllRanges()
+    selection.addRange(range)
+  })
+
+  // ④ 胶囊只有「记下这段」：PDF 上还没有高亮的落点。
+  await expect(page.getByRole('button', { name: '记下这段' })).toBeVisible()
+  expect(await page.getByRole('button', { name: '标下来' }).count()).toBe(0)
+
+  // ⑤ 点下去，引文进右栏心得草稿。
+  await page.getByRole('button', { name: '记下这段' }).click()
+  const draft = page.getByRole('textbox', { name: '这次想记下什么？' })
+  await expect(draft).toHaveValue(/> StudyPilot page one/)
+})

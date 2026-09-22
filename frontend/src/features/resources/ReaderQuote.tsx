@@ -11,16 +11,22 @@ import { readSelection, toQuote, type QuoteSelection } from './quoteSelection'
  * 的 XSS 边界，这里只读 `selection.toString()`，进的是 textarea 的值）。Readwise 的「高亮旁
  * 写 note」是这条路的完整形态，本任务先落最轻的一步。
  *
- * 选区必须**整个落在** `.snapshot-rendered` 里（锚点与焦点都在），否则不出胶囊：选到顶栏、
- * 标题或侧栏的文字不是"这段正文"。空白选区、超过 2000 字也不出。
+ * 选区必须**整个落在正文根**里（锚点与焦点都在），否则不出胶囊：选到顶栏、标题或侧栏的
+ * 文字不是"这段正文"。空白选区、超过 2000 字也不出。
+ *
+ * **正文根是可换的**（TASK-087）：网页快照是 `.snapshot-rendered`，PDF 是
+ * `.pdf-reader-pages`（每页 canvas 之上那层文字层就在里面）。PDF 上传 `canMark={false}`
+ * ——那里还没有高亮的落点，给一个点了必然失败的「标下来」比不给更糟。
  */
 
 export function ReaderQuote({
   container,
   onQuote,
   onMark,
+  selector = '.snapshot-rendered',
+  canMark = true,
 }: {
-  /** 正文列元素；里面的 `.snapshot-rendered` 才算正文。 */
+  /** 正文列元素；里面匹配 `selector` 的那个才算正文。 */
   container: HTMLElement | null
   onQuote: (quote: string, range: Range | null) => void
   /**
@@ -28,14 +34,21 @@ export function ReaderQuote({
    * 按钮：一手只标记，一手边标边写。两者都把选区的 `Range` 交出去，由父级取锚点。
    */
   onMark: (range: Range) => void
+  /** 正文根的选择器。默认网页快照；PDF 传 `.pdf-reader-pages`。 */
+  selector?: string
+  /** 这份资料能不能标高亮。false 时胶囊只留「记下这段」。 */
+  canMark?: boolean
 }) {
   const [selection, setSelection] = useState<QuoteSelection | null>(null)
   useEffect(() => {
     if (!container) return
-    const update = () => setSelection(readSelection(container.querySelector('.snapshot-rendered')))
+    const update = () => setSelection(readSelection(container.querySelector(selector)))
     // 选区变化即刻算；滚动时位置会变，也重算（胶囊跟着选区走，滚出视口就不显示）。
     document.addEventListener('selectionchange', update)
-    window.addEventListener('scroll', update, { passive: true })
+    // **捕获阶段**监听（TASK-087）：scroll 不冒泡，而 PDF 是在
+    // `.pdf-reader-pages` 这个内层容器里滚的——只听 window 的话，PDF 上滚动时胶囊会
+    // 钉在原地不动。捕获能同时拿到内层容器与文档自身的滚动。
+    document.addEventListener('scroll', update, { passive: true, capture: true })
     window.addEventListener('resize', update)
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') setSelection(null)
@@ -43,11 +56,11 @@ export function ReaderQuote({
     document.addEventListener('keydown', onKeyDown)
     return () => {
       document.removeEventListener('selectionchange', update)
-      window.removeEventListener('scroll', update)
+      document.removeEventListener('scroll', update, true)
       window.removeEventListener('resize', update)
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [container])
+  }, [container, selector])
 
   if (!selection || selection.top < 0 || selection.top > window.innerHeight) return null
   // 两个按钮都要用点击**当时**的选区：`mousedown` 已经阻止了默认行为，选区还在。
@@ -74,17 +87,21 @@ export function ReaderQuote({
   const top = Math.max(64, selection.top - 10)
   return (
     <div className="reader-quote" style={{ top, left }}>
-      <button
-        type="button"
-        className="reader-quote-button mark"
-        // `mousedown` 会先于 `click` 清掉选区（textarea 之外点击的默认行为），所以在这里
-        // 阻止默认，让 `click` 还能读到刚才那段文字。
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={() => take((range) => range && onMark(range))}
-      >
-        <span aria-hidden="true">▨ </span>标下来
-      </button>
-      <span className="reader-quote-divider" aria-hidden="true" />
+      {canMark && (
+        <>
+          <button
+            type="button"
+            className="reader-quote-button mark"
+            // `mousedown` 会先于 `click` 清掉选区（textarea 之外点击的默认行为），所以在
+            // 这里阻止默认，让 `click` 还能读到刚才那段文字。
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => take((range) => range && onMark(range))}
+          >
+            <span aria-hidden="true">▨ </span>标下来
+          </button>
+          <span className="reader-quote-divider" aria-hidden="true" />
+        </>
+      )}
       <button
         type="button"
         className="reader-quote-button"
