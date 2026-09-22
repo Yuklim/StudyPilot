@@ -1,8 +1,8 @@
 # StudyPilot
 
-**面向个人学习者的本地优先阅读手帐。** 把网页、粘贴的内容和原始文件收进自己的资料库，冻结一份正文快照当文章读，再把心得写在资料旁边。
+**面向个人学习者的本地优先阅读手帐。** 把网页、文献和原始文件收进自己的资料库——网页冻结一份正文快照，**学术文献直接把 PDF 原件抓下来、在站内阅读器里读**——再把心得写在资料旁边。
 
-> **StudyPilot** is a local-first reading journal. A Chrome/Edge extension captures the article body of the page you are reading, the backend freezes it as a Markdown snapshot in a local SQLite database, and the frontend renders it as a distraction-free reader with your own notes alongside. Everything runs on `127.0.0.1` — no cloud, no account, no telemetry.
+> **StudyPilot** is a local-first reading journal. A Chrome/Edge extension captures the page you are reading: an ordinary article becomes a frozen Markdown snapshot, while **a recognised paper has its own PDF fetched and stored as the resource itself**, readable in the built-in pdf.js viewer alongside the citation metadata the page declared. Everything is a local SQLite database on `127.0.0.1` — no cloud, no account, no telemetry.
 
 [![CI](https://github.com/Yuklim/StudyPilot/actions/workflows/ci.yml/badge.svg)](https://github.com/Yuklim/StudyPilot/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)
@@ -21,29 +21,33 @@
 
 一条完整链路：
 
-1. **采集** —— 在网页上点扩展图标，读当前页正文并转成 Markdown。页面有图片时会先问一次是否连图片一并保存。**不点确认就不会存进资料库**：抽取结果只是暂存在扩展自己的本地存储里等待转交（`storage` 权限的用途，见下），不会写入数据库。
-2. **确认** —— 打开 StudyPilot 确认页，核对标题与正文后保存为资料。保存下来的正文是一份**冻结快照**，之后原文改版、删除、失效都不影响阅读。
-3. **阅读** —— 资料详情页是一个阅读器：正文居中、两层工具条（常用动作在常驻层，低频动作收进 `⋯`），右侧可展开心得侧栏。
-4. **记录** —— 在资料旁写下理解、疑问和结论；也可以先随手写独立心得，之后再贴到某份资料上。
+1. **采集** —— 在网页上点扩展图标。**普通网页**读正文并转成 Markdown（有图片时先问一次是否一并保存）；**学术文献**则多做一步：从页面自己声明的 `citation_pdf_url` 把 **PDF 原件**抓下来，同时认出作者、年份、期刊、DOI 这些文献信息。**不点确认就不会存进资料库**——抽取结果只是暂存在扩展自己的本地存储里等待转交（`storage` 权限的用途，见下）。
+2. **确认** —— 打开 StudyPilot 确认页核对后保存。网页存成**冻结快照**（原文改版、删除、失效都不影响阅读）；文献存成 **FILE 资料，原件就是那份 PDF**，确认页上不再让你做多余的勾选。
+3. **阅读** —— 资料详情页就是阅读器。网页走正文阅读器（正文居中、一条置顶工具条、左侧目录、右侧可展开心得／高亮／信息侧栏）；**PDF 走站内 pdf.js 阅读器**：连续滚动、按需渲染、页码跳转与缩放、按设备像素渲染（高分屏上不发虚）、离开时记住读到哪里。
+4. **记录** —— 在资料旁写下理解、疑问和结论；**选中正文可以直接高亮或「记下这段」**；也可以先随手写独立心得，之后再贴到某份资料上。
 
 另外还有资料库的检索与筛选（类型、状态、排序、主题与标签，筛选条件写进 URL）、主题/标签管理（含使用情况统计与合并），以及保留的旧学习历史入口。
+
+**抓不到 PDF 时会明说原因，不会默默降级。** 跨域、付费墙、超过 25 MiB、取回来的不是 PDF、20 秒没下完——扩展弹窗会停下来告诉你是哪一种，由你决定改存网页正文还是算了。实测多数出版社（Nature、Springer 等）把 PDF 请求转到自家登录域做 cookie 握手，不带凭证的请求跟不过去；**这不是缺陷，是「扩展从不接触你的网站账号」这条承诺的必然结果**。开放获取的站点（arXiv、PLOS 等）抓得到。
 
 ## 截图
 
 | | |
 | --- | --- |
-| ![学习概览](docs/images/01-overview.png) **学习概览** —— 每天一小步的入口 | ![沉浸式阅读](docs/images/03-reader.png) **资料详情 = 阅读器** —— 冻结的正文快照、两层工具条 |
+| ![学习概览](docs/images/01-overview.png) **学习概览** —— 每天一小步的入口 | ![沉浸式阅读](docs/images/03-reader.png) **资料详情 = 阅读器** —— 冻结的正文快照、左侧目录、右侧心得栏 |
 | ![分类整理](docs/images/04-classifications.png) **分类整理** —— 主题与标签，含使用情况 | ![我的心得](docs/images/05-notes.png) **我的心得** —— 独立记录，可后贴到资料 |
 | ![浏览器扩展](docs/images/06-extension-popup.png) **浏览器扩展 popup** —— 采集入口 | ![资料库](docs/images/02-library.png) **资料库** —— 卡片/列表、筛选进 URL |
+| ![站内 PDF 阅读器](docs/images/07-pdf-reader.png) **站内 PDF 阅读器** —— 文献直接读原件：连续滚动、页码与缩放、位置记忆 | |
 
-> 以上截图取自真实运行的实例，数据为演示用途的合成内容。
+> 截图取自真实运行的实例。**01–06 的数据为演示用途的合成内容；07 里的文献是真实的公开预印本**
+> （arXiv:1706.03762），用来说明 PDF 这条链路只有拿真实文献才说得清。
 
 ## 技术栈
 
 | 层 | 选型 | 说明 |
 | --- | --- | --- |
 | 后端 | Python 3.13 · FastAPI · SQLAlchemy 2 · Alembic · Pydantic | 分层为 `api` / `application` / `infrastructure` / `modules`；业务规则与框架解耦 |
-| 数据库 | SQLite | 单文件、零运维；迁移用 Alembic 版本化（当前至 `0005`） |
+| 数据库 | SQLite | 单文件、零运维；迁移用 Alembic 版本化（当前至 `0008`） |
 | 前端 | React 19 · TypeScript · Vite · React Router | 组件测试用 Vitest + React Testing Library，端到端用 Playwright |
 | 扩展 | Chrome/Edge MV3 · TypeScript · defuddle | 独立 npm 工程，不与 `frontend/` 共享依赖 |
 | 质量 | Ruff · mypy(strict) · ESLint · Prettier · tsc | 见下方「测试与检查」 |
@@ -113,7 +117,7 @@ cd extension && npm ci && npm run build   # 产物在 extension/dist/
 
 **保存图片需要额外授权，且是可选的**：manifest 里写的是 `optional_host_permissions: ["<all_urls>"]`，**安装时不授予**。只有当这一页正文里确实有图片、且你点了「连图片一并保存」，浏览器才会弹出「读取网站数据」的授权框——拒绝或事后在扩展设置页撤销都不影响正文保存，图片继续指向原网站。之所以必须是 `<all_urls>` 而非具体域名：图片挂在哪个图床由页面决定，采集前无从得知。
 
-**抓文献 PDF 不需要额外授权**：认出这一页是文献时，扩展会把它**自己声明**的 PDF 地址（`citation_pdf_url`）抓下来存成资料原件，在 StudyPilot 自己的阅读器里读。它**只抓同域的**——PDF 与文章页不在同一个站点时（部分出版社把 PDF 放在 CDN）当场放弃、退回保存网页正文，绝不会替你向第三方站点发请求。
+**抓文献 PDF 不需要额外授权**：认出这一页是文献时，扩展会把它**自己声明**的 PDF 地址（`citation_pdf_url`）抓下来存成资料原件，在 StudyPilot 自己的阅读器里读。它**只抓同域的**——PDF 与文章页不在同一个站点时（部分出版社把 PDF 放在 CDN）当场放弃，**在扩展弹窗里说清是哪一种原因，由你决定改存这一页的正文还是算了**，绝不会替你向第三方站点发请求。
 
 扩展会主动发网络请求的地方**一共两处**：取正文图片的 service worker（需你授予上面的可选权限）与抓同域 PDF 的注入脚本。两处都不读 cookie、不接触任何网站的登录态、不带站点凭证（`credentials: 'omit'`），所以**需要登录才可见的图片与 PDF 取不到**——这是设计而非缺陷。`extension/src/manifest.test.ts` 用白名单锁住 manifest 的顶层键与权限清单，任何新增权限都会让测试失败，必须经过任务与独立审查。
 
@@ -121,13 +125,13 @@ cd extension && npm ci && npm run build   # 产物在 extension/dist/
 
 ## 测试与检查
 
-全部为真实执行结果，对应基线 `f609145`：
+全部为真实执行结果，对应基线 `9c64e71`：
 
 | 套件 | 命令 | 结果 |
 | --- | --- | --- |
-| 后端 | `cd backend && uv run pytest` | **550 passed** |
-| 前端组件 | `cd frontend && npm run test -- --run` | **539 passed**（23 个文件） |
-| 浏览器扩展 | `cd extension && npm run test -- --run` | **145 passed**（8 个文件） |
+| 后端 | `cd backend && uv run pytest` | **593 passed** |
+| 前端组件 | `cd frontend && npm run test -- --run` | **793 passed**（36 个文件） |
+| 浏览器扩展 | `cd extension && npm run test -- --run` | **196 passed**（9 个文件） |
 | 端到端 | `cd frontend && npm run test:e2e` | Playwright 驱动真实浏览器，覆盖资料、分类、心得、文件与阅读器 |
 
 除测试外，每个模块还有静态检查：后端 Ruff + mypy（`strict = true`）、前端与扩展各跑 Prettier + ESLint + `tsc --noEmit`。端到端测试启动一个**隔离沙盒**——临时数据库、临时文件目录、独立端口（后端 18000 / 前端 15173），跑完即删，不碰本机真实数据。
@@ -158,7 +162,7 @@ scripts/       仓库治理检查工具
 - **规则不能靠自觉**，能在系统层兜底的都写了权限拒绝（见 `.claude/settings.json`），例如禁止直接推送/合并 `main`、禁止 `reset --hard`；
 - **[`scripts/governance/check_task.py`](scripts/governance/check_task.py)** 按变更路径自动选出该跑哪些检查组，缺少工具、测试失败或未执行都不会被当成通过。
 
-`docs/tasks/` 保留了 **50 余份任务记录**（从 TASK-000 起，早期任务另附 HANDOFF / REVIEW / ACCEPTANCE），记录每个任务的需求、实现、真实检查输出与审查结论，包括失败与返工。想了解这套流程怎么运转，可以从 [`docs/governance/多Agent开发制度使用指南.md`](docs/governance/多Agent开发制度使用指南.md) 和任务索引 [`docs/tasks/任务索引.md`](docs/tasks/任务索引.md) 读起。
+`docs/tasks/` 保留了 **80 余份任务记录**（从 TASK-000 起，早期任务另附 HANDOFF / REVIEW / ACCEPTANCE），记录每个任务的需求、实现、真实检查输出与审查结论，包括失败与返工。想了解这套流程怎么运转，可以从 [`docs/governance/多Agent开发制度使用指南.md`](docs/governance/多Agent开发制度使用指南.md) 和任务索引 [`docs/tasks/任务索引.md`](docs/tasks/任务索引.md) 读起。
 
 > 这些是开发过程材料，不是使用本项目所需的前置阅读。只想用或只想读代码的话，忽略 `docs/tasks/` 即可。
 
@@ -170,6 +174,8 @@ scripts/       仓库治理检查工具
 - **复习、统计与 AI 尚未开放**。相关页面会明确显示「未接入」而不是填零。资料库为空时也不会显示示例数据冒充真实内容。
 - **未冻结的图片会按原址加载**。如果一份快照里的图片当时没有随正文一起冻结，阅读时会直接向原网站请求（已加 `referrerpolicy="no-referrer"` 缓解，但原网站仍能看到你的 IP）。
 - **搜索只覆盖标题、来源名称与保存原因**，不搜正文。
+- **出版社站基本抓不到 PDF**。Nature、Springer 这类站点把 PDF 请求转到自家登录域做 cookie 握手，而扩展**从不带你的网站账号信息**，跟不过去。此时弹窗会说清原因并由你决定改存网页正文。开放获取站点（arXiv、PLOS 等）正常。
+- **站内 PDF 阅读器只读，不做文字层的选择、搜索与高亮**。高亮目前只在网页正文快照上可用——PDF 是另一套坐标（页 + 页内位置），尚未实现。
 - **扩展只支持 Chromium 系**（Chrome / Edge），不支持 Firefox 与 Safari。
 - 一次采集最多处理 60 张图片，超出的图片在提取阶段即被截断，确认页不会提及。
 

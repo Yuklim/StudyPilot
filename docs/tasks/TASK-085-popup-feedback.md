@@ -3,9 +3,9 @@
 ```toml
 schema_version = 2
 id = "TASK-085"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
-risk_reason = "要改契约第 14.4 节（popup 的交互与权限询问时机写在那里），并修正 TASK-084 留下的一处**已失效的契约陈述**（§14.4 仍写「用户若在确认页取消勾选、改存网页正文」，而那个勾选框已被删）。`docs/contracts/**` 命中 risk-policy.json 的 high_risk_paths，取最高定 L3：1 Worker → 自动检查 → 独立只读 Reviewer → 独立只读 Integration/Acceptance。代码改动本身只在扩展 popup，但契约是公共事实来源，改它必须走满这条链。"
+risk_reason = "要改契约第 14.4 节（popup 的交互与权限询问时机写在那里），并修正 TASK-084 留下的一处**已失效的契约陈述**（§14.4 当时仍写「用户若在确认页取消勾选、改存网页正文」，而那个勾选框已由 TASK-084 删除）。`docs/contracts/**` 命中 risk-policy.json 的 high_risk_paths，取最高定 L3：1 Worker → 自动检查 → 独立只读 Reviewer → 独立只读 Integration/Acceptance。代码改动本身只在扩展 popup，但契约是公共事实来源，改它必须走满这条链。"
 risk_flags = ["public-api", "business"]
 owner = "coordinator"
 base = "168830e5b2947f92677bea1dbd18489b30f51512"
@@ -239,6 +239,9 @@ python3 scripts/governance/check_task.py ... | grep -E "^CHECKS" && git commit .
 同理，本记录 TOML 的 `risk_reason` 里仍写「那个勾选框**已被删**」——属冻结区的小疵，
 不为它重开候选，一并在收尾时处理。
 
+**→ 已由 TASK-086 执行**（2026-09-21，`#92` 合并之后）：契约 §14.4 的「生效前提」与合并顺序
+引用块已删除，TOML `risk_reason` 的措辞一并订正。
+
 **独立验收指出光靠这段话不够**：「留下过期契约陈述」正是本任务两次复发的同一种失误，
 而这一节没有任何机器兜底。采纳它给的办法——**补写 TASK-085 索引行时，把
 「MERGED 时须删 §14.4 的生效前提与合并顺序引用块」写进索引行本身**：索引一致性由
@@ -287,7 +290,7 @@ python3 scripts/governance/check_task.py ... | grep -E "^CHECKS" && git commit .
 
 ### 最终状态 / 风险 / 用户操作
 
-- **状态：ACCEPTED**，等待用户合并。
+- **状态：MERGED**——用户 2026-09-21 合并 PR #93，merge 提交 `9c64e71`。
 - **执行链已走完**（L3）：1 Worker → 自动检查 CHECKS PASS → 独立只读 Reviewer **两轮**
   （首轮 CHANGES_REQUIRED，抓到「在修契约的同时又在契约里造了一处同样的错」与「把未合并分支
   当既成事实」两条真问题）→ 独立只读 Acceptance **ACCEPTED**（抓到实测表绑在旧候选）。
