@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-090"
-status = "IN_REVIEW"
+status = "ACCEPTED"
 risk = "L2"
 risk_reason = "只改一份前端测试文件（`ResourceDeleteDialog.test.tsx`）的等待/断言写法，不碰任何产品代码、契约或数据。首次登记写成 L1，但 risk-policy.json 把 `tests` 标记归在 normal（L2）一档，`validate_governance`/`check_task` 均报「risk is lower than declared impact」——机器策略为准、不确定升一级：L2。执行链：1 Worker → 自动检查 → 1 独立只读 Reviewer；独立验收 N/A。"
 risk_flags = ["tests", "local-fix"]
@@ -69,7 +69,8 @@ checks = ["frontend"]
 
 ## 实现与测试
 
-- 实现 SHA：见候选（本任务只有一次提交，登记、实现与证据同一提交，避免提交引用自身）。
+- 实现 SHA：`a728c1f`（测试改动 + 首版登记）；`8f2d15c` 纠正登记（升 L2、改掉假的 PASS）。**两次提交**——
+  首版记录写「只有一次提交」是在提交前写的，提交后事实变了没改，Review 指出，在此订正。
 - **命令与结果**：
   - `check_task.py --task docs/tasks/TASK-090-delete-dialog-test-waits.md --worktree` → **见下面「一次假的 PASS」**；
     纠正后的真实结果：`**CHECKS PASS**，`files=3`，`product_fingerprint=921cffff08a4f76add4ab5b5e04bd124b4d37a48e8b0d1a34c68c667f6296cf4`，`profiles=frontend``。
@@ -112,11 +113,13 @@ await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())   // ← 1 
 **为什么不改组件**：把监听器换成读 ref 的写法确实能消掉这个窗口，但那是产品代码（本任务非目标），
 且真实用户不可能在 effect 落地前的几毫秒里按下 Esc——这是测试的时序假设不成立，不是产品缺陷。
 
-### 通读全文件后另收紧的两处
+### 通读全文件后另收紧的两处（理由已按 Review 订正）
 
-- 「部分失败」：甲的「已删除 1 份」与丙的「未删除」来自先后两次 `setRows`，只在同一批渲染里才同时出现——
-  在异步函数里那是调度上的巧合而不是保证。第二条改成 `findByText`。
-- 「409 重预览」：「内容有变化」与「3 条心得」同理，第二条改成 `findByText`。
+- 「部分失败」：「已删除 1 份。」与失败列表在组件里是**同一个条件块**渲染的，不可能先后出现；
+  「409 重预览」：「3 条心得」（preview 的 `setRows`）必先于或同批于「内容有变化」。
+  所以这两处改 `findByText` 是**无害的收紧**，不是修一个真实窗口。首版记录把它们说成「调度上的巧合
+  而非保证」——**说过头了**，Reviewer 回源码核过，在此改准。留着这两处改动：不弱化断言，且与文件里
+  其它「异步之后就等」的写法一致。
 
 其余用例逐条看过：紧跟 `fireEvent`（离散事件，React 同步 flush）之后的同步取是安全的；`await dialog()` /
 `await waitFor(按钮可用)` 之后取同一批渲染出来的元素也安全；「锁定时仍在」「取消后不发请求」这类同步
@@ -130,10 +133,31 @@ await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())   // ← 1 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：本任务单提交，登记/实现/证据同一提交；提交号见 PR。
-- Review：待填（L2，升级后补）
+- 候选 SHA：**最终候选 `8f2d15c`**（含 `a728c1f`；base `56e1cf4`）。
+- Review（独立只读 Reviewer，审 `56e1cf4..8f2d15c`，**报告原文**）：
+
+  > **结论：PASS**（附 2 项非阻断记录项）
+  >
+  > **只读证明**：本 Agent 仅有 Read/Grep/Glob，无 Write/Edit/Bash；全程未改任何文件。
+  > **范围**：`56e1cf4..8f2d15c` 全量 diff（3 文件）+ `ResourceDeleteDialog.tsx` 调用链 + 整份测试文件通读 + `.git/logs` 提交链 + `risk-policy.json`/`check_task.py`。
+  >
+  > **机理核对（成立）**：`deleting = running`（state），`busy` 仅是重入守卫 ref，与监听器无关；`setRunning(false)`/`setReconfirm(true)` 在同一同步续段内调用，React 18 批成一次渲染；监听器在 `useEffect([deleting, onClose])` 里换闭包，promise 触发的默认优先级更新其 passive effect 走 Scheduler 宏任务，而 RTL `asyncWrapper` 只等一个 `setTimeout(0)`——调度器一旦让出（慢机 5ms 时间片），timers 阶段先于 check 阶段，旧监听器（`deleting=true`）吞掉 Esc。推理链每环与源码相符（未执行验证，无 Bash）。
+  >
+  > **改法**：`waitFor` 内 `fireEvent` 无假过：回调里唯一能移除 dialog 的路径是新监听器 → `onClose`（自动关闭需 `left.length===0`，此处 stale `rows` 含 ready 项，不成立）；其他 Escape 监听（ResourceDetail/ResourceToolbar/ReaderQuote）均门控或幂等。锁定期负向断言（L230–232、236–239）仍同步。八条契约断言逐条在位、无弱化（L93–102、154–158、285–292、295–312、162–185、383–414）。通读后未发现记录漏提的同类写法。
+  >
+  > **诚实性**：`.git/logs` 证实链 `56e1cf4→a728c1f→8f2d15c`，第二提交信息即"升 L2 并纠正假 PASS"；`check_task.py:350–382` 在风险校验后才打印指纹，故"PASS 且指纹为空"确不可能出自真实 PASS；`tests` 在 `normal_flags`，L2 依据成立。`a728c1f` 内文本身我无法读取，仅确认叙述自洽。
+  >
+  > **Findings（非阻断）**
+  > 1. 记录 L72、L133 仍写"本任务只有一次提交/单提交"，与同文档记载的两次提交矛盾。建议主 Agent 在 EVIDENCE 写候选时注明 `8f2d15c`（含 `a728c1f`）。
+  > 2. 两处"顺手收紧"的理由过度声称：「已删除 1 份。」与失败列表在组件 L294–296 同一条件块内渲染，不可能先后出现；「3 条心得」（preview 的 setRows）必先于或同批于「内容有变化」。改为 `findByText` 无害且不弱化，但"巧合而非保证"不准确，记录即可。
+  >
+  > **剩余风险**：机理为源码推理未经复现；若 CI 再抖需另看。
+
+- 主 Agent 对 Review 的处置：两条都**改了记录**（候选写实为 `8f2d15c` 含 `a728c1f`；两处收紧的理由改准）。
+  纯记录改动，不形成新的产品候选。
 - Acceptance：N/A（L2）
-- 最终状态/风险/用户操作：**IN_REVIEW**（L2：升级后补独立只读 Review；此前一度错标 ACCEPTED）。
+- 最终状态/风险/用户操作：**ACCEPTED**（L2：自动检查 → 独立只读 Review PASS；此前错标过 L1/ACCEPTED，已纠正）。
+  用户已说「做完直接推pr」：PR 指向 TASK-089 的分支，**须在 PR #97 之后合并**。
   风险：零产品代码改动；最坏情况是测试仍抖，那时机理已知。
   用户已说「做完直接推pr」：PR 指向 TASK-089 的分支，**须在 PR #97 之后合并**。
 - 非阻断遗留项：组件的 Esc 监听换成读 ref 的写法可以彻底消掉这个时序窗口（产品代码，另议）。
