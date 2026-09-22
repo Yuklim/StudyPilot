@@ -12,7 +12,7 @@ import type { OriginalFile } from './files'
  * 页码与位置怎么算。真实渲染由 e2e 在 Chromium 里验。
  */
 
-const pages = [
+const pages: { width: number; height: number; rotation?: number }[] = [
   { width: 600, height: 800 },
   { width: 600, height: 800 },
   { width: 600, height: 800 },
@@ -59,6 +59,7 @@ vi.mock('pdfjs-dist', () => {
                 getViewport: ({ scale }: { scale: number }) => ({
                   width: pages[number - 1]!.width * scale,
                   height: pages[number - 1]!.height * scale,
+                  rotation: pages[number - 1]!.rotation ?? 0,
                 }),
                 render: () => ({ promise: Promise.resolve(), cancel: () => {} }),
                 getTextContent: () =>
@@ -327,7 +328,7 @@ describe('文字层（TASK-087）', () => {
     expect(first?.parentElement?.querySelector('canvas')).not.toBeNull()
   })
 
-  it('scales the text by what the canvas actually shows, not by the raw zoom', async () => {
+  it('hands the text layer the css variables it needs to size itself', async () => {
     // 全局 `box-sizing: border-box` 让 `.pdf-page` 的 1px 边框吃掉内容宽度，canvas 按 100%
     // 跟着缩。字号若按 `scale` 换算，文字层会比 canvas 宽 2px，右边的选区整体偏出去。
     vi.spyOn(api, 'downloadOriginal').mockResolvedValue({ blob: bytes(), fileName: 'paper.pdf' })
@@ -340,6 +341,30 @@ describe('文字层（TASK-087）', () => {
     // `setLayerDimensions` 用 `round()` 算宽高，少了步长整条 calc 会失效、层撑不到一页大。
     expect(layer?.style.getPropertyValue('--scale-round-x')).toBe('1px')
     expect(layer?.style.getPropertyValue('--scale-round-y')).toBe('1px')
+  })
+
+  it('skips the text layer on a rotated page instead of putting it in the wrong place', async () => {
+    // `/Rotate 90|270` 的页上，`setLayerDimensions` 按未旋转的尺寸定层、只打一个
+    // `data-main-rotation`，真正转坐标的是我们刻意没引的 `pdf_viewer.css`。挂上去会让
+    // 用户**选到别处的文字**——比选不中更糟，所以这一档直接不挂。
+    vi.spyOn(api, 'downloadOriginal').mockResolvedValue({ blob: bytes(), fileName: 'paper.pdf' })
+    stubCanvas()
+    pages[0] = { width: 600, height: 800, rotation: 90 }
+    try {
+      render(<PdfReader resourceId={resourceId} file={file} />)
+      await screen.findByLabelText('第 1 页')
+      // 第 2 页照常有文字层——证明这次跳过是**按旋转角**判的，不是整体没生效。
+      await waitFor(() =>
+        expect(
+          document.querySelector('.pdf-page[data-page="2"] .pdf-text-layer')?.textContent,
+        ).toContain('第 2 页的文字'),
+      )
+      expect(document.querySelector('.pdf-page[data-page="1"] .pdf-text-layer')?.textContent).toBe(
+        '',
+      )
+    } finally {
+      pages[0] = { width: 600, height: 800 }
+    }
   })
 
   it('drops the text layer on pages that are far from the viewport', async () => {

@@ -3221,7 +3221,9 @@ a.source-chip:focus-visible {
   forced-color-adjust: none;
   text-size-adjust: none;
 }
-.pdf-text-layer span {
+/* `br` 一并收进来：pdf.js 在段末（`hasEOL`）会插 `<br>`，漏掉它就会留在常规流里把层撑变形
+   （官方样式同样是 `:is(span, br)`）。 */
+.pdf-text-layer :is(span, br) {
   position: absolute;
   white-space: pre;
   /* 字本身不可见——看得见的是下面 canvas 画出来的那一份；这一层只负责被选中。 */

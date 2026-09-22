@@ -139,9 +139,41 @@ checks = ["frontend"]
 值得记的是：**`validate_governance.py` 当时是 PASS 的**——它不校验 `base` 指向的提交是否存在，
 `check_task.py` 才在 `git rev-parse` 上失败。这算一条治理工具的缺口，登记为遗留项。
 
+### 第二轮：处置独立 Review 的 5 条非阻断项（4 条改了，1 条只记录）
+
+Review 结论是 PASS，但给了 5 条「可记录后继续 / 可选」。逐条判断后改掉其中四条——
+它们都是**真实的行为问题或诚实性问题**，且代价都在几行之内：
+
+1. **旋转页（`/Rotate 90|270`）的文字层必然错位 → 改为不挂**（F1，用户可见的错行为）。
+   `setLayerDimensions` 按**未旋转**的 `rawDims` 定层宽高、只打一个 `data-main-rotation`，
+   真正转坐标的是我们刻意没引的 `pdf_viewer.css`。挂上去的后果是**用户拖选会选到别处的
+   文字**——比选不中更糟。现在 `rotation % 360 !== 0` 时直接不挂，canvas 照常可读。
+   新增单测守住（第 1 页旋转 90°：这一页没有文字层，第 2 页照常有——证明是按旋转角判的）。
+2. **`pdfjsOnce` 把失败的 import 也缓存了 → reject 时清空**（F3）。否则一次 chunk 加载失败，
+   这次会话里再也打不开任何 PDF；旧代码每次都会重试，不能比它更差。
+3. **单测名夸大了覆盖 → 改名**（F2）。`scales the text by what the canvas actually shows…`
+   在 jsdom 里两条路都得 1，**用 `scale` 的错误实现同样会通过**；真正的守卫只有 e2e。
+   改名为 `hands the text layer the css variables it needs to size itself`，名副其实。
+4. **`<br>` 漏在样式之外 → 用 `:is(span, br)`**（F4）。pdf.js 在段末（`hasEOL`）会插 `<br>`，
+   不收进绝对定位规则会留在常规流里把层撑变形。官方样式同样是 `:is(span, br)`。
+5. **TASK-086 记录里「等待用户操作：本次不主动推 PR」与它自己的 MERGED 自相矛盾 → 已改写**（F5）。
+
+**只记录不改**的是 Review 提的剩余风险：缩放时旧 `TextLayer` 若有已就绪的 chunk 抢在新一轮
+`replaceChildren()` 之后落地，理论上会留下重复 span。窗口极窄、任一次重渲染即自愈，
+按 §6「按实际影响与成本判断」不值得为它加一层代。
+
+**这一轮自己又栽了一次**：F3 的第一版写成 `pdfjsOnce ??= (import(…) as …).catch(…)`，
+TS 在 catch 里把 `pdfjsOnce` 窄化成 `never`，`tsc` 报 4 处错——`check_task.py` 当场 FAIL: 2
+（typecheck + build）。改成显式 `PdfjsModule` 类型 + 带返回类型标注的 `loadPdfjs()` 后
+**CHECKS PASS**，`files=11`
+`product_fingerprint=5d639156cf511af57c8b8577df8dac14fd095b79ac898c5dee3b742b257c1312`。
+前端 **801 passed（36 个文件）**（比上一轮多 1 条旋转页用例）、`pdf-reader` e2e **5 passed**。
+
 ### 已知限制 / 未完成项
 
 - **扫描件/图片型 PDF 选不中**：它们没有文本层，这是 PDF 自身的性质，除非上 OCR（明确非目标）。
+- **旋转页（`/Rotate 90|270`）选不中**：见第二轮 F1。要让它可选，得连 pdf.js 的旋转样式一起引
+  （或自己写坐标变换），属另一个任务；夹具全是 0 度，e2e 覆盖不到这一档。
 - **跨页选区**照原样交给浏览器：`selection.toString()` 会把两页文字拼起来，中间可能少一个换行。
 - **选中后滚很远，选区会丢**：文字层随 canvas 一起卸载（登记时的决定）。
 - **PDF 上仍没有高亮**：按用户选定的节奏，锚点（页码 + 原文 + 前后文）与契约改动留给下一个任务。
@@ -151,8 +183,34 @@ checks = ["frontend"]
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：待填
-- Review：待填
+- 候选 SHA：第一次送审 `ec3ec7e`（base `198efc8`）；处置完 Review 的非阻断项后的新候选见下。
+- Review（独立只读 Reviewer，审 `198efc8..ec3ec7e` 全量最终 diff，**报告原文**）：
+
+  > ## 结论：PASS（候选 `ec3ec7e`，base `198efc8`）
+  >
+  > **只读证明**：本 Agent 仅授予 Read/Grep/Glob，无 Write/Edit、无 Bash；未改、未提交任何文件。
+  >
+  > **范围**：`198efc8..ec3ec7e` 全量 diff（11 文件）+ 回源码核对 `PdfReader.tsx` / `ReaderQuote.tsx` / `ResourceDetail.tsx` / `styles.css` / 两个测试文件 / e2e，并对读了 `node_modules/pdfjs-dist/build/pdf.mjs` 的 `TextLayer`、`setLayerDimensions`、`rawDims`。未重跑测试（无 Bash）。SHA 经 `.git/logs/HEAD` 核实：base、实现 `4521272`、候选 `ec3ec7e` 均属实，登记的「base 曾编造、已订正」与 reflog 一致；新增 3+4 单测、1 条 e2e 与「793→800、4→5」自洽。
+  >
+  > **逐点核对（无阻断）**
+  > - 对齐推理成立：`*{box-sizing:border-box}` + `.pdf-page` 1px 边框 ⇒ canvas 实宽 = `w*scale−2`，而 `setLayerDimensions` 按 `--total-scale-factor × rawDims.pageWidth` 定层宽；用 `scale` 必宽 2px。实测基准更稳，e2e（<1.5px）真守住。`|| cssViewport.width` 退路只会退回「宽 2px」，不会给出错误量级。
+  > - 生命周期：`text` 在 `new Layer` 后立即赋值，`alive` 在三个 await 点后都查；`drawText` 在 `cleanup()` 之前、`if (alive)` 之后；卸载/换页/`destroy()` 的 reject 都被 catch。未见漏 cancel 或往已卸载节点写。
+  > - PDF 不会误标高亮：`canMark=false` 隐藏按钮、`onQuote=takeQuoteOnly`、`mark()` 取不到 `.snapshot-rendered` 早退，且「高亮」Tab 与 `ReaderHighlights` 均由 `!pdfOriginal` 把门；全仓无第二处 `onMark`/键盘入口。
+  > - `ReaderQuote` 默认值保持网页正文行为；`scroll` 捕获监听移除对称（第三参 `true`）；`fireEvent.scroll(pages)` 是非冒泡事件，那条用例对旧 `window` 监听会失败——真守行为。
+  > - TASK-086 的改动限于 TOML `status` 与 EVIDENCE 区（241–369）内，索引两行状态与记录一致。
+  >
+  > **Findings（均为可记录后继续 / 可选）**
+  > 1. **旋转页（`/Rotate 90|270`）文字层必然错位**（`PdfReader.tsx:481-494`）。`unit.width` 已含旋转（=`pageHeight`），而 `setLayerDimensions` 用未旋转的 `rawDims.pageWidth/Height` 定层宽高，且只打 `data-main-rotation` 属性——本任务刻意不引 `pdf_viewer.css`，那条旋转规则也就没有。结果：横置页上层是竖版、span 百分比坐标不转，用户拖选会选到别处的文字（`overflow:clip` 还会吃掉一部分）。canvas 阅读不受影响，非回归（此前根本没有文字层），夹具全是 0 度、e2e 覆盖不到。建议登记为已知限制，或加一行廉价兜底：`cssViewport.rotation % 360 !== 0` 时不挂文字层。
+  > 2. 单测 `scales the text by what the canvas actually shows...`（`PdfReader.test.tsx:375`）在 jsdom 里两条路都得 1，**用 `scale` 的错误实现同样会通过**；真正的守卫只有 e2e。用例注释已如实说明，但用例名夸大了覆盖，建议改名或降级为「只验 `--scale-round-*`」。
+  > 3. `pdfjsOnce` 会把**失败的** import 也永久缓存，一次 chunk 加载失败后本次会话再也打不开任何 PDF（旧代码每次重试）。建议 reject 时清空。
+  > 4. 小：`hasEOL` 产出的 `<br>` 不在 `.pdf-text-layer span` 规则内（pdf.js 官方用 `:is(span, br)`），会留在常规流里；`harness()` 造的 `host` 未从 `document.body` 摘除（本 describe 在文件末尾，实测无跨用例污染）；`pages.push/finally` 因 `near` 上限只到第 3 页，截断后不会有延迟访问，安全。
+  > 5. 小：TASK-086 记录 349–352 行仍是现在时的「**等待用户操作**：本次不主动推 PR……」，与同一条目开头的 MERGED 相矛盾，宜随下次登记顺手收掉。
+  >
+  > **剩余风险**：缩放时旧 TextLayer 若有已就绪的 chunk 抢在新一轮 `replaceChildren()` 之后落地，理论上会留下重复 span（窗口极窄，任一次重渲染即自愈）；扫描件、跨页选区、滚远丢选区三项已在记录里如实登记。
+
+- 主 Agent 对 Review 的处置：F1/F2/F3/F4/F5 **五条里改了四条**（F1 旋转页不挂层 + 新增单测、
+  F3 失败不缓存、F2 用例改名、F4 `:is(span, br)`、F5 TASK-086 那段自相矛盾的文字），
+  详见「第二轮」。Review 提的「重复 span」剩余风险按成本收益只记录不改。
 - Acceptance：N/A（L2）
 - 最终状态/风险/用户操作：待填
 - 非阻断遗留项：待填

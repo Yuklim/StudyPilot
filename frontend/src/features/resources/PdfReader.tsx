@@ -77,7 +77,12 @@ type Doc = {
   destroy: () => Promise<void>
 }
 type PdfPage = {
-  getViewport: (options: { scale: number }) => { width: number; height: number }
+  getViewport: (options: { scale: number }) => {
+    width: number
+    height: number
+    /** 这一页自己声明的旋转角（`/Rotate`）。pdf.js 给 0/90/180/270。 */
+    rotation?: number
+  }
   render: (options: {
     canvasContext: CanvasRenderingContext2D
     viewport: { width: number; height: number }
@@ -103,13 +108,22 @@ type Failure = { kind: 'password' | 'broken' | 'read'; detail: string }
  * **只加载一次**，文档与文字层共用同一个模块对象——两处各写一次 `import()` 会让打包器与
  * 测试替身各自解析一遍，文字层那次就可能拿到另一个实例。
  */
-let pdfjsOnce: Promise<{
+type PdfjsModule = {
   GlobalWorkerOptions: { workerSrc: string }
   getDocument: (options: { data: ArrayBuffer }) => { promise: Promise<unknown> }
   TextLayer?: TextLayerClass
-}> | null = null
-function loadPdfjs() {
-  pdfjsOnce ??= import('pdfjs-dist') as unknown as NonNullable<typeof pdfjsOnce>
+}
+let pdfjsOnce: Promise<PdfjsModule> | null = null
+function loadPdfjs(): Promise<PdfjsModule> {
+  if (!pdfjsOnce) {
+    const loading = import('pdfjs-dist') as unknown as Promise<PdfjsModule>
+    // 失败**不留在缓存里**（独立 Review F3）：chunk 加载失败一次就把缓存清掉，
+    // 否则这次会话里再也打不开任何 PDF——旧代码每次都会重试，不能比它更差。
+    pdfjsOnce = loading.catch((cause: unknown) => {
+      pdfjsOnce = null
+      throw cause
+    })
+  }
   return pdfjsOnce
 }
 
@@ -469,11 +483,21 @@ function PdfPageView({
      *
      * `--scale-round-*` 是 `setLayerDimensions` 里 `round()` 的步长；缺了它整条 `calc`
      * 失效，层撑不到一页大。
+     *
+     * **旋转页不挂文字层**（独立 Review F1）：`/Rotate 90|270` 的页上，`setLayerDimensions`
+     * 按**未旋转**的 `rawDims` 定层的宽高、只在元素上打一个 `data-main-rotation`，真正把
+     * 坐标转过来的是 `pdf_viewer.css` 里那几条规则——而我们刻意没引那份样式。层会是竖的、
+     * span 的百分比坐标不跟着转，用户拖选会选到别处的文字（`overflow: clip` 还会吃掉一截）。
+     * **选错文字比选不中更糟**，所以这一档直接不挂：canvas 照常可读，只是选不中。
      */
-    const drawText = async (target: PdfPage, cssViewport: { width: number; height: number }) => {
+    const drawText = async (
+      target: PdfPage,
+      cssViewport: { width: number; height: number; rotation?: number },
+    ) => {
       const layer = textLayer.current
       const node = canvas.current
       if (!layer || !node || typeof target.getTextContent !== 'function') return
+      if ((cssViewport.rotation ?? 0) % 360 !== 0) return
       const { TextLayer: Layer } = await loadPdfjs()
       if (!alive || typeof Layer !== 'function') return
       const source = await target.getTextContent().catch(() => null)
