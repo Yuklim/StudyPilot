@@ -253,8 +253,10 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
   // **两种阅读器都往这里写**（TASK-088）：网页由正文滚动算，PDF 由 `PdfReader` 报上来。
   const [readingPercent, setReadingPercent] = useState<number | null>(null)
   // 目录**连同它属于哪份资料一起存**。`Screen.tsx` 以 `resourceId` 为 key 挂载本组件，换资料
-  // 时整棵重挂、state 本就清空，所以这层判断是**双保险**而不是必需（独立 Review F4① 指出
-  // 我原先的归因不准）：它挡的是「同一份资料换了原件」这类不重挂的路径。
+  // 时整棵重挂、state 本就清空——**所以这层判断现在不挡任何实际路径**：同一份资料换原件时
+  // `id` 仍然相等，旧目录照画；初次 `onOutline` 之前 `items` 本来就是空。它只是一层廉价防御，
+  // 等详情页哪天不再按 `resourceId` 重挂才有意义。（两轮独立 Review 先后纠正了我这里的归因：
+  // 先是「双保险」的说法不准，再是「挡换原件」这句同样不成立。）
   const [pdfOutline, setPdfOutline] = useState<{
     id: string
     items: PdfBookmark[]
