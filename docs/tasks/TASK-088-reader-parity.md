@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-088"
-status = "IN_REVIEW"
+status = "ACCEPTED"
 risk = "L2"
 risk_reason = "普通业务实现：把网页阅读器已有的三件东西补到 PDF 上——左栏目录（改从 pdf.js 书签大纲来）、顶栏阅读进度线、「记为学习进度 N%」。只动前端组件与样式，**不改后端、不改契约、不加迁移、不碰学习记录的写入链路**（「记为学习进度」仍走既有的 `createResourceStudyRecord`，一个字段都不改）。不命中 risk-policy.json 的 high_risk_paths。执行链：1 Worker → 自动检查 → 1 独立只读 Reviewer；独立验收 N/A。"
 risk_flags = ["business"]
@@ -213,8 +213,10 @@ PDF 没有」**不成立**。`ResourceToolbar.tsx:444` 的 `.reader-progress` �
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：**最终候选 `<收尾提交的父提交>`**（base `435f769`）。三次冻结：`4af0429`（首次送审 →
-  PASS + F1/F2/F3/F4）→ `bab1583`（处置四条 → 增量复核 PASS）→ 本轮（修一处注释与代码不符）。
+- 候选 SHA：**最终候选 `5bd3c3f`**（base `435f769`）。四次冻结：`4af0429`（首次送审 → PASS +
+  F1/F2/F3/F4）→ `bab1583`（处置四条 → PASS）→ `248bfbc`（修一处注释与代码不符 + 写回原文 →
+  PASS，另指出两条）→ `5bd3c3f`（再改正同一处注释的归因；**纯注释，Reviewer 已明说这种
+  增量不需要再看**）。
 - Review（独立只读 Reviewer，两轮，**报告原文**）：
 
   > ### 第一轮（审 `435f769..4af0429` 全量 diff）：**PASS**（附 2 条建议修复 + 1 条须在 EVIDENCE 订正的事实）
@@ -227,7 +229,7 @@ PDF 没有」**不成立**。`ResourceToolbar.tsx:444` 的 `.reader-progress` �
   >
   > **F3（事实订正，须记进 EVIDENCE；正文已冻结不宜审后改）** 差异表与目标 #2「顶栏阅读进度线：PDF 没有 → 本任务补」不成立：`ResourceToolbar.tsx:444` 的 `.reader-progress` 无条件渲染，基线上 PDF 页就有这条线，且画的是 `progress.progress_percent`（学习进度），本任务一字未动。真正新增的是 `readingPercent` 驱动的 `:271`「记为学习进度 N%」。因此 e2e `expect(page.locator('.reader-progress')).toBeVisible()` 是空断言（删掉整条 `onProgress` 也过），旁边 `记为学习进度 \d+%` 那条才是真守卫。
   >
-  > **F4（可选）** ① `pdfOutline.id === resourceId` 实为死代码：`Screen.tsx:118` 以 `key={resourceId}` 挂载，换资料整棵重挂。② `useOutlineCurrent` 上提后 window 监听变成常挂。③ `report`/`onScroll` 里的 `ratio` 遮蔽外层 devicePixelRatio 的 `ratio`。④ `readPdfOutline` 串行 await。⑤ 父条目 dest 解析失败而子条目成功时，会留下无父的 level-3 条目。
+  > **F4（可选）** ① `pdfOutline.id === resourceId` 实为死代码：`Screen.tsx:118` 以 `key={resourceId}` 挂载，换资料整棵重挂；**它唯一能覆盖的场景（同资料换原件）里 id 仍相等、旧目录照画**——记录里的归因不准。② `useOutlineCurrent` 上提后 window 监听变成常挂。③ `report`/`onScroll` 里的 `ratio` 遮蔽外层 devicePixelRatio 的 `ratio`。④ `readPdfOutline` 串行 await。⑤ 父条目 dest 解析失败而子条目成功时，会留下无父的 level-3 条目。
   >
   > **覆盖**：网页那条路未被改变行为（`useOutlineCurrent` 与原组件内 effect 逐行等价）；`pdfOutline.ts` 解析稳（11 条单测与实现逐条对上）；无跨用例污染；夹具逐字节核读属实（`/Outlines /Count 3`、四个 `/Dest` 指向第 1/2/3/4 页、UTF-16BE 解码正确）；记录数字自洽；「`npx tsc --noEmit` 什么都不检查」的更正属实。
 
@@ -250,12 +252,38 @@ PDF 没有」**不成立**。`ResourceToolbar.tsx:444` 的 `.reader-progress` �
   `.reader-progress` 无条件渲染、画的是**学习进度**，PDF 页基线上就有。本任务真正补上的是
   **阅读位置**那条信号（驱动「记为学习进度 N%」）。差异表按 §6 不追改——它记录的是当时上报
   给用户、用户据以选定范围的内容，改写它会让授权链失真。
+- Review（第三轮，增量复核 `bab1583..248bfbc`，**报告原文摘要**）：**PASS**。
+  「产品侧改动仅测试文件：`stubCanvas()` 已补，新注释与代码一致——`ratioWithinPage` 的
+  `anchor = scrollTop + viewport/2`，`clientHeight=0` 时中线即 scrollTop，815/816 的算术因此成立；
+  断言强度未被削弱。」关于 EVIDENCE 引用是否失真：「**结论、findings 与不利内容都在，没有删改
+  对实现不利的部分**……属于条目压缩、不改变含义的删节有三处，其中一处有实质后果」——
+  即上面 F4① 被我压掉的那半句，**已按原文补回**。另两处说明按它的建议补在这里：
+  ① `reader-layout.spec.ts:379` 只断言重新展开后目录可见、不断言 `current`（Reviewer 判过不必补测）；
+  ② 本轮未重跑 `reader-immersive`，属 §6 允许的证据复用。
+  它另给两条非阻断：**(a)** `ResourceDetail.tsx` 那条注释的末句仍与代码不符（「挡同一份资料换
+  原件」同样不成立，那条路上 `id` 仍相等）——**已改正，见 `5bd3c3f`**；
+  **(b)** 候选 SHA 还是占位符——**已填实**。
 - 主 Agent 对第二轮那条可选项的处置：**已修**。该用例补上 `stubCanvas()`，并把注释改成
   「视口高度故意给 0——`ratioWithinPage` 用视口中线，为 0 时中线即 scrollTop，815/816 那两个
   数才算得准」。注释与代码不符是本仓库明确在意的一类问题，值得多一轮。
 - Acceptance：N/A（L2）
-- 最终状态/风险/用户操作：待填
-- 非阻断遗留项：待填
+- 最终状态/风险/用户操作：**ACCEPTED**（L2 执行链走完：实现 → 每轮机械检查 → 同一独立只读
+  Reviewer **三轮**，两条真缺陷 F1/F2 与一条事实订正 F3 均已处置）。
+  风险：只动前端组件与样式，不碰后端/契约/学习记录写入链路；最坏情况是左栏目录不出现或当前
+  条目滞后，正文阅读不受影响。
+  **这一任务里 Reviewer 三次纠正了我写下的事实**（差异表说「PDF 没有进度线」、注释说这层判断
+  是「双保险」、再说它「挡换原件」）——三处都是**我描述代码时想当然**，不是实现缺陷，但都会
+  误导后来人，已逐条改正并留痕。
+  **等待用户操作**：请刷新页面在一份**带书签**的 PDF 上看左栏目录与「记为学习进度 N%」；
+  确认后由你决定推 PR 与合并。合并后 088 的 MERGED 登记按 §5 并入 TASK-089 的控制面提交。
+- 非阻断遗留项：
+  1. **书签是串行解析的**，几百条书签的大部头左栏会比正文晚出现一点。
+  2. **父条目解析失败、子条目成功时会留下没有父级的三级条目**（缩进像孤儿，概率低）。
+  3. **只铺两层书签**；**当前条目按页码判**，同一页内多条书签不随滚动细分。
+  4. **没有书签的 PDF 仍然没有目录**（用户选定，不做页码列表/缩略图退路）。
+  5. `pdfOutline.id === resourceId` 这层判断**现在不挡任何实际路径**，是留给「详情页将来不再按
+     `resourceId` 重挂」的廉价防御；注释已如实写明。
+  6. 顶栏「目录」开关与网页共用同一个本机键：在网页上收起，切到 PDF 也是收起的（既有设计）。
 - 日期与决定日志：2026-09-21 用户要求「pdf 阅读器与网页阅读器操作、视图没有太大区别」→ 主 Agent
   列出差异表 → 用户选定范围「目录 + 进度线 + 记为学习进度」与「无书签时不显示左栏」；
   2026-09-22 用户合并 PR #95 后说「开始做 TASK-088」，同轮提出「PDF 没有仅高亮、加了心得高亮也
