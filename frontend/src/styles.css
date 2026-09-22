@@ -3242,6 +3242,8 @@ a.source-chip:focus-visible {
    压上去字仍认得出，而不透明的那版会把字整段抹掉。官方 pdf.js 走的也是半透明这条
    （`color-mix(in srgb, AccentColor, transparent 75%)`）。 */
 .pdf-text-layer ::selection {
+  /* 这一行是 `--mark: #f4e7b2` 的**手抄副本**（`rgba()` 里用不了 CSS 变量的分量）：
+     改主题色时别忘了它，否则会静默漂移（Review R3）。只有不支持 `color-mix` 的浏览器会走到。 */
   background: rgba(244, 231, 178, 0.65);
   background: color-mix(in srgb, var(--mark) 65%, transparent);
 }

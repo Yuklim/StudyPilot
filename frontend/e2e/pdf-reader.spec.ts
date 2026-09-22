@@ -240,7 +240,8 @@ test('text on a PDF page can be selected and quoted into a note', async ({ page 
   })
   const after = await count(await page1.screenshot())
   expect(before.dark).toBeGreaterThan(200) // 这一页本来就有字
-  expect(after.marked).toBeGreaterThan(200) // 选区确实画出来了
+  // 与选中前相比而不是比一个绝对值：纸色若将来变成米黄，绝对阈值会静默空转（Review R2）。
+  expect(after.marked).toBeGreaterThan(before.marked + 200) // 选区确实画出来了
   // 盖住字的那一版这里会塌到接近 0。
   expect(after.dark).toBeGreaterThan(before.dark * 0.8)
 
