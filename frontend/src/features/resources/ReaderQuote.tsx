@@ -41,7 +41,7 @@ export function ReaderQuote({
   selector?: string
   /**
    * 这份资料能不能标高亮。`false` 时胶囊只留「记下这段」；给谓词则按**当前选区**判——
-   * 判否时同样只留「记下这段」，并加一句「跨页只能记下这段」的提示。
+   * 判否时同样只留「记下这段」，并加一句「选区跨页或落到页外，只能记下这段」的提示。
    */
   canMark?: boolean | ((range: Range) => boolean)
 }) {
