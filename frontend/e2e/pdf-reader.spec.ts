@@ -16,6 +16,8 @@ import { expect, test, type Page } from '@playwright/test'
 
 const FIXTURE = fileURLToPath(new URL('./fixtures/sample.pdf', import.meta.url))
 const LONG_FIXTURE = fileURLToPath(new URL('./fixtures/sample-long.pdf', import.meta.url))
+/** 四页、三条顶层书签（第二条带一个子条目），专为 TASK-088 的左栏目录而造。 */
+const OUTLINE_FIXTURE = fileURLToPath(new URL('./fixtures/sample-outline.pdf', import.meta.url))
 
 /** 上传一份 PDF 原件，返回资料 id。 */
 async function seedPdf(page: Page, title: string, fixture = FIXTURE) {
@@ -249,4 +251,42 @@ test('text on a PDF page can be selected and quoted into a note', async ({ page 
   await page.getByRole('button', { name: '记下这段' }).click()
   const draft = page.getByRole('textbox', { name: '这次想记下什么？' })
   await expect(draft).toHaveValue(/> StudyPilot page one/)
+})
+
+test('a bookmarked PDF gets the same outline column as an article', async ({ page }) => {
+  // TASK-088：左栏目录对 PDF 也要有，且与网页正文那栏长得一样——只有「点了去哪」不同。
+  // 宽度要够（阅读器三栏在 ≥1280px 才展开左栏）。
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const id = await seedPdf(page, 'PDF 阅读器 · 目录', OUTLINE_FIXTURE)
+  await page.goto(`/resources/${id}`)
+  await expect(page.getByLabel('第 1 页')).toBeVisible()
+
+  // ① 书签成了目录，层级与顺序都对（第二条带一个子条目）。
+  const outline = page.locator('.reader-outline')
+  await expect(outline).toBeVisible()
+  await expect(outline.locator('.reader-outline-item')).toHaveCount(4)
+  await expect(outline).toContainText('一、开头')
+  await expect(outline).toContainText('2.1 细节')
+  await expect(outline.locator('.reader-outline-item.level-3')).toHaveCount(1)
+
+  // ② 点一条就跳到那一页。
+  await outline.getByRole('button', { name: '三、结论' }).click()
+  await expect.poll(() => page.getByLabel('页码').inputValue()).toBe('4')
+  // ③ 当前条目跟着走：跳到第 4 页后高亮最后一条。
+  await expect(outline.locator('.reader-outline-item').nth(3)).toHaveClass(/current/)
+
+  // ④ 读到最后一页后，顶栏出现「记为学习进度 N%」——这是本任务真正补上的那件事。
+  //    （顶栏那条 `.reader-progress` 线**本来就有**、画的是学习进度而非阅读位置，
+  //    断言它可见是空断言，独立 Review F3 指出后删掉。）
+  await expect(page.getByRole('button', { name: /记为学习进度 \d+%/ })).toBeVisible()
+})
+
+test('a PDF without bookmarks keeps the whole width for the page itself', async ({ page }) => {
+  // 用户 2026-09-21 选定：没有书签就不显示左栏（与网页正文里没有 h2/h3 时一致）。
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const id = await seedPdf(page, 'PDF 阅读器 · 无书签')
+  await page.goto(`/resources/${id}`)
+  await expect(page.getByLabel('第 1 页')).toBeVisible()
+  await page.waitForTimeout(500)
+  expect(await page.locator('.reader-outline').count()).toBe(0)
 })

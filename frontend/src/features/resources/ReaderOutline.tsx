@@ -1,40 +1,30 @@
-import { useEffect, useState } from 'react'
-
-import { currentIndex, type OutlineItem } from './outline'
+/** 目录栏只要这三样；跳转与「当前是哪条」由各自的阅读器算（TASK-088）。 */
+export type OutlineRow = { key: string; level: 2 | 3; text: string }
 
 /**
  * 阅读器左侧目录栏（TASK-067，用户 2026-09-17 参考 Readwise Reader：「自动生成每个文档的
  * 大纲，在屏幕一侧显示所有标题和子标题目录」，并指定「放在页面左边」）。
  *
- * **目录从渲染后的 DOM 读，不从 Markdown 读。** 正文由 `snapshotMarkdown.ts` 以 `html: false`
- * 渲染成 `.snapshot-rendered`，那个文件是本项目唯一的 XSS 边界，本任务一个字符不进。这里只
- * 在它渲染完成之后 `querySelectorAll('h2, h3')`：标题文本就是 DOM 里的文本、跳转用元素引用
- * 而不是给标题加 id（加 id 要改渲染器）。
- *
- * 正文什么时候渲染完由 `MutationObserver` 盯着正文列告诉我们：快照读取是异步的，替换/删除
- * 正文、看源码/看渲染的切换都会换掉 `.snapshot-rendered`，目录必须跟着变；源码视图下没有
- * `.snapshot-rendered`，目录为空、整栏不渲染。
- *
- * 当前节 = 视口顶（让开 sticky 顶栏后）之上最后一个标题，滚动时更新；
- * 点击目录项平滑滚到标题（`scrollIntoView` 在 jsdom 里是空函数，用例只断言它被调用）。
+ * **TASK-088 起这是个纯展示组件，两种阅读器共用**：网页的目录来自 `h2/h3`、点击滚到那个元素；
+ * PDF 的目录来自书签大纲（`pdfOutline.ts`）、点击跳到那一页。两边长得一模一样，
+ * 「当前是哪一条」与「点了去哪」由各自的阅读器算好传进来——这个文件只负责画。
  *
  * 开关只有顶栏的「目录」按钮（`ResourceToolbar`）：栏内不放「隐藏」（用户 2026-09-17 要求
  * 去掉），一个入口开、同一个入口关，焦点也不会因为栏被卸载而丢。
  */
 
-export function ReaderOutline({ items }: { items: OutlineItem[] }) {
-  const [current, setCurrent] = useState(-1)
-  useEffect(() => {
-    const update = () => setCurrent(currentIndex(items))
-    update()
-    window.addEventListener('scroll', update, { passive: true })
-    window.addEventListener('resize', update)
-    return () => {
-      window.removeEventListener('scroll', update)
-      window.removeEventListener('resize', update)
-    }
-  }, [items])
-
+export function ReaderOutline({
+  items,
+  current,
+  onJump,
+  hint = '随正文滚动高亮当前节；点击跳转',
+}: {
+  items: OutlineRow[]
+  /** 当前所在条目的下标；-1 表示还没读到任何一条。 */
+  current: number
+  onJump: (index: number) => void
+  hint?: string
+}) {
   if (items.length === 0) return null
   return (
     <nav className="reader-outline" aria-label="目录">
@@ -51,16 +41,14 @@ export function ReaderOutline({ items }: { items: OutlineItem[] }) {
             <button
               type="button"
               aria-current={index === current ? 'location' : undefined}
-              onClick={() => {
-                item.element.scrollIntoView({ behavior: 'smooth', block: 'start' })
-              }}
+              onClick={() => onJump(index)}
             >
               {item.text}
             </button>
           </li>
         ))}
       </ol>
-      <p className="reader-outline-hint">随正文滚动高亮当前节；点击跳转</p>
+      <p className="reader-outline-hint">{hint}</p>
     </nav>
   )
 }

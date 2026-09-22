@@ -37,6 +37,25 @@ export function currentIndex(items: OutlineItem[]): number {
   return current
 }
 
+/**
+ * 当前读到第几节（TASK-088 从 `ReaderOutline` 组件里挪过来）：网页正文随**窗口**滚动，
+ * 所以监听 window 就够；PDF 在内层容器里滚，那边另有自己的算法（`currentBookmark`）。
+ */
+export function useOutlineCurrent(items: OutlineItem[]): number {
+  const [current, setCurrent] = useState(-1)
+  useEffect(() => {
+    const update = () => setCurrent(currentIndex(items))
+    update()
+    window.addEventListener('scroll', update, { passive: true })
+    window.addEventListener('resize', update)
+    return () => {
+      window.removeEventListener('scroll', update)
+      window.removeEventListener('resize', update)
+    }
+  }, [items])
+  return current
+}
+
 /** 从正文列里收集目录，正文变化时重收集。返回 `[]` 表示没有目录可显示。 */
 export function useOutline(container: HTMLElement | null): OutlineItem[] {
   const [items, setItems] = useState<OutlineItem[]>([])

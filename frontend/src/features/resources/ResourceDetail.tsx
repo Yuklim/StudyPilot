@@ -9,7 +9,8 @@ import { isPdfOriginal, type OriginalFile } from './files'
 import { ResourceDeleteDialog } from './ResourceDeleteDialog'
 import { ResourceError } from './ResourceState'
 import { ReaderOutline } from './ReaderOutline'
-import { useOutline } from './outline'
+import { useOutline, useOutlineCurrent, type OutlineItem } from './outline'
+import { currentBookmark, type PdfBookmark } from './pdfOutline'
 import { ReaderQuote } from './ReaderQuote'
 import { ReaderHighlights } from './ReaderHighlights'
 import { anchorFrom } from './highlightAnchor'
@@ -42,6 +43,8 @@ const READER_BREAKPOINT = '(min-width: 1280px)'
 
 // TASK-067：左侧目录栏的显隐是用户自选，记在本机（与外壳左栏折叠同一做法）；读不出来就当显示。
 const OUTLINE_KEY = 'studypilot.reader.outline'
+/** 不显示目录时传给 `useOutlineCurrent` 的常量空表——每次渲染给新数组会让它的 effect 反复重挂。 */
+const NO_OUTLINE: OutlineItem[] = []
 function readOutlineOpen(): boolean {
   try {
     return localStorage.getItem(OUTLINE_KEY) !== '0'
@@ -64,6 +67,8 @@ const ReaderContent = memo(function ReaderContent({
   onSnapshotState,
   pdf,
   pdfToolbarSlot,
+  onPdfOutline,
+  onPdfProgress,
 }: {
   resourceId: string
   sourceType: Source
@@ -76,12 +81,22 @@ const ReaderContent = memo(function ReaderContent({
   pdf: OriginalFile | null
   /** TASK-081：PDF 控件要投递到顶栏的哪个节点上；`null` = 顶栏还没挂上。 */
   pdfToolbarSlot: HTMLElement | null
+  /** TASK-088：PDF 的书签目录与阅读进度都由阅读器自己算好交上来。 */
+  onPdfOutline: (items: PdfBookmark[], goTo: (page: number) => void) => void
+  onPdfProgress: (percent: number, page: number) => void
 }) {
   // PDF 自己就是正文：这时不渲染快照区（那里只会显示「还没有保存正文」的引导，对一份
   // 已经能在站内读的 PDF 没有意义）。其他格式的原件保持现状，走快照那条路。
   if (pdf)
     return (
-      <PdfReader key={pdf.id} resourceId={resourceId} file={pdf} toolbarSlot={pdfToolbarSlot} />
+      <PdfReader
+        key={pdf.id}
+        resourceId={resourceId}
+        file={pdf}
+        toolbarSlot={pdfToolbarSlot}
+        onOutline={onPdfOutline}
+        onProgress={onPdfProgress}
+      />
     )
   return (
     <ContentSnapshot
@@ -220,7 +235,44 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
   // 目录从渲染后的正文 DOM 收集（见 ReaderOutline）：正文列元素进 state 而不是 ref，
   // 因为它只在资料读到之后才渲染，ref 的变化不会触发重新收集。
   const [readerMain, setReaderMain] = useState<HTMLDivElement | null>(null)
+  // --- TASK-073：FILE 资料的原件是 PDF 时，站内直接读 ---
+  // 取 `toolbarItem` 而不是 `item`：后者在每次 `retry()` 时被置空（见上面那段注释），
+  // 用它会让 PDF 页在「保存学习记录 / 改标签」这类会触发刷新的动作里短暂翻回非 PDF
+  // 形态——版式跳一下，`PdfReader` 连同已解析的文档一起卸载、回来重下重解析。
+  // 工具条本身早就为此改用 `toolbarItem`，这里跟上（独立 Review 非阻断项）。
+  const pdfOriginal = isPdfOriginal(toolbarItem?.original_file ?? null)
+    ? toolbarItem!.original_file!
+    : null
+
   const outline = useOutline(readerMain)
+  /**
+   * PDF 的目录（TASK-088）：书签大纲由 `PdfReader` 读出来交上来，连同「跳到第 N 页」。
+   * 两种阅读器的左栏共用 `ReaderOutline`，只是**当前是哪条**与**点了去哪**各算各的。
+   */
+  // 本机阅读位置的百分比：恢复时取存的值，滚动时随位置写回一起更新（只在整数变化时 setState）。
+  // **两种阅读器都往这里写**（TASK-088）：网页由正文滚动算，PDF 由 `PdfReader` 报上来。
+  const [readingPercent, setReadingPercent] = useState<number | null>(null)
+  // 目录**连同它属于哪份资料一起存**。`Screen.tsx` 以 `resourceId` 为 key 挂载本组件，换资料
+  // 时整棵重挂、state 本就清空——**所以这层判断现在不挡任何实际路径**：同一份资料换原件时
+  // `id` 仍然相等，旧目录照画；初次 `onOutline` 之前 `items` 本来就是空。它只是一层廉价防御，
+  // 等详情页哪天不再按 `resourceId` 重挂才有意义。（两轮独立 Review 先后纠正了我这里的归因：
+  // 先是「双保险」的说法不准，再是「挡换原件」这句同样不成立。）
+  const [pdfOutline, setPdfOutline] = useState<{
+    id: string
+    items: PdfBookmark[]
+    goTo: (page: number) => void
+  }>({ id: '', items: [], goTo: () => {} })
+  const [pdfPage, setPdfPage] = useState(1)
+  const takePdfOutline = useCallback(
+    (items: PdfBookmark[], goTo: (page: number) => void) => {
+      setPdfOutline({ id: resourceId, items, goTo })
+    },
+    [resourceId],
+  )
+  const takePdfProgress = useCallback((percent: number, at: number) => {
+    setReadingPercent((current) => (current === percent ? current : percent))
+    setPdfPage((current) => (current === at ? current : at))
+  }, [])
   const [outlineOpen, setOutlineOpen] = useState(readOutlineOpen)
   const toggleOutline = useCallback(() => {
     // 写存储放在事件处理器里、不放 setState 更新函数里（更新函数应当是纯的，StrictMode
@@ -234,7 +286,15 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
     }
   }, [outlineOpen])
   // 目录只在宽屏（≥1280px）作为左栏存在；窄屏不渲染（浮层形态留给后续任务）。
-  const outlineShown = squeeze && outlineOpen && outline.length > 0
+  // **两种阅读器合流在这里**（TASK-088）：网页用正文标题，PDF 用书签大纲；
+  // 两边都是「没有就不显示左栏」。
+  const pdfRows = pdfOutline.id === resourceId ? pdfOutline.items : []
+  const outlineRows = pdfOriginal ? pdfRows : outline
+  const outlineShown = squeeze && outlineOpen && outlineRows.length > 0
+  // 目录没显示时不必跟着滚动量所有标题（独立 Review F4②：这个 hook 从组件里提上来之后
+  // 变成常挂，收起或窄屏时仍在每次滚动里对全部 h2/h3 取 `getBoundingClientRect`）。
+  const outlineCurrent = useOutlineCurrent(outlineShown && !pdfOriginal ? outline : NO_OUTLINE)
+  const outlineAt = pdfOriginal ? currentBookmark(pdfRows, pdfPage) : outlineCurrent
   // 没有快捷键（用户 2026-09-17：「快捷键我觉得可以先不做」）：开关只有顶栏的「目录」按钮。
 
   // --- TASK-068：「记下这段」→ 心得草稿；「记为学习进度」用的阅读百分比 ---
@@ -344,29 +404,23 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
   )
   const receiveHighlightCount = useCallback((total: number) => setHighlightCount(total), [])
 
-  // --- TASK-073：FILE 资料的原件是 PDF 时，站内直接读 ---
-  // 取 `toolbarItem` 而不是 `item`：后者在每次 `retry()` 时被置空（见上面那段注释），
-  // 用它会让 PDF 页在「保存学习记录 / 改标签」这类会触发刷新的动作里短暂翻回非 PDF
-  // 形态——版式跳一下，`PdfReader` 连同已解析的文档一起卸载、回来重下重解析。
-  // 工具条本身早就为此改用 `toolbarItem`，这里跟上（独立 Review 非阻断项）。
-  const pdfOriginal = isPdfOriginal(toolbarItem?.original_file ?? null)
-    ? toolbarItem!.original_file!
-    : null
   /**
    * 顶栏里给 PDF 控件留的挂载点（TASK-081）。放 state 而不是 ref：ref 的变化不会触发
    * 重渲染，`PdfReader` 就永远收不到这个节点。首帧它是 `null`，`PdfReader` 那一侧据此
    * 什么都不渲染——渲染在原位再跳上去会闪一下。
    */
   const [pdfToolbarSlot, setPdfToolbarSlot] = useState<HTMLElement | null>(null)
-  // 本机阅读位置的百分比：恢复时取存的值，滚动时随位置写回一起更新（只在整数变化时 setState）。
-  const [readingPercent, setReadingPercent] = useState<number | null>(null)
 
   // --- TASK-067：记住阅读位置（本机、只记位置，不写学习进度）---
   // 正文渲染完成的时机与目录同源：盯着正文列，`.snapshot-rendered` 出现后恢复一次；
   // 之后滚动就（按帧节流）把位置写回。换资料重来。
   const restoredFor = useRef<string | null>(null)
+  const readingPdf = Boolean(pdfOriginal)
   useEffect(() => {
-    if (!readerMain) return
+    // **PDF 不走这一套**（TASK-088）：它有自己的位置记忆与进度上报（`PdfReader`）。
+    // 这里早退不只是省事——这个 effect 的 cleanup 会把 `readingPercent` 抹成 null，
+    // 而 PDF 那侧只在百分比**变化**时才报，抹掉之后进度线要等用户再滚一段才回来。
+    if (!readerMain || readingPdf) return
     const resource = resourceId
     let frame = 0
     const rendered = () => readerMain.querySelector('.snapshot-rendered')
@@ -405,7 +459,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
       if (restoredFor.current === resource) restoredFor.current = null
       setReadingPercent(null)
     }
-  }, [readerMain, resourceId])
+  }, [readerMain, resourceId, readingPdf])
 
   // --- TASK-056：删除资料的确认是模态弹窗，挂在菜单与面板之外 ---
   const [deleting, setDeleting] = useState(false)
@@ -483,7 +537,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
           notesCount={notesCount}
           onNotesClick={openNotesTab}
           notesButtonRef={notesButton}
-          outlineAvailable={squeeze && outline.length > 0}
+          outlineAvailable={squeeze && outlineRows.length > 0}
           outlineOpen={outlineOpen}
           onToggleOutline={toggleOutline}
           readingPercent={readingPercent}
@@ -503,7 +557,17 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
         // `display:none`），展开才让出右侧一列（宽屏挤压 / 窄屏浮层）。
         <div className={`reader-body${outlineShown ? ' outline-open' : ''}`}>
           {/* 左侧目录栏（TASK-067）：宽屏、用户未隐藏、正文里有标题时才占一列。 */}
-          {outlineShown && <ReaderOutline items={outline} />}
+          {outlineShown && (
+            <ReaderOutline
+              items={outlineRows}
+              current={outlineAt}
+              hint={pdfOriginal ? '随页面滚动高亮当前节；点击跳到那一页' : undefined}
+              onJump={(index) => {
+                if (pdfOriginal) pdfOutline.goTo(pdfRows[index]?.page ?? 1)
+                else outline[index]?.element.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }}
+            />
+          )}
           {/* 窄屏浮层展开时正文 `inert`：被浮层盖住的内容不该还能被 Tab 或辅助技术
               进入。宽屏挤压态两边都可见、都可读，不 inert。 */}
           <div className="reader-main" inert={opening} ref={setReaderMain}>
@@ -538,6 +602,8 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
               onSnapshotState={receiveSnapshotState}
               pdf={pdfOriginal}
               pdfToolbarSlot={pdfToolbarSlot}
+              onPdfOutline={takePdfOutline}
+              onPdfProgress={takePdfProgress}
             />
           </div>
           {/* 用心得 `<section aria-label>` 而不是 `<aside>`：section + 名字 = region，
