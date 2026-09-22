@@ -3,12 +3,12 @@
 ```toml
 schema_version = 2
 id = "TASK-087"
-status = "READY"
+status = "IN_REVIEW"
 risk = "L2"
 risk_reason = "普通业务实现：给 PDF 每页叠一层 pdf.js 文字层（可选中/可复制），并让既有 `ReaderQuote`（TASK-068）在 PDF 上生效。只动前端渲染与交互，**不改后端、不改契约、不存高亮、不加迁移**；不命中 risk-policy.json 的 high_risk_paths。顺带两项已到期的收尾（TASK-086 的 MERGED 登记、删 popup.ts 一句陈旧注释）也只是登记与注释。执行链：1 Worker → 自动检查 → 1 独立只读 Reviewer；独立验收 N/A。"
 risk_flags = ["business"]
 owner = "coordinator"
-base = "198efc839a0a7f5a0f84b5be9aa1b86a1f96ba6d"
+base = "198efc81faf208fc7feedacfa5ae3ca0dc828c5a"
 allowed_paths = [
   "frontend/src/features/resources/PdfReader.tsx",
   "frontend/src/features/resources/PdfReader.test.tsx",
@@ -96,7 +96,57 @@ checks = ["frontend"]
 
 ## 实现与测试
 
-- 待填。
+- 实现 SHA：`4521272`。
+- **命令与结果**（都在这条实现上跑）：
+  - `check_task.py --task docs/tasks/TASK-087-pdf-text-layer.md --worktree` → **CHECKS PASS**，
+    `files=11`
+    `product_fingerprint=daf72a0252516e3452c548bb5138d4eae4f966c6f56fadf767248563393ca252`，
+    `profiles=extension,frontend`。
+  - `frontend npm run test -- --run` → **800 passed（36 个文件）**（改前 793，新增 7 条）。
+  - `extension npm run test -- --run` → **196 passed（9 个文件）**（只改了注释，数字不变）。
+  - `npx playwright test e2e/pdf-reader.spec.ts` → **5 passed**（原 4 条 + 新增 1 条）。
+  - `npx tsc --noEmit`、`prettier --check` → 通过（首轮 `prettier` 咬住两处，已 `--write` 修正）。
+
+### 落点
+
+1. **文字层**（`PdfReader.tsx`）：`PdfPageView` 在 canvas 之后渲染一层 `.pdf-text-layer`，
+   用 pdf.js 5.x 从主包导出的 `TextLayer`。三处值得记：
+   - **字号的换算基准不是 `scale`**。`TextLayer` 把每个 span 的 left/top 写成页面百分比，
+     只有字号按 `--total-scale-factor` 从 PDF 点换算成 CSS 像素。而全局 `box-sizing: border-box`
+     让 `.pdf-page` 的 1px 边框吃掉内容宽度、canvas 按 100% 跟着缩，**用 `scale` 会让文字层比
+     canvas 宽 2px，右侧的选区整体偏出字外**。改用「canvas 实际显示宽度 ÷ scale=1 时的页宽」。
+     e2e 里用真实布局守住：两个盒子的 left/top/width 相差都 < 1.5px。
+   - `--scale-round-x/y` 必须给：`setLayerDimensions` 用 `round()` 算宽高，缺了步长整条
+     `calc` 失效，层撑不到一页大。
+   - **取文字要赶在 `target.cleanup()` 之前**——那一句会把这一页的资源交还。
+2. **pdf.js 只加载一次**（新的 `loadPdfjs`）：原先 `openDocument` 里一处 `import('pdfjs-dist')`，
+   我在文字层又写了一处。**结果第二处绕开了 `vi.mock` 的替身、把真模块拉了起来**，
+   jsdom 里 `DOMMatrix is not defined`，单测因此多出 12 条 unhandled rejection
+   （用例仍显示通过——这正是它危险的地方）。改成模块级缓存一个 promise，两处共用。
+3. **`ReaderQuote` 的正文根可传**：新增 `selector`（默认 `.snapshot-rendered`，PDF 传
+   `.pdf-reader-pages`）与 `canMark`（PDF 传 false，胶囊只留「记下这段」，分隔线一并消失）。
+   `ResourceDetail` 在 PDF 分支另接一个 `takeQuoteOnly`——`mark()` 本来就会在取不到
+   `.snapshot-rendered` 时早退，但靠别处早退来表达「这条路不标高亮」，读代码的人看不出是有意的。
+4. **滚动监听改到捕获阶段**：`scroll` 不冒泡，而 PDF 是在 `.pdf-reader-pages` 这个内层容器里
+   滚的——只听 `window` 的话，PDF 上一滚动胶囊就钉在原地。捕获能同时拿到内层与文档自身的滚动。
+5. **收尾两项**：TASK-086 记录与索引行登记 MERGED（merge `198efc8`）；删掉
+   `extension/src/popup/popup.ts` 注释里已过期的「前提是 TASK-084 先合并」。
+
+### 登记时的一处错误，已改正
+
+首次登记把 `base` 写成了 `198efc839a0a7f5a0f84b5be9aa1b86a1f96ba6d`——**前 7 位对、后面是我编的**。
+分支确实是从 `198efc8` 切的，真值为 `198efc81faf208fc7feedacfa5ae3ca0dc828c5a`，已订正。
+值得记的是：**`validate_governance.py` 当时是 PASS 的**——它不校验 `base` 指向的提交是否存在，
+`check_task.py` 才在 `git rev-parse` 上失败。这算一条治理工具的缺口，登记为遗留项。
+
+### 已知限制 / 未完成项
+
+- **扫描件/图片型 PDF 选不中**：它们没有文本层，这是 PDF 自身的性质，除非上 OCR（明确非目标）。
+- **跨页选区**照原样交给浏览器：`selection.toString()` 会把两页文字拼起来，中间可能少一个换行。
+- **选中后滚很远，选区会丢**：文字层随 canvas 一起卸载（登记时的决定）。
+- **PDF 上仍没有高亮**：按用户选定的节奏，锚点（页码 + 原文 + 前后文）与契约改动留给下一个任务。
+- 没有为「缩放后文字层跟着重排」单独写 e2e：改 `scale` 会整段重渲染（同一条 effect），
+  与首帧走的是同一条路；e2e 只验了首帧的对齐。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
