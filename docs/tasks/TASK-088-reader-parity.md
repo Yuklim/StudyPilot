@@ -213,8 +213,46 @@ PDF 没有」**不成立**。`ResourceToolbar.tsx:444` 的 `.reader-progress` �
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：待填
-- Review：待填
+- 候选 SHA：**最终候选 `<收尾提交的父提交>`**（base `435f769`）。三次冻结：`4af0429`（首次送审 →
+  PASS + F1/F2/F3/F4）→ `bab1583`（处置四条 → 增量复核 PASS）→ 本轮（修一处注释与代码不符）。
+- Review（独立只读 Reviewer，两轮，**报告原文**）：
+
+  > ### 第一轮（审 `435f769..4af0429` 全量 diff）：**PASS**（附 2 条建议修复 + 1 条须在 EVIDENCE 订正的事实）
+  >
+  > **只读证明**：本 Agent 仅有 Read/Grep/Glob，无 Write/Edit/Bash，本轮未写任何文件、未跑任何命令（816 等绝对数字未复算，只做一致性核对）。
+  >
+  > **F1（建议修复，低成本）** `PdfReader.tsx:368-370` 的「起点」effect 与 `:314-327` 的恢复 effect 在同一次提交内依声明序先后执行：恢复刚报了 50%，紧接着 `report(1, 0)` 把它覆盖成 0%、`pdfPage` 打回 1。浏览器里 `scrollTop` 赋值触发的 scroll 会在下一帧纠正（只是闪一下）；但恢复后 scrollTop 仍为 0 时（单页/短文档）不会纠正，「记为学习进度 N%」要等用户滚动才出现。新单测 `picks up where it left off…` 用 `toHaveBeenCalledWith`，覆盖发生在其后也照样绿——它没守住自己声称的行为。
+  >
+  > **F2（建议修复，低成本）** `report` 只按整数百分比去重，却同时承载 `page`。总页数 >100 时相邻页常落在同一百分比 → `onProgress` 不发 → 父级 `pdfPage` 停滞，「滚动时当前条目高亮跟着走」在长书上滞后 1–3 页；极端是点一条距当前 ≤2–3 页的书签，页跳了但左栏高亮不动（夹具只有 4 页，e2e 永远命不中）。去重键改为 `(percent, page)` 即可。
+  >
+  > **F3（事实订正，须记进 EVIDENCE；正文已冻结不宜审后改）** 差异表与目标 #2「顶栏阅读进度线：PDF 没有 → 本任务补」不成立：`ResourceToolbar.tsx:444` 的 `.reader-progress` 无条件渲染，基线上 PDF 页就有这条线，且画的是 `progress.progress_percent`（学习进度），本任务一字未动。真正新增的是 `readingPercent` 驱动的 `:271`「记为学习进度 N%」。因此 e2e `expect(page.locator('.reader-progress')).toBeVisible()` 是空断言（删掉整条 `onProgress` 也过），旁边 `记为学习进度 \d+%` 那条才是真守卫。
+  >
+  > **F4（可选）** ① `pdfOutline.id === resourceId` 实为死代码：`Screen.tsx:118` 以 `key={resourceId}` 挂载，换资料整棵重挂。② `useOutlineCurrent` 上提后 window 监听变成常挂。③ `report`/`onScroll` 里的 `ratio` 遮蔽外层 devicePixelRatio 的 `ratio`。④ `readPdfOutline` 串行 await。⑤ 父条目 dest 解析失败而子条目成功时，会留下无父的 level-3 条目。
+  >
+  > **覆盖**：网页那条路未被改变行为（`useOutlineCurrent` 与原组件内 effect 逐行等价）；`pdfOutline.ts` 解析稳（11 条单测与实现逐条对上）；无跨用例污染；夹具逐字节核读属实（`/Outlines /Count 3`、四个 `/Dest` 指向第 1/2/3/4 页、UTF-16BE 解码正确）；记录数字自洽；「`npx tsc --noEmit` 什么都不检查」的更正属实。
+
+  > ### 第二轮（审 `4af0429..bab1583`）：**PASS**
+  >
+  > **只读证明**：仍只有 Read/Grep/Glob，未写文件、未跑命令。
+  >
+  > - **F1 已解**：`reported.current.percent === -1` 正好区分「恢复报过」与「压根没报过」。收紧后的 `expect(onProgress.mock.calls.at(-1)).toEqual([50, 2])` 在修复前必红，是真守卫。
+  > - **F2 已解**：回归用例的算术我复算过：`tops=[0,816,1632]`、`clientHeight=0`，815 → 第 1 页 ratio 0.9988 → 33%；816 → 第 2 页 ratio 0 → 33%——两次百分比相同、页码不同，旧去重必漏。反证成立。
+  > - **F3 已解**：空断言已删，留下的「记为学习进度 N%」是真守卫。
+  > - **F4①③ 注释/改名无行为影响；④⑤ 登记为已知限制。**
+  >
+  > **对两个提问的答复**：① F4② 没有改掉网页那条路——`useOutlineCurrent` 的 effect 按 `items` 引用比较，`outlineShown` 翻转时引用必变 → effect 重挂 → 体内第一句 `update()` 就按当前滚动位置算出 current，无需等下一次 scroll；这恰好回到基线语义（此前 current 长在 `ReaderOutline` 里，收起即随卸载归 -1、展开由 mount effect 立刻算回来）。② F3 的处置符合 §6，**且比直接改差异表更好，我建议不要改**：差异表记录的是当时上报给用户、用户据以选定范围的内容，事后改写会让授权链看起来像「用户一开始就被告知了正确事实」，那才是失真。建议在 EVIDENCE 的 Review 段用一句话重述 F3。
+  >
+  > **Findings**：无阻断项。一条可选：新增的 F2 回归用例没有 `stubCanvas()`，且注释写「给滚动容器一个视口高度」而实际 stub 的是 `clientHeight = 0`（正是这个 0 让算术精确）——只影响可读性与 jsdom 噪声。
+  >
+  > **剩余风险**：仅两条已登记的已知限制（书签串行解析、父条目失败时的孤儿三级条目），均不触及数据、契约与安全。
+
+- **按 Reviewer 建议在此重述 F3**：本任务登记时写的「顶栏阅读进度线：PDF 没有」**是错的**。
+  `.reader-progress` 无条件渲染、画的是**学习进度**，PDF 页基线上就有。本任务真正补上的是
+  **阅读位置**那条信号（驱动「记为学习进度 N%」）。差异表按 §6 不追改——它记录的是当时上报
+  给用户、用户据以选定范围的内容，改写它会让授权链失真。
+- 主 Agent 对第二轮那条可选项的处置：**已修**。该用例补上 `stubCanvas()`，并把注释改成
+  「视口高度故意给 0——`ratioWithinPage` 用视口中线，为 0 时中线即 scrollTop，815/816 那两个
+  数才算得准」。注释与代码不符是本仓库明确在意的一类问题，值得多一轮。
 - Acceptance：N/A（L2）
 - 最终状态/风险/用户操作：待填
 - 非阻断遗留项：待填

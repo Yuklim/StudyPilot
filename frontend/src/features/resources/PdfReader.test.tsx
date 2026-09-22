@@ -442,11 +442,14 @@ describe('目录与阅读进度（TASK-088）', () => {
     // 长文档里相邻几页常落在同一个整数百分比上（独立 Review F2）：只按百分比去重的话，
     // 页码就不往上报，左栏的当前条目会滞后好几页。
     vi.spyOn(api, 'downloadOriginal').mockResolvedValue({ blob: bytes(), fileName: 'paper.pdf' })
+    stubCanvas()
     const onProgress = vi.fn()
     render(<PdfReader resourceId={resourceId} file={file} onProgress={onProgress} />)
     await screen.findByLabelText('第 1 页')
     const node = document.querySelector('.pdf-reader-pages') as HTMLElement
-    // jsdom 不排版：给滚动容器一个视口高度和一个存得住的 scrollTop（与上面那条同一套做法）。
+    // jsdom 不排版：给滚动容器一个存得住的 scrollTop。
+    // **视口高度故意给 0**：`ratioWithinPage` 用的是视口中线，clientHeight 为 0 时中线就是
+    // scrollTop 本身，下面 815/816 那两个数才算得准（独立 Review 指出原注释与代码不符）。
     let top = 0
     Object.defineProperty(node, 'clientHeight', { configurable: true, get: () => 0 })
     Object.defineProperty(node, 'scrollTop', {
