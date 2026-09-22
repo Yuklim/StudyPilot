@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-087"
-status = "ACCEPTED"
+status = "IN_REVIEW"
 risk = "L2"
 risk_reason = "普通业务实现：给 PDF 每页叠一层 pdf.js 文字层（可选中/可复制），并让既有 `ReaderQuote`（TASK-068）在 PDF 上生效。只动前端渲染与交互，**不改后端、不改契约、不存高亮、不加迁移**；不命中 risk-policy.json 的 high_risk_paths。顺带两项已到期的收尾（TASK-086 的 MERGED 登记、删 popup.ts 一句陈旧注释）也只是登记与注释。执行链：1 Worker → 自动检查 → 1 独立只读 Reviewer；独立验收 N/A。"
 risk_flags = ["business"]
@@ -169,6 +169,26 @@ TS 在 catch 里把 `pdfjsOnce` 窄化成 `never`，`tsc` 报 4 处错——`che
 `product_fingerprint=5d639156cf511af57c8b8577df8dac14fd095b79ac898c5dee3b742b257c1312`。
 前端 **801 passed（36 个文件）**（比上一轮多 1 条旋转页用例）、`pdf-reader` e2e **5 passed**。
 
+### 第三轮：用户实测发现「选区把字盖住了」
+
+2026-09-21 用户在自己库里的 arXiv 论文上实测：「**选中文字的高亮会盖住文字**」。属实——
+文字层浮在 canvas 之上，选区画的是一块**不透明**矩形（原样式 `background: var(--mark)`），
+正好糊住 canvas 上画的那行字。**两处一起改**：
+
+- `.pdf-text-layer` 加 `mix-blend-mode: multiply`：这块颜色与下面的画面相乘，
+  白纸 × 淡黄 = 淡黄、黑字 × 淡黄 = 仍是黑字，就是荧光笔的效果；透明像素在相乘下不改背景。
+- `::selection` 的底色**留 65% 透明度**（`color-mix`，带 `rgba` 回退），作为 `mix-blend-mode`
+  不被支持时的兜底：半透明压上去字还认得出，不透明那版会整段抹掉。官方 pdf.js 走的也是
+  半透明这条。顺带把 `br::selection` 设成透明（官方同样）。
+
+**加了像素级 e2e 守卫**，因为这正是单测看不见的一类：选区由浏览器合成，canvas 的
+`getImageData` 根本看不到它。做法是把元素截图交回页面里解码、数像素——选中前后**深色像素
+（字）必须还在 80% 以上**，同时要出现黄色（证明选区确实画了）。
+**反证跑过**：把样式改回不透明的旧版重跑，深色像素从 **637 掉到 0**（整行字被抹光），
+守卫当场失败；改回来即通过。`files=11`
+`product_fingerprint=85e734096ff9a711f9a1b28c2486b1993f4ed22f13c41e016169604c4e343fa4`，
+前端 801 passed、`pdf-reader` e2e 5 passed、CHECKS PASS。
+
 ### 已知限制 / 未完成项
 
 - **扫描件/图片型 PDF 选不中**：它们没有文本层，这是 PDF 自身的性质，除非上 OCR（明确非目标）。
@@ -183,8 +203,8 @@ TS 在 catch 里把 `pdfjsOnce` 窄化成 `never`，`tsc` 报 4 处错——`che
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：**最终候选 `d571a03`**（base `198efc8`）。两次冻结：`ec3ec7e`（第一次送审 → PASS + 5 条
-  非阻断）→ `d571a03`（处置四条 → 增量复核 PASS / No findings）。
+- 候选 SHA：`ec3ec7e`（第一次送审 → PASS + 5 条非阻断）→ `d571a03`（处置四条 → 增量复核
+  PASS / No findings）→ **用户实测发现「选区盖住字」后的新候选见第三轮**（base `198efc8`）。
 - Review（独立只读 Reviewer，审 `198efc8..ec3ec7e` 全量最终 diff，**报告原文**）：
 
   > ## 结论：PASS（候选 `ec3ec7e`，base `198efc8`）
@@ -235,7 +255,8 @@ TS 在 catch 里把 `pdfjsOnce` 窄化成 `never`，`tsc` 报 4 处错——`che
   >
   > **剩余风险**：旋转页现在选不中（已入「已知限制」，行为退化到本任务前的状态，非回归）；扫描件、跨页选区、滚远丢选区三项照旧；`--total-scale-factor` 的真实对齐仍只由 e2e 一条 0 度夹具守着，缩放档与旋转档无 e2e 覆盖（已在记录中说明）。
 - Acceptance：N/A（L2）
-- 最终状态/风险/用户操作：**ACCEPTED**（L2 执行链走完：实现 → 每轮机械检查 → 独立只读
+- 最终状态/风险/用户操作：**回到 IN_REVIEW**——用户实测发现「选区把字盖住」，修复形成新候选，
+  待同一 Reviewer 增量复核。此前一度为 **ACCEPTED**（L2 执行链走完：实现 → 每轮机械检查 → 独立只读
   Reviewer 两轮，第一轮 PASS + 5 条非阻断、改掉四条后增量复核 PASS / No findings）。
   风险：只动前端渲染与交互，不碰后端/契约/数据；最坏情况是文字层没挂上或对不齐，
   canvas 阅读不受影响（旋转页已主动降级为不挂）。

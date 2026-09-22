@@ -3220,6 +3220,12 @@ a.source-chip:focus-visible {
   transform-origin: 0 0;
   forced-color-adjust: none;
   text-size-adjust: none;
+  /* **选区底色要压在字下面，而不是盖住字**（用户 2026-09-21 实测）。
+     这一层浮在 canvas 之上，选区画的是一块不透明矩形，正好糊住 canvas 上的字。
+     `multiply` 让这块颜色与下面的画面相乘：白纸 × 淡黄 = 淡黄，黑字 × 淡黄 = 仍是黑字
+     ——就是荧光笔的效果。透明像素在相乘下不改变背景，所以未选中的地方一切照旧。
+     浏览器不支持 `mix-blend-mode` 时退回「颜色盖住字」，下面那条半透明底色兜底。 */
+  mix-blend-mode: multiply;
 }
 /* `br` 一并收进来：pdf.js 在段末（`hasEOL`）会插 `<br>`，漏掉它就会留在常规流里把层撑变形
    （官方样式同样是 `:is(span, br)`）。 */
@@ -3231,9 +3237,17 @@ a.source-chip:focus-visible {
   cursor: text;
   transform-origin: 0% 0%;
 }
-/* 选中要看得见：canvas 在下面，所以只能靠选区自己的底色。 */
-.pdf-text-layer span::selection {
-  background: var(--mark);
+/* 选中要看得见：canvas 在下面，所以只能靠选区自己的底色。
+   底色**留着透明度**：`multiply` 是主手段，这一层是它失效时的兜底——半透明的淡黄
+   压上去字仍认得出，而不透明的那版会把字整段抹掉。官方 pdf.js 走的也是半透明这条
+   （`color-mix(in srgb, AccentColor, transparent 75%)`）。 */
+.pdf-text-layer ::selection {
+  background: rgba(244, 231, 178, 0.65);
+  background: color-mix(in srgb, var(--mark) 65%, transparent);
+}
+/* `br` 是零尺寸元素，选中时别留一条看不见的细缝（官方同样把它设成透明）。 */
+.pdf-text-layer br::selection {
+  background: transparent;
 }
 /* 远离视口的页只占位：canvas 交还给浏览器，几十页的文档才不会把内存吃满。 */
 .pdf-page-placeholder {

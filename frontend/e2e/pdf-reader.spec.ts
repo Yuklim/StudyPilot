@@ -199,7 +199,52 @@ test('text on a PDF page can be selected and quoted into a note', async ({ page 
   await expect(page.getByRole('button', { name: '记下这段' })).toBeVisible()
   expect(await page.getByRole('button', { name: '标下来' }).count()).toBe(0)
 
-  // ⑤ 点下去，引文进右栏心得草稿。
+  // ⑤ **选区不能盖住字**（用户 2026-09-21 实测：第一版的不透明底色把整行抹掉了）。
+  //    选区由浏览器合成，canvas 的 `getImageData` 看不见它——只能截图再数像素。
+  //    把截图交回页面里解码：深色像素（字）选中前后必须基本还在，同时要出现黄色（选区确实画了）。
+  const count = async (shot: Buffer) =>
+    page.evaluate(async (data) => {
+      const image = new Image()
+      image.src = 'data:image/png;base64,' + data
+      await image.decode()
+      const board = document.createElement('canvas')
+      board.width = image.width
+      board.height = image.height
+      const context = board.getContext('2d')!
+      context.drawImage(image, 0, 0)
+      const { data: pixels } = context.getImageData(0, 0, board.width, board.height)
+      let dark = 0
+      let marked = 0
+      for (let at = 0; at < pixels.length; at += 4) {
+        const [r, g, b] = [pixels[at]!, pixels[at + 1]!, pixels[at + 2]!]
+        if (r + g + b < 180) dark += 1
+        // 淡黄：红绿高、蓝明显低，且不是纸白。
+        if (r > 200 && g > 190 && b < 215 && b < g - 15) marked += 1
+      }
+      return { dark, marked }
+    }, shot.toString('base64'))
+
+  const page1 = page.locator('.pdf-page[data-page="1"]')
+  // 上面第 ③ 步已经选中了这一行；先取消选区量一次「本来的样子」，再选回来量一次。
+  await page.evaluate(() => window.getSelection()!.removeAllRanges())
+  const before = await count(await page1.screenshot())
+  await page.evaluate(() => {
+    const span = [...document.querySelectorAll('.pdf-text-layer span')].find((node) =>
+      node.textContent?.includes('StudyPilot page one'),
+    )!
+    const range = document.createRange()
+    range.selectNodeContents(span)
+    const selection = window.getSelection()!
+    selection.removeAllRanges()
+    selection.addRange(range)
+  })
+  const after = await count(await page1.screenshot())
+  expect(before.dark).toBeGreaterThan(200) // 这一页本来就有字
+  expect(after.marked).toBeGreaterThan(200) // 选区确实画出来了
+  // 盖住字的那一版这里会塌到接近 0。
+  expect(after.dark).toBeGreaterThan(before.dark * 0.8)
+
+  // ⑥ 点下去，引文进右栏心得草稿。
   await page.getByRole('button', { name: '记下这段' }).click()
   const draft = page.getByRole('textbox', { name: '这次想记下什么？' })
   await expect(draft).toHaveValue(/> StudyPilot page one/)
