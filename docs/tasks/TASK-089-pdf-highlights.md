@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-089"
-status = "IN_ACCEPTANCE"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "改公共契约（§4.15 高亮锚点加 `page_number`、放宽「必须有 READY 正文快照」的写入前置条件、新增一个错误码）+ 一次迁移 0009（`highlights` 加列、换索引）+ 关键数据模型 + 跨后端/前端。命中 risk-policy.json 的 `docs/contracts/**`、`backend/**/models/**`、`backend/**/migrations/**`。执行链：1 Worker → 自动检查 → 独立只读 Reviewer → 独立只读 Integration/Acceptance。"
 risk_flags = ["public-api", "migration", "critical-data"]
@@ -246,8 +246,10 @@ Review 结论是 PASS，另给一条须处置与三条可选/风险：
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：**最终候选 `7de63e6`**（base `d4e41dc`）。两次冻结：`745296d`（首次送审 → PASS + F1 须处置）
-  → `7de63e6`（补 e2e + 改文案 → 增量复核 PASS / No findings）。
+- 候选 SHA：**最终候选 `1db78a3`**（base `d4e41dc`）。三次冻结：`745296d`（首次送审 → PASS + F1 须处置）
+  → `7de63e6`（补 e2e + 改文案 → 增量复核 PASS / No findings；**独立验收 PASS 就是针对它**）
+  → `1db78a3`（验收可选项：一处 prop 注释同步到改过的提示文案，**纯注释、无行为变化**——
+  Reviewer 与验收都明确说过这类增量不需再开一轮，据此不再送审）。
 - Review（独立只读 Reviewer，两轮，**报告原文**）：
 
   > ## TASK-089 独立只读审查（首次审查，base `d4e41dc` → candidate `745296d`）
@@ -294,9 +296,49 @@ Review 结论是 PASS，另给一条须处置与三条可选/风险：
 - 主 Agent 对 Review 的处置：F1 补 e2e、F2 改文案、F3/F4 登记（见「第二轮」）。第二轮那条可选建议
   （把「跳到第 9 页」的 click 放进 `expect.poll`）**未采纳**：Reviewer 自己判定失败形态是「红而非假过」，
   窗口极小；先留着，若 CI 抖到它再收紧。
-- Acceptance：待填
-- 最终状态/风险/用户操作：待填
-- 非阻断遗留项：待填
+- Acceptance（独立只读 Integration/Acceptance，独立于实现者与 Reviewer，核 `d4e41dc..122294b`，**报告原文**）：
+
+  > ## TASK-089 独立只读 Integration/Acceptance（base `d4e41dc` → 候选 `7de63e6`，记录提交 `122294b`）
+  >
+  > **只读证明**：本 Agent 仅授予 Read/Grep/Glob，无写工具、无 Bash；未改任何文件。无 git，因此 SHA 归属、指纹链与「`122294b` 只改记录与索引」**无法独立核实**，只能核导出的 patch（25 文件，与首轮 Reviewer 所见文件集一致）、工作区源码、两张截图。
+  >
+  > **核对范围**：`03-final-full.patch` 全部非 openapi 段 + openapi 源文件定向 grep；`highlight_store.py`/`api/highlights.py`/`models.py` 命名约定/`env.py`；`ResourceDetail.tsx` 380–425、`ReaderHighlights.tsx`、`ReaderQuote.tsx`；e2e 三个 spec 计数；夹具存在性；索引行。
+  >
+  > **完成条件逐条**
+  > 1. 契约/openapi/后端三方一致：**达成**。`page_number` 语义、三路前置（`require_anchor_target`：无页码→`require_snapshot`；有页码且资料有 READY 快照→422；否则 `require_pdf`→`PDF_NOT_FOUND` 404）、`MESSAGES` 有文案、openapi `x-error-codes`/schema/`HighlightTargetNotFound` 示例均含 `PDF_NOT_FOUND`；排序 `page_number nulls_first → start_offset → id` 显式写出；错误码总表有行。
+  > 2. 迁移 0009：**达成**。upgrade/downgrade 与 `models.py`（列、CHECK `page_number_positive` 经 `ck_%(table)s_%(constraint_name)s` 得 `ck_highlights_page_number_positive`、索引列序）对得上；`env.py` 有 `target_metadata`；降级守卫「存在 `page_number IS NOT NULL` 行即 `RuntimeError`」；`test_0009_…` 用例真实走了 up→拒绝→删行→down→up，且 0006/非空库两条既有用例也经过 0009 降级，印证「三步都跑过」。
+  > 3. 用户两件事：**达成**。胶囊两按钮（截图 1）、「高亮」Tab 放开并显示「第 1 页」（截图 2）；`takeQuoteAndMark` 对 PDF 生效，e2e 第 3 条断言 `[[1,true]]` 配对。
+  > 4. 跨页不给标：**达成**。`canMark` 谓词形态、`pageOfRange` 两端同一 `.pdf-text-layer`、e2e 第 2 条断「标下来」为 0 且引文仍进草稿。
+  > 5. 网页阅读器未改坏：**达成**。网页 `canMark={true}` 布尔、`takeQuoteAndMark`/`pendingNote`/10 分钟时限未动；`reader-highlights` 3 条在 e2e 计数内。
+  > 6. 证据自洽：**部分可核**。文件数 25 ✓；后端 593+3、前端 817+8、e2e 4+3+7=14 算术一致 ✓；`test_migrations` 三处 0008、openapi ±6 行、`ResourceDeleteDialog` 两处、`pdf-reader.spec` 两条反转均与 diff 相符 ✓；指纹与 SHA 绑定无法复核，采信记录。
+  > 7. L3 执行链：两轮 Review 原文完整写回、F1–F4 逐条对应（F1 补第 4 条 e2e 已在 diff；F2 文案已改并有单测/e2e 断言；F3/F4 进已知限制）；索引行与记录 status 均 `IN_ACCEPTANCE` ✓。
+  > 8. 非阻断遗留：跨页不能标、不校验页码上限、只在渲染页定位、双持资料 422、引文粘连均已登记 ✓。
+  >
+  > **Findings**
+  > - 可选（注释漂移，不阻断）：`frontend/src/features/resources/ReaderQuote.tsx:44` 的 prop 注释仍写「跨页只能记下这段」，而实际文案（第 105 行）已按 F2 改为「选区跨页或落到页外，只能记下这段」。本仓库明确在意注释与代码不符，建议顺手改；不形成新候选也可，登记即可。
+  > - 其余 No findings。
+  >
+  > **结论：PASS**（针对 `7de63e6`）。
+  >
+  > **剩余风险与下一步**：F3（快照+PDF 双持，UI 不可达）、F4（引文粘连）、越界页码永远「还没渲染」；Reviewer 提的「跳到第 9 页」click 竞态未收紧，若 CI 抖再处理。给用户：可推 PR 并合并；合并后按 §5 把 089 的 MERGED 登记并入下个任务的控制面提交。
+
+- 主 Agent 对验收的处置：那条可选项**已改**（`1db78a3`，纯注释）。验收说明 SHA/指纹链它无法独立核实
+  ——主 Agent 在此补一句可核的事实：`git diff 7de63e6..1db78a3` 只有 `ReaderQuote.tsx` 一行注释。
+- 最终状态/风险/用户操作：**ACCEPTED**（L3 执行链走完：实现 → 每轮机械检查 → 独立只读 Reviewer 两轮
+  （F1 补 e2e、F2 改文案、F3/F4 登记）→ 独立只读 Integration/Acceptance PASS → 一处纯注释同步）。
+  风险：改了契约、数据模型与迁移；降级在有按页高亮时会拒绝（有意为之）；最坏情况是 PDF 上某条高亮
+  定位不到——按设计只在那一页渲染时判、不会丢数据。
+  **等待用户操作**：请在自己库里的 arXiv 论文上试「标下来」、「记下这段 → 保存心得 → 配对」、跨页选区；
+  确认后由你决定推 PR 与合并。合并后 089 的 MERGED 登记按 §5 并入下一个任务的控制面提交。
+- 非阻断遗留项：
+  1. **跨页选区不能标高亮**（用户选定），只能记下这段。
+  2. **服务端不校验 `page_number` ≤ 总页数**：越界页码在前端永远显示「还没渲染」（不判孤立、不上色），
+     列表给「跳到第 N 页」但跳不到。
+  3. **PDF 高亮只在那一页渲染时定位**：视口外的页不上色也不判孤立，滚过去就有。
+  4. **同时有快照与 PDF 原件的资料**（UI 造不出来）：阅读器给「标下来」，后端按契约回 422（Review F3）。
+  5. **PDF 上跨行选区的引文会粘连**（Review F4），只影响列表可读性。
+  6. e2e「跳到第 9 页」的点击若早于 `goTo` 交出会红而非假过（Review 可选建议，未收紧）。
+  7. 右栏读心得只取一页 100 条（TASK-072 既有）。
 - 日期与决定日志：2026-09-22 用户提出「PDF 没有仅高亮、加了心得高亮也不保存」→ 合并 #96 后
   「开始做 TASK-089」→ 登记时问跨页选区的处理，用户选「跨页不给标下来，只留记下这段」。
 <!-- EVIDENCE:END -->
