@@ -2,10 +2,12 @@
 read-only prerequisites.
 
 A highlight may only be made on text the user can actually be reading: the
-resource must be readable and must already hold a READY snapshot, because that
-frozen text is what the anchor points into. The optional note must belong to the
-same resource - a note written under a different article cannot be "about" this
-passage - and to at most one highlight.
+resource must be readable and must hold the text the anchor points into - a
+READY snapshot for an anchor with no page, a READY PDF original for an anchor
+with one (TASK-089). One or the other, never both: a page on a snapshot
+resource, or no page on a PDF one, is refused rather than guessed. The optional
+note must belong to the same resource - a note written under a different
+article cannot be "about" this passage - and to at most one highlight.
 
 Nothing in here reads snapshot content. Whether an anchor still finds its
 passage is decided by the reader at render time (docs/research 5.1); the store
@@ -30,6 +32,7 @@ FIELDS = (
     "suffix",
     "start_offset",
     "end_offset",
+    "page_number",
     "note_id",
     "version",
     "created_at",
@@ -75,6 +78,48 @@ class HighlightStore:
         ):
             raise HighlightError("SNAPSHOT_NOT_FOUND", 404)
 
+    def require_pdf(self, resource_id: UUID) -> None:
+        """A page anchor needs a PDF to have pages: a READY original of that type.
+
+        Only the type is checked, never the page count - the server does not open
+        the file (the same rule that keeps it from reading snapshot text).
+        """
+        if (
+            self.session.scalar(
+                select(OriginalFile.id).where(
+                    OriginalFile.resource_id == resource_id,
+                    OriginalFile.status == "READY",
+                    OriginalFile.media_type == "application/pdf",
+                )
+            )
+            is None
+        ):
+            raise HighlightError("PDF_NOT_FOUND", 404)
+
+    def require_anchor_target(self, resource_id: UUID, page_number: int | None) -> None:
+        """Exactly one place to be anchored in (TASK-089).
+
+        A page number on a resource that only has a snapshot is a shape error,
+        not a missing thing: the caller described an anchor that cannot exist
+        here, so it is 422 rather than 404. The two 404s stay distinct because
+        their remedies differ - one wants the text saved first, the other is
+        simply the wrong kind of resource.
+        """
+        if page_number is None:
+            self.require_snapshot(resource_id)
+            return
+        has_snapshot = (
+            self.session.scalar(
+                select(ContentSnapshot.id).where(
+                    ContentSnapshot.resource_id == resource_id, ContentSnapshot.status == "READY"
+                )
+            )
+            is not None
+        )
+        if has_snapshot:
+            raise HighlightError("VALIDATION_ERROR", 422)
+        self.require_pdf(resource_id)
+
     def require_note(
         self, resource_id: UUID, note_id: UUID | None, highlight_id: UUID | None
     ) -> None:
@@ -112,7 +157,7 @@ class HighlightStore:
 
     def create(self, resource_id: UUID, command: HighlightCreate) -> dict[str, Any]:
         self.require_resource(resource_id)
-        self.require_snapshot(resource_id)
+        self.require_anchor_target(resource_id, command.page_number)
         self.require_note(resource_id, command.note_id, None)
         highlight = Highlight(
             resource_id=resource_id,
@@ -121,6 +166,7 @@ class HighlightStore:
             suffix=command.suffix,
             start_offset=command.start_offset,
             end_offset=command.end_offset,
+            page_number=command.page_number,
             note_id=command.note_id,
         )
         self.session.add(highlight)
@@ -154,14 +200,23 @@ class HighlightStore:
         total = int(
             self.session.scalar(select(func.count()).select_from(Highlight).where(scope)) or 0
         )
+        descending = query.sort.startswith("-")
         column = getattr(Highlight, query.sort.lstrip("-"))
+        # Reading order is page first (TASK-089): snapshot anchors have no page and
+        # sort ahead of every PDF page; `created_at` order does not care about pages.
+        # `nulls_first`/`nulls_last` are spelled out so the order does not depend on
+        # the database's default NULL placement.
+        ordering: list[Any] = [column.desc() if descending else column, Highlight.id]
+        if column is Highlight.start_offset:
+            ordering.insert(
+                0,
+                Highlight.page_number.desc().nulls_last()
+                if descending
+                else Highlight.page_number.asc().nulls_first(),
+            )
         offset = (query.page - 1) * query.page_size
         rows = self.session.scalars(
-            select(Highlight)
-            .where(scope)
-            .order_by(column.desc() if query.sort.startswith("-") else column, Highlight.id)
-            .offset(offset)
-            .limit(query.page_size)
+            select(Highlight).where(scope).order_by(*ordering).offset(offset).limit(query.page_size)
         )
         return {
             "data": [project(row) for row in rows],

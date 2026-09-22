@@ -14,6 +14,7 @@ from support import BACKEND, migrate
 
 from studypilot.infrastructure.database import Base, create_database_engine, create_session_factory
 from studypilot.infrastructure.database.models import (
+    Highlight,
     LearningResource,
     Note,
     ResourceCitation,
@@ -35,7 +36,7 @@ def test_upgrade_is_repeatable_and_matches_models(tmp_path: Path) -> None:
                 "alembic_version",
             }
             context = MigrationContext.configure(connection, opts={"compare_type": True})
-            assert context.get_current_heads() == ("0008_resource_citations",)
+            assert context.get_current_heads() == ("0009_highlight_page",)
             assert compare_metadata(context, Base.metadata) == []
         with factory() as session:
             assert session.scalar(select(Topic.name)) == "Kept after upgrade"
@@ -70,7 +71,7 @@ def test_nonempty_downgrade_refuses_before_dropping_any_table(tmp_path: Path) ->
             # The downgrade runs in one transaction; the non-empty guard aborts it,
             # rolling back the already-applied 0002 step too, so head stays put.
             assert MigrationContext.configure(connection).get_current_heads() == (
-                "0008_resource_citations",
+                "0009_highlight_page",
             )
         with factory() as session:
             assert session.scalar(select(Topic.name)) == "Must not be deleted"
@@ -131,7 +132,7 @@ def test_0006_widens_note_content_and_refuses_lossy_downgrade(tmp_path: Path) ->
             migrate(engine, "0005_snapshot_assets", downgrade=True)
         with engine.connect() as connection:
             assert MigrationContext.configure(connection).get_current_heads() == (
-                "0008_resource_citations",
+                "0009_highlight_page",
             )
         with factory.begin() as session:
             session.query(Note).filter(Note.content == "y" * 60_000).delete()
@@ -239,5 +240,72 @@ def test_cli_uses_explicit_environment_url_and_import_has_no_side_effects(tmp_pa
     engine = create_database_engine(f"sqlite:///{database}")
     try:
         assert set(inspect(engine).get_table_names()) == {*Base.metadata.tables, "alembic_version"}
+    finally:
+        engine.dispose()
+
+
+def test_0009_adds_page_number_and_refuses_to_drop_pdf_highlights(tmp_path: Path) -> None:
+    """0009 lets a highlight name the PDF page its offsets count in. Going back
+    below it would silently turn such a highlight into a snapshot anchor that
+    points at nothing, so the downgrade refuses while any exists; snapshot
+    highlights (no page) come through untouched."""
+    engine = create_database_engine(f"sqlite:///{tmp_path / 'pages.db'}")
+    try:
+        migrate(engine)
+        columns = {column["name"] for column in inspect(engine).get_columns("highlights")}
+        assert "page_number" in columns
+        factory = create_session_factory(engine)
+        with factory.begin() as session:
+            resource = LearningResource(
+                title="按页标过的资料", source_type="WEB", source_url="https://example.test/p"
+            )
+            session.add(resource)
+            session.flush()
+            session.add_all(
+                [
+                    Highlight(
+                        resource_id=resource.id,
+                        exact="第二页的一句",
+                        start_offset=3,
+                        end_offset=9,
+                        page_number=2,
+                    ),
+                    Highlight(
+                        resource_id=resource.id,
+                        exact="快照里的一句",
+                        start_offset=0,
+                        end_offset=6,
+                        page_number=None,
+                    ),
+                ]
+            )
+        # The CHECK holds: page numbers start at 1. `pytest.raises` is the outer
+        # context so the session's own exit rolls the failed flush back first.
+        with pytest.raises(IntegrityError), factory.begin() as session:
+            session.add(
+                Highlight(
+                    resource_id=resource.id, exact="x", start_offset=0, end_offset=1, page_number=0
+                )
+            )
+            session.flush()
+        with pytest.raises(RuntimeError, match="anchored in PDF pages"):
+            migrate(engine, "0008_resource_citations", downgrade=True)
+        # Close the inspecting connection before the next batch rebuild: an open
+        # one holds a SQLite lock and the downgrade below would wait on it.
+        with engine.connect() as connection:
+            assert MigrationContext.configure(connection).get_current_heads() == (
+                "0009_highlight_page",
+            )
+        with factory.begin() as session:
+            paged = session.scalar(select(Highlight).where(Highlight.page_number == 2))
+            assert paged is not None
+            session.delete(paged)
+        migrate(engine, "0008_resource_citations", downgrade=True)
+        columns = {column["name"] for column in inspect(engine).get_columns("highlights")}
+        assert "page_number" not in columns
+        migrate(engine)
+        with factory() as session:
+            kept = session.scalar(select(Highlight))
+            assert kept is not None and kept.exact == "快照里的一句" and kept.page_number is None
     finally:
         engine.dispose()

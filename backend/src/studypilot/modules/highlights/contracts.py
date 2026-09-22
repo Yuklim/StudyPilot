@@ -40,6 +40,11 @@ class HighlightCreate(BaseModel):
 
     The text is taken verbatim - no trimming. Leading and trailing spaces are
     part of what the reader selected, and dropping them would move the anchor.
+
+    `page_number` (TASK-089) says where the offsets are measured: None is the
+    resource's snapshot text, a value is that page of its PDF original (1-based).
+    Whether the resource actually has the thing named is the store's check, not
+    this model's - here only the shape is validated.
     """
 
     model_config = ConfigDict(extra="forbid", strict=True)
@@ -48,6 +53,7 @@ class HighlightCreate(BaseModel):
     suffix: Context | None = None
     start_offset: int = Field(ge=0)
     end_offset: int = Field(ge=1)
+    page_number: int | None = Field(default=None, ge=1)
     note_id: UUID | None = None
 
     @model_validator(mode="after")
@@ -80,7 +86,10 @@ class HighlightQuery(BaseModel):
     page: int = Field(default=1, ge=1)
     page_size: int = Field(default=20, ge=1, le=100)
     # Reading order by default: a reader wants its marks the way they appear in
-    # the article, not the order they happened to be made in.
+    # the article, not the order they happened to be made in. `start_offset` is
+    # the name the contract has always used for that order; since TASK-089 the
+    # store sorts it as (page_number NULLS FIRST, start_offset, id) so a PDF's
+    # marks come page by page.
     sort: Literal["start_offset", "-start_offset", "created_at", "-created_at"] = "start_offset"
 
     @field_validator("page", "page_size", mode="before")

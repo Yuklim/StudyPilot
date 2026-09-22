@@ -340,8 +340,11 @@ describe('deleting from the library', () => {
     expect(deleted()).toEqual([b.id])
     // 列表刷新：乙没了，甲丙还在。
     await waitFor(() => expect(screen.queryByRole('link', { name: '资料乙' })).toBeNull())
-    expect(screen.getByRole('link', { name: '资料甲' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: '资料丙' })).toBeInTheDocument()
+    // **正向断言也要等**（TASK-089 顺手修，PR #96 的 CI 抖过一次）：删除后列表刷新有一瞬
+    // 旧表已清空、新表还没渲染，上面那个负向 waitFor 正好在这个窗口里通过，紧接着同步
+    // 取「资料甲」就会扑空。同一提交的另一次运行是绿的——典型的竞态。
+    expect(await screen.findByRole('link', { name: '资料甲' })).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: '资料丙' })).toBeInTheDocument()
   })
 
   it('deletes a multi-selection in one confirmation with the summed note count', async () => {
@@ -364,7 +367,8 @@ describe('deleting from the library', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
     expect(deleted()).toEqual([a.id, c.id])
     await waitFor(() => expect(screen.queryByRole('link', { name: '资料甲' })).toBeNull())
-    expect(screen.getByRole('link', { name: '资料乙' })).toBeInTheDocument()
+    // 同上：等新表渲染出来再断言。
+    expect(await screen.findByRole('link', { name: '资料乙' })).toBeInTheDocument()
     expect(screen.queryByText(/已选 \d+ 份/)).toBeNull()
   })
 

@@ -500,3 +500,28 @@ describe('目录与阅读进度（TASK-088）', () => {
     expect(onProgress.mock.calls.at(-1)).toEqual([50, 2])
   })
 })
+
+describe('文字层上报（TASK-089）', () => {
+  function stubCanvas() {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
+      {} as unknown as CanvasRenderingContext2D,
+    )
+  }
+
+  it('hands each rendered text layer up, and withdraws it when the page unmounts', async () => {
+    vi.spyOn(api, 'downloadOriginal').mockResolvedValue({ blob: bytes(), fileName: 'paper.pdf' })
+    stubCanvas()
+    const onTextLayer = vi.fn()
+    const view = render(<PdfReader resourceId={resourceId} file={file} onTextLayer={onTextLayer} />)
+    await screen.findByLabelText('第 1 页')
+    // 只在 `TextLayer.render()` 结束后才报，报上来的是那一页的 `.pdf-text-layer` 元素本身。
+    await waitFor(() => expect(onTextLayer).toHaveBeenCalledWith(1, expect.any(HTMLElement)))
+    const layer = onTextLayer.mock.calls.find(([at]) => at === 1)![1] as HTMLElement
+    expect(layer.classList.contains('pdf-text-layer')).toBe(true)
+    expect(layer.closest('.pdf-page')?.getAttribute('data-page')).toBe('1')
+    await waitFor(() => expect(layer.textContent).toContain('第 1 页的文字'))
+    // 卸载时撤回：上层据此把那一页从定位容器里拿掉。
+    view.unmount()
+    expect(onTextLayer).toHaveBeenCalledWith(1, null)
+  })
+})

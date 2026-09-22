@@ -62,6 +62,7 @@ function mount(initial = sample()) {
             suffix: (sent.suffix as string | null) ?? null,
             start_offset: typeof sent.start_offset === 'number' ? sent.start_offset : 0,
             end_offset: typeof sent.end_offset === 'number' ? sent.end_offset : 11,
+            page_number: null,
             note_id: (sent.note_id as string | null) ?? null,
             version: init.method === 'PATCH' ? 2 : 1,
             created_at: '2026-09-19T02:00:00Z',
@@ -530,5 +531,54 @@ describe('PDF 上的胶囊（TASK-087）', () => {
     } as unknown as Selection)
     fireEvent.scroll(pages)
     expect(screen.queryByRole('button', { name: '记下这段' })).toBeNull()
+  })
+})
+
+describe('按选区判能不能标（TASK-089）', () => {
+  function harness(canMark: (range: Range) => boolean) {
+    const host = document.createElement('div')
+    const pages = document.createElement('div')
+    pages.className = 'pdf-reader-pages'
+    const span = document.createElement('span')
+    span.textContent = '同一页里的一句'
+    pages.append(span)
+    host.append(pages)
+    document.body.append(host)
+    const onMark = vi.fn()
+    const onQuote = vi.fn()
+    render(
+      <ReaderQuote
+        container={host}
+        selector=".pdf-reader-pages"
+        canMark={canMark}
+        onQuote={onQuote}
+        onMark={onMark}
+      />,
+    )
+    return { span, onMark, onQuote }
+  }
+
+  it('offers 「标下来」 when the predicate accepts the selection', () => {
+    const accept = vi.fn(() => true)
+    const { span, onMark } = harness(accept)
+    selectText('同一页里的一句', span.firstChild)
+    expect(accept).toHaveBeenCalledWith(expect.any(Range))
+    const button = screen.getByRole('button', { name: '标下来' })
+    fireEvent.mouseDown(button)
+    fireEvent.click(button)
+    expect(onMark).toHaveBeenCalledWith(expect.any(Range))
+    expect(screen.queryByText('跨页只能记下这段')).toBeNull()
+  })
+
+  it('keeps only 「记下这段」 and says why when the predicate refuses (cross-page)', () => {
+    const { span, onQuote } = harness(() => false)
+    selectText('同一页里的一句', span.firstChild)
+    expect(screen.queryByRole('button', { name: '标下来' })).toBeNull()
+    expect(screen.getByText('跨页只能记下这段')).toBeInTheDocument()
+    // 引文照走。
+    const button = screen.getByRole('button', { name: '记下这段' })
+    fireEvent.mouseDown(button)
+    fireEvent.click(button)
+    expect(onQuote).toHaveBeenCalledWith('> 同一页里的一句', expect.anything())
   })
 })

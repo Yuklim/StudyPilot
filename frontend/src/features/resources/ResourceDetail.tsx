@@ -69,6 +69,7 @@ const ReaderContent = memo(function ReaderContent({
   pdfToolbarSlot,
   onPdfOutline,
   onPdfProgress,
+  onPdfTextLayer,
 }: {
   resourceId: string
   sourceType: Source
@@ -84,6 +85,8 @@ const ReaderContent = memo(function ReaderContent({
   /** TASK-088：PDF 的书签目录与阅读进度都由阅读器自己算好交上来。 */
   onPdfOutline: (items: PdfBookmark[], goTo: (page: number) => void) => void
   onPdfProgress: (percent: number, page: number) => void
+  /** TASK-089：每页文字层渲染完/撤回时上报，高亮在里面定位。 */
+  onPdfTextLayer: (page: number, layer: HTMLElement | null) => void
 }) {
   // PDF 自己就是正文：这时不渲染快照区（那里只会显示「还没有保存正文」的引导，对一份
   // 已经能在站内读的 PDF 没有意义）。其他格式的原件保持现状，走快照那条路。
@@ -96,6 +99,7 @@ const ReaderContent = memo(function ReaderContent({
         toolbarSlot={pdfToolbarSlot}
         onOutline={onPdfOutline}
         onProgress={onPdfProgress}
+        onTextLayer={onPdfTextLayer}
       />
     )
   return (
@@ -324,22 +328,63 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
   // 入口，配错了不好收拾。除了几处显式清空，再给一个时限兜底。
   const pendingNote = useRef<{ highlight: Highlight; at: number } | null>(null)
   const [markError, setMarkError] = useState<string | null>(null)
+  /**
+   * PDF 上已渲染的文字层，按页号存（TASK-089）。`PdfReader` 在每页文字层渲染完时报上来、
+   * 离开渲染窗口时撤回；高亮的定位与上色都在这些容器里做。每次换新 Map，`ReaderHighlights`
+   * 才会重新定位。
+   */
+  const [pdfLayers, setPdfLayers] = useState<Map<number, Element>>(() => new Map())
+  const takeTextLayer = useCallback((page: number, layer: HTMLElement | null) => {
+    setPdfLayers((current) => {
+      if (layer ? current.get(page) === layer : !current.has(page)) return current
+      const next = new Map(current)
+      if (layer) next.set(page, layer)
+      else next.delete(page)
+      return next
+    })
+  }, [])
+  /**
+   * 一个选区落在 PDF 的哪一页（两端都在同一页的文字层里才算）；不在任何一页、或跨页 → null。
+   * 文字层按页给，一条高亮的锚点只能落在一页内——跨页时「标下来」不出（用户 2026-09-22 选定）。
+   */
+  const pageOfRange = useCallback((range: Range): { page: number; layer: Element } | null => {
+    const layerOf = (node: Node) =>
+      (node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement)?.closest(
+        '.pdf-text-layer',
+      ) ?? null
+    const start = layerOf(range.startContainer)
+    const end = layerOf(range.endContainer)
+    if (!start || start !== end) return null
+    const page = Number(start.closest('.pdf-page')?.getAttribute('data-page'))
+    return Number.isInteger(page) && page >= 1 ? { page, layer: start } : null
+  }, [])
+  const canMarkPdfRange = useCallback((range: Range) => pageOfRange(range) !== null, [pageOfRange])
   const mark = useCallback(
     async (range: Range, keep: (highlight: Highlight) => void) => {
-      const rendered = readerMain?.querySelector('.snapshot-rendered')
-      if (!rendered) return
-      const anchor = anchorFrom(rendered, range)
+      // 锚点取自哪段文本：网页是整篇正文；PDF 是选区所在的那一页（TASK-089）。
+      let container: Element | null
+      let page: number | null = null
+      if (pdfOriginal) {
+        const at = pageOfRange(range)
+        if (!at) return
+        container = at.layer
+        page = at.page
+      } else {
+        container = readerMain?.querySelector('.snapshot-rendered') ?? null
+      }
+      if (!container) return
+      const anchor = anchorFrom(container, range)
       if (!anchor) return
       setMarkError(null)
       try {
-        const created = await createHighlight(resourceId, anchor)
+        const created = await createHighlight(resourceId, anchor, null, page)
         keep(created)
         setHighlightRevision((value) => value + 1)
       } catch (cause) {
         setMarkError(failureText(cause))
       }
     },
-    [readerMain, resourceId],
+    [readerMain, resourceId, pdfOriginal, pageOfRange],
   )
   const takeMark = useCallback(
     (range: Range) => {
@@ -351,14 +396,8 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
     },
     [mark],
   )
-  /**
-   * PDF 上的「记下这段」（TASK-087）：只把引文送进心得草稿，**不标高亮**。
-   *
-   * 高亮的锚点取自 `.snapshot-rendered`，PDF 资料根本没有快照（契约 §4.15 也要求先有
-   * READY 快照）。`mark` 本身取不到正文根时会早退，但这里显式分开：靠另一个函数的早退
-   * 来表达「这条路不该标高亮」，读代码的人看不出这是有意的。
-   */
-  const takeQuoteOnly = useCallback((quote: string) => takeQuote(quote), [takeQuote])
+  // TASK-089 起 PDF 与网页走同一条路：引文进草稿 + 标高亮 + 心得保存后配对。
+  // 跨页的选区 `mark()` 会早退（取不到单一页），引文照进草稿——正是用户要的行为。
   const takeQuoteAndMark = useCallback(
     (quote: string, range: Range | null) => {
       takeQuote(quote)
@@ -577,13 +616,13 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
                 ——一页两个 `h1` 既是无障碍问题，也正是要省掉的那 64px。 */}
             {!pdfOriginal && <ReaderHeader resource={toolbarItem} headingSlot={headingSlot} />}
             {/* 「记下这段」浮动胶囊（TASK-068）：读正文里的选区，送进右栏心得草稿。
-                **PDF 走另一套参数**（TASK-087）：正文根是 `.pdf-reader-pages`（文字层在里面），
-                且只出「记下这段」——PDF 上还没有高亮的落点，引文也就不去标高亮。 */}
+                PDF 的正文根是 `.pdf-reader-pages`（文字层在里面，TASK-087）；「标下来」按选区判
+                ——落在同一页才出，跨页只留「记下这段」（TASK-089，用户选定）。 */}
             <ReaderQuote
               container={readerMain}
               selector={pdfOriginal ? '.pdf-reader-pages' : '.snapshot-rendered'}
-              canMark={!pdfOriginal}
-              onQuote={pdfOriginal ? takeQuoteOnly : takeQuoteAndMark}
+              canMark={pdfOriginal ? canMarkPdfRange : true}
+              onQuote={takeQuoteAndMark}
               onMark={takeMark}
             />
             {/* 标签与「收下它是因为」TASK-067 起在右栏「信息」Tab（用户 2026-09-17 选定），
@@ -604,6 +643,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
               pdfToolbarSlot={pdfToolbarSlot}
               onPdfOutline={takePdfOutline}
               onPdfProgress={takePdfProgress}
+              onPdfTextLayer={takeTextLayer}
             />
           </div>
           {/* 用心得 `<section aria-label>` 而不是 `<aside>`：section + 名字 = region，
@@ -614,10 +654,9 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
               {/* 两个 Tab（TASK-067）。NotesPanel **保持挂载**（草稿与角标数量都在它里面），
                   「信息」选中时只是 CSS 显隐，不卸载。 */}
               <div className="reader-side-tabs" role="tablist" aria-label="右栏">
-                {/* TASK-073：PDF 资料没有「高亮」Tab——高亮锚点是快照正文的字符偏移，PDF
-                    是另一套坐标；显示一个点不动的空 Tab 比不显示更糟（用户 2026-09-20
-                    看草图后确认）。 */}
-                {!pdfOriginal && (
+                {/* 「高亮」Tab。TASK-073 曾对 PDF 隐藏它（那时高亮锚点只能落在快照正文里）；
+                    TASK-089 起 PDF 的高亮按页锚定，这个 Tab 两种阅读器都有。 */}
+                {
                   <button
                     type="button"
                     role="tab"
@@ -634,7 +673,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
                       </span>
                     )}
                   </button>
-                )}
+                }
                 <button
                   type="button"
                   role="tab"
@@ -672,7 +711,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
                 {markError}
               </p>
             )}
-            {!pdfOriginal && (
+            {
               <div
                 role="tabpanel"
                 id="reader-tabpanel-highlights"
@@ -683,13 +722,16 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
                   key={resourceId}
                   resourceId={resourceId}
                   rendered={readerMain?.querySelector('.snapshot-rendered') ?? null}
+                  // PDF：按页定位（TASK-089）；那一页没渲染时可以让阅读器跳过去。
+                  pages={pdfOriginal ? pdfLayers : null}
+                  onJumpPage={pdfOriginal ? pdfOutline.goTo : undefined}
                   revision={highlightRevision}
                   onWriteNote={writeNoteForHighlight}
                   onOpenNote={openNoteFromHighlight}
                   onCount={receiveHighlightCount}
                 />
               </div>
-            )}
+            }
             <div
               role="tabpanel"
               id="reader-tabpanel-notes"

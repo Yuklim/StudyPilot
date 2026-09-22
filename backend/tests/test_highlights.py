@@ -12,6 +12,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from file_fixtures import pdf
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -63,6 +64,28 @@ def readable(client: TestClient, title: str = "网页资料") -> dict[str, Any]:
     return resource
 
 
+def pdf_resource(client: TestClient, title: str = "PDF 资料") -> dict[str, Any]:
+    """A FILE resource whose original is a (tiny, synthetic) PDF: pages to anchor into."""
+    response = client.post(
+        "/api/v1/resources",
+        data={"source_type": "FILE", "title": title},
+        files={"file": ("paper.pdf", pdf(), "application/pdf")},
+    )
+    assert response.status_code == 201, response.text
+    return dict(response.json()["data"])
+
+
+def text_resource(client: TestClient) -> dict[str, Any]:
+    """A FILE resource that is not a PDF: readable, but has no pages."""
+    response = client.post(
+        "/api/v1/resources",
+        data={"source_type": "FILE", "title": "文本原件"},
+        files={"file": ("notes.txt", b"synthetic\n", "text/plain")},
+    )
+    assert response.status_code == 201, response.text
+    return dict(response.json()["data"])
+
+
 def path(resource: dict[str, Any], highlight: dict[str, Any] | None = None) -> str:
     base = f"/api/v1/resources/{resource['id']}/highlights"
     return base + (f"/{highlight['id']}" if highlight else "")
@@ -109,6 +132,7 @@ def test_a_highlight_keeps_its_anchor_and_stands_without_a_note(authorized: Test
         "suffix",
         "start_offset",
         "end_offset",
+        "page_number",
         "note_id",
         "version",
         "created_at",
@@ -318,3 +342,58 @@ def test_highlights_never_cross_resources_and_delete_by_version(authorized: Test
     gone = authorized.delete(path(resource, created), headers={"If-Match": '"1"'})
     assert gone.status_code == 204 and not gone.content
     error(authorized.get(path(resource, created)), 404, "HIGHLIGHT_NOT_FOUND")
+
+
+@pytest.mark.usefixtures("database")
+def test_a_pdf_page_is_a_place_to_anchor_and_pages_come_first_in_order(
+    authorized: TestClient,
+) -> None:
+    """TASK-089: a highlight on a PDF says which page its offsets count in.
+
+    The resource has no snapshot, so the old precondition would have refused it;
+    what it has is a PDF original with pages. Listing puts pages in order, and
+    within a page keeps reading order - which is not creation order here.
+    """
+    resource = pdf_resource(authorized)
+    later = add(authorized, resource, page_number=3, start_offset=5, end_offset=9, exact="第三页")
+    first = add(authorized, resource, page_number=1, start_offset=40, end_offset=44, exact="第一页")
+    also = add(authorized, resource, page_number=1, start_offset=2, end_offset=6, exact="更早")
+    assert (later["page_number"], first["page_number"], also["page_number"]) == (3, 1, 1)
+    # The page is not checked against the document: the server never opens the PDF.
+    far = add(authorized, resource, page_number=999, start_offset=0, end_offset=1, exact="远")
+    assert far["page_number"] == 999
+
+    listed = authorized.get(path(resource)).json()["data"]
+    assert [row["id"] for row in listed] == [also["id"], first["id"], later["id"], far["id"]]
+    reverse = authorized.get(path(resource) + "?sort=-start_offset").json()["data"]
+    assert [row["id"] for row in reverse] == [far["id"], later["id"], first["id"], also["id"]]
+
+    # Without a page the anchor would point into a snapshot this resource does not have.
+    error(authorized.post(path(resource), json=anchor()), 404, "SNAPSHOT_NOT_FOUND")
+    # Page numbers start at 1.
+    error(authorized.post(path(resource), json=anchor(page_number=0)), 422, "VALIDATION_ERROR")
+    # Detail and delete carry the page along unchanged.
+    fetched = authorized.get(path(resource, later)).json()["data"]
+    assert fetched["page_number"] == 3
+    assert authorized.delete(path(resource, later), headers={"If-Match": '"1"'}).status_code == 204
+
+
+@pytest.mark.usefixtures("database")
+def test_an_anchor_lives_in_exactly_one_kind_of_text(authorized: TestClient) -> None:
+    """A page on a snapshot resource is a shape error; a page without a PDF is a missing thing."""
+    article = readable(authorized)
+    # Existing snapshot anchors report no page.
+    assert add(authorized, article)["page_number"] is None
+    # A page on a resource that only has a snapshot describes an impossible anchor.
+    error(authorized.post(path(article), json=anchor(page_number=1)), 422, "VALIDATION_ERROR")
+    # A page needs a PDF: a web resource without one, and a FILE that is plain text, both lack it.
+    error(authorized.post(path(web(authorized)), json=anchor(page_number=1)), 404, "PDF_NOT_FOUND")
+    error(
+        authorized.post(path(text_resource(authorized)), json=anchor(page_number=1)),
+        404,
+        "PDF_NOT_FOUND",
+    )
+    # Snapshot anchors sort ahead of every page when a resource somehow has both kinds listed
+    # (mixed order is defined even if the store never lets one resource hold both).
+    listed = authorized.get(path(article)).json()["data"]
+    assert listed and all(row["page_number"] is None for row in listed)
