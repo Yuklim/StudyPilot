@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-089"
-status = "IN_REVIEW"
+status = "IN_ACCEPTANCE"
 risk = "L3"
 risk_reason = "改公共契约（§4.15 高亮锚点加 `page_number`、放宽「必须有 READY 正文快照」的写入前置条件、新增一个错误码）+ 一次迁移 0009（`highlights` 加列、换索引）+ 关键数据模型 + 跨后端/前端。命中 risk-policy.json 的 `docs/contracts/**`、`backend/**/models/**`、`backend/**/migrations/**`。执行链：1 Worker → 自动检查 → 独立只读 Reviewer → 独立只读 Integration/Acceptance。"
 risk_flags = ["public-api", "migration", "critical-data"]
@@ -246,8 +246,54 @@ Review 结论是 PASS，另给一条须处置与三条可选/风险：
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：待填
-- Review：待填
+- 候选 SHA：**最终候选 `7de63e6`**（base `d4e41dc`）。两次冻结：`745296d`（首次送审 → PASS + F1 须处置）
+  → `7de63e6`（补 e2e + 改文案 → 增量复核 PASS / No findings）。
+- Review（独立只读 Reviewer，两轮，**报告原文**）：
+
+  > ## TASK-089 独立只读审查（首次审查，base `d4e41dc` → candidate `745296d`）
+  >
+  > **只读证明**：本 Agent 仅授予 Read/Grep/Glob，无 Write/Edit/Bash；未改任何文件。无 Bash 因此不能 `git` 核对 SHA、不能复跑检查，审的是导出的 `01-full.patch`（25 文件）+ 工作区源码调用链。
+  >
+  > **审查范围**：完整 diff；`highlightAnchor.ts`/`quoteSelection.ts`/`snapshot_store.py`/`PdfReader.tsx` 413-423/`CapturePage.tsx` 作为调用链。
+  >
+  > **逐项核对（无问题）**
+  > - 契约 §4.15/§2.3/操作表/错误码表 ↔ openapi ↔ `require_anchor_target` 三路、`page()` 显式 nulls_first/last、`PDF_NOT_FOUND` 条件：一致。openapi 仅 6 行变动（tags、两条 path、两条 schema、`HighlightTargetNotFound`），无误伤。
+  > - 迁移 0009：`env.py` 配了 `target_metadata`，batch 内 CHECK 名经 naming_convention 得 `ck_highlights_page_number_positive`，与 `models.py` 对应；索引列序一致；降级守卫形状同 0006；用例连接已用 `with` 关闭。
+  > - 前端：`anchorFrom`/`rangeFor` 同用 `mapText`（`<br>` 两边都不计），偏移一致；`registryName` 清理正确；`orphans` 按条计；`goTo` 无书签也会在 `onOutline` 交出。
+  > - 不该变的：网页 `canMark` 仍是布尔 `true`；`takeQuoteAndMark`/`pendingNote` 10 分钟时限未动；`highlight_count` 未动。
+  > - 记录数字：25 文件、后端 +3、前端 +8、e2e 3+3+7=13、`test_migrations` 三处 0008、openapi 6 行——均与 diff 相符。
+  >
+  > **Findings**
+  > - **F1（须处置，记录层面）** `docs/tasks/TASK-089-pdf-highlights.md:129-130` 完成条件写「新增 e2e … 点列表条目跳页」，但 `frontend/e2e/pdf-highlights.spec.ts` 三条是「标下来+刷新 / 跨页 / 配对」，跳页仅有单测断言 `onJumpPage(9)` 被调用。两页夹具在 `NEAR_PAGES` 窗口内造不出「未渲染页」，e2e 难补；实际应订正完成条件措辞。该改动在 EVIDENCE 区外 → 形成新候选，我可做增量复核。
+  > - **F2（可选）** `ResourceDetail.tsx:350-360` 选区一端落在页间空隙/`.pdf-page` 容器（同页非跨页）时同样判不可标，胶囊固定提示「跨页只能记下这段」，文案失真。
+  > - **F3（记录为剩余风险）** 资料同时有 READY 快照与 READY PDF 原件（仅能绕过 UI 直接 `putResourceSnapshot` 达成），阅读器仍给「标下来」而后端返回 422「输入不符合要求」。UI 不可达，不阻断。
+  > - **F4（可选）** PDF 上 `exact` 为跨行 span 直接拼接，列表引文会行尾行首粘连；定位不受影响。
+  >
+  > **结论：PASS**（针对 `745296d` 的代码、契约、迁移与测试）；F1 需主 Agent 在验收前处置（订正措辞或补 e2e，任一都产生新候选）。剩余风险：F3；检查数字采信记录，未能复跑。
+
+  > ## TASK-089 增量复核（`745296d..7de63e6`，base 仍 `d4e41dc`）
+  >
+  > **只读证明**：同前，仅 Read/Grep/Glob，无写工具、无 Bash。
+  >
+  > **覆盖与继承**：审了 `02-incremental.patch` 全部 4 文件 150 行，并核对 `PdfReader.tsx:39`（`NEAR_PAGES = 2`）、`:405-423`（`jump` 经 `onOutline` 交出，无书签也交）、夹具 `frontend/e2e/fixtures/sample-long.pdf` 存在且非本次新增、`getByLabel('页码')` 与 `pdf-reader.spec.ts` 同一控件。增量未触及后端/契约/迁移/`ResourceDetail`/`ReaderHighlights`，**继承首轮对 `745296d` 的全部结论**（契约三路一致、迁移命名与守卫、定位与注册表、不该变的部分）；结论针对 `7de63e6`。
+  >
+  > **F1 核验（`pdf-highlights.spec.ts:193-228`）**
+  > - 「未渲染 ≠ 孤立」：`toContainText('第 9 页')` 先等列表真正载入，之后再数 `.reader-highlight-orphan === 0`，顺序正确；第 9 页无文字层的断言在此之前已成立。**真验到了。**
+  > - `painted() === []` 那步：因为这条高亮只在第 9 页、页未渲染，无论列表是否载入它都为空——不是竞态造成的假过，但单独看是弱断言；与跳页后 `['StudyPilot page 9']` 的正向 poll 合起来才构成「跳页后定位上色」的证据，**成立**。`跳到正文` 出现 = `range` 非空，再加孤立数 0，闭环。
+  > - 唯一的抖动风险：点「跳到第 9 页」若早于 `onOutline` 交出 `goTo`（默认是空函数），页码不会变、poll 超时 → 测试**失败而非假过**；实际大纲在文档载入后即读，窗口极小。可选：把 click 放进 `expect.poll` 重试。
+  >
+  > **F2**：文案「选区跨页或落到页外，只能记下这段」覆盖两种判否情形，单测/e2e 同步。
+  > **记录第二轮段**：与增量 diff 逐条相符（补 e2e 而非改措辞、4 条、F3/F4 进已知限制）；「仓库里有 12 页夹具」属实。检查数字无法复跑，采信。
+  >
+  > **Findings**：No findings（上面的抖动风险为可选建议，不阻断）。
+  >
+  > **剩余风险**：F3（快照+PDF 双持资料，UI 不可达）、F4（引文粘连），已登记。
+  >
+  > **结论：PASS**（`7de63e6`），可转独立验收。
+
+- 主 Agent 对 Review 的处置：F1 补 e2e、F2 改文案、F3/F4 登记（见「第二轮」）。第二轮那条可选建议
+  （把「跳到第 9 页」的 click 放进 `expect.poll`）**未采纳**：Reviewer 自己判定失败形态是「红而非假过」，
+  窗口极小；先留着，若 CI 抖到它再收紧。
 - Acceptance：待填
 - 最终状态/风险/用户操作：待填
 - 非阻断遗留项：待填
