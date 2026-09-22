@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-088"
-status = "READY"
+status = "IN_REVIEW"
 risk = "L2"
 risk_reason = "普通业务实现：把网页阅读器已有的三件东西补到 PDF 上——左栏目录（改从 pdf.js 书签大纲来）、顶栏阅读进度线、「记为学习进度 N%」。只动前端组件与样式，**不改后端、不改契约、不加迁移、不碰学习记录的写入链路**（「记为学习进度」仍走既有的 `createResourceStudyRecord`，一个字段都不改）。不命中 risk-policy.json 的 high_risk_paths。执行链：1 Worker → 自动检查 → 1 独立只读 Reviewer；独立验收 N/A。"
 risk_flags = ["business"]
@@ -112,7 +112,64 @@ checks = ["frontend"]
 
 ## 实现与测试
 
-- 待填。
+- 实现 SHA：`9efecdc`。
+- **命令与结果**：
+  - `check_task.py --task docs/tasks/TASK-088-reader-parity.md --worktree` → **CHECKS PASS**，
+    `files=12`
+    `product_fingerprint=04298e966fb45e9efdf8de3056ce8d2b696bab2884fc4891170ef6ab935a7533`，
+    `profiles=frontend`。
+    **这次二进制夹具没有卡住检查器**：新夹具是手写的未压缩 PDF，整份都是 ASCII（中文书签
+    按 PDF 规范存成 UTF-16BE 的十六进制串），因此能按 UTF-8 读出来。TASK-086 那几张 PNG 则
+    读不出来，只能人工核验——差别在文件本身，不是检查器变了。
+  - `frontend npm run test -- --run` → **816 passed（37 个文件）**（改前 801，新增 15 条：
+    `pdfOutline` 11 条 + `PdfReader` 4 条）。
+  - `npx playwright test e2e/pdf-reader.spec.ts` → **7 passed**（原 5 条 + 新增 2 条）；
+    `reader-layout` + `reader-immersive` → **16 passed**（网页阅读器那栏没被碰坏）。
+  - `npm run typecheck`（`tsc -b`）、`npm run lint`、`prettier --check` → 通过。
+
+### 落点
+
+1. **`pdfOutline.ts`（新）**：`readPdfOutline` 把书签树铺成两层；每条的目标按三种形态解析
+   （具名 → `getDestination`、显式数组 → 第一项是页引用、或直接给 0 起页序号）。
+   **任何一条解析不出页码就丢掉**，不显示点了没反应的目录项；整棵树读不出来就返回 `[]`。
+   另有 `currentBookmark`（当前条目按页码判）与 `readingPercentOf`（进度百分比）。
+2. **`ReaderOutline` 改成纯展示组件**：收 `items`/`current`/`onJump`/`hint`，
+   原来长在组件里的「窗口滚动算当前节」挪进 `outline.ts` 的 `useOutlineCurrent`（网页专用）。
+   两种阅读器因此**共用同一套 DOM 与样式**，只有「点了去哪」不同。
+3. **`PdfReader` 交两样东西上去**：`onOutline(items, goTo)` 与 `onProgress(percent, page)`。
+   左栏长在 `ResourceDetail` 的三栏布局里，而页码/滚动容器/`goTo` 长在阅读器里——
+   所以交出去的是**数据 + 一个跳转函数**，而不是把那一栏搬进阅读器。
+   跳转函数用 ref 包成稳定引用，否则 `goTo` 随缩放变化会让大纲被反复重读。
+4. **`ResourceDetail` 合流**：`outlineRows`/`outlineAt` 按是不是 PDF 选一边；
+   目录状态**连同它属于哪份资料一起存**（`{ id, items, goTo }`），换一份 PDF 时旧目录不会
+   继续画着——不用 effect 清空，因为项目的 lint 禁止在 effect 里同步 setState。
+5. **网页那套位置记忆 effect 在 PDF 上早退**。这不只是省事：它的 cleanup 会
+   `setReadingPercent(null)`，而 PDF 侧只在百分比**变化**时才上报，被抹掉后进度线要等用户
+   再滚一段才回来。
+6. **新夹具 `sample-outline.pdf`**：四页、三条顶层书签（第二条带一个子条目 `2.1 细节`），
+   标题是中文。用一次性脚本生成（不入库），结构手写：`/Outlines` + `/First`/`/Last`/`/Next`/
+   `/Prev`/`/Parent`/`/Count`，目标用 `[页对象 /XYZ 0 400 0]`。
+   **生成后用 pdf.js 实地验过**：`numPages 4`，三条顶层 + 一条子条目，页码 1/2/3/4，中文标题
+   解码正确。
+
+### 过程中发现的一件事：`npx tsc --noEmit` 在这个仓库里什么都不检查
+
+根 `tsconfig.json` 是 `{ "files": [], "references": [...] }`——**直接跑 `npx tsc --noEmit` 会
+立刻退出 0**。真正的类型门是 `npm run typecheck`（`tsc -b`），`check_task.py` 跑的也是它。
+本任务中途正是靠 `check_task.py` 才暴露出 4 处类型错（`report` 用在声明前、`Doc` 与
+`OutlineDoc` 的 `getOutline` 签名不兼容等）。
+**TASK-087 的记录里写过「`npx tsc --noEmit` → 通过」，那句话是空的**——当时真正起作用的
+同样是 `check_task.py` 里的 `npm run typecheck`（它也确实咬住过一次 4 处错）。结论没错，
+但引用的命令名不对，在此更正；那份记录已随 PR #95 合并，不追改。
+
+### 已知限制 / 未完成项
+
+- **只铺两层书签**：三级及更深的条目不显示（一份论文的三级书签多是图表清单）。
+- **当前条目按页码判**：一页里有多条书签时，它们在同一页内不会随滚动细分。
+- **没有书签的 PDF 仍然没有目录**：不做「按页码列表」或页缩略图退路（用户选定）。
+- **进度百分比与网页那套不是同一个算法**（这边按页、那边按滚动位置），用户看到的含义一致。
+- 顶栏「目录」按钮的开关状态与网页共用同一个本机键（`studypilot.reader.outline`）——
+  在网页上收起目录，切到 PDF 也是收起的。这是既有设计，本任务沿用。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
