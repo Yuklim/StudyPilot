@@ -22,6 +22,9 @@ allowed_paths = [
   "frontend/src/features/resources/ResourceToolbar.test.tsx",
   "frontend/src/styles.css",
   "frontend/e2e/pdf-reader.spec.ts",
+  # 登记补正（实现中发现）：完成条件写了「e2e 用带书签的夹具验」，却漏了夹具本身的路径。
+  # 现有两份夹具都没有书签，验不了目录，所以新造一份。
+  "frontend/e2e/fixtures/sample-outline.pdf",
   # 到期收尾（合并 PR #95 后的登记）
   "docs/tasks/TASK-087-pdf-text-layer.md",
   "docs/tasks/TASK-088-reader-parity.md",

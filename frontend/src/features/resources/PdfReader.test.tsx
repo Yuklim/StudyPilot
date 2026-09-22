@@ -18,6 +18,8 @@ const pages: { width: number; height: number; rotation?: number }[] = [
   { width: 600, height: 800 },
 ]
 let opened: { fail?: unknown } = {}
+/** 这份替身文档有没有书签（TASK-088）。 */
+let outline = true
 
 vi.mock('pdfjs-dist', () => {
   /**
@@ -54,6 +56,13 @@ vi.mock('pdfjs-dist', () => {
         ? Promise.reject(opened.fail)
         : Promise.resolve({
             numPages: pages.length,
+            // TASK-088：书签大纲。`{ num }` 当页引用用，页码＝num。
+            getOutline: () =>
+              Promise.resolve(outline ? [{ title: '第一节', dest: [{ num: 2 }, '/XYZ'] }] : null),
+            getPageIndex: (ref: { num?: number }) =>
+              typeof ref?.num === 'number'
+                ? Promise.resolve(ref.num - 1)
+                : Promise.reject(new Error('unknown ref')),
             getPage: (number: number) =>
               Promise.resolve({
                 getViewport: ({ scale }: { scale: number }) => ({
@@ -87,6 +96,7 @@ function bytes(size = file.size_bytes) {
 
 afterEach(() => {
   opened = {}
+  outline = true
   localStorage.clear()
   vi.restoreAllMocks()
 })
@@ -393,5 +403,65 @@ describe('文字层（TASK-087）', () => {
     } finally {
       pages.length -= extra.length
     }
+  })
+})
+
+describe('目录与阅读进度（TASK-088）', () => {
+  function stubCanvas() {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
+      {} as unknown as CanvasRenderingContext2D,
+    )
+  }
+
+  it('hands the bookmark outline and a page jump up to the reader shell', async () => {
+    vi.spyOn(api, 'downloadOriginal').mockResolvedValue({ blob: bytes(), fileName: 'paper.pdf' })
+    stubCanvas()
+    const onOutline = vi.fn()
+    render(<PdfReader resourceId={resourceId} file={file} onOutline={onOutline} />)
+    await waitFor(() => expect(onOutline).toHaveBeenCalled())
+    const [items, goTo] = onOutline.mock.calls.at(-1)!
+    // 左栏长在 ResourceDetail 的三栏布局里，页码与滚动容器长在这个组件里：
+    // 交出去的是**数据 + 一个跳转函数**。
+    expect(items).toEqual([{ key: '0-第一节', level: 2, text: '第一节', page: 2 }])
+    expect(typeof goTo).toBe('function')
+    goTo(2)
+    await waitFor(() => expect((screen.getByLabelText('页码') as HTMLInputElement).value).toBe('2'))
+  })
+
+  it('hands up an empty outline when the pdf has no bookmarks, so the column stays away', async () => {
+    vi.spyOn(api, 'downloadOriginal').mockResolvedValue({ blob: bytes(), fileName: 'paper.pdf' })
+    stubCanvas()
+    outline = false
+    const onOutline = vi.fn()
+    render(<PdfReader resourceId={resourceId} file={file} onOutline={onOutline} />)
+    await waitFor(() => expect(onOutline).toHaveBeenCalled())
+    expect(onOutline.mock.calls.at(-1)![0]).toEqual([])
+  })
+
+  it('reports where in the whole document the reader is', async () => {
+    vi.spyOn(api, 'downloadOriginal').mockResolvedValue({ blob: bytes(), fileName: 'paper.pdf' })
+    stubCanvas()
+    const onProgress = vi.fn()
+    render(<PdfReader resourceId={resourceId} file={file} onProgress={onProgress} />)
+    // 打开就报一次：不滚动也该有进度线（三页的第一页顶部 = 0%）。
+    await waitFor(() => expect(onProgress).toHaveBeenCalledWith(0, 1))
+  })
+
+  it('picks up where it left off and reports that position right away', async () => {
+    vi.spyOn(api, 'downloadOriginal').mockResolvedValue({ blob: bytes(), fileName: 'paper.pdf' })
+    stubCanvas()
+    // 存一个「读到第 2 页一半」的位置：三页文档里是 (1 + 0.5) / 3 = 50%。
+    localStorage.setItem(
+      pdfPositionKey(resourceId),
+      JSON.stringify({
+        page: 2,
+        ratio: 0.5,
+        fingerprint: file.id,
+        savedAt: '2026-09-22T00:00:00.000Z',
+      }),
+    )
+    const onProgress = vi.fn()
+    render(<PdfReader resourceId={resourceId} file={file} onProgress={onProgress} />)
+    await waitFor(() => expect(onProgress).toHaveBeenCalledWith(50, 2))
   })
 })

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 
 import { failureText } from './api'
 import { downloadOriginal, type OriginalFile } from './files'
+import { readPdfOutline, readingPercentOf, type OutlineDoc, type PdfBookmark } from './pdfOutline'
 import {
   locatePage,
   ratioWithinPage,
@@ -71,7 +72,11 @@ export function pixelDensity(cssWidth: number, cssHeight: number, ratio: number)
 const MIN_SCALE = 0.5
 const MAX_SCALE = 3
 
-type Doc = {
+/**
+ * 文档。大纲那三个接口直接复用 `OutlineDoc`（TASK-088）——**两处各写一遍的话，类型一旦
+ * 分叉就会在传参处报错**，而那正是「同一个东西写了两遍」的味道。
+ */
+type Doc = OutlineDoc & {
   numPages: number
   getPage: (page: number) => Promise<PdfPage>
   destroy: () => Promise<void>
@@ -180,6 +185,8 @@ export function PdfReader({
   resourceId,
   file,
   toolbarSlot,
+  onOutline,
+  onProgress,
 }: {
   resourceId: string
   file: OriginalFile
@@ -199,6 +206,14 @@ export function PdfReader({
    * - 元素：投递过去。
    */
   toolbarSlot?: HTMLElement | null
+  /**
+   * 把书签目录与「跳到第 N 页」交给上层（TASK-088）。左栏长在 `ResourceDetail` 的三栏布局里，
+   * 而页码、滚动容器、`goTo` 都长在这个组件里——所以是把**数据与一个跳转函数**交出去，
+   * 而不是把那一栏搬进来。没有书签时交出空数组，上层据此不渲染左栏。
+   */
+  onOutline?: (items: PdfBookmark[], goTo: (page: number) => void) => void
+  /** 读到整份的百分之几 + 当前页（TASK-088）：顶栏的进度线与「记为学习进度」用它。 */
+  onProgress?: (percent: number, page: number) => void
 }) {
   const [doc, setDoc] = useState<Doc | null>(null)
   const [failure, setFailure] = useState<Failure | null>(null)
@@ -267,6 +282,21 @@ export function PdfReader({
   const total = doc?.numPages ?? 0
   useEffect(() => () => cancelAnimationFrame(frame.current), [])
 
+  /**
+   * 报一次阅读进度（TASK-088）。只在**整数百分比变化时**往上报——滚动一秒上百次，
+   * 每次都 setState 会让整页跟着重渲染（与位置记忆那边按帧节流同一个理由）。
+   */
+  const reported = useRef(-1)
+  const report = useCallback(
+    (at: number, ratio: number) => {
+      const percent = readingPercentOf(at, ratio, sizes.length)
+      if (percent === null || percent === reported.current) return
+      reported.current = percent
+      onProgress?.(percent, at)
+    },
+    [onProgress, sizes.length],
+  )
+
   // --- 位置记忆：恢复一次，之后滚动就写回 ---
   const offsets = useMemo(() => {
     const tops: number[] = []
@@ -292,7 +322,9 @@ export function PdfReader({
     const wanted = Math.min(saved.page, sizes.length)
     pinned.current = { page: wanted, top: node.scrollTop }
     setPage(wanted)
-  }, [sizes, offsets, resourceId, fileId])
+    // 恢复之后先报一次：不滚动也该有进度线（用户打开就看见自己读到哪了）。
+    report(wanted, saved.ratio)
+  }, [sizes, offsets, resourceId, fileId, report])
 
   const onScroll = useCallback(() => {
     const node = container.current
@@ -313,25 +345,29 @@ export function PdfReader({
         // 与 `scrollTopFor` 互逆。原本这里写死 0，于是（一）跳页后离开，回来会落在「页顶再往上
         // 半个视口」处，比离开的地方高半屏；（二）恢复位置时赋值 `scrollTop` 触发的这次 scroll
         // 正好命中本分支，把刚读出来的精确比例覆盖成 0——读到一半离开，页内位置就丢了。
-        writePdfPosition(resourceId, {
-          page: target.page,
-          ratio: ratioWithinPage(
-            target.page,
-            current.scrollTop,
-            offsets.tops,
-            offsets.heights,
-            current.clientHeight,
-          ),
-          fingerprint: fileId,
-        })
+        const ratio = ratioWithinPage(
+          target.page,
+          current.scrollTop,
+          offsets.tops,
+          offsets.heights,
+          current.clientHeight,
+        )
+        writePdfPosition(resourceId, { page: target.page, ratio, fingerprint: fileId })
+        report(target.page, ratio)
         return
       }
       pinned.current = null
       const at = locatePage(current.scrollTop, offsets.tops, offsets.heights, current.clientHeight)
       setPage(at.page)
       writePdfPosition(resourceId, { ...at, fingerprint: fileId })
+      report(at.page, at.ratio)
     })
-  }, [offsets, resourceId, sizes.length, fileId])
+  }, [offsets, resourceId, sizes.length, fileId, report])
+
+  // 第一次打开（没有存过位置）时也要有个起点，否则顶栏进度线要等用户滚一下才出现。
+  useEffect(() => {
+    if (sizes.length) report(1, 0)
+  }, [sizes.length, report])
 
   const goTo = useCallback(
     (target: number) => {
@@ -348,6 +384,27 @@ export function PdfReader({
     },
     [offsets, sizes.length],
   )
+
+  // 跳转函数给上层用时要**稳定**：`goTo` 会随缩放/页数变，直接当依赖会让大纲被反复重读。
+  const jumpTo = useRef(goTo)
+  useEffect(() => {
+    jumpTo.current = goTo
+  }, [goTo])
+  const jump = useCallback((target: number) => jumpTo.current(target), [])
+
+  // --- 书签大纲（TASK-088）---
+  // 一份文档读一次。没有书签、或每一条都解析不出页码，交出空数组——上层据此不渲染左栏。
+  useEffect(() => {
+    if (!doc || !onOutline) return
+    let alive = true
+    void (async () => {
+      const items = await readPdfOutline(doc)
+      if (alive) onOutline(items, jump)
+    })()
+    return () => {
+      alive = false
+    }
+  }, [doc, onOutline, jump])
 
   const fitWidth = useCallback(() => {
     const node = container.current
