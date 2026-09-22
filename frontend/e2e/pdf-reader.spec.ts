@@ -161,3 +161,92 @@ test('a non-PDF original keeps the existing behaviour', async ({ page }) => {
   await expect(page.getByRole('tab', { name: /高亮/ })).toHaveCount(0)
   await expect(page.getByText(/还没有保存正文|原件/).first()).toBeVisible()
 })
+
+test('text on a PDF page can be selected and quoted into a note', async ({ page }) => {
+  // **TASK-087 只能在真浏览器里验**：jsdom 没有选区、没有布局，文字层对不对得齐、
+  // 选不选得中，单测都看不见。
+  const id = await seedPdf(page, 'PDF 阅读器 · 文字层')
+  await page.goto(`/resources/${id}`)
+  await expect(page.getByLabel('第 1 页')).toBeVisible()
+
+  // ① 这一页的文字真的进了文字层（夹具第一页写的是 StudyPilot page one）。
+  const layer = page.locator('.pdf-page[data-page="1"] .pdf-text-layer')
+  await expect(layer).toContainText('StudyPilot page one')
+
+  // ② 文字层与 canvas 严丝合缝——差一点点，选区就会偏在字的旁边。
+  const boxes = await page.locator('.pdf-page[data-page="1"]').evaluate((node) => {
+    const canvas = node.querySelector('canvas')!.getBoundingClientRect()
+    const text = node.querySelector('.pdf-text-layer')!.getBoundingClientRect()
+    return { canvas, text }
+  })
+  expect(Math.abs(boxes.text.left - boxes.canvas.left)).toBeLessThan(1.5)
+  expect(Math.abs(boxes.text.top - boxes.canvas.top)).toBeLessThan(1.5)
+  expect(Math.abs(boxes.text.width - boxes.canvas.width)).toBeLessThan(1.5)
+
+  // ③ 选中那一行：真的选区，`selectionchange` 由浏览器自己发。
+  await page.evaluate(() => {
+    const span = [...document.querySelectorAll('.pdf-text-layer span')].find((node) =>
+      node.textContent?.includes('StudyPilot page one'),
+    )!
+    const range = document.createRange()
+    range.selectNodeContents(span)
+    const selection = window.getSelection()!
+    selection.removeAllRanges()
+    selection.addRange(range)
+  })
+
+  // ④ 胶囊只有「记下这段」：PDF 上还没有高亮的落点。
+  await expect(page.getByRole('button', { name: '记下这段' })).toBeVisible()
+  expect(await page.getByRole('button', { name: '标下来' }).count()).toBe(0)
+
+  // ⑤ **选区不能盖住字**（用户 2026-09-21 实测：第一版的不透明底色把整行抹掉了）。
+  //    选区由浏览器合成，canvas 的 `getImageData` 看不见它——只能截图再数像素。
+  //    把截图交回页面里解码：深色像素（字）选中前后必须基本还在，同时要出现黄色（选区确实画了）。
+  const count = async (shot: Buffer) =>
+    page.evaluate(async (data) => {
+      const image = new Image()
+      image.src = 'data:image/png;base64,' + data
+      await image.decode()
+      const board = document.createElement('canvas')
+      board.width = image.width
+      board.height = image.height
+      const context = board.getContext('2d')!
+      context.drawImage(image, 0, 0)
+      const { data: pixels } = context.getImageData(0, 0, board.width, board.height)
+      let dark = 0
+      let marked = 0
+      for (let at = 0; at < pixels.length; at += 4) {
+        const [r, g, b] = [pixels[at]!, pixels[at + 1]!, pixels[at + 2]!]
+        if (r + g + b < 180) dark += 1
+        // 淡黄：红绿高、蓝明显低，且不是纸白。
+        if (r > 200 && g > 190 && b < 215 && b < g - 15) marked += 1
+      }
+      return { dark, marked }
+    }, shot.toString('base64'))
+
+  const page1 = page.locator('.pdf-page[data-page="1"]')
+  // 上面第 ③ 步已经选中了这一行；先取消选区量一次「本来的样子」，再选回来量一次。
+  await page.evaluate(() => window.getSelection()!.removeAllRanges())
+  const before = await count(await page1.screenshot())
+  await page.evaluate(() => {
+    const span = [...document.querySelectorAll('.pdf-text-layer span')].find((node) =>
+      node.textContent?.includes('StudyPilot page one'),
+    )!
+    const range = document.createRange()
+    range.selectNodeContents(span)
+    const selection = window.getSelection()!
+    selection.removeAllRanges()
+    selection.addRange(range)
+  })
+  const after = await count(await page1.screenshot())
+  expect(before.dark).toBeGreaterThan(200) // 这一页本来就有字
+  // 与选中前相比而不是比一个绝对值：纸色若将来变成米黄，绝对阈值会静默空转（Review R2）。
+  expect(after.marked).toBeGreaterThan(before.marked + 200) // 选区确实画出来了
+  // 盖住字的那一版这里会塌到接近 0。
+  expect(after.dark).toBeGreaterThan(before.dark * 0.8)
+
+  // ⑥ 点下去，引文进右栏心得草稿。
+  await page.getByRole('button', { name: '记下这段' }).click()
+  const draft = page.getByRole('textbox', { name: '这次想记下什么？' })
+  await expect(draft).toHaveValue(/> StudyPilot page one/)
+})

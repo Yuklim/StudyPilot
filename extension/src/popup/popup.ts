@@ -52,7 +52,7 @@ export function pdfFailureText(problem: PdfProblem): string {
  * **抓到了 PDF 就不问。** 确认页在 PDF 分支里根本不碰图片，照问只会让用户为一件不会
  * 发生的事授出 `<all_urls>`——实测 PLOS ONE 那一页正是 5 张图 + PDF 抓取成功。
  * （TASK-084 把确认页上「改存网页正文」的勾选框删掉了，所以这条路上不会再有「用户取消勾选」
- * 那一步——原注释里那句已随之失效，TASK-085 订正。**前提是 TASK-084 先合并**。）
+ * 那一步——原注释里那句已随之失效，TASK-085 订正。）
  * 抓不到 PDF 时的去向改由 popup 自己问，见 `needsPdfDecision`。
  */
 export function shouldAskAboutImages(payload: CapturePayload): boolean {

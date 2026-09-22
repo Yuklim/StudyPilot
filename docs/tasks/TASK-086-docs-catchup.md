@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-086"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "要改 `docs/contracts/API与数据契约基线.md`（删除 TASK-085 留下的「生效前提」块、订正 §14.2 一处过期描述），命中 risk-policy.json 的 high_risk_paths，机器策略即 L3。其余是文档与登记。执行链：1 Worker → 自动检查 → 独立只读 Reviewer → 独立只读 Integration/Acceptance。"
 risk_flags = ["public-api", "documentation"]
@@ -342,13 +342,14 @@ TASK-047 那 6 张是在**隔离的 e2e 沙盒**（临时目录 + 端口 18000/1
 
 - 主 Agent 对验收的处置：N1 接受为措辞层面的非阻断项（见遗留项 5），不返工——「弹窗会先停下来」写在「抓到/抓不到 PDF」的语境里，
   没声明 `citation_pdf_url` 的页面走的是普通网页那条路，文档对它的描述仍然成立。N2/N3 为流程事实，不需处置。
-- 最终状态/风险/用户操作：**ACCEPTED**（L3 执行链走完：4 轮实现 → 每轮机械检查 → 独立只读
+- 最终状态/风险/用户操作：**MERGED**——2026-09-21 用户合并 PR #94，merge 提交 `198efc8`；
+  合并前状态为 **ACCEPTED**（L3 执行链走完：4 轮实现 → 每轮机械检查 → 独立只读
   Reviewer 三轮（1 条必须修复 F1，已修）→ 独立只读 Integration/Acceptance PASS）。
   风险：本任务不改任何行为，风险集中在「文档说错」本身；两次同类漏改都由 Review/自查抓回并留痕。
-  **等待用户操作**：按既定指令本次不主动推 PR——请先亲自过一遍 `README.md`（仓库门面）与
-  `docs/images/01`–`07`，确认后再由你决定是否推 PR 与合并。合并后 086 的 MERGED 登记按 §5
-  并入下一个任务的控制面提交，并建议顺手删掉 `extension/src/popup/popup.ts:55` 的
-  「前提是 TASK-084 先合并」。
+  **已无待办**：当时按既定指令没有主动推 PR，先交用户看过 `README.md` 与
+  `docs/images/01`–`07`；用户 2026-09-21 说「推pr」后推分支、开 PR #94 并由用户合并。
+  合并后的两项收尾（本记录与索引行登记 MERGED、删 `extension/src/popup/popup.ts:55` 的
+  「前提是 TASK-084 先合并」）按用户「安排进下一次任务一起做」，**已在 TASK-087 完成**。
 - 非阻断遗留项：
   1. **`extension/src/popup/popup.ts:55` 的注释里仍写「前提是 TASK-084 先合并」**——与本任务
      从契约 §14.4 删掉的那句「生效前提」是同一种东西，而 TASK-084 已于 2026-09-21 合并
