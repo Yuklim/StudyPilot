@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-087"
-status = "IN_REVIEW"
+status = "ACCEPTED"
 risk = "L2"
 risk_reason = "普通业务实现：给 PDF 每页叠一层 pdf.js 文字层（可选中/可复制），并让既有 `ReaderQuote`（TASK-068）在 PDF 上生效。只动前端渲染与交互，**不改后端、不改契约、不存高亮、不加迁移**；不命中 risk-policy.json 的 high_risk_paths。顺带两项已到期的收尾（TASK-086 的 MERGED 登记、删 popup.ts 一句陈旧注释）也只是登记与注释。执行链：1 Worker → 自动检查 → 1 独立只读 Reviewer；独立验收 N/A。"
 risk_flags = ["business"]
@@ -183,7 +183,8 @@ TS 在 catch 里把 `pdfjsOnce` 窄化成 `never`，`tsc` 报 4 处错——`che
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：第一次送审 `ec3ec7e`（base `198efc8`）；处置完 Review 的非阻断项后的新候选见下。
+- 候选 SHA：**最终候选 `d571a03`**（base `198efc8`）。两次冻结：`ec3ec7e`（第一次送审 → PASS + 5 条
+  非阻断）→ `d571a03`（处置四条 → 增量复核 PASS / No findings）。
 - Review（独立只读 Reviewer，审 `198efc8..ec3ec7e` 全量最终 diff，**报告原文**）：
 
   > ## 结论：PASS（候选 `ec3ec7e`，base `198efc8`）
@@ -211,9 +212,46 @@ TS 在 catch 里把 `pdfjsOnce` 窄化成 `never`，`tsc` 报 4 处错——`che
 - 主 Agent 对 Review 的处置：F1/F2/F3/F4/F5 **五条里改了四条**（F1 旋转页不挂层 + 新增单测、
   F3 失败不缓存、F2 用例改名、F4 `:is(span, br)`、F5 TASK-086 那段自相矛盾的文字），
   详见「第二轮」。Review 提的「重复 span」剩余风险按成本收益只记录不改。
+
+- Review（第二轮，同一 Reviewer 增量复核 `ec3ec7e..d571a03`，**报告原文**）：
+
+  > ## 结论：PASS（新候选 `d571a03`，base 仍 `198efc8`）
+  >
+  > **只读证明**：本轮同样只有 Read/Grep/Glob，无 Write/Edit、无 Bash；未改、未提交任何文件。
+  >
+  > **覆盖与继承**：本轮只审 `ec3ec7e..d571a03`（5 文件，+124/−15）及受影响上下文（`loadPdfjs`/`drawText`/`PdfPage` 类型、`.pdf-text-layer` 规则、两处任务记录），并回读 `pdfjs-dist` 的 `PageViewport` 构造函数核实旋转取值域。`198efc8..ec3ec7e` 的结论按 §6 **继承**：本轮改动全部落在上一轮已审的同一批文件与同一条代码路径上，未触及 `ReaderQuote`/`ResourceDetail`/e2e/契约/基线，耦合可界定，无需完整复审。候选 `d571a03` 经 `.git/logs/HEAD` 核实存在且是 `ec3ec7e` 的直接子提交；5 个文件均在 allowed_paths 内；801 = 800+1 与新增用例自洽。
+  >
+  > **逐条核对你的处置**
+  > - **F1 判据成立，且比我建议的更严**。`PageViewport` 在 `this.rotation = rotation` **之后**才做 `%=360` 归一，所以 `viewport.rotation` 是**原始值**（`-90`、`450` 都可能出现）。`(x ?? 0) % 360 !== 0` 对这三类都判对：`-90 % 360 = -90` → 跳过；`-360 % 360 = -0`，而 `-0 !== 0` 为 false → 不跳过（归一后确实是 0 度，该渲染）；`450` → 90 → 跳过。**180° 也必须跳过是对的**：那一档宽高虽然与未旋转一致，但 span 的百分比坐标不翻转，会整页上下左右颠倒——比 90° 更隐蔽。`pdf.js` 的 `case default` 只接受 90 的倍数，取值域封闭。
+  > - **新增单测真会因缺兜底而失败**：没有 `return` 时，替身 `TextLayer` 会把「第 1 页的文字」写进那一层，`toBe('')` 必挂；同时第 2 页仍断言有文字，排除了「整体没生效」这种假通过。`pages[0]` 改共享夹具 + `finally` 还原与上一条同模式，`near` 上限保证截断后无延迟访问。
+  > - **F3 无竞态**。`catch` 回调只会在 `pdfjsOnce` 仍指向自己那条链时运行：只有它把缓存置 null，后来的调用才会新建；不存在「旧的 catch 把新 promise 清掉」的交错。并发两次拿的是同一条链，失败时两边都收到同一个 reject，之后才重试。TS 那次栽跟头（`catch` 把 `pdfjsOnce` 窄化成 `never` → tsc 4 处错 → `check_task.py` FAIL: 2）已如实留痕，属「必要检查失败不得完成」的正确处理。
+  > - **F4**：`.pdf-text-layer :is(span, br)` 与官方 `pdf_viewer.css` 一字不差。**`::selection` 不必一起改**——`getTextContent()` 默认 `includeMarkedContent: false`，层里不会出现嵌套 `span`，承载文字的只有顶层 `span`；`br` 是零尺寸绝对定位元素，选中时最多一条看不见的细缝。若想与官方完全对齐，可写成 `.pdf-text-layer ::selection`，一行、零风险，但不是必要。
+  > - **F2 改名名副其实**；**F5** 改写后与 MERGED 自洽，且仍落在 TASK-086 的 EVIDENCE 区（241–369）内。
+  > - **重复 span 那条同意只记录**：新一轮 `replaceChildren()` 排在一次全新的 `getTextContent()` worker 往返之后，被取消流的滞留 chunk 几乎必然更早落地、随即被清掉；要撞上得让旧流比新往返还慢。不比我上轮的评估更严重。
+  >
+  > **Findings**：No findings（无必须修复项，无新增非阻断项）。
+  >
+  > 一条**流程提醒**（不是缺陷）：EVIDENCE 区现在的「候选 SHA」只写了 `ec3ec7e` 与「新候选见下」，而 `d571a03` 尚未落在记录里（避免提交引用自身，符合 §6）。请在收尾提交里把最终候选写实为 `d571a03`（或其后继），并把本轮增量复核结论一并原文写回；索引行 status 与记录 status 须同步。
+  >
+  > **剩余风险**：旋转页现在选不中（已入「已知限制」，行为退化到本任务前的状态，非回归）；扫描件、跨页选区、滚远丢选区三项照旧；`--total-scale-factor` 的真实对齐仍只由 e2e 一条 0 度夹具守着，缩放档与旋转档无 e2e 覆盖（已在记录中说明）。
 - Acceptance：N/A（L2）
-- 最终状态/风险/用户操作：待填
-- 非阻断遗留项：待填
+- 最终状态/风险/用户操作：**ACCEPTED**（L2 执行链走完：实现 → 每轮机械检查 → 独立只读
+  Reviewer 两轮，第一轮 PASS + 5 条非阻断、改掉四条后增量复核 PASS / No findings）。
+  风险：只动前端渲染与交互，不碰后端/契约/数据；最坏情况是文字层没挂上或对不齐，
+  canvas 阅读不受影响（旋转页已主动降级为不挂）。
+  **等待用户操作**：先交用户在真机上划两下试手感（选中、复制、「记下这段」进草稿），
+  确认后再由用户决定推 PR 与合并。合并后 087 的 MERGED 登记按 §5 并入下一个任务的控制面提交。
+- 非阻断遗留项：
+  1. **旋转页（`/Rotate 90|270|180`）选不中**：主动不挂文字层（选错文字比选不中更糟）。
+     要支持得连 pdf.js 的旋转样式一起引或自写坐标变换，属另一个任务。
+  2. **扫描件/图片型 PDF 选不中**（无文本层，除非 OCR）、**跨页选区**照原样交给浏览器、
+     **选中后滚很远选区会丢**（文字层随 canvas 卸载）。
+  3. **对齐只由一条 0 度夹具的 e2e 守着**：缩放档与旋转档没有 e2e 覆盖。
+  4. **`validate_governance.py` 不校验 `base` 指向的提交是否存在**——本任务登记时把完整 SHA
+     写错（前 7 位对、后半是编的）它照样 PASS，是 `check_task.py` 在 `git rev-parse` 上失败才
+     暴露。建议后续在治理校验里补一条存在性检查。
+  5. **PDF 上仍没有高亮**：按用户选定的节奏，锚点（页码 + 原文 + 前后文）与契约 §4.15 的改动
+     （加 `page_index`、放宽「必须有快照」）留给下一个 L3 任务。
 - 日期与决定日志：2026-09-21 用户问「是不是可以开始做 pdf 的批注、心得功能」→ 主 Agent 核查现状
   （无文字层、高亮需改契约）后给出三步拆法 → 用户选「先做第 1 步，验过再说」+ 锚点用文本锚点
   → 登记 TASK-087；同轮用户把 TASK-086 的两项收尾并入本任务。
