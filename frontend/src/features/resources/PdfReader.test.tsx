@@ -438,6 +438,35 @@ describe('目录与阅读进度（TASK-088）', () => {
     expect(onOutline.mock.calls.at(-1)![0]).toEqual([])
   })
 
+  it('keeps reporting page changes even when the percentage does not move', async () => {
+    // 长文档里相邻几页常落在同一个整数百分比上（独立 Review F2）：只按百分比去重的话，
+    // 页码就不往上报，左栏的当前条目会滞后好几页。
+    vi.spyOn(api, 'downloadOriginal').mockResolvedValue({ blob: bytes(), fileName: 'paper.pdf' })
+    const onProgress = vi.fn()
+    render(<PdfReader resourceId={resourceId} file={file} onProgress={onProgress} />)
+    await screen.findByLabelText('第 1 页')
+    const node = document.querySelector('.pdf-reader-pages') as HTMLElement
+    // jsdom 不排版：给滚动容器一个视口高度和一个存得住的 scrollTop（与上面那条同一套做法）。
+    let top = 0
+    Object.defineProperty(node, 'clientHeight', { configurable: true, get: () => 0 })
+    Object.defineProperty(node, 'scrollTop', {
+      configurable: true,
+      get: () => top,
+      set: (value: number) => {
+        top = value
+      },
+    })
+    // 每页 800 高、页间 16。三页文档里：第 1 页最底（815）与第 2 页最顶（816）**都是 33%**，
+    // 但页码分别是 1 和 2——两次都必须报上去。
+    top = 815
+    fireEvent.scroll(node)
+    await waitFor(() => expect(onProgress).toHaveBeenCalledWith(33, 1))
+    onProgress.mockClear()
+    top = 816
+    fireEvent.scroll(node)
+    await waitFor(() => expect(onProgress).toHaveBeenCalledWith(33, 2))
+  })
+
   it('reports where in the whole document the reader is', async () => {
     vi.spyOn(api, 'downloadOriginal').mockResolvedValue({ blob: bytes(), fileName: 'paper.pdf' })
     stubCanvas()
@@ -463,5 +492,8 @@ describe('目录与阅读进度（TASK-088）', () => {
     const onProgress = vi.fn()
     render(<PdfReader resourceId={resourceId} file={file} onProgress={onProgress} />)
     await waitFor(() => expect(onProgress).toHaveBeenCalledWith(50, 2))
+    // **看最后一次**：`toHaveBeenCalledWith` 在「先报 50 又被起点的 0 覆盖」时照样绿，
+    // 守不住自己声称的行为（独立 Review F1）。
+    expect(onProgress.mock.calls.at(-1)).toEqual([50, 2])
   })
 })

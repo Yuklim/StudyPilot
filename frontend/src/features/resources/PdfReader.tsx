@@ -286,12 +286,16 @@ export function PdfReader({
    * 报一次阅读进度（TASK-088）。只在**整数百分比变化时**往上报——滚动一秒上百次，
    * 每次都 setState 会让整页跟着重渲染（与位置记忆那边按帧节流同一个理由）。
    */
-  const reported = useRef(-1)
+  const reported = useRef({ percent: -1, page: -1 })
   const report = useCallback(
-    (at: number, ratio: number) => {
-      const percent = readingPercentOf(at, ratio, sizes.length)
-      if (percent === null || percent === reported.current) return
-      reported.current = percent
+    (at: number, within: number) => {
+      const percent = readingPercentOf(at, within, sizes.length)
+      if (percent === null) return
+      // **去重键要带页码**（独立 Review F2）：只按百分比去重的话，一份 200 页的书里相邻
+      // 好几页都落在同一个整数百分比上，页码就不往上报了——左栏的当前条目会滞后好几页，
+      // 极端情况下点一条近处的书签，页跳了而高亮不动。
+      if (percent === reported.current.percent && at === reported.current.page) return
+      reported.current = { percent, page: at }
       onProgress?.(percent, at)
     },
     [onProgress, sizes.length],
@@ -345,15 +349,16 @@ export function PdfReader({
         // 与 `scrollTopFor` 互逆。原本这里写死 0，于是（一）跳页后离开，回来会落在「页顶再往上
         // 半个视口」处，比离开的地方高半屏；（二）恢复位置时赋值 `scrollTop` 触发的这次 scroll
         // 正好命中本分支，把刚读出来的精确比例覆盖成 0——读到一半离开，页内位置就丢了。
-        const ratio = ratioWithinPage(
+        // 变量名避开外层那个 `ratio`（设备像素比），免得读代码时以为是同一个东西。
+        const within = ratioWithinPage(
           target.page,
           current.scrollTop,
           offsets.tops,
           offsets.heights,
           current.clientHeight,
         )
-        writePdfPosition(resourceId, { page: target.page, ratio, fingerprint: fileId })
-        report(target.page, ratio)
+        writePdfPosition(resourceId, { page: target.page, ratio: within, fingerprint: fileId })
+        report(target.page, within)
         return
       }
       pinned.current = null
@@ -364,9 +369,13 @@ export function PdfReader({
     })
   }, [offsets, resourceId, sizes.length, fileId, report])
 
-  // 第一次打开（没有存过位置）时也要有个起点，否则顶栏进度线要等用户滚一下才出现。
+  // 第一次打开（没有存过位置）时也要有个起点，否则「记为学习进度」要等用户滚一下才出现。
+  // **只在还没报过时才报**（独立 Review F1）：这个 effect 声明在恢复位置之后、同一次提交里
+  // 紧随其后执行，无条件报 `(1, 0)` 会把刚恢复的「读到 50%」立刻覆盖回 0%。浏览器里下一帧的
+  // scroll 多半会纠正回来（只是闪一下），但恢复后 scrollTop 仍是 0 的短文档不会有那次 scroll，
+  // 「记为学习进度」就得等用户滚动才出现。
   useEffect(() => {
-    if (sizes.length) report(1, 0)
+    if (sizes.length && reported.current.percent === -1) report(1, 0)
   }, [sizes.length, report])
 
   const goTo = useCallback(

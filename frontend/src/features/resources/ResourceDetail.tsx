@@ -9,7 +9,7 @@ import { isPdfOriginal, type OriginalFile } from './files'
 import { ResourceDeleteDialog } from './ResourceDeleteDialog'
 import { ResourceError } from './ResourceState'
 import { ReaderOutline } from './ReaderOutline'
-import { useOutline, useOutlineCurrent } from './outline'
+import { useOutline, useOutlineCurrent, type OutlineItem } from './outline'
 import { currentBookmark, type PdfBookmark } from './pdfOutline'
 import { ReaderQuote } from './ReaderQuote'
 import { ReaderHighlights } from './ReaderHighlights'
@@ -43,6 +43,8 @@ const READER_BREAKPOINT = '(min-width: 1280px)'
 
 // TASK-067：左侧目录栏的显隐是用户自选，记在本机（与外壳左栏折叠同一做法）；读不出来就当显示。
 const OUTLINE_KEY = 'studypilot.reader.outline'
+/** 不显示目录时传给 `useOutlineCurrent` 的常量空表——每次渲染给新数组会让它的 effect 反复重挂。 */
+const NO_OUTLINE: OutlineItem[] = []
 function readOutlineOpen(): boolean {
   try {
     return localStorage.getItem(OUTLINE_KEY) !== '0'
@@ -243,7 +245,6 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
     : null
 
   const outline = useOutline(readerMain)
-  const outlineCurrent = useOutlineCurrent(outline)
   /**
    * PDF 的目录（TASK-088）：书签大纲由 `PdfReader` 读出来交上来，连同「跳到第 N 页」。
    * 两种阅读器的左栏共用 `ReaderOutline`，只是**当前是哪条**与**点了去哪**各算各的。
@@ -251,9 +252,9 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
   // 本机阅读位置的百分比：恢复时取存的值，滚动时随位置写回一起更新（只在整数变化时 setState）。
   // **两种阅读器都往这里写**（TASK-088）：网页由正文滚动算，PDF 由 `PdfReader` 报上来。
   const [readingPercent, setReadingPercent] = useState<number | null>(null)
-  // 目录**连同它属于哪份资料一起存**：换一份 PDF 时新目录要等 `getOutline()` 回来，
-  // 这中间不能把上一份的目录继续画着。（不用 effect 清空——项目的 lint 禁止在 effect 里
-  // 同步 setState，那会触发级联渲染。）
+  // 目录**连同它属于哪份资料一起存**。`Screen.tsx` 以 `resourceId` 为 key 挂载本组件，换资料
+  // 时整棵重挂、state 本就清空，所以这层判断是**双保险**而不是必需（独立 Review F4① 指出
+  // 我原先的归因不准）：它挡的是「同一份资料换了原件」这类不重挂的路径。
   const [pdfOutline, setPdfOutline] = useState<{
     id: string
     items: PdfBookmark[]
@@ -287,8 +288,11 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
   // 两边都是「没有就不显示左栏」。
   const pdfRows = pdfOutline.id === resourceId ? pdfOutline.items : []
   const outlineRows = pdfOriginal ? pdfRows : outline
-  const outlineAt = pdfOriginal ? currentBookmark(pdfRows, pdfPage) : outlineCurrent
   const outlineShown = squeeze && outlineOpen && outlineRows.length > 0
+  // 目录没显示时不必跟着滚动量所有标题（独立 Review F4②：这个 hook 从组件里提上来之后
+  // 变成常挂，收起或窄屏时仍在每次滚动里对全部 h2/h3 取 `getBoundingClientRect`）。
+  const outlineCurrent = useOutlineCurrent(outlineShown && !pdfOriginal ? outline : NO_OUTLINE)
+  const outlineAt = pdfOriginal ? currentBookmark(pdfRows, pdfPage) : outlineCurrent
   // 没有快捷键（用户 2026-09-17：「快捷键我觉得可以先不做」）：开关只有顶栏的「目录」按钮。
 
   // --- TASK-068：「记下这段」→ 心得草稿；「记为学习进度」用的阅读百分比 ---

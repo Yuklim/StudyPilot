@@ -275,8 +275,9 @@ test('a bookmarked PDF gets the same outline column as an article', async ({ pag
   // ③ 当前条目跟着走：跳到第 4 页后高亮最后一条。
   await expect(outline.locator('.reader-outline-item').nth(3)).toHaveClass(/current/)
 
-  // ④ 顶栏的阅读进度：读到最后一页，进度线与「记为学习进度」都该出现。
-  await expect(page.locator('.reader-progress')).toBeVisible()
+  // ④ 读到最后一页后，顶栏出现「记为学习进度 N%」——这是本任务真正补上的那件事。
+  //    （顶栏那条 `.reader-progress` 线**本来就有**、画的是学习进度而非阅读位置，
+  //    断言它可见是空断言，独立 Review F3 指出后删掉。）
   await expect(page.getByRole('button', { name: /记为学习进度 \d+%/ })).toBeVisible()
 })
 
