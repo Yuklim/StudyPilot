@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-089"
-status = "READY"
+status = "IN_REVIEW"
 risk = "L3"
 risk_reason = "改公共契约（§4.15 高亮锚点加 `page_number`、放宽「必须有 READY 正文快照」的写入前置条件、新增一个错误码）+ 一次迁移 0009（`highlights` 加列、换索引）+ 关键数据模型 + 跨后端/前端。命中 risk-policy.json 的 `docs/contracts/**`、`backend/**/models/**`、`backend/**/migrations/**`。执行链：1 Worker → 自动检查 → 独立只读 Reviewer → 独立只读 Integration/Acceptance。"
 risk_flags = ["public-api", "migration", "critical-data"]
@@ -19,6 +19,9 @@ allowed_paths = [
   "backend/src/studypilot/api/highlights.py",
   "backend/src/studypilot/modules/highlights/contracts.py",
   "backend/tests/test_highlights.py",
+  # 登记补正（实现中发现）：迁移必然把 head 推到 0009，而 test_migrations.py 里硬编码了当前
+  # head 与「非空库拒绝降级」的用例，不同步就是 3 条红；同时给 0009 补一条降级守卫用例。
+  "backend/tests/test_migrations.py",
   "frontend/src/features/resources/PdfReader.tsx",
   "frontend/src/features/resources/PdfReader.test.tsx",
   "frontend/src/features/resources/ReaderQuote.tsx",
@@ -32,6 +35,9 @@ allowed_paths = [
   "frontend/src/features/resources/highlightAnchor.test.ts",
   "frontend/src/styles.css",
   "frontend/e2e/pdf-highlights.spec.ts",
+  # 登记补正（实现中发现）：TASK-073/087 的 e2e 里有两条断言把「PDF 没有高亮 Tab」「PDF 胶囊没有
+  # 标下来」写成了守卫——那正是本任务要改掉的行为，两条必须反转，否则本任务永远是红的。
+  "frontend/e2e/pdf-reader.spec.ts",
   # 顺手：修 CI 偶发抖动的那条既有测试（PR #96 抖过一次，同提交 push 运行是绿的）
   "frontend/src/features/resources/ResourceDeleteDialog.test.tsx",
   # 到期收尾（合并 PR #96 后的登记）
@@ -138,7 +144,82 @@ checks = ["backend", "frontend", "contracts"]
 
 ## 实现与测试
 
-- 待填。
+- 实现 SHA：`bd3d600`。
+- **命令与结果**（都在这条实现上跑）：
+  - `check_task.py --task docs/tasks/TASK-089-pdf-highlights.md --worktree` → **CHECKS PASS**，
+    `files=25`
+    `product_fingerprint=43588deaaa82c5f2c71f783793462fc1c2fcd7901b75aea0fd98548ef95b94e9`，
+    `profiles=backend,contracts,frontend`。
+  - 后端 `uv run pytest` → **596 passed**（改前 593；`test_highlights` +2、`test_migrations` +1）；
+    `ruff check` / `ruff format --check` / `mypy --strict` 全过。
+  - 迁移 0009 在临时库上 `upgrade head → downgrade 0008 → upgrade head` 三步都跑过，
+    `.schema highlights` 里 `page_number INTEGER`、`ck_highlights_page_number_positive`、
+    新索引 `(resource_id, page_number, start_offset, id)` 都在。
+  - 前端 `npm run test -- --run` → **825 passed（37 个文件）**（改前 817；`highlights` +2、
+    `ReaderHighlights` +3、`PdfReader` +1、`ReaderQuote` +2）；`typecheck`（`tsc -b`）、`lint`、
+    `prettier --check` 全过。
+  - e2e：`pdf-highlights`（新，3 条）+ `reader-highlights`（网页高亮回归，3 条）+ `pdf-reader`（7 条）
+    → **13 passed**。
+  - `contracts` 检查（`OpenAPI.model_validate_json`）PASS。
+- **目视**（一次性脚本，不入库）：PDF 页上选中一行后胶囊是两个按钮；「标下来」后那一行以淡黄底色
+  画在 canvas 的字**下面**（字仍清晰、没有双重文字）；右栏「高亮」Tab 出现条目、带「第 1 页」标。
+
+### 落点
+
+1. **契约 + openapi**：§4.15 字段表加 `page_number` 一行、前置条件段改写、分层锚点段补一句；§2.3
+   排序行写明 `start_offset` 这个排序名如今的实际次序；操作表两行；错误码总表加 `PDF_NOT_FOUND`；
+   操作清单里 `createResourceHighlight` 那行补 TASK-089 一句。openapi 的 `Highlight`/`HighlightCreate`
+   schema、两条路径的描述与 `x-error-codes`、404 响应示例、所有示例里补 `page_number: null`、tag 描述。
+   **openapi 是按原格式逐行改的**：第一次我用 `json.dumps(indent=2)` 整份重写，把「一路径一行」的
+   紧凑格式炸成了 1 万行 diff——立刻回滚，改成「只解析并重写要改的那几行、按该行原有的分隔符
+   风格序列化」，最终 diff 是 6 行。
+2. **后端**：`HighlightCreate.page_number: int | None = Field(default=None, ge=1)`；模型加列、CHECK、
+   索引；store 的 `require_anchor_target(resource_id, page_number)` 分三路（无页码 → 快照；有页码但
+   资料有快照 → 422；有页码 → READY 的 `application/pdf` 原件否则 `PDF_NOT_FOUND`）；`page()` 的
+   `start_offset` 排序改为 `(page_number NULLS FIRST/LAST, start_offset, id)`（显式写 nulls，不靠数据库
+   默认）；`MESSAGES` 加一条。
+3. **迁移 0009**：`batch_alter_table` 加列 + CHECK + 换索引；降级先数 `page_number IS NOT NULL` 的行，
+   有就 `RuntimeError` 拒绝（按页锚定的高亮在 0008 以下没有去处，删列等于把它悄悄改成指向空处的
+   快照锚点）。
+4. **前端**：
+   - `highlights.ts`：响应校验把 `page_number` 当**必有字段**（缺了或不是正整数 → `INVALID_RESPONSE`），
+     `createHighlight(…, pageNumber)` 只在非空时发这个字段。因此三个测试文件的高亮夹具都补了
+     `page_number: null`——严格校验的代价，值得。
+   - `ReaderQuote.canMark: boolean | ((range) => boolean)`：谓词形态按当前选区判；判否时只留「记下这段」
+     并显示「跨页只能记下这段」。
+   - `ResourceDetail`：`pageOfRange(range)` 找选区所在的那一页（两端都在同一 `.pdf-text-layer` 里才算），
+     `mark()` 在 PDF 上用那一页当容器、带 `page_number` 创建；`pdfLayers: Map<页号, 元素>` 由
+     `PdfReader.onTextLayer` 维护；「高亮」Tab 与面板的 `!pdfOriginal` 门都拆掉；`takeQuoteOnly`
+     删除——PDF 与网页走同一条 `takeQuoteAndMark`，跨页时 `mark()` 早退、引文照进草稿。
+   - `PdfReader`：`onTextLayer(page, layer|null)` 在 `TextLayer.render()` 完成后报、effect 清理时撤；
+     报早了里面还没有 span，定位会把每条都判成孤立。
+   - `ReaderHighlights`：`pages` 模式按每条的页号取容器；`locatable` 按条判——**那一页没渲染只是
+     「还没看」**，不是孤立，且给「跳到第 N 页」；孤立文案分两版；注册表名 `studypilot-mark-pdf`；
+     排序按 `(page_number, start_offset)`，孤立的仍排最后。
+   - `styles.css`：`::highlight(studypilot-mark-pdf)` 只给底色；胶囊提示与页码标两条小样式。
+5. **顺手三处**：`ResourceDeleteDialog.test.tsx` 抖动修复；`pdf-reader.spec.ts` 两条反转（登记补正）；
+   `test_migrations.py` head 推到 0009 + 新增 0009 守卫用例（登记补正）。
+
+### 过程中的两次登记补正与两次自己栽的跟头
+
+- **补正 1**：`backend/tests/test_migrations.py` 不在首次登记的路径里——迁移必然推 head，那文件里
+  硬编码了 `0008` 的三处断言，不同步就是 3 条红。**补正 2**：`frontend/e2e/pdf-reader.spec.ts` 同样
+  漏登记——TASK-073/087 把「PDF 没有高亮 Tab」「胶囊没有标下来」写成了守卫，正是本任务要改的行为。
+  两处都在实现中发现、先补登记再改。
+- **跟头 1**：openapi 整份重排（见落点 1），回滚后按原格式改。
+- **跟头 2**：新写的 0009 迁移用例第一版 `MigrationContext.configure(engine.connect())` 没关连接，
+  后面的 batch 重建撞上 SQLite 锁（`database is locked`），单跑偶尔过、全量跑必挂；改成
+  `with engine.connect() as connection:` 并把 `pytest.raises` 放到 session 外层，连跑 3 次全绿。
+
+### 已知限制 / 未完成项
+
+- **跨页选区不能标高亮**（用户选定），只能记下这段。
+- **服务端不校验 `page_number` ≤ 总页数**：越界页码在前端表现为永远「还没渲染」（不会被判孤立、
+  也不会上色），列表里显示「跳到第 N 页」但跳不到。不丢数据，但界面上看不出「这条指向不存在的页」。
+- **PDF 上的高亮定位只在那一页渲染时进行**：视口外的页没有文字层，那几条不上色也不判孤立；
+  滚过去就有。
+- **右栏读心得只取一页 100 条**（TASK-072 既有），PDF 同样。
+- 扫描件、旋转页没有文字层（TASK-087 已登记），自然也没有高亮。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
