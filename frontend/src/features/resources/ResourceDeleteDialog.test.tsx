@@ -241,8 +241,16 @@ describe('deleting from the reader page', () => {
     releasePreview!()
     expect(await within(box).findByText('内容有变化，请再确认一次。')).toBeInTheDocument()
     expect(within(box).getByRole('button', { name: '取消' })).toBeEnabled()
-    fireEvent.keyDown(document, { key: 'Escape' })
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    // **Esc 要放进 waitFor 里重试**（TASK-090，PR #97 的 CI 抖过一次）：弹窗的 keydown 监听在
+    // `useEffect([deleting])` 里注册，解锁时要换成 `deleting=false` 的新闭包——那是 passive effect，
+    // 要等 React 调度器的下一个宏任务；而 `findByText` 在 DOM 一变就返回、RTL 只多等一个
+    // `setTimeout(0)`。慢机器上 timer 先于调度器到，这一行就在**旧监听器还挂着**的那一瞬按下 Esc，
+    // 被当成「删除中」忽略，弹窗不关，下面的等待 1 秒超时。上面「锁定时 Esc 无效」的断言不受
+    // 影响：它们守的是同步行为，等待只会弱化它们。
+    await waitFor(() => {
+      fireEvent.keyDown(document, { key: 'Escape' })
+      expect(screen.queryByRole('dialog')).toBeNull()
+    })
   })
 
   it('re-previews and asks to confirm again when the impact changed, without replaying the old token', async () => {
@@ -275,7 +283,7 @@ describe('deleting from the reader page', () => {
     fireEvent.click(deleteButton(box))
     // 409 → 自动重新预览、更新心得数、要求再确认；**没有**自动再删。
     expect(await within(box).findByText('内容有变化，请再确认一次。')).toBeInTheDocument()
-    expect(within(box).getByText('这份资料的 3 条心得会一起删除。')).toBeInTheDocument()
+    expect(await within(box).findByText('这份资料的 3 条心得会一起删除。')).toBeInTheDocument()
     expect(request.mock.calls.filter(([p]) => p.endsWith('/deletion-preview'))).toHaveLength(2)
     expect(deletes).toBe(1)
     expect(document.body.textContent).not.toContain(token)
@@ -383,8 +391,10 @@ describe('deleting from the library', () => {
     await waitFor(() => expect(deleteButton(box)).toBeEnabled())
     fireEvent.click(deleteButton(box))
     // 甲删了、丙没删：弹窗留着，说清楚哪份没删、为什么。
+    // 两条都等：甲的「已删除」与丙的「未删除」是先后两次 setRows，只在同一批渲染里才同时出现，
+    // 那是调度上的巧合而不是保证（TASK-090 通读时顺手收紧）。
     expect(await within(box).findByText('已删除 1 份。')).toBeInTheDocument()
-    expect(within(box).getByText(/“资料丙”未删除：/)).toBeInTheDocument()
+    expect(await within(box).findByText(/“资料丙”未删除：/)).toBeInTheDocument()
     expect(deleted()).toEqual([a.id])
     const retry = within(box).getByRole('button', { name: '重试' })
     const previewsBefore = request.mock.calls.filter(([p]) =>
