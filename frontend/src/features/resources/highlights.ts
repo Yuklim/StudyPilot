@@ -13,6 +13,8 @@ import { MAX_CONTEXT, MAX_EXACT, type Anchor } from './highlightAnchor'
 export interface Highlight extends Anchor {
   id: string
   resource_id: string
+  /** 锚在哪里（TASK-089）：null = 正文快照；数字 = PDF 原件的第 N 页（1 起），偏移按那一页算。 */
+  page_number: number | null
   note_id: string | null
   version: number
   created_at: string
@@ -65,6 +67,13 @@ function highlightAt(value: unknown, resourceId: string): Highlight {
     !exact ||
     [...exact].length > MAX_EXACT ||
     end <= start ||
+    // 契约把 page_number 列为必有字段：缺了就是响应不对，不当成 null 混过去。
+    !(
+      row.page_number === null ||
+      (typeof row.page_number === 'number' &&
+        Number.isSafeInteger(row.page_number) &&
+        row.page_number >= 1)
+    ) ||
     (row.note_id !== null && (typeof row.note_id !== 'string' || !isResourceId(row.note_id)))
   )
     return invalid()
@@ -76,6 +85,7 @@ function highlightAt(value: unknown, resourceId: string): Highlight {
     suffix: context(row.suffix),
     start_offset: start,
     end_offset: end,
+    page_number: row.page_number,
     note_id: row.note_id,
     version: integer(row.version, 1),
     created_at: instant(row.created_at),
@@ -121,13 +131,16 @@ export async function createHighlight(
   resourceId: string,
   anchor: Anchor,
   noteId: string | null = null,
+  /** PDF 上标的高亮要说在第几页（1 起）；正文快照上的不传（TASK-089）。 */
+  pageNumber: number | null = null,
 ): Promise<Highlight> {
   if (
     !anchor.exact ||
     [...anchor.exact].length > MAX_EXACT ||
     anchor.end_offset <= anchor.start_offset ||
     anchor.start_offset < 0 ||
-    (noteId !== null && !isResourceId(noteId))
+    (noteId !== null && !isResourceId(noteId)) ||
+    (pageNumber !== null && (!Number.isSafeInteger(pageNumber) || pageNumber < 1))
   )
     throw new ApiError('INVALID_REQUEST')
   const body: { [key: string]: string | number | null } = {
@@ -137,6 +150,8 @@ export async function createHighlight(
     start_offset: anchor.start_offset,
     end_offset: anchor.end_offset,
   }
+  // 快照上的高亮**不发**这个字段（省略即 null），与契约示例一致；PDF 上的才带。
+  if (pageNumber !== null) body.page_number = pageNumber
   if (noteId !== null) body.note_id = noteId
   return highlightAt(
     object(await api.request(path(resourceId), { method: 'POST', body })).data,

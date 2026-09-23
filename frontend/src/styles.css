@@ -3088,6 +3088,13 @@ a.source-chip:focus-visible {
   height: 16px;
   background: rgba(255, 253, 248, 0.35);
 }
+/* 胶囊里的一句说明（TASK-089）：选区跨页时告诉用户为什么少了「标下来」。 */
+.reader-quote-note {
+  padding: 0 10px 0 12px;
+  color: rgba(255, 253, 248, 0.8);
+  font-size: 12px;
+  white-space: nowrap;
+}
 .reader-quote-button {
   display: inline-flex;
   align-items: center;
@@ -3320,6 +3327,12 @@ a.source-chip:focus-visible {
   background-color: var(--mark);
   color: var(--ink);
 }
+/* PDF 上的高亮（TASK-089）用另一个名字：**只给底色、不给字色**。文字层的字是透明的，看得见的是
+   下面 canvas 画的那一份；照抄上面那条的 `color` 会把 DOM 文字画到 canvas 的字上，出现错位的
+   双重文字。底色与 `.pdf-text-layer` 的 `mix-blend-mode: multiply` 配合，效果和选区一样是荧光笔。 */
+::highlight(studypilot-mark-pdf) {
+  background-color: var(--mark);
+}
 .reader-highlights {
   display: flex;
   flex-direction: column;
@@ -3327,6 +3340,11 @@ a.source-chip:focus-visible {
 }
 .reader-highlights-hint {
   margin: 0;
+}
+/* PDF 高亮条目上的页码标（TASK-089）。 */
+.reader-highlight-page {
+  display: inline-block;
+  margin-bottom: 6px;
 }
 .reader-highlights-list {
   display: flex;

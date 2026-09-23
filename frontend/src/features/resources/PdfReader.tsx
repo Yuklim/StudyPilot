@@ -187,6 +187,7 @@ export function PdfReader({
   toolbarSlot,
   onOutline,
   onProgress,
+  onTextLayer,
 }: {
   resourceId: string
   file: OriginalFile
@@ -214,6 +215,12 @@ export function PdfReader({
   onOutline?: (items: PdfBookmark[], goTo: (page: number) => void) => void
   /** 读到整份的百分之几 + 当前页（TASK-088）：顶栏的进度线与「记为学习进度」用它。 */
   onProgress?: (percent: number, page: number) => void
+  /**
+   * 某一页的文字层**渲染完成**（TASK-089）：高亮要在它里面定位与上色，所以交上去的是
+   * 那个元素本身；这一页离开渲染窗口或组件卸载时再报一次 `null`。文字是异步取的，
+   * 只在 `TextLayer.render()` 结束后才报——报早了里面还没有 span，定位会把每条都判成孤立。
+   */
+  onTextLayer?: (page: number, layer: HTMLElement | null) => void
 }) {
   const [doc, setDoc] = useState<Doc | null>(null)
   const [failure, setFailure] = useState<Failure | null>(null)
@@ -490,6 +497,7 @@ export function PdfReader({
           scale={scale}
           ratio={ratio}
           near={Math.abs(index + 1 - page) <= NEAR_PAGES}
+          onTextLayer={onTextLayer}
         />
       ))}
     </div>
@@ -521,6 +529,7 @@ function PdfPageView({
   scale,
   ratio,
   near,
+  onTextLayer,
 }: {
   doc: Doc | null
   number: number
@@ -530,6 +539,7 @@ function PdfPageView({
   /** 屏幕的设备像素比；画布按它加密，CSS 尺寸不变（TASK-082）。 */
   ratio: number
   near: boolean
+  onTextLayer?: (page: number, layer: HTMLElement | null) => void
 }) {
   const canvas = useRef<HTMLCanvasElement>(null)
   const textLayer = useRef<HTMLDivElement>(null)
@@ -587,7 +597,10 @@ function PdfPageView({
         await drawn.render()
       } catch {
         // 取消文字层同样会抛，属正常路径。
+        return
       }
+      // 渲染完、且这次没被取消，这一页的文字才算「在」：交给上层去定位高亮（TASK-089）。
+      if (alive) onTextLayer?.(number, layer)
     }
     void (async () => {
       // 卸载或换文件时文档已被 `destroy()`，这里的 `getPage` 会抛；没人接就是一条未捕获的
@@ -620,8 +633,10 @@ function PdfPageView({
       alive = false
       task?.cancel()
       text?.cancel()
+      // 缩放/换屏会重跑这个 effect：旧文字层马上要被清掉，先撤回；渲染完再报新的。
+      onTextLayer?.(number, null)
     }
-  }, [doc, number, scale, ratio, near])
+  }, [doc, number, scale, ratio, near, onTextLayer])
   return (
     <div className="pdf-page" style={{ width, height }} data-page={number}>
       {near ? (

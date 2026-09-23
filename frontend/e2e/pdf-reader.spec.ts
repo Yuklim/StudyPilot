@@ -76,10 +76,11 @@ test('a PDF original is read inside the app, not just downloadable', async ({ pa
   // 门禁不接受浏览器发的文档/框架请求，所以页面里不能有 iframe/embed/object 直连接口。
   expect(await page.locator('iframe, embed, object').count()).toBe(0)
 
-  // PDF 资料没有「高亮」Tab（用户 2026-09-20 看草图后确认）。
+  // PDF 资料也有「高亮」Tab（TASK-089 起；TASK-073 曾按用户看草图后的确认把它藏起来，
+  // 那时高亮的锚点只能落在快照正文里——现在按页锚定，两种阅读器都有这个 Tab）。
   await page.locator('.reader-toolbar').getByRole('button', { name: '心得', exact: true }).click()
   await expect(page.getByRole('tab', { name: '心得' })).toBeVisible()
-  expect(await page.getByRole('tab', { name: /高亮/ }).count()).toBe(0)
+  await expect(page.getByRole('tab', { name: /高亮/ })).toBeVisible()
 })
 
 test('it comes back to the page it was left on', async ({ page }) => {
@@ -197,9 +198,10 @@ test('text on a PDF page can be selected and quoted into a note', async ({ page 
     selection.addRange(range)
   })
 
-  // ④ 胶囊只有「记下这段」：PDF 上还没有高亮的落点。
+  // ④ 胶囊有两个按钮（TASK-089 起 PDF 上能标高亮；TASK-087 时只有「记下这段」）。
+  //    跨页选区仍只留「记下这段」，那条在 pdf-highlights.spec.ts 里验。
   await expect(page.getByRole('button', { name: '记下这段' })).toBeVisible()
-  expect(await page.getByRole('button', { name: '标下来' }).count()).toBe(0)
+  await expect(page.getByRole('button', { name: '标下来' })).toBeVisible()
 
   // ⑤ **选区不能盖住字**（用户 2026-09-21 实测：第一版的不透明底色把整行抹掉了）。
   //    选区由浏览器合成，canvas 的 `getImageData` 看不见它——只能截图再数像素。

@@ -29,6 +29,7 @@ router = APIRouter(prefix="/api/v1/resources/{resource_id}/highlights", redirect
 MESSAGES = {
     "RESOURCE_NOT_FOUND": "没有找到这份资料。",
     "SNAPSHOT_NOT_FOUND": "这份资料还没有保存正文快照。",
+    "PDF_NOT_FOUND": "这份资料没有可标注的 PDF 原件。",
     "HIGHLIGHT_NOT_FOUND": "没有找到这条高亮。",
     "NOTE_NOT_FOUND": "没有找到这条笔记。",
     "NOTE_ALREADY_HIGHLIGHTED": "这条心得已经配给另一段高亮了。",

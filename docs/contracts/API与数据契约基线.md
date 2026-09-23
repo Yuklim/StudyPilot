@@ -70,7 +70,7 @@ TASK-011/012 已完成分类后端与页面，TASK-013/014 已完成 FILE 后端
 | `listResourceNotes` / `createResourceNote` / `getResourceNote` / `updateResourceNote` / `deleteResourceNote` | TASK-017：既定个人笔记增删改查与稳定分页；严格正文、所属资料及版本保护，只写 Note，不改变资料、进度或原件，不提供全文搜索或回收站 |
 | `listStandaloneNotes` / `createStandaloneNote` / `getStandaloneNote` / `updateStandaloneNote` / `deleteStandaloneNote` | TASK-027：独立心得(resource_id 为 null)的增删改查与稳定分页；无资源可见性前置，版本/单事务/不回放/错误收敛同资源笔记 |
 | `attachNote` / `detachNote` | TASK-030：独立心得经 `attachNote` 后贴绑定到目标资料(resource_id null→该资料，目标需可读)、已绑定心得经 `detachNote` 解除回独立(该资料→null)；均版本化单事务写，成功后 version+1、content 不变、不回放，错误收敛同既有 note 写 |
-| `listResourceHighlights` / `createResourceHighlight` / `getResourceHighlight` / `updateResourceHighlight` / `deleteResourceHighlight` | TASK-071：阅读高亮的存储与读写（见 4.15）。锚点分层记录（原文 + 前后文 + 偏移）且**创建后不可改**，`PATCH` 只改心得绑定；写入要求资料可读且已有 READY 正文快照，列表不要求（无快照返回空页）。服务端不校验锚点是否仍能在正文里找到、不做重定位——定位在阅读器渲染时完成。删除资料连同高亮删除，影响计数新增 `highlight_count`；删除心得只解绑，不删高亮。界面接入另行实现（TASK-072） |
+| `listResourceHighlights` / `createResourceHighlight` / `getResourceHighlight` / `updateResourceHighlight` / `deleteResourceHighlight` | TASK-071：阅读高亮的存储与读写（见 4.15）。锚点分层记录（原文 + 前后文 + 偏移）且**创建后不可改**，`PATCH` 只改心得绑定；写入要求资料可读且已有 READY 正文快照，列表不要求（无快照返回空页）。服务端不校验锚点是否仍能在正文里找到、不做重定位——定位在阅读器渲染时完成。删除资料连同高亮删除，影响计数新增 `highlight_count`；删除心得只解绑，不删高亮。界面接入另行实现（TASK-072） TASK-089 起高亮可锚在 **PDF 原件的某一页**：`HighlightCreate`/`Highlight` 多一个可空 `page_number`，写入前置条件从「必须有 READY 快照」放宽为「有可锚定的文本」（无页码→快照，有页码→READY 的 PDF 原件，否则 `404 PDF_NOT_FOUND`），默认排序改为页码优先；锚点不可改、服务端不解释内容这两条不变。同样随该任务测试、独立审查、验收通过并由用户合并后交付 |
 
 - TASK-009～012 对 multipart 的临时 `415 CONTENT_TYPE_UNSUPPORTED` 限制由 TASK-013 的实际文件实现解除；合法 FILE 表单按第 5/8 节处理，其他媒体类型仍拒绝。缺失令牌或非法来源仍优先按第 7 节返回对应 `403`，不读正文或操作文件/数据库。
 - JSON 请求的 FILE 不属于 WEB/PASTE JSON schema，仍为 `422 VALIDATION_ERROR`。已开放的 WEB/PASTE 校验、错误、事务和只读投影必须完整符合其契约，不能借分阶段交付降低这些要求。
@@ -134,6 +134,7 @@ TASK-011/012 已完成分类后端与页面，TASK-013/014 已完成 FILE 后端
 | 409 | `SOURCE_TYPE_MISMATCH` | PATCH 提交了与资料已有且不可变的 `source_type` 不匹配的来源字段。 |
 | 409 | `TAXONOMY_IN_USE` | 主题或标签仍被资料使用。 |
 | 404 | `SNAPSHOT_NOT_FOUND` | 资料存在但还没有正文快照；或试图替换一份并不存在的快照。 |
+| 404 | `PDF_NOT_FOUND` | 资料存在，但没有 READY 的 PDF 原件可供按页锚定（TASK-089，高亮带 `page_number` 时）。 |
 | 404 | `CITATION_NOT_FOUND` | 资料存在但还没有填写文献信息；或试图替换一份并不存在的文献信息。 |
 | 404 | `SNAPSHOT_ASSET_NOT_FOUND` | 该快照下没有这张已冻结的图片；资产属于另一份资料时返回同一码，不区分「不存在」与「不属于你」。 |
 | 413 | `ASSET_TOO_LARGE` | 单张图片超过 10,485,760 字节。 |
@@ -166,7 +167,7 @@ TASK-011/012 已完成分类后端与页面，TASK-013/014 已完成 FILE 后端
 | --- | --- | --- |
 | 资料 | `q` 只搜标题、来源名称、保存原因；重复 `topic_id`（任一）、`topic_unassigned`（可与 `topic_id` 并列为「或」）、重复 `tag_id` + `tag_match=all|any`（默认 `all`）、重复 `source_type`、重复 `learning_status`、`progress_min/max`、`created_from/to`、`updated_from/to` | `created_at`、`updated_at`、`title`、`progress_percent`；默认 `-created_at,id` |
 | 独立心得列表（顶层 `/api/v1/notes`） | `q` 只搜心得标题——心得没有标题字段，标题＝正文**首个非空行**（行以 `\r?\n` 分隔；去掉行首 `#{1,6} `、行内图片只取替代文字、纯图片行跳过），按未截断的该行匹配；不搜正文其余部分。`q` 经 2.3 规范化后为空（纯空白）与显式空串同样 `422`。资料下的心得列表不接受 `q` | `created_at`、`updated_at`；默认 `-created_at,id` |
-| 资料高亮列表 | 无搜索与筛选参数（未知参数 `422`） | `start_offset`、`created_at`；默认 `start_offset,id`——按文中顺序读，不是按标记顺序 |
+| 资料高亮列表 | 无搜索与筛选参数（未知参数 `422`） | `start_offset`、`created_at`；默认 `start_offset,id`——按文中顺序读，不是按标记顺序。**`start_offset` 这个排序名在 TASK-089 起的实际次序是 `page_number`（空值在前）→ `start_offset` → `id`**：锚在快照里的先列，PDF 的按页码再按页内位置；`-start_offset` 整体反过来。`created_at` 不看页码 |
 | 单资料学习记录 | `started_from/to` | `started_at`、`created_at`、`duration_seconds`；默认 `-started_at,id` |
 | 全局学习记录 | 在上项基础上增加 `resource_id`、`topic_id` | 同上 |
 | 复习列表 | `scope=TODAY/OVERDUE/UPCOMING/ALL`、`time_zone`、`topic_id`、`q`（同资料搜索） | `due_date`、`title`；默认 `due_date NULLS LAST,title,id`，`-due_date` 也固定 NULLS LAST |
@@ -444,16 +445,17 @@ OpenAPI 中 `ReviewRecord` 用条件 schema 固化上述规则：`NEEDS_REVIEW` 
 | `resource_id` | uuid | C(路径) | 必有 | 否 | highlights；外键指向 `learning_resources.id`，`ON DELETE CASCADE` |
 | `exact` | string / `输入层、隐藏层、输出层` | C | 必填，1～2,000；**不去首尾空白** | 是 | highlights；用户标下来的原文，创建后不可改 |
 | `prefix` / `suffix` | string / null | C | 可空，各 0～200 | 是 | highlights；前后文，用于同一段文字多次出现时消歧；创建后不可改 |
-| `start_offset` / `end_offset` | int | C | `start_offset >= 0`，`end_offset > start_offset` | 否 | highlights；降级锚点（字符偏移），创建后不可改 |
+| `start_offset` / `end_offset` | int | C | `start_offset >= 0`，`end_offset > start_offset` | 否 | highlights；降级锚点（字符偏移），创建后不可改。**偏移在哪段文本里数**由 `page_number` 决定 |
+| `page_number` | int / null | C | 可空；非空须 `>= 1` | 否 | highlights；**锚点所在的位置**（TASK-089）：`null` = 资料的正文快照，非空 = PDF 原件的第 N 页（1 起，与 pdf.js 及阅读器的位置记忆一致）——此时 `exact`/`prefix`/`suffix`/偏移都按**那一页文字层的纯文本**计。创建后不可改；服务端**不校验页码是否超出总页数**（不读 PDF） |
 | `note_id` | uuid / null | C/U | 创建时可空；**`PATCH` 里必填**（给 `null` 才是解绑，省略即 `422`）；必须是**同一份资料**下的笔记；一条笔记最多配一条高亮 | 否 | highlights；外键指向 `notes.id`，`ON DELETE SET NULL`；`PATCH` 唯一可改的字段 |
 | `version` | int | R | 默认 1 | 否 | highlights；只有改绑/解绑会推进 |
 | `created_at` / `updated_at` | instant | R | 自动 | 否 | highlights |
 
-**锚点是分层的，不是一个位置。** 字符偏移在正文上方增删后即错位，DOM 路径在换一种渲染实现后即全部失效（见 `docs/research/阅读器与标注能力调研.md` 5.1）。因此一条高亮同时记下**它说的那句话**（`exact`）、**足以区分重复措辞的上下文**（`prefix`/`suffix`）与**偏移**（降级用）。重新定位按「`exact` 唯一匹配 → 用前后文消歧 → 偏移附近模糊匹配 → 标为孤立」逐级降级。
+**锚点是分层的，不是一个位置。** PDF 上同样如此——只是「正文」换成那一页的文字层（TASK-089），四级重定位在一页之内进行；哪一页由 `page_number` 说。字符偏移在正文上方增删后即错位，DOM 路径在换一种渲染实现后即全部失效（见 `docs/research/阅读器与标注能力调研.md` 5.1）。因此一条高亮同时记下**它说的那句话**（`exact`）、**足以区分重复措辞的上下文**（`prefix`/`suffix`）与**偏移**（降级用）。重新定位按「`exact` 唯一匹配 → 用前后文消歧 → 偏移附近模糊匹配 → 标为孤立」逐级降级。
 
 **服务端不解释正文。** 后端**不校验** `exact` 是否真的出现在快照里、不做重定位、不改写正文、不出网；定位发生在阅读器渲染时。**孤立状态不落库**——正文换回来，高亮就该重新对上；把一次定位失败写进数据库会让它永久化。孤立的高亮必须保留内容并向用户说明「原文位置已找不到」，不得静默丢弃。
 
-**写入前置条件。** 资料必须可读，且必须已有 **READY 的正文快照**（`SNAPSHOT_NOT_FOUND`）——没有冻结的正文就没有可锚定的东西。**列表不要求快照**：没有快照时返回空页。
+**写入前置条件。** 资料必须可读，且必须有**可锚定的文本**（TASK-089 起放宽）：`page_number` 为空时必须已有 **READY 的正文快照**（否则 `404 SNAPSHOT_NOT_FOUND`）；`page_number` 非空时必须有 **READY 且 `media_type` 为 `application/pdf` 的原件**（否则 `404 PDF_NOT_FOUND`）。一条高亮只能锚在其中一处：对已有快照的资料给出 `page_number` 是 `422 VALIDATION_ERROR`（描述了一个这里不可能存在的锚点），对 PDF 资料省略 `page_number` 落到 `SNAPSHOT_NOT_FOUND`。两个 404 不合并：一个的修法是先存正文，另一个是资料类型不对，前端要据此给不同提示。**列表不要求快照或原件**：没有可锚定文本时返回空页。
 
 **锚点不可变。** `PATCH` 只接受 `note_id`，且**必须显式给出**：`null` 是解绑，省略是 `422 VALIDATION_ERROR`——一个漏字段的请求不该悄悄解开用户配好的心得。让锚点可改会出现「同一条高亮指向完全不同的话却保留原有历史」；标另一段就是另一条高亮。
 
@@ -664,8 +666,8 @@ OpenAPI 中 `ReviewRecord` 用条件 schema 固化上述规则：`NEEDS_REVIEW` 
 | DELETE `/api/v1/notes/{note_id}` | 删除独立心得 / notes | If-Match；204 | 204/403/404/409/428/500；删除 |
 | POST `/api/v1/notes/{note_id}/attach` | 后贴心得绑定 / notes | `NoteAttach`；200 Note | 200/400/403/404/409/415/422/428/500；版本化写，resource_id 变目标资料、version+1、content 不变 |
 | POST `/resources/{resource_id}/notes/{note_id}/detach` | 解除心得绑定 / notes | `NoteDetach`；200 Note | 200/400/403/404/409/415/422/428/500；版本化写，resource_id 变 null、version+1、content 不变 |
-| GET `/resources/{resource_id}/highlights` | 高亮列表 / highlights | 分页 + 排序（见 2.3）；200 `HighlightPage` | 200/403/404/422/500；只读；无快照时为空页 |
-| POST `/resources/{resource_id}/highlights` | 新增高亮 / highlights | `HighlightCreate`；201 `Highlight` | 201/400/403/404/409/415/422/500；要求资料可读且有 READY 快照；`note_id` 须同资料且未被占用 |
+| GET `/resources/{resource_id}/highlights` | 高亮列表 / highlights | 分页 + 排序（见 2.3）；200 `HighlightPage` | 200/403/404/422/500；只读；没有可锚定文本（快照或 PDF 原件）时为空页 |
+| POST `/resources/{resource_id}/highlights` | 新增高亮 / highlights | `HighlightCreate`；201 `Highlight` | 201/400/403/404/409/415/422/500；要求资料可读且有可锚定文本：无 `page_number` 须有 READY 快照（`SNAPSHOT_NOT_FOUND`），有 `page_number` 须有 READY 的 PDF 原件（`PDF_NOT_FOUND`）；快照资料给页码为 `422`；`note_id` 须同资料且未被占用 |
 | GET `/resources/{resource_id}/highlights/{highlight_id}` | 高亮详情 / highlights | ID；200 `Highlight` | 200/403/404/500；只读 |
 | PATCH `/resources/{resource_id}/highlights/{highlight_id}` | 改绑/解绑心得 / highlights | `HighlightPatch`（只含 `note_id` 与 `expected_version`）；200 `Highlight` | 200/400/403/404/409/415/422/428/500；锚点不可改 |
 | DELETE `/resources/{resource_id}/highlights/{highlight_id}` | 删除高亮 / highlights | If-Match；204 | 204/403/404/409/428/500；删除 |

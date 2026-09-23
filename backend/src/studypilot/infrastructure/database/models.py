@@ -461,6 +461,15 @@ class Highlight(Identified, Created, Versioned, Base):
     (user's decision, 2026-09-19). The link lives on this side so the notes table
     keeps its shape, and it is `SET NULL` on delete: throwing away what you wrote
     about a passage must not throw away the passage you marked.
+
+    **Where the anchor is measured** (TASK-089): `page_number` NULL means the
+    offsets count characters of the resource's frozen snapshot; a value means
+    they count characters of that page's text layer in the resource's PDF
+    original (1-based, the number pdf.js and the reader use). One highlight is
+    anchored in exactly one of the two - the store refuses a page for a snapshot
+    resource and a missing page for a PDF one. The page is not checked against
+    the document: the server never opens the PDF, so an out-of-range page simply
+    fails to locate in the reader, like a passage that was edited away.
     """
 
     __tablename__ = "highlights"
@@ -469,12 +478,14 @@ class Highlight(Identified, Created, Versioned, Base):
         CheckConstraint("prefix IS NULL OR length(prefix) <= 200", name="prefix_length"),
         CheckConstraint("suffix IS NULL OR length(suffix) <= 200", name="suffix_length"),
         CheckConstraint("start_offset >= 0 AND end_offset > start_offset", name="offset_order"),
+        CheckConstraint("page_number IS NULL OR page_number >= 1", name="page_number_positive"),
         # A note describes at most one passage; binding it elsewhere would leave two
         # highlights claiming the same writing.
         UniqueConstraint("note_id"),
         positive_version(),
-        # The reader asks for one resource's highlights in reading order.
-        Index("ix_highlights_resource_start", "resource_id", "start_offset", "id"),
+        # The reader asks for one resource's highlights in reading order: page first
+        # (snapshot anchors are NULL and sort first), then position within it.
+        Index("ix_highlights_resource_start", "resource_id", "page_number", "start_offset", "id"),
         {"info": {"owner": "highlights"}},
     )
     resource_id: Mapped[UUID] = mapped_column(
@@ -485,6 +496,7 @@ class Highlight(Identified, Created, Versioned, Base):
     suffix: Mapped[str | None] = mapped_column(String(200))
     start_offset: Mapped[int] = mapped_column(Integer)
     end_offset: Mapped[int] = mapped_column(Integer)
+    page_number: Mapped[int | None] = mapped_column(Integer)
     note_id: Mapped[UUID | None] = mapped_column(Uuid, ForeignKey("notes.id", ondelete="SET NULL"))
 
 

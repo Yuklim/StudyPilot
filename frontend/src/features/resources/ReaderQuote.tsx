@@ -15,8 +15,11 @@ import { readSelection, toQuote, type QuoteSelection } from './quoteSelection'
  * 文字不是"这段正文"。空白选区、超过 2000 字也不出。
  *
  * **正文根是可换的**（TASK-087）：网页快照是 `.snapshot-rendered`，PDF 是
- * `.pdf-reader-pages`（每页 canvas 之上那层文字层就在里面）。PDF 上传 `canMark={false}`
- * ——那里还没有高亮的落点，给一个点了必然失败的「标下来」比不给更糟。
+ * `.pdf-reader-pages`（每页 canvas 之上那层文字层就在里面）。
+ *
+ * **「标下来」能不能出，可以按选区判**（TASK-089）：`canMark` 除了布尔还接受一个谓词，
+ * PDF 用它判「选区是否落在同一页里」——文字层按页给，一条高亮的锚点只能落在一页内，
+ * 跨页的选区只留「记下这段」并说明原因（用户 2026-09-22 选定）。
  */
 
 export function ReaderQuote({
@@ -36,8 +39,11 @@ export function ReaderQuote({
   onMark: (range: Range) => void
   /** 正文根的选择器。默认网页快照；PDF 传 `.pdf-reader-pages`。 */
   selector?: string
-  /** 这份资料能不能标高亮。false 时胶囊只留「记下这段」。 */
-  canMark?: boolean
+  /**
+   * 这份资料能不能标高亮。`false` 时胶囊只留「记下这段」；给谓词则按**当前选区**判——
+   * 判否时同样只留「记下这段」，并加一句「选区跨页或落到页外，只能记下这段」的提示。
+   */
+  canMark?: boolean | ((range: Range) => boolean)
 }) {
   const [selection, setSelection] = useState<QuoteSelection | null>(null)
   useEffect(() => {
@@ -76,6 +82,12 @@ export function ReaderQuote({
       return null
     }
   }
+  // 按选区判能不能标（谓词形态）：拿不到真 Range 时按不能标处理——那种情况下父级也取不到锚点。
+  const markable = (() => {
+    if (typeof canMark !== 'function') return canMark
+    const range = currentRange()
+    return range ? canMark(range) : false
+  })()
   const take = (hand: (range: Range | null) => void) => {
     const range = currentRange()
     hand(range)
@@ -87,7 +99,12 @@ export function ReaderQuote({
   const top = Math.max(64, selection.top - 10)
   return (
     <div className="reader-quote" style={{ top, left }}>
-      {canMark && (
+      {!markable && typeof canMark === 'function' && (
+        // 文案要同时盖住「跨页」与「一端落在页外的空隙」两种情况（独立 Review F2）：
+        // 两者都是「选区没有整个落在同一页的文字层里」。
+        <span className="reader-quote-note">选区跨页或落到页外，只能记下这段</span>
+      )}
+      {markable && (
         <>
           <button
             type="button"

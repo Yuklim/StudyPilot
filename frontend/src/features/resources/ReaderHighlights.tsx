@@ -19,11 +19,22 @@ import { useResourceQuery } from './useResourceQuery'
  * `exact` → 前后文 → 偏移附近 四级把锚点落回当前正文；落不回的就是**孤立**，排在列表最后
  * 并说明原因——内容不丢，正文换回来自动对上，孤立状态也不写回服务端。
  *
+ * **PDF 上按页定位**（TASK-089）：父级把已渲染的文字层按页号交进来（`pages`），每条高亮在
+ * 它自己那一页的容器里跑同一套四级定位。**那一页还没渲染 ≠ 孤立**——只有那一页已经渲染
+ * 仍找不到，才说「原文位置已找不到」。上色用另一个高亮名 `studypilot-mark-pdf`（只给底色，
+ * 文字层的字是透明的，不能像正文那样再给字色）。
+ *
  * **配的心得可能已经不在本资料里**（心得被 `detachNote` 解绑或后贴到别处，TASK-071 遗留
  * F5）。那种悬挂绑定按「没配心得」展示，并允许重新配一条，不报错、不丢高亮。
  */
 
-export type HighlightRow = { highlight: Highlight; range: Range | null; note: Note | null }
+export type HighlightRow = {
+  highlight: Highlight
+  range: Range | null
+  note: Note | null
+  /** 这条高亮所在的文本此刻**能不能被定位**：网页 = 正文已渲染；PDF = 它那一页的文字层已渲染。 */
+  locatable: boolean
+}
 
 export function ReaderHighlights({
   resourceId,
@@ -32,10 +43,16 @@ export function ReaderHighlights({
   onWriteNote,
   onOpenNote,
   onCount,
+  pages = null,
+  onJumpPage,
 }: {
   resourceId: string
-  /** 渲染后的正文元素；正文还没渲染（读取中、源码视图）时为 null。 */
+  /** 渲染后的正文元素；正文还没渲染（读取中、源码视图）时为 null。PDF 模式下不看它。 */
   rendered: Element | null
+  /** PDF 模式（TASK-089）：页号 → 已渲染的文字层。给了它就按页定位，`rendered` 被忽略。 */
+  pages?: Map<number, Element> | null
+  /** PDF 模式下「跳到正文」落到还没渲染的页时，让阅读器跳到那一页。 */
+  onJumpPage?: (page: number) => void
   /** 父级每新增一条高亮就 +1，用来重新读列表。 */
   revision: number
   /** 「写心得」：切到心得 Tab 写一条，保存后由父级配到这条高亮上。 */
@@ -78,22 +95,36 @@ export function ReaderHighlights({
   const notes = useMemo(() => result?.data?.[1] ?? [], [result])
 
   // 正文渲染完（或换了一版）就重新定位；`rendered` 由父级在 DOM 变化时换成新元素。
+  // PDF 模式下则是「这一页的文字层渲染完」——容器按每条高亮自己的页号取。
   const rows = useMemo<HighlightRow[]>(() => {
     const byId = new Map(notes.map((note) => [note.id, note]))
-    const located = highlights.map((highlight) => ({
-      highlight,
-      range: rendered ? rangeFor(rendered, anchorOf(highlight)) : null,
-      note: highlight.note_id ? (byId.get(highlight.note_id) ?? null) : null,
-    }))
-    // 孤立的排最后；其余按文中顺序（接口已按 start_offset 排好，定位后以实际位置为准）。
-    return located.sort((a, b) => {
-      if (!a.range !== !b.range) return a.range ? -1 : 1
-      return a.highlight.start_offset - b.highlight.start_offset
+    const containerFor = (highlight: Highlight): Element | null => {
+      if (pages) return highlight.page_number ? (pages.get(highlight.page_number) ?? null) : null
+      return rendered
+    }
+    const located = highlights.map((highlight) => {
+      const container = containerFor(highlight)
+      return {
+        highlight,
+        range: container ? rangeFor(container, anchorOf(highlight)) : null,
+        note: highlight.note_id ? (byId.get(highlight.note_id) ?? null) : null,
+        locatable: container !== null,
+      }
     })
-  }, [highlights, notes, rendered])
+    // 孤立的排最后；其余按文中顺序（接口已按页码、页内位置排好，定位后以实际位置为准）。
+    return located.sort((a, b) => {
+      const aLost = a.locatable && !a.range
+      const bLost = b.locatable && !b.range
+      if (aLost !== bLost) return aLost ? 1 : -1
+      const byPage = (a.highlight.page_number ?? 0) - (b.highlight.page_number ?? 0)
+      return byPage || a.highlight.start_offset - b.highlight.start_offset
+    })
+  }, [highlights, notes, rendered, pages])
   // **正文还没就绪不等于孤立**（Review F1）：快照还在读、切到源码视图、这份资料没有快照时
   // 都没有可定位的正文，这时说「原文位置已找不到」是在冤枉数据。列表照列，只是不下判断。
-  const locatable = rendered !== null
+  // PDF 模式下这是按条判的（`row.locatable`）：视口外的页没渲染，那几条只是「还没看」。
+  const locatable = pages ? pages.size > 0 : rendered !== null
+  const registryName = pages ? 'studypilot-mark-pdf' : 'studypilot-mark'
 
   useEffect(() => {
     onCount?.(highlights.length)
@@ -108,14 +139,14 @@ export function ReaderHighlights({
     if (!registry || typeof Painter !== 'function') return
     const ranges = rows.map((row) => row.range).filter((range): range is Range => range !== null)
     if (!ranges.length) {
-      registry.delete('studypilot-mark')
+      registry.delete(registryName)
       return
     }
-    registry.set('studypilot-mark', new Painter(...ranges))
+    registry.set(registryName, new Painter(...ranges))
     return () => {
-      registry.delete('studypilot-mark')
+      registry.delete(registryName)
     }
-  }, [rows])
+  }, [rows, registryName])
 
   async function remove(highlight: Highlight) {
     if (busy) return
@@ -150,7 +181,7 @@ export function ReaderHighlights({
       </div>
     )
   }
-  const orphans = locatable ? rows.filter((row) => !row.range).length : 0
+  const orphans = rows.filter((row) => row.locatable && !row.range).length
   return (
     <div className="reader-highlights">
       <p className="resource-hint reader-highlights-hint" aria-live="polite">
@@ -175,19 +206,26 @@ export function ReaderHighlights({
         </div>
       ) : (
         <ul className="reader-highlights-list" aria-label="高亮列表">
-          {rows.map(({ highlight, range, note }) => (
-            <li key={highlight.id} className={!locatable || range ? undefined : 'orphaned'}>
-              {locatable && !range && (
+          {rows.map(({ highlight, range, note, locatable: found }) => (
+            <li key={highlight.id} className={!found || range ? undefined : 'orphaned'}>
+              {found && !range && (
                 <p className="reader-highlight-orphan">
-                  原文位置已找不到——正文换过一版。内容留着，换回来会自动对上。
+                  {pages
+                    ? '在那一页上已找不到这段——PDF 换过、或页码对不上。内容留着。'
+                    : '原文位置已找不到——正文换过一版。内容留着，换回来会自动对上。'}
                 </p>
+              )}
+              {highlight.page_number !== null && (
+                <span className="source-chip reader-highlight-page">
+                  第 {highlight.page_number} 页
+                </span>
               )}
               <blockquote className="reader-highlight-quote">{highlight.exact}</blockquote>
               {note && (
                 <p className="reader-highlight-note">✎ {noteTitle(note.content) ?? '无标题心得'}</p>
               )}
               <div className="reader-highlight-actions">
-                {range && (
+                {range ? (
                   <button
                     type="button"
                     className="text-link"
@@ -200,6 +238,20 @@ export function ReaderHighlights({
                   >
                     跳到正文
                   </button>
+                ) : (
+                  // PDF 上那一页还没渲染：让阅读器跳过去，渲染完自然会定位上色。
+                  pages &&
+                  !found &&
+                  highlight.page_number !== null &&
+                  onJumpPage && (
+                    <button
+                      type="button"
+                      className="text-link"
+                      onClick={() => onJumpPage(highlight.page_number!)}
+                    >
+                      跳到第 {highlight.page_number} 页
+                    </button>
+                  )
                 )}
                 <button
                   type="button"

@@ -24,6 +24,7 @@ function highlight(overrides: Partial<Highlight> = {}): Highlight {
     suffix: '构成。',
     start_offset: 7,
     end_offset: 18,
+    page_number: null,
     note_id: null,
     version: 1,
     created_at: '2026-09-19T02:00:00Z',
@@ -219,5 +220,117 @@ describe('reader highlights panel', () => {
       fireEvent.click(within(item).getByRole('button', { name: '写心得' }))
     })
     expect(wanted).toEqual([highlight().id])
+  })
+})
+
+describe('PDF：按页定位（TASK-089）', () => {
+  /** 一页文字层：`.pdf-page[data-page=N] > .pdf-text-layer > span…`，与 PdfReader 的形状一致。 */
+  function pageLayer(number: number, text: string) {
+    const page = document.createElement('div')
+    page.className = 'pdf-page'
+    page.setAttribute('data-page', String(number))
+    const layer = document.createElement('div')
+    layer.className = 'pdf-text-layer'
+    const span = document.createElement('span')
+    span.textContent = text
+    layer.append(span)
+    page.append(layer)
+    document.body.append(page)
+    return layer
+  }
+
+  it('locates each highlight in its own page, paints under the PDF name and tags the page', async () => {
+    const registry = paint()
+    mock([
+      highlight({
+        id: '018f1f58-4eb2-4a0d-a716-fb81b1960301',
+        exact: 'page one',
+        prefix: null,
+        suffix: null,
+        start_offset: 11,
+        end_offset: 19,
+        page_number: 1,
+      }),
+      highlight({
+        id: '018f1f58-4eb2-4a0d-a716-fb81b1960302',
+        exact: 'page two',
+        prefix: null,
+        suffix: null,
+        start_offset: 11,
+        end_offset: 19,
+        page_number: 2,
+      }),
+    ])
+    const pages = new Map<number, Element>([
+      [1, pageLayer(1, 'StudyPilot page one')],
+      [2, pageLayer(2, 'StudyPilot page two')],
+    ])
+    panel(null, { pages })
+    const list = await screen.findByRole('list', { name: '高亮列表' })
+    const items = within(list).getAllByRole('listitem')
+    expect(items).toHaveLength(2)
+    expect(items[0]).toHaveTextContent('第 1 页')
+    expect(items[1]).toHaveTextContent('第 2 页')
+    // 两条都在各自那一页里找到了：交给注册表的是两个 Range，名字是 PDF 专用的那个。
+    await waitFor(() => expect(registry.has('studypilot-mark-pdf')).toBe(true))
+    const painted = registry.get('studypilot-mark-pdf') as { ranges: Range[] }
+    expect(painted.ranges.map((range) => range.toString())).toEqual(['page one', 'page two'])
+    expect(registry.has('studypilot-mark')).toBe(false)
+    expect(screen.queryByText(/已找不到/)).toBeNull()
+  })
+
+  it('does not call a highlight lost while its page is not rendered, and offers to jump there', async () => {
+    paint()
+    mock([
+      highlight({
+        id: '018f1f58-4eb2-4a0d-a716-fb81b1960303',
+        exact: 'page one',
+        prefix: null,
+        suffix: null,
+        start_offset: 11,
+        end_offset: 19,
+        page_number: 1,
+      }),
+      highlight({
+        id: '018f1f58-4eb2-4a0d-a716-fb81b1960304',
+        exact: 'page nine',
+        prefix: null,
+        suffix: null,
+        start_offset: 11,
+        end_offset: 20,
+        page_number: 9,
+      }),
+    ])
+    const onJumpPage = vi.fn()
+    // 只有第 1 页在渲染窗口里；第 9 页在视口外、没渲染——那条只是「还没看」，不是孤立。
+    panel(null, {
+      pages: new Map<number, Element>([[1, pageLayer(1, 'StudyPilot page one')]]),
+      onJumpPage,
+    })
+    const list = await screen.findByRole('list', { name: '高亮列表' })
+    expect(within(list).queryByText(/已找不到/)).toBeNull()
+    expect(list.querySelectorAll('li.orphaned')).toHaveLength(0)
+    const jump = within(list).getByRole('button', { name: '跳到第 9 页' })
+    fireEvent.click(jump)
+    expect(onJumpPage).toHaveBeenCalledWith(9)
+  })
+
+  it('calls a highlight lost only when its page is rendered and the text is not there', async () => {
+    paint()
+    mock([
+      highlight({
+        id: '018f1f58-4eb2-4a0d-a716-fb81b1960305',
+        exact: '不在这一页的话',
+        prefix: null,
+        suffix: null,
+        start_offset: 0,
+        end_offset: 7,
+        page_number: 1,
+      }),
+    ])
+    panel(null, { pages: new Map<number, Element>([[1, pageLayer(1, 'StudyPilot page one')]]) })
+    const list = await screen.findByRole('list', { name: '高亮列表' })
+    expect(within(list).getByText(/在那一页上已找不到/)).toBeInTheDocument()
+    expect(list.querySelectorAll('li.orphaned')).toHaveLength(1)
   })
 })

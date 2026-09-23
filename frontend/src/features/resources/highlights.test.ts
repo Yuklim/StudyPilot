@@ -24,6 +24,7 @@ function row(overrides: Partial<Highlight> = {}): Highlight {
     suffix: '构成。',
     start_offset: 7,
     end_offset: 18,
+    page_number: null,
     note_id: null,
     version: 1,
     created_at: '2026-09-19T02:00:00Z',
@@ -144,5 +145,49 @@ describe('controlled highlight API', () => {
       bindHighlightNote('018f1f58-4eb2-4a0d-a716-fb81b1960999', row(), null),
     ).rejects.toBeInstanceOf(ApiError)
     expect(request).not.toHaveBeenCalled()
+  })
+})
+
+describe('page anchors (TASK-089)', () => {
+  it('sends page_number only for a PDF anchor, and reads it back', async () => {
+    const request = vi.spyOn(api, 'request')
+    const anchor = {
+      exact: 'StudyPilot page one',
+      prefix: null,
+      suffix: null,
+      start_offset: 0,
+      end_offset: 19,
+    }
+    request.mockResolvedValueOnce({ data: row({ ...anchor, page_number: 2 }) })
+    const made = await createHighlight(resourceId, anchor, null, 2)
+    expect(made.page_number).toBe(2)
+    const [, init] = request.mock.calls.at(-1)! as [string, { body: Record<string, unknown> }]
+    expect(init.body).toEqual({ ...anchor, page_number: 2 })
+
+    // 快照上的高亮不发这个字段：省略即 null，与契约示例一致。
+    request.mockResolvedValueOnce({ data: row(anchor) })
+    await createHighlight(resourceId, anchor)
+    const [, plain] = request.mock.calls.at(-1)! as [string, { body: Record<string, unknown> }]
+    expect('page_number' in plain.body).toBe(false)
+  })
+
+  it('refuses a page below 1 before sending, and a response that lost the field', async () => {
+    const request = vi.spyOn(api, 'request')
+    const anchor = { exact: 'x', prefix: null, suffix: null, start_offset: 0, end_offset: 1 }
+    await expect(createHighlight(resourceId, anchor, null, 0)).rejects.toMatchObject({
+      code: 'INVALID_REQUEST',
+    })
+    expect(request).not.toHaveBeenCalled()
+    // 契约把 page_number 列为必有字段：缺了、或不是正整数，都不是一份可信的响应。
+    const without: Record<string, unknown> = { ...row() }
+    delete without.page_number
+    request.mockResolvedValueOnce({ data: without })
+    await expect(createHighlight(resourceId, anchor)).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    })
+    request.mockResolvedValueOnce({ data: row({ page_number: 0 }) })
+    await expect(createHighlight(resourceId, anchor)).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    })
   })
 })
