@@ -3437,6 +3437,13 @@ a.source-chip:focus-visible {
   .resource-sheet.reader.notes-open .reader-body.outline-open {
     grid-template-columns: 240px minmax(0, 1fr) 340px;
   }
+  /* TASK-091：目录开着时正文块**靠着目录放**，不在正文列里居中——否则 1440px 下正文列
+     多出的近 200px 空白全落在目录与正文之间（24px 缝 + 194px），正文看起来整体偏右
+     （用户 2026-09-26）。左边距 24px 加栅格缝合计 48px；心得开着时同样左对齐，开合心得
+     正文不横向跳。目录收起时不受影响：仍按 `.resource-snapshot` 的基础规则整区居中。 */
+  .reader-body.outline-open .resource-snapshot {
+    margin-left: 24px;
+  }
   /* 心得列随正文滚动时钉在可视区内，写作框始终够得着；内容超高在列内滚。 */
   .resource-sheet.reader.notes-open .reader-notes {
     position: sticky;
