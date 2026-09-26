@@ -144,7 +144,8 @@ checks = ["frontend"]
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：`ac8f17b`（= `829c602` 实现 + 登记，再加按 Review 的 `ac8f17b`）。本条证据写回是之后的另一个提交。
+- 候选 SHA：`3bd54d1`（= `829c602` 实现 + 登记 → 按 Review 的 `ac8f17b` → 按 CI「顶栏只有一行」守卫的 `3bd54d1`）。
+  每次证据写回都是之后的另一个提交。
 - Review：独立只读 Reviewer（`.claude/agents/reviewer.md`，工具仅 Read/Grep/Glob，运行器层无写工具）。
   **第一轮**（`a9cb950..829c602`）报告原文：
   > 权限证据：仅 Read/Grep/Glob（无 Write/Edit/Bash，运行器层面只读）。
@@ -161,8 +162,13 @@ checks = ["frontend"]
   > **结论：PASS，覆盖最终候选 `ac8f17b`**。继承上一轮对 `a9cb950..829c602` 的完整审查范围与结论；本轮只复核 `829c602..ac8f17b`（217 行，4 个文件）及 `api/client.ts`、后端 `highlight_store.py`、任务记录第 106-126 行。
   > ① 位移阈值 4px（`Math.hypot`）：手抖 1-2px 与 `page.mouse.click` 都不会误伤；单测「原地点一下」用 (40,20)→(41,21) 覆盖。② `pressedAt` 陈旧值无误判：按下点在容器外时，`click` 派发在共同祖先上，不会冒泡到容器监听器。③ 与 `client.ts:284-323` 一致：`NOTE_NOT_FOUND` 原样到达；`NOTE_ALREADY_HIGHLIGHTED` → `REQUEST_FAILED` + 409（后端 `highlight_store.py:147` 确为 409）；`VERSION_CONFLICT` 不会被误吞。④ 记录与 diff 一致。
   > **Findings：No findings.** 剩余风险：F5 已记入已知限制，非阻断。
+  PR #102 的 CI e2e 红（手机宽度顶栏两行）→ 修成 `3bd54d1`，请同一 Reviewer **第二次增量复核**（`babc6b3..3bd54d1`）报告原文：
+  > 权限证据：仅 Read/Grep/Glob。
+  > **结论：PASS，覆盖 `3bd54d1`**（分支 ref = `3bd54d158dec…`；继承前两轮 `a9cb950..ac8f17b` 范围，本轮只核 `babc6b3..3bd54d1` 的 `styles.css` 35 行）。
+  > ① `.reader-tools .reader-tool`（0,2,0）稳压 `.icon-button`（0,1,0）与 `.journal-button`（0,1,0）；`.reader-toolbar-buttons .journal-button`（0,2,0）不命中——工具区在 DOM 里位于该容器之外。32+2×2+1×2=38 成立。② 640px 媒体块在 `.reader-tools` 规则之后；与「返回资料库」文字/PDF 标题隐藏同一断点；其后无其他 `.reader-tools` display 规则。③ 记录与 diff 一致。
+  > **No findings.**
 - Acceptance：L2 N/A。
-- 最终状态/风险/用户操作：**ACCEPTED**（L2：自动检查 PASS → 独立只读 Review 两轮 PASS）。风险：交互改动大，靠 e2e 与真机截图
+- 最终状态/风险/用户操作：**ACCEPTED**（L2：自动检查 PASS → 独立只读 Review 三轮 PASS）。PR #102 已开，CI 首轮 e2e 红已修、待重跑。风险：交互改动大，靠 e2e 与真机截图
   兜底；最坏情况是某种点选/拖选组合的手感不对，都有 Esc/撤销可退。**等待用户操作**：本机启动（迁移 0010 会由启动脚本先备份
   库再升级）后试：顶栏选色标几段、下划线、点高亮换色/改型、橡皮删再撤销；看过后由你决定推 PR（094 → 093 分支 → 092 分支）。
 - 非阻断遗留项：见「已知限制」（行间空隙不算点中；键盘/焦点；用户文档待追平）。
