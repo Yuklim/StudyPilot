@@ -51,15 +51,13 @@ def mutate[T](
         raise HighlightError("UNKNOWN_ERROR", 500) from None
 
 
-def rebind(resource_id: UUID, highlight_id: UUID, command: HighlightPatch) -> dict[str, Any]:
+def update(resource_id: UUID, highlight_id: UUID, command: HighlightPatch) -> dict[str, Any]:
     return {
         "data": mutate(
             resource_id,
             highlight_id,
             command.expected_version,
-            lambda store: store.rebind(
-                resource_id, highlight_id, command.note_id, command.expected_version
-            ),
+            lambda store: store.update(resource_id, highlight_id, command),
         )
     }
 

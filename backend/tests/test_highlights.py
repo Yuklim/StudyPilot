@@ -133,6 +133,8 @@ def test_a_highlight_keeps_its_anchor_and_stands_without_a_note(authorized: Test
         "start_offset",
         "end_offset",
         "page_number",
+        "style",
+        "color",
         "note_id",
         "version",
         "created_at",
@@ -233,8 +235,8 @@ def test_a_note_can_be_bound_rebound_and_released(authorized: TestClient) -> Non
         422,
         "VALIDATION_ERROR",
     )
-    # Leaving note_id out is refused rather than read as "unbind": a forgotten
-    # field must not quietly throw away the note a passage is about (Review F4).
+    # A PATCH that names nothing to change is refused, and a forgotten field never
+    # reads as "unbind" (Review F4 of TASK-071; since TASK-093 "left out = untouched").
     bound = authorized.patch(
         path(resource, body), json={"note_id": first["id"], "expected_version": 3}
     )
@@ -397,3 +399,66 @@ def test_an_anchor_lives_in_exactly_one_kind_of_text(authorized: TestClient) -> 
     # (mixed order is defined even if the store never lets one resource hold both).
     listed = authorized.get(path(article)).json()["data"]
     assert listed and all(row["page_number"] is None for row in listed)
+
+
+@pytest.mark.usefixtures("database")
+def test_a_highlight_has_a_look_that_changes_without_touching_the_anchor(
+    authorized: TestClient,
+) -> None:
+    """TASK-093: `style` (mark/underline) and `color` (four toolbar colours) are
+    stored with the anchor, default to the one look that existed before, and
+    move through PATCH like the note binding - naming only what changes."""
+    resource = readable(authorized)
+    plain = add(authorized, resource)
+    assert plain["style"] == "mark" and plain["color"] == "yellow"
+    styled = add(
+        authorized, resource, style="underline", color="blue", start_offset=40, end_offset=45
+    )
+    assert styled["style"] == "underline" and styled["color"] == "blue"
+    # Closed sets: the toolbar offers exactly these.
+    for bad in ({"style": "bold"}, {"color": "red"}, {"style": None}, {"color": None}):
+        error(
+            authorized.post(path(resource), json=anchor(start_offset=50, end_offset=55, **bad)),
+            422,
+            "VALIDATION_ERROR",
+        )
+
+    # Recolouring names only the colour: the note binding and anchor stay put.
+    written = note(authorized, resource)
+    bound = add(authorized, resource, note_id=written["id"], start_offset=60, end_offset=65)
+    recoloured = authorized.patch(
+        path(resource, bound), json={"color": "green", "expected_version": 1}
+    )
+    assert recoloured.status_code == 200, recoloured.text
+    body = recoloured.json()["data"]
+    assert body["color"] == "green" and body["style"] == "mark"
+    assert body["note_id"] == written["id"] and body["version"] == 2
+    assert body["exact"] == bound["exact"] and body["start_offset"] == bound["start_offset"]
+    # Turning it into an underline is the same highlight, one version later.
+    underlined = authorized.patch(
+        path(resource, body), json={"style": "underline", "expected_version": 2}
+    )
+    assert underlined.status_code == 200
+    body = underlined.json()["data"]
+    assert body["style"] == "underline" and body["color"] == "green" and body["version"] == 3
+    # Several fields at once, including unbinding the note.
+    both = authorized.patch(
+        path(resource, body),
+        json={"style": "mark", "color": "pink", "note_id": None, "expected_version": 3},
+    )
+    assert both.status_code == 200
+    body = both.json()["data"]
+    assert (body["style"], body["color"], body["note_id"], body["version"]) == (
+        "mark",
+        "pink",
+        None,
+        4,
+    )
+    # Null is not "reset" for the look, and unknown values are refused.
+    for bad in ({"style": None}, {"color": None}, {"style": "bold"}, {"color": "red"}):
+        error(
+            authorized.patch(path(resource, body), json=bad | {"expected_version": 4}),
+            422,
+            "VALIDATION_ERROR",
+        )
+    assert authorized.get(path(resource, body)).json()["data"]["version"] == 4

@@ -462,6 +462,12 @@ class Highlight(Identified, Created, Versioned, Base):
     keeps its shape, and it is `SET NULL` on delete: throwing away what you wrote
     about a passage must not throw away the passage you marked.
 
+    **The look is data too** (TASK-093): `style` says whether the passage is
+    filled (`mark`) or underlined, `color` which of the four toolbar colours it
+    wears. Both can change after the fact - recolouring a mark or turning it into
+    an underline is the same highlight, not a new one - and both are closed sets
+    checked by the database.
+
     **Where the anchor is measured** (TASK-089): `page_number` NULL means the
     offsets count characters of the resource's frozen snapshot; a value means
     they count characters of that page's text layer in the resource's PDF
@@ -479,6 +485,11 @@ class Highlight(Identified, Created, Versioned, Base):
         CheckConstraint("suffix IS NULL OR length(suffix) <= 200", name="suffix_length"),
         CheckConstraint("start_offset >= 0 AND end_offset > start_offset", name="offset_order"),
         CheckConstraint("page_number IS NULL OR page_number >= 1", name="page_number_positive"),
+        # The look is a closed set (TASK-093): the reader paints from a fixed palette
+        # and the toolbar offers exactly these; an unknown value would be a mark
+        # nobody can see or pick.
+        CheckConstraint("style IN ('mark', 'underline')", name="style_known"),
+        CheckConstraint("color IN ('yellow', 'green', 'blue', 'pink')", name="color_known"),
         # A note describes at most one passage; binding it elsewhere would leave two
         # highlights claiming the same writing.
         UniqueConstraint("note_id"),
@@ -497,6 +508,11 @@ class Highlight(Identified, Created, Versioned, Base):
     start_offset: Mapped[int] = mapped_column(Integer)
     end_offset: Mapped[int] = mapped_column(Integer)
     page_number: Mapped[int | None] = mapped_column(Integer)
+    # How it is painted (TASK-093): `mark` fills the passage, `underline` draws
+    # under it; both in one of four colours. Defaults are the one look that
+    # existed before, so rows from earlier migrations are unchanged.
+    style: Mapped[str] = mapped_column(String(16), default="mark", server_default="mark")
+    color: Mapped[str] = mapped_column(String(16), default="yellow", server_default="yellow")
     note_id: Mapped[UUID | None] = mapped_column(Uuid, ForeignKey("notes.id", ondelete="SET NULL"))
 
 
