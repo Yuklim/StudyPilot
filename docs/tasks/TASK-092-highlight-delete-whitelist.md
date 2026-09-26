@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-092"
-status = "IN_PROGRESS"
+status = "ACCEPTED"
 risk = "L2"
 risk_reason = "改的是共享 API 客户端里「哪些 DELETE 路径允许带 If-Match」的安全白名单（`frontend/src/api/client.ts`），一处放行，不改契约、后端与数据；但白名单是全前端删除动作的守门口，且用户可见行为是删数据，须独立只读 Review 核对放行的路径形状确实只有高亮条目那一种。执行链：1 Worker → 自动检查 → 1 独立只读 Reviewer 检查最终 diff；独立验收 N/A。"
 risk_flags = ["business", "local-fix"]
@@ -90,11 +90,24 @@ checks = ["frontend"]
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：
-- Review：（L2，待独立只读 Reviewer）
+- 候选 SHA：`c4b6b19`（实现 + 登记，单个提交；本条证据写回是之后的另一个提交）。
+- Review：独立只读 Reviewer（`.claude/agents/reviewer.md`，工具仅 Read/Grep/Glob，运行器层无写工具），
+  范围 `f319284..c4b6b19`。报告原文：
+  > 权限证据：仅 Read/Grep/Glob（本 Agent 工具清单无 Write/Edit/Bash，无法改文件或提交）。
+  > **结论：PASS**
+  > **审查范围**：`f319284..c4b6b19`，产品 diff 三个文件（`client.ts`、`client.test.ts`、`reader-highlights.spec.ts`），并对照未改动的 `localPath()`、`request()`、`highlights.ts:deleteHighlight/path`、后端 `highlights.py:version_header/delete_highlight`、`ReaderHighlights.tsx` 删除流程、`highlights.test.ts` 的替身方式。
+  > 1. 放行形状：`localPath()` 返回 `pathname + search`（`client.ts:239`），带 query 时 `parts[6]` 含 `?…`，被锚定的 `fileIdPattern` 拒；`#` 在 L212 先拒；尾斜杠成 8 段拒；集合 `/resources/{id}/highlights` 是 6 段、不在 `['snapshot','citation']` 内拒；顶层 `/highlights/{id}` 5 段、`parts[3]` 不在 topics/tags/notes 内拒。`request()` 其余前置（仅 DELETE、无 body、版本为 ≥1 安全整数）未动。新增放行确实只有 `/api/v1/resources/{uuid}/highlights/{uuid}` 一种。
+  > 2. 头一致：客户端发 `If-Match: "N"`（L657），后端 `version_header` 要求恰一个 `"[1-9][0-9]*"`；`deleteHighlight` 先校验 `version >= 1` 再传入，`path()` 生成的路径与后端 router prefix + `/{highlight_id}` 一致。
+  > 3. 测试能守住：撤掉修复后 `versionedDeleteTarget` 对该路径返回 false → `request()` 抛 INVALID_REQUEST，单元用例 `resolves.toBeUndefined()` 必红；e2e 里 alert 出现、空态标题不出现、`painted` 非空，多处断言必红。反向用例（集合/顶层）确认未顺带放宽。
+  > 4. 记录与 diff 一致：`highlights.test.ts` 确用 `vi.spyOn(api,'request')` 替身，故「从没经过真客户端」属实；「3 行注释、1 条单元用例、1 条 e2e」与 diff 相符；未见不实描述。
+  > 5. 其他：无。`parts[5]!` 与既有 L76 风格一致。
+  > **Findings：No findings**
+  > **剩余风险/下一步**：PDF 高亮走同一路径随修复生效但无独立 e2e（记录已如实列为已知限制，可记录后继续）；证据写回后请核对候选 SHA 仍为 `c4b6b19`。
 - Acceptance：L2 N/A。
-- 最终状态/风险/用户操作：
-- 非阻断遗留项：
+- 最终状态/风险/用户操作：**ACCEPTED**（L2：自动检查 PASS → 独立只读 Review PASS，No findings）。
+  风险：一处白名单放行，Reviewer 已逐形状核对只多了高亮条目路径。**等待用户操作**：本机试一次
+  「高亮 Tab → 删除 → 确认删除」，颜色与条目应当场消失；看过后再推 PR（PR 指向 091 的分支）。
+- 非阻断遗留项：PDF 上的高亮删除没有单独 e2e（同一条路径，随本修复生效）。
 - 日期与决定日志：2026-09-26 用户「高亮效果不能删除」→ 追问选定「Tab 里删了也没消」→ 沙盒复现 → 登记本任务。
 
 此区禁止放入或变更任务授权、风险等级、允许路径、检查要求、实现或测试记录。
