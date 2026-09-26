@@ -361,7 +361,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
   }, [])
   /**
    * 一个选区落在 PDF 的哪一页（两端都在同一页的文字层里才算）；不在任何一页、或跨页 → null。
-   * 文字层按页给，一条高亮的锚点只能落在一页内——跨页时「标下来」不出（用户 2026-09-22 选定）。
+   * 文字层按页给，一条高亮的锚点只能落在一页内——跨页时不落色、只能记下这段（用户 2026-09-22 选定）。
    */
   const pageOfRange = useCallback((range: Range): { page: number; layer: Element } | null => {
     const layerOf = (node: Node) =>
@@ -641,9 +641,9 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
                 **PDF 例外（TASK-081）**：那一页的标题长在顶栏里，这里不再重复一个 `h1`
                 ——一页两个 `h1` 既是无障碍问题，也正是要省掉的那 64px。 */}
             {!pdfOriginal && <ReaderHeader resource={toolbarItem} headingSlot={headingSlot} />}
-            {/* 「记下这段」浮动胶囊（TASK-068）：读正文里的选区，送进右栏心得草稿。
-                PDF 的正文根是 `.pdf-reader-pages`（文字层在里面，TASK-087）；「标下来」按选区判
-                ——落在同一页才出，跨页只留「记下这段」（TASK-089，用户选定）。 */}
+            {/* 「记下这段」浮动胶囊（TASK-068）与工具开着时的「选中即落」（TASK-094）：读正文里的选区。
+                PDF 的正文根是 `.pdf-reader-pages`（文字层在里面，TASK-087）；能不能落色按选区判
+                ——落在同一页才落，跨页只留「记下这段」（TASK-089，用户选定）。 */}
             <ReaderQuote
               container={readerMain}
               selector={pdfOriginal ? '.pdf-reader-pages' : '.snapshot-rendered'}

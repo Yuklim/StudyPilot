@@ -103,9 +103,9 @@ checks = ["frontend"]
   - `ResourceDetail.tsx`：`tool`/`color` 状态、点颜色顺手切荧光笔、`mark()` 带样子、`takeMark` 不再打开右栏、
     有可标注正文时才给顶栏工具；`ResourceToolbar.tsx` 加 `tools` 插槽。
   - `styles.css`：四色变量、16 条 `::highlight()`（高亮/下划线 × 四色 × 网页/PDF）替换原来两条、工具区/气泡/提示/条目样式；
-    删掉「标下来」的两条旧规则。
-  - 测试：单测 6 条改写 + 7 条新增（见完成条件各项）；e2e 三个 spec 改为工具流程，`reader-highlights.spec.ts` 新增整条
-    「绿荧光笔 → 气泡改下划线 → 橡皮 → 撤销」用例。
+    删掉「标下来」的三条旧规则（分隔线、`.mark` 及其 `:hover`；分隔线的 JSX 也一并去掉）。
+  - 测试：单测 6 条改写 + 6 条新增（AnnotationTools 1、ReaderHighlights 3、highlights 2；第一次记录写成 7，Review F3 订正）；
+    e2e 三个 spec 改为工具流程，`reader-highlights.spec.ts` 新增整条「绿荧光笔 → 气泡改下划线 → 橡皮 → 撤销」用例。
 - 命令、真实退出结果、product_fingerprint、环境、未运行原因：
   - `check_task.py --task docs/tasks/TASK-094-annotation-toolbar.md --worktree` → 退出码 0，**CHECKS PASS**，`files=17`，
     `product_fingerprint=bda31239bb2a25a2a28e8726db2a1ba8123f585adc33c233a4b0cd1365537879`，`profiles=frontend`
@@ -115,7 +115,18 @@ checks = ["frontend"]
     （隔离沙盒，真后端）。
   - 真机截图（一次性 spec，已移出工作区）：1440 宽下工具区落在返回链接与右侧按钮之间、荧光笔按下态带当前色；黄高亮 +
     绿下划线同屏；点中高亮出气泡（写心得 / 四色 / 改为下划线）；橡皮点后底部「已删除一条高亮 · 撤销」。
+- **第二次实现提交（按第一轮 Review）**：F1 工具开着时拖选到已有高亮上，`ReaderQuote` 在 `mouseup` 里清了选区，随后的
+  `click` 到 `ReaderHighlights` 时选区已空、「选区非空不算点选」的守卫失效——补一条按下点/松开点位移 >4px 即视为拖动的判定
+  （容器上多听一个 `mousedown`）；F2 补两条断言（位移判定、选区非空）+ 既有橡皮用例改为先 `mouseDown` 再 `click`；
+  F4 撤销时若带心得重建被拒（`NOTE_NOT_FOUND`，或共享客户端把 `NOTE_ALREADY_HIGHLIGHTED` 映成的带 409 的 `REQUEST_FAILED`），
+  退一步不带心得再建一次，补一条用例；F3 订正上面两处计数与四处陈旧注释。
+  重跑：vitest 资源模块 366 条 → 全过；三个 e2e spec 16/16；`check_task.py --worktree` → 退出码 0，**CHECKS PASS**，`files=17`，
+  `product_fingerprint=6ecdcca6a917edb2de864dc2d70d33430bd412efb1c63c475b5c8ad9621e415b`（vitest **834** 条）。
+  中途两次 FAIL 留痕：① 测试里给 `ApiError` 传了共享客户端不认识的码 `NOTE_ALREADY_HIGHLIGHTED`（tsc 报）→ 改成客户端实际
+  会给的 `REQUEST_FAILED` + 409，实现里的判定也据此改；② 改完测试忘了跑 prettier（format:check 报）→ 格式化后重跑。
 - 已知限制/未完成项：
+  - 键盘用户：工具开着时 Shift+方向键选区既不落色也不出胶囊；颜色 `radiogroup` 无方向键循环；气泡不移焦点（Review F5，
+    不违背既定约定，后续任务处理）。
   - 点选靠 `caretPositionFromPoint` 反查，**多行高亮点在行间空隙不算点中**（落点不在任何文字上）；点到字上即可。
   - 工具态与颜色不记忆（用户选定）；触屏只顺手听了 `touchend`，未专门适配。
   - 换色/改型失败与橡皮失败都走底部提示（右栏 Tab 多半没开着）；成功不提示。

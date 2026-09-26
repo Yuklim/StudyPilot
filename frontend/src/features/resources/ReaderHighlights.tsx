@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
+import { ApiError } from '../../api/client'
 import { failureText } from './api'
 import { listNotes, type Note } from '../notes/api'
 import { noteTitle } from '../notes/noteTitle'
@@ -34,7 +35,7 @@ import { useResourceQuery } from './useResourceQuery'
  *
  * **PDF 上按页定位**（TASK-089）：父级把已渲染的文字层按页号交进来（`pages`），每条高亮在
  * 它自己那一页的容器里跑同一套四级定位。**那一页还没渲染 ≠ 孤立**——只有那一页已经渲染
- * 仍找不到，才说「原文位置已找不到」。上色用另一个高亮名 `studypilot-mark-pdf`（只给底色，
+ * 仍找不到，才说「原文位置已找不到」。上色用带 `-pdf` 后缀的一套名字（只给底色/线色，
  * 文字层的字是透明的，不能像正文那样再给字色）。
  *
  * **配的心得可能已经不在本资料里**（心得被 `detachNote` 解绑或后贴到别处，TASK-071 遗留
@@ -248,10 +249,19 @@ export function ReaderHighlights({
   )
   useEffect(() => {
     if (!containers.length) return
+    // 拖选与点选的区分靠两样：选区还在（没选工具时拖选完选区留着）；或者按下点与松开点
+    // 离得远（工具开着时 `ReaderQuote` 在 mouseup 里已把选区清掉，随后的 click 到这里时
+    // 选区已经空了——Review F1）。超过几个像素就当拖动。
+    let pressedAt: { x: number; y: number } | null = null
+    const onMouseDown = (event: Event) => {
+      const { clientX, clientY } = event as MouseEvent
+      pressedAt = { x: clientX, y: clientY }
+    }
     const onClick = (event: Event) => {
       const { clientX, clientY } = event as MouseEvent
       const selection = window.getSelection?.()
       if (selection && !selection.isCollapsed) return
+      if (pressedAt && Math.hypot(clientX - pressedAt.x, clientY - pressedAt.y) > 4) return
       const point = caretAt(clientX, clientY)
       if (!point) return
       const hit = rowsRef.current.find((row) => row.range !== null && contains(row.range, point))
@@ -259,9 +269,15 @@ export function ReaderHighlights({
       if (toolRef.current === 'eraser') void erase(hit.highlight)
       else setBubble({ id: hit.highlight.id, x: clientX, y: clientY })
     }
-    for (const node of containers) node.addEventListener('click', onClick)
+    for (const node of containers) {
+      node.addEventListener('mousedown', onMouseDown)
+      node.addEventListener('click', onClick)
+    }
     return () => {
-      for (const node of containers) node.removeEventListener('click', onClick)
+      for (const node of containers) {
+        node.removeEventListener('mousedown', onMouseDown)
+        node.removeEventListener('click', onClick)
+      }
     }
   }, [containers, erase])
   // 气泡：Esc 或点到外面就关。
@@ -306,17 +322,28 @@ export function ReaderHighlights({
   async function restore(highlight: Highlight) {
     setToast(null)
     setFailure(null)
+    const look = { style: highlight.style, color: highlight.color }
     try {
-      await createHighlight(
-        resourceId,
-        anchorOf(highlight),
-        highlight.note_id,
-        highlight.page_number,
-        {
-          style: highlight.style,
-          color: highlight.color,
-        },
-      )
+      try {
+        await createHighlight(
+          resourceId,
+          anchorOf(highlight),
+          highlight.note_id,
+          highlight.page_number,
+          look,
+        )
+      } catch (cause) {
+        // 那条心得这会儿可能已经不在（删了、解绑到别处、或被别的高亮配走）——那是绑定的事，
+        // 不该让标下的那段话跟着丢：退一步不带心得再建一次（Review F4）。
+        // 共享客户端只认它列出的码：`NOTE_NOT_FOUND` 原样到达，`NOTE_ALREADY_HIGHLIGHTED`
+        // 变成带 409 的 `REQUEST_FAILED`。
+        if (highlight.note_id === null || !(cause instanceof ApiError)) throw cause
+        const noteGone =
+          cause.code === 'NOTE_NOT_FOUND' ||
+          (cause.code === 'REQUEST_FAILED' && cause.status === 409)
+        if (!noteGone) throw cause
+        await createHighlight(resourceId, anchorOf(highlight), null, highlight.page_number, look)
+      }
       if (alive.current) retry()
     } catch (cause) {
       if (alive.current) setToast({ kind: 'error', text: failureText(cause) })

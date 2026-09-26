@@ -9,7 +9,7 @@ import { expect, test, type Page } from '@playwright/test'
  * CSS Custom Highlight API 都只能在这里验。
  *
  * 夹具 `sample.pdf` 两页：第一页一行「StudyPilot page one」，第二页一行「StudyPilot page two」。
- * 上色不插节点，所以断言的是浏览器注册表里 `studypilot-mark-pdf` 覆盖的文字。
+ * 上色不插节点，所以断言的是浏览器注册表里 `studypilot-mark-yellow-pdf` 覆盖的文字。
  */
 
 const FIXTURE = fileURLToPath(new URL('./fixtures/sample.pdf', import.meta.url))

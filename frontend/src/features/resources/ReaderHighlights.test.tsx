@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { api } from '../../api/client'
+import { api, ApiError } from '../../api/client'
 import { note as boundNote } from '../notes/fixtures'
 import { ReaderHighlights } from './ReaderHighlights'
 import type { Highlight } from './highlights'
@@ -433,6 +433,58 @@ describe('样子与正文上的点选（TASK-094）', () => {
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '这条高亮' })).toBeNull())
   })
 
+  it('a drag that ends on a passage, or a click while text is selected, opens nothing (Review F1/F2)', async () => {
+    const registry = paint()
+    mock([highlight()])
+    const rendered = body()
+    panel(rendered)
+    await waitFor(() => expect(registry.has('studypilot-mark-yellow')).toBe(true))
+    caretAt(rendered.querySelector('p')!.firstChild!, 10)
+    // 按下点与松开点离得远：是拖选（工具开着时选区在 mouseup 里已被清掉，只能靠位移判）。
+    fireEvent.mouseDown(rendered, { clientX: 10, clientY: 20 })
+    fireEvent.click(rendered, { clientX: 60, clientY: 20 })
+    expect(screen.queryByRole('dialog', { name: '这条高亮' })).toBeNull()
+    // 选区还在：也是在选文字，不是点选。
+    const selection = vi.spyOn(window, 'getSelection').mockReturnValue({
+      isCollapsed: false,
+    } as unknown as Selection)
+    fireEvent.mouseDown(rendered, { clientX: 40, clientY: 20 })
+    fireEvent.click(rendered, { clientX: 40, clientY: 20 })
+    expect(screen.queryByRole('dialog', { name: '这条高亮' })).toBeNull()
+    selection.mockRestore()
+    // 原地点一下才算。
+    fireEvent.mouseDown(rendered, { clientX: 40, clientY: 20 })
+    fireEvent.click(rendered, { clientX: 41, clientY: 21 })
+    expect(await screen.findByRole('dialog', { name: '这条高亮' })).toBeInTheDocument()
+    // 关掉再走：气泡是 portal 到 body 的，留着会在这份文件的 afterEach 清空 body 时撞上卸载。
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '这条高亮' })).toBeNull())
+  })
+
+  it('撤销 falls back to recreating without the note when that note is no longer bindable (Review F4)', async () => {
+    const registry = paint()
+    const request = mock([highlight({ note_id: boundNote().id })], [boundNote()])
+    const rendered = body()
+    panel(rendered, { tool: 'eraser' })
+    await waitFor(() => expect(registry.has('studypilot-mark-yellow')).toBe(true))
+    caretAt(rendered.querySelector('p')!.firstChild!, 10)
+    request.mockResolvedValueOnce(undefined)
+    fireEvent.mouseDown(rendered, { clientX: 40, clientY: 20 })
+    fireEvent.click(rendered, { clientX: 40, clientY: 20 })
+    await screen.findByText('已删除一条高亮')
+    // 第一次带心得重建被拒（心得已配给别的高亮）；第二次不带心得再建，标下的那段话不丢。
+    request.mockRejectedValueOnce(new ApiError('REQUEST_FAILED', 409)).mockResolvedValueOnce({
+      data: highlight({ id: '018f1f58-4eb2-4a0d-a716-fb81b1960210', note_id: null }),
+    })
+    fireEvent.click(screen.getByRole('button', { name: '撤销' }))
+    await waitFor(() => expect(screen.queryByText('已删除一条高亮')).toBeNull())
+    const posts = request.mock.calls.filter(([, init]) => init?.method === 'POST')
+    expect(posts).toHaveLength(2)
+    expect((posts[0]![1]!.body as Record<string, unknown>).note_id).toBe(boundNote().id)
+    expect((posts[1]![1]!.body as Record<string, unknown>).note_id).toBeUndefined()
+    expect(screen.queryByText(/已经配给/)).toBeNull()
+  })
+
   it('with the eraser on, a click deletes at once and 撤销 recreates the same anchor with the same look', async () => {
     const registry = paint()
     const request = mock(
@@ -444,6 +496,7 @@ describe('样子与正文上的点选（TASK-094）', () => {
     await waitFor(() => expect(registry.has('studypilot-underline-pink')).toBe(true))
     caretAt(rendered.querySelector('p')!.firstChild!, 10)
     request.mockResolvedValueOnce(undefined)
+    fireEvent.mouseDown(rendered, { clientX: 40, clientY: 20 })
     fireEvent.click(rendered, { clientX: 40, clientY: 20 })
     // 不问就删：颜色消失、条目消失、DELETE 带版本。
     await waitFor(() => expect(registry.has('studypilot-underline-pink')).toBe(false))
