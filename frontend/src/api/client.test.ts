@@ -345,6 +345,36 @@ describe('memory-only local API client', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it('lets a highlight be deleted with its version, at the item path only', async () => {
+    // TASK-092：这条路径从 TASK-072 起就漏在白名单外——右栏「高亮」Tab 的「确认删除」在发出
+    // 请求之前就被拒成 INVALID_REQUEST（「请求参数不受支持」），服务端那条高亮一直还在。
+    const resource = '00000000-0000-4000-8000-000000000001'
+    const highlight = '00000000-0000-4000-8000-000000000002'
+    fetchMock
+      .mockResolvedValueOnce(session())
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+    await expect(
+      createApiClient().request(`/api/v1/resources/${resource}/highlights/${highlight}`, {
+        method: 'DELETE',
+        ifMatchVersion: 2,
+      }),
+    ).resolves.toBeUndefined()
+    const [path, init] = fetchMock.mock.calls[1]
+    expect(path).toBe(`/api/v1/resources/${resource}/highlights/${highlight}`)
+    expect(new Headers(init?.headers).get('If-Match')).toBe('"2"')
+    fetchMock.mockClear()
+    // 集合本身没有版本化删除；高亮也不是顶层集合。
+    for (const target of [
+      `/api/v1/resources/${resource}/highlights`,
+      `/api/v1/highlights/${highlight}`,
+    ]) {
+      await expect(
+        createApiClient().request(target, { method: 'DELETE', ifMatchVersion: 2 }),
+      ).rejects.toMatchObject({ code: 'INVALID_REQUEST' })
+    }
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it.each([
     [tagPath, { method: 'PATCH', ifMatchVersion: 1 }],
     [tagPath, { method: 'DELETE', ifMatchVersion: 1, body: {} }],

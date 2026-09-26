@@ -60,10 +60,13 @@ function versionedDeleteTarget(target: string): boolean {
       parts[3] === 'notes' &&
       fileIdPattern.test(parts[4]) &&
       parts[2] === 'v1') ||
+    // Highlights (TASK-071 §4.15) are deleted the same way as a resource's notes.
+    // They were missing here from TASK-072 until TASK-092: the Tab's delete button
+    // threw INVALID_REQUEST before any request left the browser.
     (parts.length === 7 &&
       parts[3] === 'resources' &&
       fileIdPattern.test(parts[4]) &&
-      parts[5] === 'notes' &&
+      ['notes', 'highlights'].includes(parts[5]!) &&
       fileIdPattern.test(parts[6])) ||
     // A resource has at most one snapshot and at most one citation, so those paths
     // end at the collection name rather than an item id.
