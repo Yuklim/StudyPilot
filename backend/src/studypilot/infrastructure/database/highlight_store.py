@@ -20,7 +20,12 @@ from uuid import UUID
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from studypilot.modules.highlights.contracts import HighlightCreate, HighlightError, HighlightQuery
+from studypilot.modules.highlights.contracts import (
+    HighlightCreate,
+    HighlightError,
+    HighlightPatch,
+    HighlightQuery,
+)
 
 from .models import ContentSnapshot, Highlight, LearningResource, Note, OriginalFile
 
@@ -33,6 +38,8 @@ FIELDS = (
     "start_offset",
     "end_offset",
     "page_number",
+    "style",
+    "color",
     "note_id",
     "version",
     "created_at",
@@ -167,6 +174,8 @@ class HighlightStore:
             start_offset=command.start_offset,
             end_offset=command.end_offset,
             page_number=command.page_number,
+            style=command.style,
+            color=command.color,
             note_id=command.note_id,
         )
         self.session.add(highlight)
@@ -176,15 +185,23 @@ class HighlightStore:
     def detail(self, resource_id: UUID, highlight_id: UUID) -> dict[str, Any]:
         return project(self.find(resource_id, highlight_id))
 
-    def rebind(
-        self, resource_id: UUID, highlight_id: UUID, note_id: UUID | None, expected: int
+    def update(
+        self, resource_id: UUID, highlight_id: UUID, command: HighlightPatch
     ) -> dict[str, Any]:
-        """Bind, rebind or (with note_id null) unbind the note. The anchor never moves."""
+        """Change the note binding and/or the look (TASK-093). The anchor never moves.
+
+        Only the fields the request named are touched; `note_id` None unbinds. A
+        value equal to what is stored is not a change, so the version only moves
+        when something actually did (the same rule rebinding always followed).
+        """
         highlight = self.find(resource_id, highlight_id)
-        self.check_version(highlight, expected)
-        self.require_note(resource_id, note_id, highlight_id)
-        if highlight.note_id != note_id:
-            highlight.note_id = note_id
+        self.check_version(highlight, command.expected_version)
+        changes = command.changes()
+        if "note_id" in changes:
+            self.require_note(resource_id, changes["note_id"], highlight_id)
+        for field, value in changes.items():
+            if getattr(highlight, field) != value:
+                setattr(highlight, field, value)
         self.session.flush()
         return project(highlight)
 

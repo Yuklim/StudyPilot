@@ -8,7 +8,7 @@ an anchor still lands is decided by the reader when it renders.
 """
 
 import re
-from typing import Annotated, Literal, Self
+from typing import Annotated, Any, Literal, Self
 from uuid import UUID
 
 from pydantic import (
@@ -27,6 +27,11 @@ MAX_EXACT = 2_000
 MAX_CONTEXT = 200
 Exact = Annotated[str, StringConstraints(min_length=1, max_length=MAX_EXACT)]
 Context = Annotated[str, StringConstraints(max_length=MAX_CONTEXT)]
+# The look (TASK-093): what the toolbar offers, nothing more. `mark` fills the
+# passage, `underline` draws under it; the four colours are shared by both.
+Style = Literal["mark", "underline"]
+Color = Literal["yellow", "green", "blue", "pink"]
+LOOK_FIELDS = frozenset({"note_id", "style", "color"})
 
 
 class HighlightError(Exception):
@@ -54,6 +59,8 @@ class HighlightCreate(BaseModel):
     start_offset: int = Field(ge=0)
     end_offset: int = Field(ge=1)
     page_number: int | None = Field(default=None, ge=1)
+    style: Style = "mark"
+    color: Color = "yellow"
     note_id: UUID | None = None
 
     @model_validator(mode="after")
@@ -64,21 +71,41 @@ class HighlightCreate(BaseModel):
 
 
 class HighlightPatch(BaseModel):
-    """Only the note binding moves.
+    """The note binding and the look move; the anchor never does.
 
     The anchor is deliberately immutable: letting it change would turn one
     highlight into a mark on entirely different words while keeping its history.
     Marking another passage is another highlight.
 
-    `note_id` is **required and may be null**: null unbinds, and leaving the field
-    out is refused. A caller that forgot the field almost never meant "throw away
-    the note this passage is about", and silently doing it is the kind of loss the
-    user only notices much later (first-round Review, F4).
+    Three fields can change - `note_id`, `style`, `color` - and a request names
+    only the ones it means to change: **a field left out is left alone**, and a
+    request that names none is refused (there is nothing to do). `note_id: null`
+    is the one way to unbind. TASK-071 had a single field and therefore refused a
+    missing `note_id` outright (first-round Review, F4: a forgotten field must not
+    quietly throw the note away); with three fields "left out = untouched" is the
+    rule that keeps that promise - forgetting a field can never lose anything.
+    `style`/`color` are not nullable: null there is a shape error, not "reset".
     """
 
     model_config = ConfigDict(extra="forbid", strict=True)
-    note_id: UUID | None
+    note_id: UUID | None = None
+    style: Style | None = None
+    color: Color | None = None
     expected_version: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def names_something_to_change(self) -> Self:
+        named = self.model_fields_set & LOOK_FIELDS
+        if not named:
+            raise ValueError("name at least one of note_id, style, color")
+        for field in ("style", "color"):
+            if field in named and getattr(self, field) is None:
+                raise ValueError(f"{field} cannot be null")
+        return self
+
+    def changes(self) -> dict[str, Any]:
+        """Only the fields the request actually named, `note_id` possibly None."""
+        return {field: getattr(self, field) for field in self.model_fields_set & LOOK_FIELDS}
 
 
 class HighlightQuery(BaseModel):

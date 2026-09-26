@@ -36,7 +36,7 @@ def test_upgrade_is_repeatable_and_matches_models(tmp_path: Path) -> None:
                 "alembic_version",
             }
             context = MigrationContext.configure(connection, opts={"compare_type": True})
-            assert context.get_current_heads() == ("0009_highlight_page",)
+            assert context.get_current_heads() == ("0010_highlight_style",)
             assert compare_metadata(context, Base.metadata) == []
         with factory() as session:
             assert session.scalar(select(Topic.name)) == "Kept after upgrade"
@@ -71,7 +71,7 @@ def test_nonempty_downgrade_refuses_before_dropping_any_table(tmp_path: Path) ->
             # The downgrade runs in one transaction; the non-empty guard aborts it,
             # rolling back the already-applied 0002 step too, so head stays put.
             assert MigrationContext.configure(connection).get_current_heads() == (
-                "0009_highlight_page",
+                "0010_highlight_style",
             )
         with factory() as session:
             assert session.scalar(select(Topic.name)) == "Must not be deleted"
@@ -132,7 +132,7 @@ def test_0006_widens_note_content_and_refuses_lossy_downgrade(tmp_path: Path) ->
             migrate(engine, "0005_snapshot_assets", downgrade=True)
         with engine.connect() as connection:
             assert MigrationContext.configure(connection).get_current_heads() == (
-                "0009_highlight_page",
+                "0010_highlight_style",
             )
         with factory.begin() as session:
             session.query(Note).filter(Note.content == "y" * 60_000).delete()
@@ -294,7 +294,7 @@ def test_0009_adds_page_number_and_refuses_to_drop_pdf_highlights(tmp_path: Path
         # one holds a SQLite lock and the downgrade below would wait on it.
         with engine.connect() as connection:
             assert MigrationContext.configure(connection).get_current_heads() == (
-                "0009_highlight_page",
+                "0010_highlight_style",
             )
         with factory.begin() as session:
             paged = session.scalar(select(Highlight).where(Highlight.page_number == 2))
@@ -307,5 +307,74 @@ def test_0009_adds_page_number_and_refuses_to_drop_pdf_highlights(tmp_path: Path
         with factory() as session:
             kept = session.scalar(select(Highlight))
             assert kept is not None and kept.exact == "快照里的一句" and kept.page_number is None
+    finally:
+        engine.dispose()
+
+
+def test_0010_adds_the_look_and_refuses_to_drop_a_styled_highlight(tmp_path: Path) -> None:
+    """0010 stores how a highlight is painted (TASK-093). A row that exists when
+    the migration runs gets the one look there was (a yellow mark); an underline
+    or another colour has no representation below 0010, so the downgrade refuses
+    while any exists and lets a default-looking row through."""
+    engine = create_database_engine(f"sqlite:///{tmp_path / 'looks.db'}")
+    try:
+        migrate(engine)
+        factory = create_session_factory(engine)
+        with factory.begin() as session:
+            resource = LearningResource(
+                title="标过的资料", source_type="WEB", source_url="https://example.test/s"
+            )
+            session.add(resource)
+            session.flush()
+            session.add(
+                Highlight(resource_id=resource.id, exact="先标的一句", start_offset=0, end_offset=5)
+            )
+        # A default-looking row is exactly what 0009 could hold: the downgrade takes
+        # it along, and the upgrade gives it the default look back.
+        migrate(engine, "0009_highlight_page", downgrade=True)
+        columns = {column["name"] for column in inspect(engine).get_columns("highlights")}
+        assert not ({"style", "color"} & columns)
+        migrate(engine)
+        columns = {column["name"] for column in inspect(engine).get_columns("highlights")}
+        assert {"style", "color"} <= columns
+        with factory() as session:
+            old = session.scalar(select(Highlight))
+            assert old is not None and (old.style, old.color) == ("mark", "yellow")
+        with factory.begin() as session:
+            session.add(
+                Highlight(
+                    resource_id=resource.id,
+                    exact="划了线的一句",
+                    start_offset=10,
+                    end_offset=16,
+                    style="underline",
+                    color="blue",
+                )
+            )
+        # The CHECKs hold: only the toolbar's values, for both columns.
+        for look in ({"color": "red"}, {"style": "bold"}):
+            with pytest.raises(IntegrityError), factory.begin() as session:
+                session.add(
+                    Highlight(
+                        resource_id=resource.id, exact="x", start_offset=0, end_offset=1, **look
+                    )
+                )
+                session.flush()
+        with pytest.raises(RuntimeError, match="style or colour"):
+            migrate(engine, "0009_highlight_page", downgrade=True)
+        with engine.connect() as connection:
+            assert MigrationContext.configure(connection).get_current_heads() == (
+                "0010_highlight_style",
+            )
+        with factory.begin() as session:
+            styled = session.scalar(select(Highlight).where(Highlight.style == "underline"))
+            assert styled is not None
+            session.delete(styled)
+        migrate(engine, "0009_highlight_page", downgrade=True)
+        migrate(engine)
+        with factory() as session:
+            kept = session.scalar(select(Highlight))
+            assert kept is not None and kept.exact == "先标的一句"
+            assert (kept.style, kept.color) == ("mark", "yellow")
     finally:
         engine.dispose()

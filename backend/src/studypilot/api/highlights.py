@@ -155,7 +155,7 @@ def get_highlight(request: Request, resource_id: str, highlight_id: str) -> Resp
 
 @router.patch("/{highlight_id}")
 async def update_highlight(request: Request, resource_id: str, highlight_id: str) -> Response:
-    """Only the note binding moves; `note_id: null` unbinds. The anchor is fixed."""
+    """Note binding, style and colour can move (only the fields named); the anchor is fixed."""
     try:
         rid = identity(resource_id, "resource")
         hid = identity(highlight_id, "highlight")
@@ -163,7 +163,7 @@ async def update_highlight(request: Request, resource_id: str, highlight_id: str
     except HighlightError as error:
         return failure(request, error)
     assert isinstance(command, HighlightPatch)
-    return await run_in_threadpool(respond, request, lambda: highlights.rebind(rid, hid, command))
+    return await run_in_threadpool(respond, request, lambda: highlights.update(rid, hid, command))
 
 
 @router.delete("/{highlight_id}")
