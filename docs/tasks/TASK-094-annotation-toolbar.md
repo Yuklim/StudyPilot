@@ -124,7 +124,16 @@ checks = ["frontend"]
   `product_fingerprint=6ecdcca6a917edb2de864dc2d70d33430bd412efb1c63c475b5c8ad9621e415b`（vitest **834** 条）。
   中途两次 FAIL 留痕：① 测试里给 `ApiError` 传了共享客户端不认识的码 `NOTE_ALREADY_HIGHLIGHTED`（tsc 报）→ 改成客户端实际
   会给的 `REQUEST_FAILED` + 409，实现里的判定也据此改；② 改完测试忘了跑 prettier（format:check 报）→ 格式化后重跑。
+- **第三次实现提交（CI 抓到的）**：PR #102 的 e2e 在 `reader-immersive.spec.ts:281`「320px 下顶栏只有一行动作」红了
+  （实测 119px）：工具区 235px 宽，手机宽度下把顶栏挤成两行。本机只跑了改过的三个 e2e spec，没跑全套——这是我的漏。
+  改法两处：① `@media (max-width: 640px)` 里 `.reader-tools { display: none }`（与「返回资料库」文字、PDF 标题同一断点），
+  手机上仍有「记下这段」——第一次写进文件前面那个 640px 媒体块，被后面 `.reader-tools` 自己的 `display: inline-flex` 盖掉
+  （同特异度靠顺序），仍是 119px；挪到工具区规则之后才生效。② 同一条守卫在 1440px 也要求 ≤64px，而工具区 38px 按钮 +
+  内边距 + 边把顶栏撑到 71px：组内按钮改 32px、内边距 2px，整组恰 38px，顶栏三档都回到 57px。
+  重跑：本机**全套** e2e **85/85**；`check_task.py --worktree` → 退出码 0，**CHECKS PASS**，`files=17`，
+  `product_fingerprint=f79c6cb6ae91cec125e9d712d8c54abde22b2b3ac6eefffb49a4a1ebcbc1d4db`（vitest 834）；真机截图复核工具区缩小后的样子。
 - 已知限制/未完成项：
+  - 手机宽度（≤640px）没有标注工具区，只能「记下这段」；标高亮等桌面。
   - 键盘用户：工具开着时 Shift+方向键选区既不落色也不出胶囊；颜色 `radiogroup` 无方向键循环；气泡不移焦点（Review F5，
     不违背既定约定，后续任务处理）。
   - 点选靠 `caretPositionFromPoint` 反查，**多行高亮点在行间空隙不算点中**（落点不在任何文字上）；点到字上即可。

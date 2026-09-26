@@ -3125,10 +3125,28 @@ a.source-chip:focus-visible {
   align-items: center;
   gap: 6px;
   margin: 0 auto;
-  padding: 3px;
+  padding: 2px;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: #f3f4ec;
+}
+/* 整组高 38px（32px 按钮 + 2px 内边距×2 + 1px 边×2），与顶栏其余按钮同高——否则顶栏被撑到 71px，
+   「顶栏只有一行」的守卫在 1440px 也会红。 */
+.reader-tools .reader-tool {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  min-height: 32px;
+  border-radius: 9px;
+}
+/* 手机宽度（≤640px，与「返回资料库」文字、PDF 标题同一断点）不显示工具区——它 235px 宽，
+   与「←」+ 右侧四个按钮加起来 390px 都放不下，顶栏会排成两行（CI 的「320px 下顶栏只有一行动作」
+   守卫抓到 119px）。手机上仍有「记下这段」；标高亮等桌面。**必须写在上面那条 `display: inline-flex`
+   之后**：同特异度靠顺序取胜，写在文件前面的 640px 媒体块里会被它盖掉（第一次就是这么错的）。 */
+@media (max-width: 640px) {
+  .reader-tools {
+    display: none;
+  }
 }
 .reader-tool[aria-pressed='true'] {
   border-color: var(--green);
