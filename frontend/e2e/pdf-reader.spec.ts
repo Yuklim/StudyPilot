@@ -198,10 +198,11 @@ test('text on a PDF page can be selected and quoted into a note', async ({ page 
     selection.addRange(range)
   })
 
-  // ④ 胶囊有两个按钮（TASK-089 起 PDF 上能标高亮；TASK-087 时只有「记下这段」）。
-  //    跨页选区仍只留「记下这段」，那条在 pdf-highlights.spec.ts 里验。
+  // ④ 胶囊只有「记下这段」（TASK-094 起标记走顶栏工具，「标下来」没有了）；顶栏有标注工具区。
+  //    跨页选区的处理在 pdf-highlights.spec.ts 里验。
   await expect(page.getByRole('button', { name: '记下这段' })).toBeVisible()
-  await expect(page.getByRole('button', { name: '标下来' })).toBeVisible()
+  expect(await page.getByRole('button', { name: '标下来' }).count()).toBe(0)
+  await expect(page.getByRole('toolbar', { name: '标注工具' })).toBeVisible()
 
   // ⑤ **选区不能盖住字**（用户 2026-09-21 实测：第一版的不透明底色把整行抹掉了）。
   //    选区由浏览器合成，canvas 的 `getImageData` 看不见它——只能截图再数像素。

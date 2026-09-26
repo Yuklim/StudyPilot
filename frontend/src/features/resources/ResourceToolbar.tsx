@@ -53,6 +53,7 @@ export function ResourceToolbar({
   outlineAvailable = false,
   outlineOpen = true,
   onToggleOutline,
+  tools,
   readingPercent = null,
   pdfMode = false,
   pdfSlotRef,
@@ -78,6 +79,8 @@ export function ResourceToolbar({
   outlineAvailable?: boolean
   outlineOpen?: boolean
   onToggleOutline?: () => void
+  /** TASK-094：标注工具区（荧光笔/颜色/下划线/橡皮），放在返回链接与右侧按钮之间；没有可标注的正文时不给。 */
+  tools?: ReactNode
   /**
    * TASK-068：本机记住的阅读位置百分比（TASK-067 位置记忆）。比学习进度大时给「记为学习
    * 进度 N%」按钮——点开学习面板并预填，写入仍要用户按保存（用户选定「一键写入」而非自动同步）。
@@ -256,6 +259,7 @@ export function ResourceToolbar({
               </span>
             </div>
           )}
+          {tools}
           <div className="reader-toolbar-buttons">
             {/* 页码/缩放/「适合宽度」由 `PdfReader` 投递进来（它持有当前页与缩放的状态）。 */}
             {pdfMode && <div className="reader-toolbar-pdf" ref={pdfSlotRef} />}

@@ -9,7 +9,7 @@ import { expect, test, type Page } from '@playwright/test'
  * CSS Custom Highlight API 都只能在这里验。
  *
  * 夹具 `sample.pdf` 两页：第一页一行「StudyPilot page one」，第二页一行「StudyPilot page two」。
- * 上色不插节点，所以断言的是浏览器注册表里 `studypilot-mark-pdf` 覆盖的文字。
+ * 上色不插节点，所以断言的是浏览器注册表里 `studypilot-mark-yellow-pdf` 覆盖的文字。
  */
 
 const FIXTURE = fileURLToPath(new URL('./fixtures/sample.pdf', import.meta.url))
@@ -93,7 +93,7 @@ async function openHighlights(page: Page) {
 async function painted(page: Page) {
   return page.evaluate(() => {
     const registry = (CSS as unknown as { highlights?: Map<string, Iterable<Range>> }).highlights
-    const mark = registry?.get('studypilot-mark-pdf')
+    const mark = registry?.get('studypilot-mark-yellow-pdf')
     return mark ? [...mark].map((range) => range.toString()) : []
   })
 }
@@ -105,12 +105,14 @@ test('a passage on a PDF page can be marked, is painted, and survives a reload',
   await page.goto(`/resources/${id}`)
   await expect(page.getByLabel('第 1 页')).toBeVisible()
 
-  // ① 一页之内的选区：胶囊有两个按钮。
+  // ① 一页之内的选区：开着荧光笔，松手即落色（TASK-094）；胶囊不出。
+  await page.getByRole('button', { name: '荧光笔' }).click()
   await selectOnPage(page, 1, 'StudyPilot page one')
-  await expect(page.getByRole('button', { name: '记下这段' })).toBeVisible()
-  await page.getByRole('button', { name: '标下来' }).click()
+  await page.evaluate(() => document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true })))
+  expect(await page.getByRole('button', { name: '记下这段' }).count()).toBe(0)
 
-  // ② 右栏落在「高亮」Tab，条目带页码；接口里存的也带 page_number。
+  // ② 打开右栏「高亮」Tab，条目带页码；接口里存的也带 page_number。
+  await openHighlights(page)
   const list = page.getByRole('list', { name: '高亮列表' })
   await expect(list.getByRole('listitem')).toHaveCount(1)
   await expect(list).toContainText('StudyPilot page one')
@@ -134,10 +136,12 @@ test('a passage on a PDF page can be marked, is painted, and survives a reload',
 })
 
 test('a selection that crosses two pages can be quoted but not marked', async ({ page }) => {
-  // 用户 2026-09-22 选定：文字层按页给，跨页的选区不给「标下来」，只留「记下这段」。
+  // 用户 2026-09-22 选定：文字层按页给，跨页的选区不落色，只留「记下这段」。TASK-094 起开着
+  // 荧光笔松手也不落，胶囊说明原因。
   const id = await seedPdf(page, 'PDF 高亮 · B')
   await page.goto(`/resources/${id}`)
   await expect(page.getByLabel('第 1 页')).toBeVisible()
+  await page.getByRole('button', { name: '荧光笔' }).click()
   await expect(page.locator('.pdf-page[data-page="2"] .pdf-text-layer')).toContainText(
     'StudyPilot page two',
   )
@@ -153,9 +157,11 @@ test('a selection that crosses two pages can be quoted but not marked', async ({
     selection.addRange(range)
     document.dispatchEvent(new Event('selectionchange'))
   })
+  await page.evaluate(() => document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true })))
   await expect(page.getByRole('button', { name: '记下这段' })).toBeVisible()
   expect(await page.getByRole('button', { name: '标下来' }).count()).toBe(0)
   await expect(page.getByText('选区跨页或落到页外，只能记下这段')).toBeVisible()
+  expect((await call(page, `/resources/${id}/highlights`)).data).toEqual([])
 
   // 引文照走：两页的文字都进了草稿，但没有高亮被创建。
   await page.getByRole('button', { name: '记下这段' }).click()

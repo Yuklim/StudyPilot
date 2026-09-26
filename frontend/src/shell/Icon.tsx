@@ -19,6 +19,10 @@ export type IconName =
   | 'trash'
   // TASK-067：阅读器顶栏的「目录」开关。
   | 'outline'
+  // TASK-094：顶栏的标注工具。
+  | 'highlighter'
+  | 'underline'
+  | 'eraser'
 
 const paths: Record<IconName, string> = {
   overview: 'M3 10 12 3l9 7M5 9v11h5v-6h4v6h5V9',
@@ -38,6 +42,10 @@ const paths: Record<IconName, string> = {
   expand: 'M9 6l6 6-6 6',
   trash: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
   outline: 'M4 6h16M4 12h10M4 18h13',
+  highlighter: 'M9 11l-6 6v3h9l3-3M22 12l-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4',
+  underline: 'M6 4v6a6 6 0 0 0 12 0V4M4 20h16',
+  eraser:
+    'M7 21l-4.3-4.3a2.4 2.4 0 0 1 0-3.4l9.6-9.6a2.4 2.4 0 0 1 3.4 0l5.6 5.6a2.4 2.4 0 0 1 0 3.4L13 21M22 21H7M5 11l9 9',
 }
 
 export function Icon({ name }: { name: IconName }) {
