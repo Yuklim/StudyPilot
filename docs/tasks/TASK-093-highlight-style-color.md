@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-093"
-status = "IN_PROGRESS"
+status = "ACCEPTED"
 risk = "L3"
 risk_reason = "改公共契约（§4.15 新增两个字段、PATCH 语义从「note_id 必填」改为「三字段至少一个、省略不动」）+ 一次迁移 0010（highlights 加两列带 CHECK）+ 关键数据模型；命中 risk-policy.json 的 docs/contracts/**、backend/**/models/**、backend/**/migrations/**。执行链：1 Worker → 自动检查 → 独立只读 Reviewer → 独立只读 Integration/Acceptance → 主 Agent 汇总。"
 risk_flags = ["public-api", "migration", "critical-data"]
@@ -107,11 +107,44 @@ checks = ["backend", "contracts"]
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：
-- Review：（L3，待独立只读 Reviewer）
-- Acceptance：（L3，待独立只读 Integration/Acceptance）
-- 最终状态/风险/用户操作：
-- 非阻断遗留项：
+- 候选 SHA：`6708095`（= `14da42b` 实现 + 登记，再加按 Review 三条非阻断项的 `6708095`）。本条证据写回是之后的另一个提交。
+- Review：独立只读 Reviewer（`.claude/agents/reviewer.md`，工具仅 Read/Grep/Glob，运行器层无写工具）。
+  **第一轮**（`4eb622f..14da42b`）报告原文：
+  > 权限证据：仅 Read/Grep/Glob，无写工具、无 Bash，运行器层面真实只读。
+  > **结论：PASS**（附 1 项可记录后继续、2 项可选建议，均非阻断）
+  > **审查范围**：候选 `14da42b`，基线 `4eb622f`，`base..candidate` 完整产品 diff（全部 564 行，含 openapi 三条 schema 行与两条 paths 行的旧/新原文）、调用链 `api/highlights.py → application/highlights.py → highlight_store.py → contracts.py`、`models.py` `Versioned`/naming_convention、迁移 0009/0010、`test_highlights.py`/`test_migrations.py` 受影响用例、前端 `highlights.ts` 解析器。复用记录中的 `check_task.py` PASS（598 passed，指纹 `3226a88…`）；未重跑。
+  > 1. 契约一致性：§4.15 四行、「锚点不可变」段、操作表 PATCH 行、第 52 行历史段，与 openapi `Highlight`（required 含 style/color）、`HighlightCreate`（enum+default）、`HighlightPatch`（required 仅 `expected_version`、`minProperties:2`、style/color 不带 null）、两处操作描述、四处示例对象，以及 `contracts.py` 的 `Literal`/默认值/校验器，逐字相符。openapi 相邻 schema 与 paths 未变，定点替换未伤及其他行。
+  > 2. PATCH 语义：`{"note_id": null, "expected_version": 1}` → 视为点名 → 解绑（L221）；`{"expected_version": 1}` → 422（L245）；`{"style": null}` → 422（L373）；缺 `expected_version` 仍先 428（L231）；strict + `model_validate_json` 下 `Literal` 正常通过。`store.update` 仅在值不同时 setattr，版本只在真有 UPDATE 时推进，与旧 `rebind` 一致。`rebind` 无残留引用。
+  > 3. 迁移 0010：batch 加 NOT NULL+server_default 两列由默认回填，`test_0010` 验证回填；CHECK 名与 `models.py` 一致（`compare_metadata` 不比较 CHECK，名称一致性由 `test_0010` 两次 `drop_constraint` 往返保证）。降级守卫与错误文本相符。`test_0009` 现在先过 0010 降级再被 0009 拒绝、整条事务回滚、head 留 0010，推理成立。
+  > 4. 测试守住：撤掉「至少点名一个」→ L245 红；撤掉 null 拒绝 → L373–378 红；撤掉 Create 默认 → L328 红；撤掉 CHECK → 迁移 L467 红；撤掉降级守卫 → L474 红；撤掉 server_default → L454 红。未发现同义反复。
+  > 5. 记录描述与 diff 一致；「前端解析器只取列出的字段」属实（`highlightAt` L57–94 不拒绝多余键）。
+  > **Findings**
+  > - F1（可记录后继续）`openapi-v1.json:237` `updateResourceHighlight`：请求示例 `color: green` 但 200 响应示例仍是 `yellow`——示例自相矛盾。仅文档示例。
+  > - F2（可选建议）契约 §4.15 `version` 行「同值不推进」对 highlights 没有测试；撤掉 `highlight_store.py:203` 的 `!=` 守卫也不会有断言变红。建议补一条同值 PATCH → 200 且 version 不变。
+  > - F3（可选建议）`test_migrations.py:467` 只验 `color` 的 CHECK，`style` CHECK 未直接验。
+  > **剩余风险/下一步**：无阻断项；进入 L3 独立 Integration/Acceptance。F1 若在本任务修，会形成新候选需增量复核。
+  主 Agent 处置：三条都修（`6708095`），请同一 Reviewer 增量复核。**增量复核**（`14da42b..6708095`）报告原文：
+  > 权限证据：仅 Read/Grep/Glob，无写工具、无 Bash，运行器层面真实只读。
+  > **结论：PASS，覆盖最终候选 `6708095`。** 继承上一轮对 `4eb622f..14da42b` 的完整审查范围；本轮只复核 `14da42b..6708095`（全部 55 行）及记录新段。增量不触及实现代码、迁移、契约正文，无耦合外溢，无需完整复审。
+  > ① 三处落实、无误伤：F1 仅 200 示例 `yellow→green`，同行其余字节与相邻 paths 行未变；F2 同值 PATCH → 200 且 version 4，后续推理自洽；F3 对 `color=red`/`style=bold` 各触发 IntegrityError，`pytest.raises` 仍在外层保证先回滚。
+  > ② F2 断言在撤掉 `highlight_store.py:203` 的 `!=` 守卫时**照样绿**：SQLAlchemy 对同值属性无净变化即不发 UPDATE。因此它守的是契约行为本身（同值 PATCH → 200、版本不动），能拦住将来任何显式推版本的改写；守卫是意图注释级的双保险。
+  > ③ 记录一致：598 passed 不变合理（改动都在既有用例内部）；「两份测试 21/21」核对为 11+10。
+  > **No findings.**
+- Acceptance：独立只读 Integration/Acceptance（同一 reviewer 角色定义、另起的 Agent，独立于实现者与第一轮 Reviewer），
+  最终候选 `6708095`。报告原文：
+  > **权限证据：仅 Read/Grep/Glob**（无 Write/Edit/Bash，运行器层面只读）。
+  > **结论：PASS**（TASK-093 最终候选 `6708095`，base `4eb622f`）
+  > 1. 契约与 openapi 一致、contracts PASS → 契约 :450-451（`style`/`color` 行）、:462（PATCH 三字段规则）、:674（操作表 PATCH 行）、:52（历史段）；openapi :437 `Highlight` required 含 style/color、:438 `HighlightCreate` default、:439 `HighlightPatch` required 仅 expected_version、minProperties 2；:236-237 两操作描述与四处示例已带字段，PATCH 200 示例 color=green（F1 已修）。后端 `contracts.py`:32-33 一致。记录 `profiles=backend,contracts` 对应。→ 满足。
+  > 2. backend PASS → 记录两次命令、退出码 0、指纹、pytest 598 齐全；`3226a88…` 对应 14da42b，`7e5f0e6…` 对应 `6708095`；F1/F2/F3 内容在文件中可见。→ 满足。
+  > 3. 迁移唯一 head、compare_metadata 无差异 → `0010_highlight_style.py`:18-19；`test_migrations.py`:39-40 断言 heads 与 compare_metadata，四处 head 同步；:314-380 覆盖默认回填、双列 CHECK、降级拒绝/放行。`models.py` 列与 CHECK 同名同值。→ 满足。
+  > 4. 两道独立结论 → 第一轮 Reviewer PASS；本报告为第二道。→ 满足。
+  > **跨模块**：`highlights.ts` `object()` 不拒绝多余键、`highlightAt` 只挑字段；前端 PATCH 仍发 `{note_id, expected_version}`，满足 minProperties 2。`test_highlights.py` 字段集断言含 `style`/`color`。
+  > **allowed_paths**：12 个路径全部存在，索引 093 行状态与记录一致；未见改动超出清单。
+  > **Findings**：No findings。**剩余风险**：无 git 无法验证候选 SHA 与工作区一致，以记录与文件内容为准；索引行状态在 MERGED 时需同步更新。
+- 最终状态/风险/用户操作：**ACCEPTED**（L3 执行链走完：实现 → 每轮机械检查 → 独立只读 Reviewer 两轮 → 独立只读
+  Integration/Acceptance PASS）。风险：改了契约、数据模型与迁移；降级在有非默认样式时会拒绝（有意为之）。
+  **等待用户操作**：随 TASK-094 一起本机看过后推 PR；094 未合并前，093 单独合并也不影响现有阅读器。
+- 非阻断遗留项：无。
 - 日期与决定日志：2026-09-26 用户看过草图答「可以，按草图开 TASK-093 和 094」→ 登记本任务。
 
 此区禁止放入或变更任务授权、风险等级、允许路径、检查要求、实现或测试记录。
