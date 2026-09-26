@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-090"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L2"
 risk_reason = "只改一份前端测试文件（`ResourceDeleteDialog.test.tsx`）的等待/断言写法，不碰任何产品代码、契约或数据。首次登记写成 L1，但 risk-policy.json 把 `tests` 标记归在 normal（L2）一档，`validate_governance`/`check_task` 均报「risk is lower than declared impact」——机器策略为准、不确定升一级：L2。执行链：1 Worker → 自动检查 → 1 独立只读 Reviewer；独立验收 N/A。"
 risk_flags = ["tests", "local-fix"]
@@ -156,7 +156,8 @@ await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())   // ← 1 
 - 主 Agent 对 Review 的处置：两条都**改了记录**（候选写实为 `8f2d15c` 含 `a728c1f`；两处收紧的理由改准）。
   纯记录改动，不形成新的产品候选。
 - Acceptance：N/A（L2）
-- 最终状态/风险/用户操作：**ACCEPTED**（L2：自动检查 → 独立只读 Review PASS；此前错标过 L1/ACCEPTED，已纠正）。
+- 最终状态/风险/用户操作：**MERGED**——2026-09-23 用户合并 PR #98（在 #97 之后），merge 提交 `0a7c140`；本条 MERGED
+  登记按 §5 并入 TASK-091 的控制面提交。合并前状态为 **ACCEPTED**（L2：自动检查 → 独立只读 Review PASS；此前错标过 L1/ACCEPTED，已纠正）。
   用户已说「做完直接推pr」：PR 指向 TASK-089 的分支，**须在 PR #97 之后合并**。
   风险：零产品代码改动；最坏情况是测试仍抖，那时机理已知。
   用户已说「做完直接推pr」：PR 指向 TASK-089 的分支，**须在 PR #97 之后合并**。

@@ -340,6 +340,11 @@ test('the outline sits left of the body, follows scrolling, and the three column
   const mainBox = (await main.boundingBox())!
   expect(outlineBox.width).toBeCloseTo(240, 0)
   expect(outlineBox.x + outlineBox.width).toBeLessThanOrEqual(mainBox.x)
+  // TASK-091（用户 2026-09-26「正文偏右、目录和正文之间的间距太大」）：正文块靠着目录放，
+  // 不在正文列里居中——目录右缘到正文块左缘不超过 64px，正文中线不在窗口中线右边。
+  const body = (await main.locator('.resource-snapshot').first().boundingBox())!
+  expect(body.x - (outlineBox.x + outlineBox.width)).toBeLessThanOrEqual(64)
+  expect(body.x + body.width / 2).toBeLessThanOrEqual(1440 / 2)
 
   // 进度线：学习进度 0% → 绿色部分宽 0；写一条学习记录后变宽。
   const bar = page.locator('.reader-progress-bar')

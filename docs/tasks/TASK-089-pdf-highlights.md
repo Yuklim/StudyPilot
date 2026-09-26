@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-089"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "改公共契约（§4.15 高亮锚点加 `page_number`、放宽「必须有 READY 正文快照」的写入前置条件、新增一个错误码）+ 一次迁移 0009（`highlights` 加列、换索引）+ 关键数据模型 + 跨后端/前端。命中 risk-policy.json 的 `docs/contracts/**`、`backend/**/models/**`、`backend/**/migrations/**`。执行链：1 Worker → 自动检查 → 独立只读 Reviewer → 独立只读 Integration/Acceptance。"
 risk_flags = ["public-api", "migration", "critical-data"]
@@ -326,7 +326,8 @@ Review 结论是 PASS，另给一条须处置与三条可选/风险：
   ——主 Agent 在此补一句可核的事实：`7de63e6..1db78a3` 之间**产品文件**（`frontend/`、`backend/`、
   `docs/contracts/`）的 diff 只有 `ReaderQuote.tsx` 一行注释；该区间另含证据写回提交 `122294b`
   （只动任务记录与索引）。第一版这句写成「整个区间只有一行注释」，不准，已改。
-- 最终状态/风险/用户操作：**ACCEPTED**（L3 执行链走完：实现 → 每轮机械检查 → 独立只读 Reviewer 两轮
+- 最终状态/风险/用户操作：**MERGED**——2026-09-23 用户合并 PR #97，merge 提交 `68d6a6f`；本条 MERGED 登记按 §5
+  并入 TASK-091 的控制面提交。合并前状态为 **ACCEPTED**（L3 执行链走完：实现 → 每轮机械检查 → 独立只读 Reviewer 两轮
   （F1 补 e2e、F2 改文案、F3/F4 登记）→ 独立只读 Integration/Acceptance PASS → 一处纯注释同步）。
   风险：改了契约、数据模型与迁移；降级在有按页高亮时会拒绝（有意为之）；最坏情况是 PDF 上某条高亮
   定位不到——按设计只在那一页渲染时判、不会丢数据。
