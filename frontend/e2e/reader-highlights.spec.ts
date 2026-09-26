@@ -149,6 +149,32 @@ test('when the body is replaced the passage is kept and marked as lost', async (
   await expect.poll(() => painted(page)).toEqual(['误差逆传播算法'])
 })
 
+test('deleting from the tab really deletes: the row, the paint and the server row all go', async ({
+  page,
+}) => {
+  // TASK-092（用户 2026-09-26「右栏 Tab 里的删除按了也没消」）：单元测试里删除一直是替身，
+  // 真正的客户端把这条路径拒在白名单外，请求根本没发出去。这条走真后端。
+  const id = await seed(page, 'D')
+  await page.goto(`/resources/${id}`)
+  await select(page, '输入层、隐藏层、输出层')
+  await page.getByRole('button', { name: '标下来' }).click()
+  const list = page.getByRole('list', { name: '高亮列表' })
+  await expect(list.getByRole('listitem')).toHaveCount(1)
+  await expect.poll(() => painted(page)).toEqual(['输入层、隐藏层、输出层'])
+
+  const row = list.getByRole('listitem').first()
+  await row.getByRole('button', { name: '删除' }).click()
+  await row.getByRole('button', { name: '确认删除' }).click()
+  await expect(page.getByRole('heading', { name: '还没有标下任何一段' })).toBeVisible()
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  await expect.poll(() => painted(page)).toEqual([])
+  expect((await call(page, `/resources/${id}/highlights`)).data).toEqual([])
+  // 刷新后也不会回来。
+  await page.reload()
+  await openHighlights(page)
+  await expect(page.getByRole('heading', { name: '还没有标下任何一段' })).toBeVisible()
+})
+
 test('「记下这段」marks the passage and pairs the note that follows', async ({ page }) => {
   const id = await seed(page, 'C')
   await page.goto(`/resources/${id}`)
