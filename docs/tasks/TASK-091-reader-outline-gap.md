@@ -89,6 +89,12 @@ checks = ["frontend"]
   - **断言会咬**：临时 stash 掉 `styles.css` 的改动只跑目录用例 → 红，报
     `expect(218).toBeLessThanOrEqual(64)`——218 正是「现状与原因」里算出来的那个数；恢复后绿。
   - 环境：macOS，Node/Chromium 走 playwright 本机安装。
+- **第二次实现提交（用户看过后的补修）**：用户 2026-09-26 本机看第一版，指出「标题好像没有随正文一起动」
+  ——正文列里戴 740px 帽子的块其实有四个：文章头（标题 + 来源徽章，`.reader-header`，TASK-052）、正文
+  （`.resource-snapshot`）、学习面板（`.reader-panel`）、删除确认块（`.snapshot-confirm`）；第一版只挪了正文。
+  改法：同一条规则的选择器扩成四个；e2e 加一条「文章头左缘与正文左缘相差 ≤1px」。
+  重跑：`npx playwright test e2e/reader-layout.spec.ts` → 9/9；`check_task.py --worktree` → 退出码 0，**CHECKS PASS**，
+  `files=6`，`product_fingerprint=4e3f7f143d90882b0b4a296471d421b5b6e1e7e9cc1a5ad63a5b00f0dedf8cdb`（vitest 825 条）。
 - 已知限制/未完成项：`margin-left: 24px` 只是一个看得过去的起点，用户在本机看过若嫌紧/松再调
   （只动这一个数）。PDF 阅读器不受影响（其内容不是 `.resource-snapshot`）。
 
