@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-094"
-status = "IN_PROGRESS"
+status = "ACCEPTED"
 risk = "L2"
 risk_reason = "只改前端（阅读器顶栏、胶囊、右栏高亮面板与上色），消费 TASK-093 已批准的契约字段；不改后端、不改契约、不碰快照渲染器（XSS 边界）。用户可见的交互改动大（「标下来」按钮退场、选中即落色、正文上点选与橡皮即删），须独立只读 Review 检查最终 diff；独立验收 N/A。执行链：1 Worker → 自动检查 → 1 独立只读 Reviewer。"
 risk_flags = ["business"]
@@ -135,11 +135,28 @@ checks = ["frontend"]
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：
-- Review：（L2，待独立只读 Reviewer）
+- 候选 SHA：`ac8f17b`（= `829c602` 实现 + 登记，再加按 Review 的 `ac8f17b`）。本条证据写回是之后的另一个提交。
+- Review：独立只读 Reviewer（`.claude/agents/reviewer.md`，工具仅 Read/Grep/Glob，运行器层无写工具）。
+  **第一轮**（`a9cb950..829c602`）报告原文：
+  > 权限证据：仅 Read/Grep/Glob（无 Write/Edit/Bash，运行器层面只读）。
+  > **候选/基线**：`.git/HEAD` → `refs/heads/agent/coordinator/TASK-094-annotation-toolbar` = `829c602b4de4…`，与任务候选一致；base `a9cb950`。审查范围：`diff-094.patch` 全部 1989 行（15 个 frontend 文件）+ `ReaderHighlights.tsx`/`ReaderQuote.tsx`/`ResourceDetail.tsx`/`useResourceQuery.ts` 现行上下文。未触碰 `snapshotMarkdown.ts`；portal 内容只有常量、`STYLE_LABELS`、`failureText` 文本节点与数字坐标，无 innerHTML，XSS 面未扩大。
+  > **结论：PASS（附非阻断项）**
+  > **F1（可记录后继续，建议小修）工具开着时"拖选后松手"仍会弹气泡**——`ReaderQuote.tsx:104`（`settle` 内 `removeAllRanges()`）与 `ReaderHighlights.tsx:251-252`。事件顺序是 `mouseup`（document）→ `click`（容器）。荧光笔/下划线开着拖选时，`settle` 在 `mouseup` 里已同步清掉选区，随后的 `click` 到达时选区已是 collapsed，"选区非空不算点选"的守卫失效；若松手点落在已有高亮 Range 内，落色之后还会为那条旧高亮弹出气泡。橡皮态不受影响。不丢数据，Esc/外点可关；建议按 mousedown/mouseup 位移判定让该 click 被忽略。
+  > **F2（可记录）`isCollapsed` 守卫无测试**——单测的 jsdom 选区始终 collapsed，e2e 只派发合成 `mouseup` 不派发 click；删掉那行没有任何断言变红。
+  > **F3（可记录）记录与 diff 的可数描述有出入**——"单测 6 条改写 + 7 条新增"实为 6 条新增；"删掉两条旧规则"实际删了三条；陈旧注释仍指旧流程：`ReaderHighlights.tsx:37`、`ResourceDetail.tsx:364/645`、`e2e/pdf-highlights.spec.ts:12`。
+  > **F4（可记录）撤销重建可能失败于悬挂心得**——`restore()` 原样带回 `note_id`；若那条心得已被解绑/贴到别的资料或已删，POST 会被服务端拒，只出错误提示，删除不可逆。可选：失败时退回不带 `note_id` 重建一次。
+  > **F5（可选建议）**键盘用户：工具开着时 Shift+方向键选区既不落色也不出胶囊；`radiogroup` 无方向键/roving tabindex；`role=dialog` 气泡不移焦点。均不违背既定约定，可后续任务处理。
+  > **已核对为正确的项**：谓词拒绝无双触发；`busy`/`removed`/`retry()` 与 `patched.base===result` 失效逻辑正确；`painted` 注册表按 `rows` 重算、旧名一律删；图标按钮 `textContent===''`、`aria-label`；`radiogroup`/`radio`+`aria-checked`；气泡 Esc + `pointerdown` 外点关闭；e2e 新用例每步绑定服务端 `style/color`；单测替身与 e2e 真机走同一 `caretAt()`。
+  主 Agent 处置：F1/F2/F4 修、F3 订正、F5 记入已知限制（`ac8f17b`），请同一 Reviewer 增量复核。**增量复核**（`829c602..ac8f17b`）报告原文：
+  > 权限证据：仅 Read/Grep/Glob（无写工具、无 Bash）。
+  > **结论：PASS，覆盖最终候选 `ac8f17b`**。继承上一轮对 `a9cb950..829c602` 的完整审查范围与结论；本轮只复核 `829c602..ac8f17b`（217 行，4 个文件）及 `api/client.ts`、后端 `highlight_store.py`、任务记录第 106-126 行。
+  > ① 位移阈值 4px（`Math.hypot`）：手抖 1-2px 与 `page.mouse.click` 都不会误伤；单测「原地点一下」用 (40,20)→(41,21) 覆盖。② `pressedAt` 陈旧值无误判：按下点在容器外时，`click` 派发在共同祖先上，不会冒泡到容器监听器。③ 与 `client.ts:284-323` 一致：`NOTE_NOT_FOUND` 原样到达；`NOTE_ALREADY_HIGHLIGHTED` → `REQUEST_FAILED` + 409（后端 `highlight_store.py:147` 确为 409）；`VERSION_CONFLICT` 不会被误吞。④ 记录与 diff 一致。
+  > **Findings：No findings.** 剩余风险：F5 已记入已知限制，非阻断。
 - Acceptance：L2 N/A。
-- 最终状态/风险/用户操作：
-- 非阻断遗留项：
+- 最终状态/风险/用户操作：**ACCEPTED**（L2：自动检查 PASS → 独立只读 Review 两轮 PASS）。风险：交互改动大，靠 e2e 与真机截图
+  兜底；最坏情况是某种点选/拖选组合的手感不对，都有 Esc/撤销可退。**等待用户操作**：本机启动（迁移 0010 会由启动脚本先备份
+  库再升级）后试：顶栏选色标几段、下划线、点高亮换色/改型、橡皮删再撤销；看过后由你决定推 PR（094 → 093 分支 → 092 分支）。
+- 非阻断遗留项：见「已知限制」（行间空隙不算点中；键盘/焦点；用户文档待追平）。
 - 日期与决定日志：2026-09-26 用户看过草图答「可以，按草图开 TASK-093 和 094」→ 登记本任务。
 
 此区禁止放入或变更任务授权、风险等级、允许路径、检查要求、实现或测试记录。
