@@ -14,6 +14,16 @@
   /* 高亮的底色（TASK-072，Pencil 草图定的暖黄）与它在卡片里的浅一档版本。 */
   --mark: #f4e7b2;
   --mark-soft: #fbf2d4;
+  /* 四色标注（TASK-094，Pencil 草图定的）：浅的做高亮底色，深的做下划线的线色与选中态描边。
+     黄的浅色就是上面那个 `--mark`。 */
+  --mark-yellow: #f4e7b2;
+  --mark-green: #cfe6c3;
+  --mark-blue: #c9dff5;
+  --mark-pink: #f5cfd6;
+  --line-yellow: #d9b83a;
+  --line-green: #6f9a5e;
+  --line-blue: #5b8fd0;
+  --line-pink: #d9748c;
 }
 
 * {
@@ -3082,13 +3092,7 @@ a.source-chip:focus-visible {
   background: var(--green);
   box-shadow: 0 4px 14px rgba(48, 58, 50, 0.22);
 }
-/* 胶囊里两个动作之间的细线（TASK-072）：「标下来」只上色，「记下这段」还开心得框。 */
-.reader-quote-divider {
-  width: 1px;
-  height: 16px;
-  background: rgba(255, 253, 248, 0.35);
-}
-/* 胶囊里的一句说明（TASK-089）：选区跨页时告诉用户为什么少了「标下来」。 */
+/* 胶囊里的一句说明（TASK-089）：选区跨页时告诉用户为什么没落色、只能记下这段。 */
 .reader-quote-note {
   padding: 0 10px 0 12px;
   color: rgba(255, 253, 248, 0.8);
@@ -3112,13 +3116,172 @@ a.source-chip:focus-visible {
 .reader-quote-button:hover {
   background: rgba(255, 253, 248, 0.16);
 }
-/* 「标下来」用高亮本身的颜色作底：按钮长什么样，标完就是什么样。 */
-.reader-quote-button.mark {
-  background: var(--mark);
+
+/* --- 标注工具（TASK-094，用户 2026-09-26 在 Pencil 草图上确认） ---
+   顶栏中间一组：荧光笔 + 四个颜色点 + 下划线 + 橡皮。按下态用当前颜色作底、绿色描边；
+   橡皮的按下态用删除那一系的红褐。两边 `margin: auto` 让它落在返回链接与右侧按钮之间。 */
+.reader-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 auto;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #f3f4ec;
+}
+.reader-tool[aria-pressed='true'] {
+  border-color: var(--green);
   color: var(--ink);
 }
-.reader-quote-button.mark:hover {
-  background: #eedf9c;
+.reader-tool.yellow[aria-pressed='true'] {
+  background: var(--mark-yellow);
+}
+.reader-tool.green[aria-pressed='true'] {
+  background: var(--mark-green);
+}
+.reader-tool.blue[aria-pressed='true'] {
+  background: var(--mark-blue);
+}
+.reader-tool.pink[aria-pressed='true'] {
+  background: var(--mark-pink);
+}
+.reader-tool.eraser[aria-pressed='true'] {
+  border-color: #9a5a44;
+  background: #f2ead7;
+  color: #9a5a44;
+}
+.reader-tool-colors {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px;
+}
+.reader-tool-color {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid #cfd2c4;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.reader-tool-color[aria-checked='true'] {
+  border: 2px solid var(--ink);
+}
+.reader-tool-color.yellow {
+  background: var(--mark-yellow);
+}
+.reader-tool-color.green {
+  background: var(--mark-green);
+}
+.reader-tool-color.blue {
+  background: var(--mark-blue);
+}
+.reader-tool-color.pink {
+  background: var(--mark-pink);
+}
+.reader-tools-divider {
+  width: 1px;
+  height: 22px;
+  background: var(--line);
+}
+/* 点中正文上一条高亮/下划线后的气泡：写心得 / 换色 / 改型。与胶囊同一种黑底圆角形态，
+   挂在点击点正下方。 */
+.reader-bubble {
+  position: fixed;
+  z-index: 7;
+  transform: translate(-50%, 10px);
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--ink);
+  box-shadow: 0 4px 14px rgba(48, 58, 50, 0.22);
+}
+.reader-bubble-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--paper);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.reader-bubble-button:hover {
+  background: rgba(255, 253, 248, 0.16);
+}
+.reader-bubble-button.primary {
+  background: #4c6043;
+}
+.reader-bubble-divider {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: #5c6459;
+}
+.reader-bubble .reader-tool-color {
+  border-color: transparent;
+}
+.reader-bubble .reader-tool-color[aria-checked='true'] {
+  border: 2px solid var(--paper);
+}
+/* 橡皮删掉一条之后的底部提示：几秒内可撤销。 */
+.reader-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  z-index: 8;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 16px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 13px;
+  box-shadow: 0 4px 14px rgba(48, 58, 50, 0.22);
+}
+.reader-toast button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--mark-yellow);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+/* 右栏条目上的「样子」：颜色点 + 种类。 */
+.reader-highlight-look {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.look-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.look-dot.yellow {
+  background: var(--mark-yellow);
+}
+.look-dot.green {
+  background: var(--mark-green);
+}
+.look-dot.blue {
+  background: var(--mark-blue);
+}
+.look-dot.pink {
+  background: var(--mark-pink);
 }
 
 /* --- 站内 PDF 阅读器（TASK-073） --- */
@@ -3322,16 +3485,66 @@ a.source-chip:focus-visible {
 
 /* --- 高亮（TASK-072） ---
    上色走 CSS Custom Highlight API：直接给 Range 着色，正文 DOM 一个节点都不加。浏览器不
-   支持这个规则时整条被忽略，高亮就只是列在右栏里——降级本身不需要额外代码。 */
-::highlight(studypilot-mark) {
-  background-color: var(--mark);
+   支持这个规则时整条被忽略，高亮就只是列在右栏里——降级本身不需要额外代码。
+   TASK-094 起一种样子一个名字（`registryName()`）：高亮 × 四色、下划线 × 四色。
+   PDF 上的（`-pdf`，TASK-089）**只给底色/线色、不给字色**：文字层的字是透明的，看得见的是
+   下面 canvas 画的那一份；给了 `color` 会把 DOM 文字画到 canvas 的字上，出现错位的双重文字。
+   底色与 `.pdf-text-layer` 的 `mix-blend-mode: multiply` 配合，效果和选区一样是荧光笔。 */
+::highlight(studypilot-mark-yellow) {
+  background-color: var(--mark-yellow);
   color: var(--ink);
 }
-/* PDF 上的高亮（TASK-089）用另一个名字：**只给底色、不给字色**。文字层的字是透明的，看得见的是
-   下面 canvas 画的那一份；照抄上面那条的 `color` 会把 DOM 文字画到 canvas 的字上，出现错位的
-   双重文字。底色与 `.pdf-text-layer` 的 `mix-blend-mode: multiply` 配合，效果和选区一样是荧光笔。 */
-::highlight(studypilot-mark-pdf) {
-  background-color: var(--mark);
+::highlight(studypilot-mark-yellow-pdf) {
+  background-color: var(--mark-yellow);
+}
+::highlight(studypilot-underline-yellow),
+::highlight(studypilot-underline-yellow-pdf) {
+  text-decoration: underline;
+  text-decoration-color: var(--line-yellow);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+::highlight(studypilot-mark-green) {
+  background-color: var(--mark-green);
+  color: var(--ink);
+}
+::highlight(studypilot-mark-green-pdf) {
+  background-color: var(--mark-green);
+}
+::highlight(studypilot-underline-green),
+::highlight(studypilot-underline-green-pdf) {
+  text-decoration: underline;
+  text-decoration-color: var(--line-green);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+::highlight(studypilot-mark-blue) {
+  background-color: var(--mark-blue);
+  color: var(--ink);
+}
+::highlight(studypilot-mark-blue-pdf) {
+  background-color: var(--mark-blue);
+}
+::highlight(studypilot-underline-blue),
+::highlight(studypilot-underline-blue-pdf) {
+  text-decoration: underline;
+  text-decoration-color: var(--line-blue);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+::highlight(studypilot-mark-pink) {
+  background-color: var(--mark-pink);
+  color: var(--ink);
+}
+::highlight(studypilot-mark-pink-pdf) {
+  background-color: var(--mark-pink);
+}
+::highlight(studypilot-underline-pink),
+::highlight(studypilot-underline-pink-pdf) {
+  text-decoration: underline;
+  text-decoration-color: var(--line-pink);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
 }
 .reader-highlights {
   display: flex;

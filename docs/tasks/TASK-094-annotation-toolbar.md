@@ -1,0 +1,135 @@
+# TASK-094：顶栏标注工具——多色荧光笔、下划线、橡皮，点选高亮写心得
+
+```toml
+schema_version = 2
+id = "TASK-094"
+status = "IN_PROGRESS"
+risk = "L2"
+risk_reason = "只改前端（阅读器顶栏、胶囊、右栏高亮面板与上色），消费 TASK-093 已批准的契约字段；不改后端、不改契约、不碰快照渲染器（XSS 边界）。用户可见的交互改动大（「标下来」按钮退场、选中即落色、正文上点选与橡皮即删），须独立只读 Review 检查最终 diff；独立验收 N/A。执行链：1 Worker → 自动检查 → 1 独立只读 Reviewer。"
+risk_flags = ["business"]
+owner = "coordinator"
+base = "a9cb950042c6ef6d14c3d940d7a52ea36a67baec"
+allowed_paths = [
+  "frontend/src/shell/Icon.tsx",
+  "frontend/src/features/resources/AnnotationTools.tsx",
+  "frontend/src/features/resources/AnnotationTools.test.tsx",
+  "frontend/src/features/resources/highlights.ts",
+  "frontend/src/features/resources/highlights.test.ts",
+  "frontend/src/features/resources/ReaderQuote.tsx",
+  "frontend/src/features/resources/ReaderQuote.test.tsx",
+  "frontend/src/features/resources/ReaderHighlights.tsx",
+  "frontend/src/features/resources/ReaderHighlights.test.tsx",
+  "frontend/src/features/resources/ResourceToolbar.tsx",
+  "frontend/src/features/resources/ResourceDetail.tsx",
+  "frontend/src/features/resources/fixtures.ts",
+  "frontend/src/styles.css",
+  "frontend/e2e/reader-highlights.spec.ts",
+  "frontend/e2e/pdf-highlights.spec.ts",
+  "frontend/e2e/pdf-reader.spec.ts",
+  "docs/tasks/TASK-094-annotation-toolbar.md",
+  "docs/tasks/任务索引.md",
+]
+checks = ["frontend"]
+```
+
+## 需求与范围
+
+### 用户授权
+
+2026-09-26 用户：「目前的高亮是先选中文字，再决定是标下来还是写心得，我想把他改为：在页面最上面工具栏放上一些工具，
+如荧光笔、橡皮、下划线等，心得可以选中文字、选中高亮、选中下划线进行书写」；追问后选定「再加多种颜色」、
+「橡皮点一下立刻删，底部出『已删除，撤销』提示」、「先画 Pencil 草图」；看过草图后「**可以，按草图开 TASK-093 和 094**」。
+草图里替用户定下并已明示的细节：四色（黄/绿/蓝/粉）；气泡里「写心得 / 换色 / 改为下划线」、不放删除；
+下划线跟荧光笔当前色走；工具选中后一直有效直到再点一下取消，刷新回到「没选工具」；高亮与下划线可互转。
+
+### 依赖（写在最前面）
+
+叠在 TASK-093 分支上（base = 093 证据写回提交 `a9cb950`）：本任务**消费** 093 的 `style`/`color` 字段与新的 PATCH 语义，
+093 未合并前不能单独合并。PR 指向 093 的分支。
+
+### 目标（按草图）
+
+1. **顶栏工具区**（`AnnotationTools`，放在「返回资料库」与右侧按钮之间）：荧光笔 + 四个颜色点 + 下划线 + 橡皮；
+   按下态用 `aria-pressed`，颜色是 `role=radiogroup`。点颜色时若没选工具或选的是橡皮，自动切到荧光笔。
+2. **选中即落**：荧光笔/下划线开着时，松开鼠标（`mouseup`/`touchend`）就按当前样式与颜色建一条高亮，不弹胶囊、
+   不自动打开右栏；跨页/页外选区仍弹「选区跨页或落到页外，只能记下这段」的胶囊。没选工具（或橡皮）时胶囊只剩
+   「记下这段」——**「标下来」按钮退场**。「记下这段」标的是当前颜色的高亮。
+3. **上色按「样式 × 颜色」拆注册表名**：`studypilot-{mark|underline}-{color}`，PDF 再加 `-pdf`；下划线用
+   `text-decoration` 画，四色各一深（线）一浅（底）。
+4. **点选高亮/下划线**（正文上 `click`，按坐标 `caretPositionFromPoint` 反查落在哪条 Range 里；拖选后的松手不算点选）：
+   没选工具 → 气泡：写心得/改写心得、换色四点、改为下划线⇄改为高亮；橡皮开着 → 立刻删，底部「已删除一条高亮 · 撤销」，
+   撤销按同样锚点、页码、样子重建，原本配的心得一并接回。气泡与提示用 portal 挂到 body（右栏 Tab 隐藏时也要能显示）。
+5. 右栏「高亮」Tab 每条前面加颜色点与「高亮/下划线」种类；空态文案改成新的操作方式。
+
+### 非目标 / 禁止范围
+
+- 不改后端、契约；不碰 `snapshotMarkdown.ts`；不做快捷键（用户既定）；不做「清除本页全部」。
+- 不记住上次选的颜色（刷新回默认黄）；不做触屏专门适配（`touchend` 只是顺手一并监听）。
+- PDF 上的下划线/换色走同一套代码，不单独造 PDF e2e（PDF 高亮 e2e 只把「标下来」换成工具流程）。
+
+## 完成条件
+
+- 单测：`AnnotationTools`（按下态/颜色/自动切荧光笔）、`ReaderQuote`（工具态松手即 `onMark`、无工具只剩「记下这段」、
+  谓词拒绝时的提示）、`ReaderHighlights`（按样子分注册表名上色、点选出气泡与换色/改型 PATCH、橡皮删除 + 撤销重建）、
+  `highlights.ts`（`updateHighlight` 的请求体与至少一个字段的校验；解析器拒绝未知样式/颜色）。
+- e2e（真后端）：荧光笔选绿 → 选中即上色到 `studypilot-mark-green`；点它 → 气泡「改为下划线」→ 注册表换到
+  `studypilot-underline-green`；橡皮点一下 → 列表/上色/服务端三处空 → 撤销 → 回来。既有 PDF e2e 改用工具流程后仍绿。
+- `check_task.py` 必要检查 PASS（`frontend` 组）；独立只读 Reviewer 结论。
+- 用户本机看过后再推 PR（既定偏好）。
+
+## 上下文包
+
+- 草图：Pencil `pencil-new.pen` 里「阅读器｜标注工具栏（TASK-093/094 草图）」（`OY9Qp`）与「标注｜四个状态」（`v06vD8`）。
+- 代码：`ReaderQuote.tsx`（胶囊）、`ReaderHighlights.tsx`（上色 + 列表）、`ResourceDetail.tsx`（`mark`/`takeMark`/
+  `takeQuoteAndMark`）、`ResourceToolbar.tsx`（顶栏行）、`highlights.ts`（客户端）、`styles.css` 的 `::highlight()` 与
+  `.reader-quote`。
+- 检查：`backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-094-annotation-toolbar.md --worktree`；
+  `cd frontend && npx playwright test e2e/reader-highlights.spec.ts e2e/pdf-highlights.spec.ts e2e/pdf-reader.spec.ts`。
+
+## 实现与测试
+
+- 实现 SHA/变更摘要：实现与登记同一个提交（SHA 在 EVIDENCE 区作候选记录；之后的证据写回是另外的提交）。变更：
+  - 新文件 `AnnotationTools.tsx`（+测试）：荧光笔/四色单选/下划线/橡皮，`aria-pressed` + `role=radiogroup`；`Icon.tsx` 加三个图标。
+  - `highlights.ts`：`style`/`color` 类型与解析（闭集，不认识即 INVALID_RESPONSE）、`registryName()`、`createHighlight` 加
+    `look`（默认黄色高亮不发字段）、新 `updateHighlight(changes)`（只发点名的字段，空改动与未知值在发出前拒），
+    `bindHighlightNote` 变成它的薄封装。
+  - `ReaderQuote.tsx` 重写：`tool` 属性；荧光笔/下划线开着时 `mouseup`/`touchend` 上读选区、谓词通过即 `onMark` 并清选区、
+    不出胶囊；谓词拒绝出胶囊说明原因；「标下来」按钮删除，胶囊只剩「记下这段」。
+  - `ReaderHighlights.tsx`：按 `registryName` 分组注册、删掉上一轮多余的名字；正文容器上的 `click` 按
+    `caretPositionFromPoint`（回退 `caretRangeFromPoint`）反查 `isPointInRange`，拖选后的松手（选区非空）不算点选；
+    气泡（写心得/改写心得、换色、改型）与底部提示（撤销 / 错误）用 `createPortal` 挂 body；换色/改型走本地覆盖
+    （`patched` 以 `result` 为键，列表重读即失效）不重读、不闪；橡皮即删 + 8 秒内撤销（按同锚点/页码/样子/心得重建后重读列表）；
+    条目加颜色点与种类；空态文案改。
+  - `ResourceDetail.tsx`：`tool`/`color` 状态、点颜色顺手切荧光笔、`mark()` 带样子、`takeMark` 不再打开右栏、
+    有可标注正文时才给顶栏工具；`ResourceToolbar.tsx` 加 `tools` 插槽。
+  - `styles.css`：四色变量、16 条 `::highlight()`（高亮/下划线 × 四色 × 网页/PDF）替换原来两条、工具区/气泡/提示/条目样式；
+    删掉「标下来」的两条旧规则。
+  - 测试：单测 6 条改写 + 7 条新增（见完成条件各项）；e2e 三个 spec 改为工具流程，`reader-highlights.spec.ts` 新增整条
+    「绿荧光笔 → 气泡改下划线 → 橡皮 → 撤销」用例。
+- 命令、真实退出结果、product_fingerprint、环境、未运行原因：
+  - `check_task.py --task docs/tasks/TASK-094-annotation-toolbar.md --worktree` → 退出码 0，**CHECKS PASS**，`files=17`，
+    `product_fingerprint=bda31239bb2a25a2a28e8726db2a1ba8123f585adc33c233a4b0cd1365537879`，`profiles=frontend`
+    （lint/format/`tsc -b`/build；vitest 38 文件 **832** 条全过）。第一次跑 FAIL：测试里给 `document.caretPositionFromPoint`
+    的替身用了 `delete`，新版 lib.dom 已声明该方法（非可选）→ 改为保存/还原原值，重跑即 PASS。
+  - `npx playwright test e2e/reader-highlights.spec.ts e2e/pdf-highlights.spec.ts e2e/pdf-reader.spec.ts` → **16/16 通过**
+    （隔离沙盒，真后端）。
+  - 真机截图（一次性 spec，已移出工作区）：1440 宽下工具区落在返回链接与右侧按钮之间、荧光笔按下态带当前色；黄高亮 +
+    绿下划线同屏；点中高亮出气泡（写心得 / 四色 / 改为下划线）；橡皮点后底部「已删除一条高亮 · 撤销」。
+- 已知限制/未完成项：
+  - 点选靠 `caretPositionFromPoint` 反查，**多行高亮点在行间空隙不算点中**（落点不在任何文字上）；点到字上即可。
+  - 工具态与颜色不记忆（用户选定）；触屏只顺手听了 `touchend`，未专门适配。
+  - 换色/改型失败与橡皮失败都走底部提示（右栏 Tab 多半没开着）；成功不提示。
+  - 用户文档（README 截图/说明）还写着旧流程，随下一次文档追平任务更新。
+
+<!-- EVIDENCE:BEGIN -->
+## 状态与最终证据
+
+- 候选 SHA：
+- Review：（L2，待独立只读 Reviewer）
+- Acceptance：L2 N/A。
+- 最终状态/风险/用户操作：
+- 非阻断遗留项：
+- 日期与决定日志：2026-09-26 用户看过草图答「可以，按草图开 TASK-093 和 094」→ 登记本任务。
+
+此区禁止放入或变更任务授权、风险等级、允许路径、检查要求、实现或测试记录。
+<!-- EVIDENCE:END -->

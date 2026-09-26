@@ -1,10 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 import { failureText } from './api'
 import { listNotes, type Note } from '../notes/api'
 import { noteTitle } from '../notes/noteTitle'
 import { rangeFor, type Anchor } from './highlightAnchor'
-import { deleteHighlight, listHighlights, type Highlight } from './highlights'
+import {
+  COLOR_LABELS,
+  createHighlight,
+  deleteHighlight,
+  HIGHLIGHT_COLORS,
+  listHighlights,
+  registryName,
+  STYLE_LABELS,
+  updateHighlight,
+  type AnnotationTool,
+  type Highlight,
+  type HighlightLook,
+} from './highlights'
 import { useResourceQuery } from './useResourceQuery'
 
 /**
@@ -26,7 +39,38 @@ import { useResourceQuery } from './useResourceQuery'
  *
  * **配的心得可能已经不在本资料里**（心得被 `detachNote` 解绑或后贴到别处，TASK-071 遗留
  * F5）。那种悬挂绑定按「没配心得」展示，并允许重新配一条，不报错、不丢高亮。
+ *
+ * **正文上的点选（TASK-094）。** 上色没有 DOM 节点，点到哪条只能按坐标反查：
+ * `caretPositionFromPoint` 取落点，再问每条 `Range.isPointInRange`。没选工具时点中出**气泡**
+ * （写心得 / 换色 / 高亮⇄下划线）；顶栏橡皮开着时点一下**立刻删**，底部出「已删除 · 撤销」，
+ * 撤销按同样的锚点、页码、样子重建，原本配的心得也一并接回（用户 2026-09-26 选定）。气泡与提示
+ * 用 portal 挂在 body 上——本组件住在右栏 Tab 里，Tab 隐藏时 `position: fixed` 的东西也会跟着藏。
  */
+
+type Point = { node: Node; offset: number }
+/** 视口坐标下的文字落点；Chromium 128+ 有标准的 `caretPositionFromPoint`，旧的走 `caretRangeFromPoint`。 */
+function caretAt(x: number, y: number): Point | null {
+  const doc = document as Document & {
+    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null
+    caretRangeFromPoint?: (x: number, y: number) => Range | null
+  }
+  if (typeof doc.caretPositionFromPoint === 'function') {
+    const at = doc.caretPositionFromPoint(x, y)
+    return at ? { node: at.offsetNode, offset: at.offset } : null
+  }
+  if (typeof doc.caretRangeFromPoint === 'function') {
+    const range = doc.caretRangeFromPoint(x, y)
+    return range ? { node: range.startContainer, offset: range.startOffset } : null
+  }
+  return null
+}
+function contains(range: Range, point: Point): boolean {
+  try {
+    return range.isPointInRange(point.node, point.offset)
+  } catch {
+    return false
+  }
+}
 
 export type HighlightRow = {
   highlight: Highlight
@@ -45,6 +89,7 @@ export function ReaderHighlights({
   onCount,
   pages = null,
   onJumpPage,
+  tool = null,
 }: {
   resourceId: string
   /** 渲染后的正文元素；正文还没渲染（读取中、源码视图）时为 null。PDF 模式下不看它。 */
@@ -60,6 +105,8 @@ export function ReaderHighlights({
   /** 「改写心得」：切到心得 Tab（那条心得在那里编辑）。 */
   onOpenNote: (note: Note) => void
   onCount?: (total: number) => void
+  /** 顶栏当前按下的工具（TASK-094）：橡皮让正文上的点选变成删除；其余情况点选出气泡。 */
+  tool?: AnnotationTool | null
 }) {
   const load = useCallback(
     () =>
@@ -80,6 +127,16 @@ export function ReaderHighlights({
   const [confirming, setConfirming] = useState<string | null>(null)
   const [failure, setFailure] = useState<unknown>(null)
   const [removed, setRemoved] = useState<string[]>([])
+  // 本地覆盖（TASK-094）：换色/改型之后不重读整张列表——重读会先清空再上色，正文闪一下。
+  // 列表真的换了一版（`result` 变）就丢掉覆盖，服务端的才是新的。
+  const [patched, setPatched] = useState<{ base: unknown; map: Record<string, Highlight> }>({
+    base: undefined,
+    map: {},
+  })
+  const [bubble, setBubble] = useState<{ id: string; x: number; y: number } | null>(null)
+  const [toast, setToast] = useState<
+    { kind: 'undo'; highlight: Highlight } | { kind: 'error'; text: string } | null
+  >(null)
   const alive = useRef(true)
   useEffect(() => {
     alive.current = true
@@ -88,10 +145,12 @@ export function ReaderHighlights({
     }
   }, [])
 
-  const highlights = useMemo(
-    () => (result?.data?.[0].data ?? []).filter((row) => !removed.includes(row.id)),
-    [result, removed],
-  )
+  const highlights = useMemo(() => {
+    const overlay = patched.base === result ? patched.map : {}
+    return (result?.data?.[0].data ?? [])
+      .filter((row) => !removed.includes(row.id))
+      .map((row) => overlay[row.id] ?? row)
+  }, [result, removed, patched])
   const notes = useMemo(() => result?.data?.[1] ?? [], [result])
 
   // 正文渲染完（或换了一版）就重新定位；`rendered` 由父级在 DOM 变化时换成新元素。
@@ -124,29 +183,109 @@ export function ReaderHighlights({
   // 都没有可定位的正文，这时说「原文位置已找不到」是在冤枉数据。列表照列，只是不下判断。
   // PDF 模式下这是按条判的（`row.locatable`）：视口外的页没渲染，那几条只是「还没看」。
   const locatable = pages ? pages.size > 0 : rendered !== null
-  const registryName = pages ? 'studypilot-mark-pdf' : 'studypilot-mark'
 
   useEffect(() => {
     onCount?.(highlights.length)
   }, [highlights.length, onCount])
 
   // 上色。每次都整批重设：Range 会随正文变化失效，留着旧的比不上色更糟。
+  // TASK-094 起按「样式 × 颜色」分名注册（`registryName`），CSS 里每个名字一条规则；上一轮
+  // 用过、这一轮没有的名字要删掉，否则换色之后旧颜色还留在正文上。
+  const painted = useRef<Set<string>>(new Set())
   useEffect(() => {
     const registry = (globalThis as unknown as { CSS?: { highlights?: Map<string, unknown> } }).CSS
       ?.highlights
     const Painter = (globalThis as unknown as { Highlight?: new (...ranges: Range[]) => unknown })
       .Highlight
     if (!registry || typeof Painter !== 'function') return
-    const ranges = rows.map((row) => row.range).filter((range): range is Range => range !== null)
-    if (!ranges.length) {
-      registry.delete(registryName)
-      return
+    const groups = new Map<string, Range[]>()
+    for (const row of rows) {
+      if (!row.range) continue
+      const name = registryName(row.highlight, pages !== null)
+      groups.set(name, [...(groups.get(name) ?? []), row.range])
     }
-    registry.set(registryName, new Painter(...ranges))
+    for (const name of painted.current) if (!groups.has(name)) registry.delete(name)
+    for (const [name, ranges] of groups) registry.set(name, new Painter(...ranges))
+    painted.current = new Set(groups.keys())
     return () => {
-      registry.delete(registryName)
+      for (const name of painted.current) registry.delete(name)
+      painted.current = new Set()
     }
-  }, [rows, registryName])
+  }, [rows, pages])
+
+  // 正文上的点选（TASK-094）。拖选之后的松手也会来一个 click——选区非空时不算点选，那是在选
+  // 文字（工具开着时它已经落色）。监听挂在正文容器上：网页是整篇正文，PDF 是每一页的文字层。
+  const rowsRef = useRef(rows)
+  const toolRef = useRef(tool)
+  useEffect(() => {
+    rowsRef.current = rows
+    toolRef.current = tool
+  }, [rows, tool])
+  const containers = useMemo(
+    () => (pages ? [...pages.values()] : rendered ? [rendered] : []),
+    [pages, rendered],
+  )
+  // 橡皮（TASK-094）：不问就删，但给撤销。失败也走底部提示——右栏 Tab 多半没开着，列表里的
+  // 那条 alert 用户看不见。
+  const erase = useCallback(
+    async (highlight: Highlight) => {
+      if (busy) return
+      setBusy(highlight.id)
+      setFailure(null)
+      setBubble(null)
+      try {
+        await deleteHighlight(resourceId, highlight)
+        if (!alive.current) return
+        setRemoved((current) => [...current, highlight.id])
+        setToast({ kind: 'undo', highlight })
+      } catch (cause) {
+        if (alive.current) setToast({ kind: 'error', text: failureText(cause) })
+      } finally {
+        if (alive.current) setBusy(null)
+      }
+    },
+    [busy, resourceId],
+  )
+  useEffect(() => {
+    if (!containers.length) return
+    const onClick = (event: Event) => {
+      const { clientX, clientY } = event as MouseEvent
+      const selection = window.getSelection?.()
+      if (selection && !selection.isCollapsed) return
+      const point = caretAt(clientX, clientY)
+      if (!point) return
+      const hit = rowsRef.current.find((row) => row.range !== null && contains(row.range, point))
+      if (!hit) return
+      if (toolRef.current === 'eraser') void erase(hit.highlight)
+      else setBubble({ id: hit.highlight.id, x: clientX, y: clientY })
+    }
+    for (const node of containers) node.addEventListener('click', onClick)
+    return () => {
+      for (const node of containers) node.removeEventListener('click', onClick)
+    }
+  }, [containers, erase])
+  // 气泡：Esc 或点到外面就关。
+  useEffect(() => {
+    if (!bubble) return
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setBubble(null)
+    }
+    function onPointerDown(event: Event) {
+      if (!(event.target as Element | null)?.closest?.('.reader-bubble')) setBubble(null)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      document.removeEventListener('pointerdown', onPointerDown)
+    }
+  }, [bubble])
+  // 底部提示几秒后自己消失；撤销要在这段时间里点。
+  useEffect(() => {
+    if (!toast) return
+    const timer = setTimeout(() => setToast(null), toast.kind === 'undo' ? 8000 : 6000)
+    return () => clearTimeout(timer)
+  }, [toast])
 
   async function remove(highlight: Highlight) {
     if (busy) return
@@ -161,6 +300,40 @@ export function ReaderHighlights({
       if (alive.current) setFailure(cause)
     } finally {
       if (alive.current) setBusy(null)
+    }
+  }
+  // 撤销 = 按同样的锚点、页码、样子再建一条，原来配的心得一并接回（那条心得刚被解绑、还空着）。
+  async function restore(highlight: Highlight) {
+    setToast(null)
+    setFailure(null)
+    try {
+      await createHighlight(
+        resourceId,
+        anchorOf(highlight),
+        highlight.note_id,
+        highlight.page_number,
+        {
+          style: highlight.style,
+          color: highlight.color,
+        },
+      )
+      if (alive.current) retry()
+    } catch (cause) {
+      if (alive.current) setToast({ kind: 'error', text: failureText(cause) })
+    }
+  }
+  // 气泡里的换色 / 改型：一个版本化 PATCH，回来的那条盖住本地的。
+  async function restyle(highlight: Highlight, changes: Partial<HighlightLook>) {
+    setFailure(null)
+    try {
+      const updated = await updateHighlight(resourceId, highlight, changes)
+      if (alive.current)
+        setPatched((current) => ({
+          base: result,
+          map: { ...(current.base === result ? current.map : {}), [updated.id]: updated },
+        }))
+    } catch (cause) {
+      if (alive.current) setToast({ kind: 'error', text: failureText(cause) })
     }
   }
 
@@ -182,6 +355,8 @@ export function ReaderHighlights({
     )
   }
   const orphans = rows.filter((row) => row.locatable && !row.range).length
+  // 气泡说的是哪条：按 id 从当前行里找，那条已经不在（被删、被重读掉）就没有气泡。
+  const picked = bubble ? (rows.find((row) => row.highlight.id === bubble.id) ?? null) : null
   return (
     <div className="reader-highlights">
       <p className="resource-hint reader-highlights-hint" aria-live="polite">
@@ -200,8 +375,8 @@ export function ReaderHighlights({
         <div className="empty-sheet reader-highlights-empty">
           <h2>还没有标下任何一段</h2>
           <p>
-            在正文里选中一句话，浮出的胶囊里点「标下来」。只想标记就到此为止；想写点什么就点
-            「记下这段」，心得保存后会自动配到这条高亮上。
+            顶栏选好荧光笔或下划线，在正文里选中一句话就标下了。想写点什么，就在没选工具时选中
+            文字、点「记下这段」，心得保存后会自动配到这条高亮上；点一下正文上已有的高亮也能给它写。
           </p>
         </div>
       ) : (
@@ -215,6 +390,10 @@ export function ReaderHighlights({
                     : '原文位置已找不到——正文换过一版。内容留着，换回来会自动对上。'}
                 </p>
               )}
+              <span className="reader-highlight-look">
+                <span className={`look-dot ${highlight.color}`} aria-hidden="true" />
+                {STYLE_LABELS[highlight.style]}
+              </span>
               {highlight.page_number !== null && (
                 <span className="source-chip reader-highlight-page">
                   第 {highlight.page_number} 页
@@ -288,6 +467,73 @@ export function ReaderHighlights({
           ))}
         </ul>
       )}
+      {picked &&
+        bubble &&
+        createPortal(
+          <div
+            className="reader-bubble"
+            role="dialog"
+            aria-label="这条高亮"
+            style={{ top: bubble.y, left: bubble.x }}
+          >
+            <button
+              type="button"
+              className="reader-bubble-button primary"
+              onClick={() => {
+                setBubble(null)
+                if (picked.note) onOpenNote(picked.note)
+                else onWriteNote(picked.highlight)
+              }}
+            >
+              <span aria-hidden="true">✎ </span>
+              {picked.note ? '改写心得' : '写心得'}
+            </button>
+            <span className="reader-bubble-divider" aria-hidden="true" />
+            <div className="reader-tool-colors" role="radiogroup" aria-label="颜色">
+              {HIGHLIGHT_COLORS.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  role="radio"
+                  className={`reader-tool-color ${option}`}
+                  aria-checked={picked.highlight.color === option}
+                  aria-label={`${COLOR_LABELS[option]}色`}
+                  title={`${COLOR_LABELS[option]}色`}
+                  onClick={() => void restyle(picked.highlight, { color: option })}
+                />
+              ))}
+            </div>
+            <span className="reader-bubble-divider" aria-hidden="true" />
+            <button
+              type="button"
+              className="reader-bubble-button"
+              onClick={() =>
+                void restyle(picked.highlight, {
+                  style: picked.highlight.style === 'mark' ? 'underline' : 'mark',
+                })
+              }
+            >
+              {picked.highlight.style === 'mark' ? '改为下划线' : '改为高亮'}
+            </button>
+          </div>,
+          document.body,
+        )}
+      {toast &&
+        createPortal(
+          <div className="reader-toast" role="status">
+            {toast.kind === 'undo' ? (
+              <>
+                <span>已删除一条{STYLE_LABELS[toast.highlight.style]}</span>
+                <button type="button" onClick={() => void restore(toast.highlight)}>
+                  撤销
+                </button>
+              </>
+            ) : (
+              <span>{toast.text}</span>
+            )}
+          </div>,
+          document.body,
+        )}
     </div>
   )
 }

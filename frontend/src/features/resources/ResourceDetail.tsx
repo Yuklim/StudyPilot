@@ -14,7 +14,15 @@ import { currentBookmark, type PdfBookmark } from './pdfOutline'
 import { ReaderQuote } from './ReaderQuote'
 import { ReaderHighlights } from './ReaderHighlights'
 import { anchorFrom } from './highlightAnchor'
-import { bindHighlightNote, createHighlight, type Highlight } from './highlights'
+import { AnnotationTools } from './AnnotationTools'
+import {
+  bindHighlightNote,
+  createHighlight,
+  type AnnotationTool,
+  type Highlight,
+  type HighlightColor,
+  type HighlightLook,
+} from './highlights'
 import {
   clearPosition,
   fingerprintOf,
@@ -328,6 +336,14 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
   // 入口，配错了不好收拾。除了几处显式清空，再给一个时限兜底。
   const pendingNote = useRef<{ highlight: Highlight; at: number } | null>(null)
   const [markError, setMarkError] = useState<string | null>(null)
+  // 顶栏的标注工具（TASK-094）：按下的工具与当前颜色只在本页内存，刷新回到「没选工具」
+  // （用户选定不记忆）。点颜色时若没选工具或选的是橡皮，顺手切到荧光笔。
+  const [tool, setTool] = useState<AnnotationTool | null>(null)
+  const [color, setColor] = useState<HighlightColor>('yellow')
+  const pickColor = useCallback((next: HighlightColor) => {
+    setColor(next)
+    setTool((current) => (current === null || current === 'eraser' ? 'mark' : current))
+  }, [])
   /**
    * PDF 上已渲染的文字层，按页号存（TASK-089）。`PdfReader` 在每页文字层渲染完时报上来、
    * 离开渲染窗口时撤回；高亮的定位与上色都在这些容器里做。每次换新 Map，`ReaderHighlights`
@@ -360,7 +376,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
   }, [])
   const canMarkPdfRange = useCallback((range: Range) => pageOfRange(range) !== null, [pageOfRange])
   const mark = useCallback(
-    async (range: Range, keep: (highlight: Highlight) => void) => {
+    async (range: Range, keep: (highlight: Highlight) => void, look: HighlightLook) => {
       // 锚点取自哪段文本：网页是整篇正文；PDF 是选区所在的那一页（TASK-089）。
       let container: Element | null
       let page: number | null = null
@@ -377,7 +393,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
       if (!anchor) return
       setMarkError(null)
       try {
-        const created = await createHighlight(resourceId, anchor, null, page)
+        const created = await createHighlight(resourceId, anchor, null, page, look)
         keep(created)
         setHighlightRevision((value) => value + 1)
       } catch (cause) {
@@ -388,13 +404,12 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
   )
   const takeMark = useCallback(
     (range: Range) => {
-      setSideTab('highlights')
-      setNotesOpen(true)
-      // 只标记这一下，明确不想配心得：把上一次还在等的配对丢掉。
+      // 工具开着时的落色（TASK-094）：不开右栏、不切 Tab——颜色本身就是反馈，一路标下去
+      // 不该每次都弹出右栏。只标记、明确不想配心得：把上一次还在等的配对丢掉。
       pendingNote.current = null
-      void mark(range, () => {})
+      void mark(range, () => {}, { style: tool === 'underline' ? 'underline' : 'mark', color })
     },
-    [mark],
+    [mark, tool, color],
   )
   // TASK-089 起 PDF 与网页走同一条路：引文进草稿 + 标高亮 + 心得保存后配对。
   // 跨页的选区 `mark()` 会早退（取不到单一页），引文照进草稿——正是用户要的行为。
@@ -403,11 +418,16 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
       takeQuote(quote)
       // 取不到选区时只进草稿、不标高亮：引文是用户已经看见的动作，不该被上色失败连累。
       if (range)
-        void mark(range, (created) => {
-          pendingNote.current = { highlight: created, at: Date.now() }
-        })
+        void mark(
+          range,
+          (created) => {
+            pendingNote.current = { highlight: created, at: Date.now() }
+          },
+          // 「记下这段」标的是当前颜色的高亮（不是下划线）：它是「写心得」这只手，样子按默认。
+          { style: 'mark', color },
+        )
     },
-    [mark, takeQuote],
+    [mark, takeQuote, color],
   )
   // 心得保存成功：若有在等的高亮，就把它配上去（契约：`note_id` 必须显式给出）。
   const bindSavedNote = useCallback(
@@ -583,6 +603,12 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
           pdfMode={Boolean(pdfOriginal)}
           pdfSlotRef={setPdfToolbarSlot}
           headingSlot={headingSlot}
+          // 标注工具（TASK-094）只在有可标注正文时给：网页要有快照，PDF 要有原件。
+          tools={
+            pdfOriginal || snapshotExists === true ? (
+              <AnnotationTools tool={tool} color={color} onTool={setTool} onColor={pickColor} />
+            ) : undefined
+          }
           snapshotExists={snapshotExists}
           snapshotUnreadable={snapshotUnreadable}
           showSource={showSource}
@@ -624,6 +650,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
               canMark={pdfOriginal ? canMarkPdfRange : true}
               onQuote={takeQuoteAndMark}
               onMark={takeMark}
+              tool={tool}
             />
             {/* 标签与「收下它是因为」TASK-067 起在右栏「信息」Tab（用户 2026-09-17 选定），
                 不再占正文顶部；正文紧接标题。 */}
@@ -729,6 +756,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
                   onWriteNote={writeNoteForHighlight}
                   onOpenNote={openNoteFromHighlight}
                   onCount={receiveHighlightCount}
+                  tool={tool}
                 />
               </div>
             }
