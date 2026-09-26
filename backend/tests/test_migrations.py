@@ -351,14 +351,15 @@ def test_0010_adds_the_look_and_refuses_to_drop_a_styled_highlight(tmp_path: Pat
                     color="blue",
                 )
             )
-        # The CHECKs hold: only the toolbar's values.
-        with pytest.raises(IntegrityError), factory.begin() as session:
-            session.add(
-                Highlight(
-                    resource_id=resource.id, exact="x", start_offset=0, end_offset=1, color="red"
+        # The CHECKs hold: only the toolbar's values, for both columns.
+        for look in ({"color": "red"}, {"style": "bold"}):
+            with pytest.raises(IntegrityError), factory.begin() as session:
+                session.add(
+                    Highlight(
+                        resource_id=resource.id, exact="x", start_offset=0, end_offset=1, **look
+                    )
                 )
-            )
-            session.flush()
+                session.flush()
         with pytest.raises(RuntimeError, match="style or colour"):
             migrate(engine, "0009_highlight_page", downgrade=True)
         with engine.connect() as connection:

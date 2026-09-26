@@ -98,6 +98,10 @@ checks = ["backend", "contracts"]
   - 中途两次失败留痕：① 迁移测试首版用 `Highlight.__table__.insert()` 在 0009 库里造行，mypy 报 `FromClause` 无 `insert`，
     且 Core insert 会把模型上的 Python 默认列（style/color）一起写进 0009 没有的列——改为「在 head 建默认行 → 降到 0009 →
     再升回」来验证回填；② 少了两个 import（ruff F821），随①一起消失。
+- **第二次实现提交（按第一轮 Review 的三条非阻断项）**：F1 openapi `updateResourceHighlight` 的 200 示例 `color` 改为
+  `green`，与请求示例一致；F2 补「同值 PATCH → 200 且 version 不变」用例；F3 迁移测试的 CHECK 同时验 `style`。
+  重跑：ruff format/check、mypy 无问题；两份测试 21/21；`check_task.py --worktree` → 退出码 0，**CHECKS PASS**，
+  `files=12`，`product_fingerprint=7e5f0e6859cd7f2f35ffad3a92ff82372cd0f2bb242506e46a917d4f6e47c0cc`（pytest 598 passed）。
 - 已知限制/未完成项：前端还不认识这两个字段（归 TASK-094）；在 093 单独合并的窗口里阅读器照常工作（解析器只取列出的字段）。
 
 <!-- EVIDENCE:BEGIN -->

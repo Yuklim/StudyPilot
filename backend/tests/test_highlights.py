@@ -454,6 +454,10 @@ def test_a_highlight_has_a_look_that_changes_without_touching_the_anchor(
         None,
         4,
     )
+    # Naming a value equal to what is stored is not a change: no version bump
+    # (contract 4.15, same rule rebinding to the same note always followed).
+    same = authorized.patch(path(resource, body), json={"color": "pink", "expected_version": 4})
+    assert same.status_code == 200 and same.json()["data"]["version"] == 4
     # Null is not "reset" for the look, and unknown values are refused.
     for bad in ({"style": None}, {"color": None}, {"style": "bold"}, {"color": "red"}):
         error(
