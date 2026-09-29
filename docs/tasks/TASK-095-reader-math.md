@@ -80,11 +80,12 @@ checks = ["frontend"]
 - 实现 SHA/变更摘要：实现与登记同一个提交（SHA 在 EVIDENCE 区作候选记录；之后的证据写回是另外的提交）。变更：
   - `package.json`/`package-lock.json`：`katex@0.16.44`、`@mdit/plugin-katex@0.25.2`（精确版本；后者是最后一个 peer 为
     markdown-it ^14 的版本，1.x 起要求 markdown-it 15）。
-  - `snapshotMarkdown.ts`：导出 `MATH_OPTIONS`（`delimiters:'all'`、`trust:false`、`throwOnError:false`、`strict:'ignore'`、
+  - `snapshotMarkdown.ts`：导出 `MATH_OPTIONS`（`delimiters:'all'`、`trust:false`、`throwOnError:false`、`logger:()=>'ignore'`、
     `output:'html'`），`createRenderer` 里 `md.use(katex, MATH_OPTIONS)`；`RENDERER_OPTIONS` 一字未动。
   - `main.tsx` 引入 `katex/dist/katex.min.css`（字体随构建产出，dist 里 59 个字体文件）；`styles.css` 给
     `.snapshot-rendered .katex-display` 加横向滚动。
-  - 测试：`snapshotMarkdown.test.ts` 新增 9 条（配置断言、四种写法各一、货币写法、错公式、三条注入样例、公式旁的原始 HTML）；
+  - 测试：`snapshotMarkdown.test.ts` 新增 6 个 `it` 块、12 条用例（配置断言、四种写法各一、控制台安静、货币写法、错公式、三条注入样例、
+    公式旁的原始 HTML；第一版记录写成「9 条」，Review F2 订正）；
     `snapshot-rendering.spec.ts` 新增 1 条真后端用例（KaTeX 元素、字体真的装进来了、1440/390 两档不横向溢出）。
 - 命令、真实退出结果、product_fingerprint、环境、未运行原因：
   - `check_task.py --task docs/tasks/TASK-095-reader-math.md --worktree` → 退出码 0，**CHECKS PASS**，`files=11`，
@@ -94,7 +95,15 @@ checks = ["frontend"]
   - 真机截图（一次性 spec，已移出工作区）：用用户库里那篇《通俗理解 Batch Normalization》的快照片段在沙盒里渲染，
     分式、求和、上下标、`aligned` 环境全部画出；目录/标题/工具栏不受影响。
   - 构建体积：主 JS 557.87 → 819.59 kB（gzip 186 → 265 kB），CSS 55.8 → 84.9 kB；本机应用，可接受。
+- **第二次实现提交（按第一轮 Review）**：F1 `strict:'ignore'` 会被插件自己的 `strict` 回调覆盖、实际不生效（中文进数学
+  模式会往控制台写告警）→ 改传 `logger: () => 'ignore'`，补一条「控制台安静」用例（spy `console.warn`）；F2 计数订正；
+  建议①：e2e 字体断言从 `getComputedStyle().fontFamily`（只证明样式表生效）改为 `document.fonts.check('1em KaTeX_Math')`；
+  建议②：已知限制补无障碍代价。重跑：单测 55/55（文件内）、e2e 该 spec 2/2；`check_task.py --worktree` → 退出码 0，
+  **CHECKS PASS**，`files=11`，`product_fingerprint=5db6c1f4f608874145120e1e7132d28d7615ad5c69d5ee4fd6a2894f19bc329f`（vitest 846）。
 - 已知限制/未完成项：
+  - `output:'html'` 没有 MathML 那份可读文本，屏幕阅读器读不出公式内容（KaTeX 的 HTML 输出带 `aria-hidden`）；这是
+    与高亮锚点纯文本唯一性的取舍，本机个人工具先取后者（Review 建议记录）。
+  - 极深嵌套等非 `ParseError` 异常会从 `renderSnapshot` 抛出（与基线 markdown-it 行为同类，理论场景）。
   - 选中公式「记下这段」/标高亮，取到的是 KaTeX 渲染后的纯文本（如 `u=m1∑hi`），不是 LaTeX 源码；锚点按该文本定位，
     正常回得到。想要源码得另议。
   - 不支持 mhchem 等宏包与 `\newcommand` 之外的 KaTeX 不认的命令（以转义源码显示，带 `.katex-error`）。

@@ -27,7 +27,9 @@ export const RENDERER_OPTIONS = { html: false, linkify: false, breaks: false } a
  *   属性的命令一律不信任——KaTeX 会把它们当错误渲染成转义后的源码。
  * - `throwOnError: false`：写错的公式以转义后的源码显示（带 `.katex-error`），不抛、不吞。
  *   抓来的正文里错公式很常见，一条错的不该让整篇渲染失败。
- * - `strict: 'ignore'`：LaTeX 严格模式的告警（Unicode 文本进数学模式等）不算错、不写控制台。
+ * - `logger: () => 'ignore'`：LaTeX 严格模式的告警（中文进数学模式等）不算错、不写控制台。插件会用
+ *   自己的 `strict` 回调覆盖传入的 `strict` 选项、再问 `logger`——直接传 `strict:'ignore'` 不生效
+ *   （独立 Review F1），所以这里给的是 `logger`。
  * - `output: 'html'`：不输出 MathML 那份（视觉隐藏的）副本。阅读器的高亮锚点与「记下这段」都按
  *   **全部文本节点**取纯文本（`highlightAnchor.ts` `mapText`），两份并存会让公式的文字出现两次。
  * - `delimiters: 'all'`：四种写法都认；`$5 和 $10` 这种货币写法不算（`$` 后不能是空白、
@@ -40,7 +42,7 @@ export const MATH_OPTIONS = {
   delimiters: 'all',
   trust: false,
   throwOnError: false,
-  strict: 'ignore',
+  logger: () => 'ignore' as const,
   output: 'html',
 } as const
 

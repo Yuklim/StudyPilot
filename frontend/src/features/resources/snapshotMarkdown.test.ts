@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { MATH_OPTIONS, RENDERER_OPTIONS, createRenderer, renderSnapshot } from './snapshotMarkdown'
 
@@ -338,6 +338,8 @@ describe('formulas (TASK-095)', () => {
     expect(MATH_OPTIONS.throwOnError).toBe(false)
     expect(MATH_OPTIONS.output).toBe('html')
     expect(MATH_OPTIONS.delimiters).toBe('all')
+    // 严格模式告警走 logger（插件会覆盖 `strict` 选项本身）：一律 ignore，不写控制台。
+    expect(MATH_OPTIONS.logger()).toBe('ignore')
     expect(RENDERER_OPTIONS.html).toBe(false)
   })
 
@@ -357,6 +359,14 @@ describe('formulas (TASK-095)', () => {
     // 只出 HTML 那份：没有 MathML 的隐藏副本，纯文本里公式只出现一次。
     expect(host.querySelector('.katex-mathml')).toBeNull()
     expect(host.querySelector('math')).toBeNull()
+  })
+
+  it('keeps the console quiet on strict-mode warnings such as CJK text inside math', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const host = render('$均值 = \\frac{1}{m}$')
+    expect(host.querySelector('.katex')).not.toBeNull()
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
   })
 
   it('leaves money alone: a dollar followed by a digit is not a formula', () => {

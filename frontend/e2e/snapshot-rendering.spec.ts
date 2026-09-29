@@ -144,12 +144,14 @@ test('formulas in a snapshot are drawn by KaTeX and never widen the page (TASK-0
     await page.goto(`/resources/${id}`)
     await expect(page.locator('.snapshot-rendered .katex-display').first()).toBeVisible()
     expect(await page.locator('.snapshot-rendered .katex').count()).toBeGreaterThanOrEqual(3)
-    // KaTeX 的字体真的装进来了：公式里的字用的是它的字体，不是回退的系统字体。
-    const family = await page
-      .locator('.snapshot-rendered .katex .mathnormal')
-      .first()
-      .evaluate((el) => getComputedStyle(el).fontFamily)
-    expect(family).toContain('KaTeX')
+    // KaTeX 的字体真的装进来了：不是看 CSS 声明（那只证明样式表生效），而是问字体集
+    // 这个字体能不能用（Review 建议）。
+    expect(
+      await page.evaluate(async () => {
+        await document.fonts.ready
+        return document.fonts.check('1em KaTeX_Math')
+      }),
+    ).toBe(true)
     // 过宽的块级公式在自己的框里横滚，页面不横向溢出。
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   }
