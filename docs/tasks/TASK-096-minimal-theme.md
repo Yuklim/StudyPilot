@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-096"
-status = "IN_PROGRESS"
+status = "ACCEPTED"
 risk = "L2"
 risk_reason = "全站视觉改版：把 styles.css 里 164 个散落色值收成一套设计变量并换成灰 + 蓝强调的新色板，去衬线、统一圆角，删掉手帐装饰（便签、眉标、副标题、徽章、书本插画、签名）。不改任何交互与数据，但改动面大（一个 3900 行的样式文件 + 4 个组件的装饰性 JSX），且用户可见；须独立只读 Reviewer 检查最终 diff；独立验收 N/A。执行链：1 Worker → 自动检查 → 1 独立只读 Reviewer。"
 risk_flags = ["business"]
@@ -112,11 +112,26 @@ checks = ["frontend"]
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：
-- Review：（L2，待独立只读 Reviewer）
+- 候选 SHA：`d9d3fae`（= `994247e` 实现 + 登记 → `c5e377b` 补一行记录 → 按 Review 的 `d9d3fae`）。本条证据写回是之后的另一个提交。
+- Review：独立只读 Reviewer（`.claude/agents/reviewer.md`，工具仅 Read/Grep/Glob，运行器层无写工具）。
+  **第一轮**（`324e9c4..c5e377b`）报告原文：
+  > 权限证据：仅 Read/Grep/Glob（无 Write/Edit/Bash，运行器层面只读）。
+  > **结论：RETURNED**（3 处必须修复的机械错误，均低成本；其余可记录/可选）
+  > **审查范围**：候选 `c5e377b`；base `324e9c4`；完整读了 diff-096.patch（1849 行）并回到工作区 `styles.css` 核实；JSX 5 个文件的删除全部核对；e2e 目录 grep 无守卫绑到被删/受影响元素。
+  > **必须修复**（脚本删规则时把复合选择器的前缀留给了下一条，规则永不命中；与「布局不动」矛盾，e2e 无守卫故 86/86 抓不到）：1. `styles.css:334` `.welcome-copy .welcome-copy h2 {` → 应为 `.welcome-copy h2`，概览标题回落浏览器默认 h2。2. `:367` `.journal-decoration .overview-actions {` → 应为 `.overview-actions`，快速开始按钮组丢 flex/gap/margin。3. `:1892`（窄屏媒体查询）`.page-heading .page-heading p {` → 应为 `.page-heading p`。建议顺手 grep `^\s*\.[\w-]+ \.[\w-]+` 确认无第四处。
+  > **可记录后继续**：4. `.source-chip.paste { color: var(--danger) }`「粘贴」来源标签全变红字，违反「红只留给删除」（原棕字），建议 `--text-2`。5. `.resource-card::before` 与 `nth-child(even)::before` 仍画旋转「胶带」。6. `.capability-list strong` 与 `small` 同为 `--muted`，层级丢；`.deletion-dialog-body` 整段改红字偏重。7. 对比度：`--muted` 白底 4.83:1 达标；`--faint` 作文字的「后续能力」链接 ≈2.3:1、pdf 占位 ≈2.5:1，低于 3:1（改前 ≈2.8/2.1，非本次引入但略降）。
+  > **可选**：8. 两处仍引用已删的 `.sidebar-note`；`ErrorBoundary.tsx:36` 仍用 `.eyebrow`（CSS 已删，该文件不在 allowed_paths）；`.small-label` 眉标三处仍在，与分类页删眉标不一致。
+  > **已核实无问题**：`BookSketch` 无残留引用；`.brand-mark` 本就 `aria-hidden`、可访问名由 `Link aria-label` 提供；被删节点均为装饰/`aria-hidden`；rgba 替换透明度一致；`:root` 外无色值、无 `dashed`、无 `serif`；可数描述与 diff 一致；收起态 44px 处置合理。
+  主 Agent 处置：1–8 全部落实（`d9d3fae`；`.small-label` 三处保留并说明理由），请同一 Reviewer 增量复核。**增量复核**（`c5e377b..d9d3fae`）报告原文：
+  > 权限证据：仅 Read/Grep/Glob。
+  > **结论：PASS，覆盖最终候选 `d9d3fae`**（继承上一轮对 `324e9c4..c5e377b` 的完整审查，本轮只审增量 130 行及受影响上下文）。
+  > ① 三条选择器已回到与 base 规则同义的 `.welcome-copy h2`（声明块与原规则一致，仅字体换 sans）、`.overview-actions`（flex/wrap/gap 同原）、媒体查询里的 `.page-heading p`。全文复核无第四处。② F5 删除后 `.resource-card` 的 `position: relative` 已无绝对定位后代依赖，属无害残留，可选清理。③ F4/F6/F7/F8 改动与记录逐条一致；`allowed_paths` 含 `ErrorBoundary.tsx`；`files=12` = 7 产品 + 5 文档；`.eyebrow`/`.sidebar-note` 已无引用。
+  > **No findings**（阻断级）。
 - Acceptance：L2 N/A。
-- 最终状态/风险/用户操作：
-- 非阻断遗留项：
+- 最终状态/风险/用户操作：**ACCEPTED**（L2：自动检查 PASS → 独立只读 Review 一轮 RETURNED + 增量复核 PASS）。风险：纯视觉；
+  最坏情况是某处深浅不合意，改一个变量或一条规则即可。**等待用户操作**：刷新本机页面看过（工作区已在本分支，前端热更新），
+  说可以再推 PR。
+- 非阻断遗留项：`.resource-card` 多余的 `position: relative`（无害）；`.small-label` 三处保留；README/截图待文档追平。
 - 日期与决定日志：2026-09-29 用户提出简约改版 → 两套 Pencil 对比稿 → 选定方案 2 → 登记本任务。
 
 此区禁止放入或变更任务授权、风险等级、允许路径、检查要求、实现或测试记录。
