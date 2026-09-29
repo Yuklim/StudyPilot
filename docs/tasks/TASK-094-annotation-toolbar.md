@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-094"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L2"
 risk_reason = "只改前端（阅读器顶栏、胶囊、右栏高亮面板与上色），消费 TASK-093 已批准的契约字段；不改后端、不改契约、不碰快照渲染器（XSS 边界）。用户可见的交互改动大（「标下来」按钮退场、选中即落色、正文上点选与橡皮即删），须独立只读 Review 检查最终 diff；独立验收 N/A。执行链：1 Worker → 自动检查 → 1 独立只读 Reviewer。"
 risk_flags = ["business"]
@@ -168,7 +168,9 @@ checks = ["frontend"]
   > ① `.reader-tools .reader-tool`（0,2,0）稳压 `.icon-button`（0,1,0）与 `.journal-button`（0,1,0）；`.reader-toolbar-buttons .journal-button`（0,2,0）不命中——工具区在 DOM 里位于该容器之外。32+2×2+1×2=38 成立。② 640px 媒体块在 `.reader-tools` 规则之后；与「返回资料库」文字/PDF 标题隐藏同一断点；其后无其他 `.reader-tools` display 规则。③ 记录与 diff 一致。
   > **No findings.**
 - Acceptance：L2 N/A。
-- 最终状态/风险/用户操作：**ACCEPTED**（L2：自动检查 PASS → 独立只读 Review 三轮 PASS）。PR #102 已开，CI 首轮 e2e 红已修、待重跑。风险：交互改动大，靠 e2e 与真机截图
+- 最终状态/风险/用户操作：**MERGED**——PR #102 于 2026-09-26 合进了 TASK-092 分支（base 未自动改指向），2026-09-29 用户合并
+  PR #103（092 分支 → main，merge `413804f`）后进入 main；本条 MERGED 登记按 §5 并入 TASK-096 的控制面提交。合并前状态为
+  **ACCEPTED**（L2：自动检查 PASS → 独立只读 Review 三轮 PASS；CI 首轮 e2e 红已修、重跑绿）。风险：交互改动大，靠 e2e 与真机截图
   兜底；最坏情况是某种点选/拖选组合的手感不对，都有 Esc/撤销可退。**等待用户操作**：本机启动（迁移 0010 会由启动脚本先备份
   库再升级）后试：顶栏选色标几段、下划线、点高亮换色/改型、橡皮删再撤销；看过后由你决定推 PR（094 → 093 分支 → 092 分支）。
 - 非阻断遗留项：见「已知限制」（行间空隙不算点中；键盘/焦点；用户文档待追平）。

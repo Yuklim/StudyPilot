@@ -133,7 +133,6 @@ function App() {
             </span>
             <span className="brand-copy">
               <strong>StudyPilot</strong>
-              <span>个人学习手帐</span>
             </span>
           </Link>
           <button
@@ -201,15 +200,6 @@ function App() {
               </nav>
             </div>
           )}
-          <div className="sidebar-note" aria-hidden="true">
-            <span className="note-pin" />
-            <p>
-              慢慢积累，
-              <br />
-              也是一种前进。
-            </p>
-            <span>one page at a time</span>
-          </div>
           <div className="sidebar-footer">
             <span className="space-marker" />
             本机个人空间
@@ -227,12 +217,10 @@ function App() {
               </span>
               {page.title}
             </span>
-            <span className="workspace-badge">本机学习空间</span>
           </div>
         )}
         {!page.ownHeading && (
           <header className="page-heading">
-            <span className="eyebrow">STUDYPILOT / YOUR LEARNING JOURNAL</span>
             <h1 ref={registerHeading} tabIndex={-1}>
               {page.title}
             </h1>
