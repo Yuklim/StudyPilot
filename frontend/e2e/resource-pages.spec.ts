@@ -386,3 +386,92 @@ test('the reader page deletes in two clicks and returns to the library', async (
   await expect(page).toHaveURL(/\/resources$/)
   await expect(page.getByRole('heading', { name: '资料库', level: 1 })).toBeVisible()
 })
+
+test('topics and tags can be assigned from the library, one row or several at once (TASK-097)', async ({
+  page,
+}) => {
+  // 用户 2026-09-29：「资料库页也加上分配标签/主题」，选定「逐条 + 批量」。走真后端：改完的行、刷新后的行、
+  // 接口里读回的资料三处都要对得上。
+  await page.goto('/')
+  const seeded = await page.evaluate(async () => {
+    const modulePath = '/src/api/client.ts'
+    const { api } = await import(modulePath)
+    const topic = (await api.request('/api/v1/topics', {
+      method: 'POST',
+      body: { name: '分类合成主题' },
+    })) as { data: { id: string } }
+    const tag = (await api.request('/api/v1/tags', {
+      method: 'POST',
+      body: { name: '分类合成标签' },
+    })) as { data: { id: string } }
+    const ids: string[] = []
+    for (const name of ['分类合成 甲', '分类合成 乙', '分类合成 丙']) {
+      const created = (await api.request('/api/v1/resources', {
+        method: 'POST',
+        body: { source_type: 'WEB', title: name, source_url: 'https://example.com/classify' },
+      })) as { data: { id: string } }
+      ids.push(created.data.id)
+    }
+    return { ids, topic: topic.data.id, tag: tag.data.id }
+  })
+  await page.goto('/resources')
+  await page.getByLabel('搜索资料').fill('分类合成')
+  await page.getByRole('button', { name: '搜索', exact: true }).click()
+  await expect(page.getByText('共 3 份资料', { exact: true })).toBeVisible()
+
+  // 逐条：甲 → 设主题 + 勾一个标签 → 行上立刻能看到。
+  await page.getByRole('button', { name: '分类 分类合成 甲' }).click()
+  const single = page.getByRole('dialog', { name: '分类：分类合成 甲' })
+  await expect(single).toBeVisible()
+  await single.getByRole('radio', { name: '分类合成主题' }).check()
+  await single.getByRole('checkbox', { name: '分类合成标签' }).check()
+  await single.getByRole('button', { name: '保存' }).click()
+  await expect(single).toHaveCount(0)
+  const rowA = page.getByRole('listitem').filter({ hasText: '分类合成 甲' })
+  await expect(rowA).toContainText('主题：分类合成主题')
+  await expect(rowA.getByRole('link', { name: '分类合成标签' })).toBeVisible()
+
+  // 批量：勾乙、丙 → 设置分类 → 设主题 + 追加标签 → 两行都变。
+  await page.getByRole('checkbox', { name: '选择 分类合成 乙' }).check()
+  await page.getByRole('checkbox', { name: '选择 分类合成 丙' }).check()
+  await page.getByRole('button', { name: '设置分类' }).click()
+  const multi = page.getByRole('dialog', { name: '为 2 份资料设置分类' })
+  await expect(multi).toBeVisible()
+  await expect(multi.getByRole('radio', { name: '不改' })).toBeChecked()
+  await multi.getByRole('radio', { name: '分类合成主题' }).check()
+  await multi.getByRole('checkbox', { name: '分类合成标签' }).check()
+  await multi.getByRole('button', { name: '保存' }).click()
+  await expect(multi).toHaveCount(0)
+  for (const name of ['分类合成 乙', '分类合成 丙']) {
+    const row = page.getByRole('listitem').filter({ hasText: name })
+    await expect(row).toContainText('主题：分类合成主题')
+    await expect(row.getByRole('link', { name: '分类合成标签' })).toBeVisible()
+  }
+  // 后端确实改了：三份都挂上了主题与标签。
+  const stored = await page.evaluate(async (list) => {
+    const modulePath = '/src/api/client.ts'
+    const { api } = await import(modulePath)
+    const out: { topic: string | null; tags: string[] }[] = []
+    for (const id of list) {
+      const got = (await api.request(`/api/v1/resources/${id}`)) as {
+        data: { topic_id: string | null; tags: { id: string }[] }
+      }
+      out.push({ topic: got.data.topic_id, tags: got.data.tags.map((t) => t.id) })
+    }
+    return out
+  }, seeded.ids)
+  expect(stored).toEqual(seeded.ids.map(() => ({ topic: seeded.topic, tags: [seeded.tag] })))
+  // 把沙盒还原：资料挂着主题时，资料库会按 id 去读主题名（`/api/v1/topics/{id}`），而同一次
+  // 运行里后面的 scaffold.spec.ts 守着「资料库只发批准过的读请求」——留着主题会让它红。
+  await page.evaluate(async (list) => {
+    const modulePath = '/src/api/client.ts'
+    const { api } = await import(modulePath)
+    for (const id of list) {
+      const got = (await api.request(`/api/v1/resources/${id}`)) as { data: { version: number } }
+      await api.request(`/api/v1/resources/${id}`, {
+        method: 'PATCH',
+        body: { topic_id: null, expected_version: got.data.version },
+      })
+    }
+  }, seeded.ids)
+})
