@@ -90,7 +90,7 @@ checks = ["frontend"]
     `product_fingerprint=b0f79749b6cb3f0ef2b9f87a061f50eb63a030dbe75b665db8c7667d64330ab8`，`profiles=frontend`
     （lint/format/`tsc -b`/build；vitest 38 文件 **846** 条全过）。
   - `npx playwright test`（全套）→ 第一轮 85/86：`reader-layout.spec.ts:235`「收起态 logo 高不变」红（我把品牌标改成 32px
-    方块，收起态守卫要 44px）→ 收起态补回 44px 高 → 该 spec 绿；全套重跑结果见本行下一条。
+    方块，收起态守卫要 44px）→ 收起态补回 44px 高 → 该 spec 绿 → 全套重跑 **86/86**。
   - 真机截图（一次性 spec，已移出工作区）：概览、资料库、阅读器（含高亮/下划线/公式/右栏）、我的心得、新心得、学习记录、
     分类整理七页各两轮，第二轮与方案 2 草图对得上。
 - 已知限制/未完成项：
