@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-097"
-status = "IN_PROGRESS"
+status = "ACCEPTED"
 risk = "L2"
 risk_reason = "纯前端新功能：资料库页每行加「分类」按钮弹出主题/标签选择，多选后可批量设主题、批量追加标签；走已批准的 updateResource PATCH（topic_id / 整组 tag_ids + expected_version），不改后端与契约。写入用户数据（分类归属）且是新交互，须独立只读 Reviewer 检查最终 diff；独立验收 N/A。执行链：1 Worker → 自动检查 → 1 独立只读 Reviewer。"
 risk_flags = ["business"]
@@ -91,11 +91,28 @@ checks = ["frontend"]
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：
-- Review：（L2，待独立只读 Reviewer）
+- 候选 SHA：`6db4ec1`（= `4910de9` 实现 + 登记，再加按 Review F1 的 `6db4ec1`）。本条证据写回是之后的另一个提交。
+- Review：独立只读 Reviewer（`.claude/agents/reviewer.md`，工具仅 Read/Grep/Glob，运行器层无写工具）。
+  **第一轮**（`a8d5bbc..4910de9`）报告原文：
+  > 权限证据：仅 Read/Grep/Glob（无 Write/Edit/Bash，运行器层面只读）。
+  > **结论：PASS**（附 3 项非阻断记录）。
+  > **审查范围**：候选 `4910de9`，基线 `a8d5bbc`，`base..candidate` 产品 diff（6 个 frontend 文件）+ 调用链：`updateResource`/`failureText`、`ResourceDeleteDialog.tsx` 模态范本、`ClassificationBrowser`/`TagCreateField`、`useResourceQuery.retry`、契约第 784 行、后端 `taxonomy_store.py:55`（重名 409）。
+  > 1. 契约：`changesFor` 只在真变更时放字段，空对象返回 null 不发请求（且 `updateResource` 二道拦截）；`topic_id: null` 只在 `topic_id !== null` 时发；`tag_ids` 永不为 null，单份 ≥20 时禁勾/禁建，多份合并 >20 跳过；重复 id 不可能；单份按集合比较，仅换序不发。符合。
+  > 2. 数据安全：每份 `item.version`；409 走 `failureText` 列出，不重试；`onSaved` 仅 `succeeded > 0`；循环每轮先检 `alive`；`running` 由 state 派生，`close()`/Esc/取消/外点四条路都受挡。与删除弹窗 F1 修法一致。
+  > 3. 模态：与删除弹窗同一套；分类弹窗开着时其余子树 inert，删除按钮不可达；按钮无文字节点，`aria-label="分类 <标题>"`。
+  > 4. 测试：T1–T5 各绑定预填/集合比较/显式 null/合并+逐份版本+失败列出/超 20 跳过，撤实现会红；e2e 末尾按 id 逐份 GET 读回后端状态。`ResourcePages.test.tsx` 未改且无按钮计数断言，不脆弱。
+  > 5. 记录：`files=8` 与 diff 一致；`ResourcePages.test.tsx` 列在 allowed_paths 未改动可接受。
+  > **Findings（均可记录后继续）**：F1 第 6 条用例只断言 `patches` 长度 0、不检 `onClose`，撤掉任何实现都不会红，是空测试；建议改成断言 `onClose` 被调或删掉。F2 Tab 环 `head` 是第一个 radio，选中别的主题时 Shift-Tab 会先出到浏览器 chrome 再回来，可选建议。F3 无单测覆盖「保存中禁止关闭」；代码与删除弹窗同构，e2e 已走真路径。
+  > **剩余风险**：批量逐份请求耗时（记录已写明）；e2e 依赖沙盒里目标标签在列表第一页（当前 spec 只造 1 个标签，成立）。
+  主 Agent 处置：F1 改成真断言（`6db4ec1`），F2/F3 记入已知限制，请同一 Reviewer 增量复核。**增量复核**（`4910de9..6db4ec1`）报告原文：
+  > 权限证据：仅 Read/Grep/Glob。
+  > **结论：PASS，覆盖最终候选 `6db4ec1`**（继承上一轮范围；增量仅改 `LibraryClassifyDialog.test.tsx` 第 6 条，与记录「第二次实现提交」段一致，F2/F3 已入已知限制）。
+  > 一条说明（非缺陷）：单独撤掉 `save()` 里 `plan.length === 0 → onClose()` 那段，该用例不会红——空 plan 走到底也会 `onClose()`，可观测结果相同（早返回只是省掉「正在保存 0/0」闪现）。但撤掉 `changesFor` 的「无变更返回 null」或 `plan` 过滤，会发空 PATCH → `INVALID_REQUEST` 列为失败、`onClose` 不调 → 红。测试已真实绑定「没事可做 → 关闭、不发请求、不调 onSaved」，F1 处置成立。
 - Acceptance：L2 N/A。
-- 最终状态/风险/用户操作：
-- 非阻断遗留项：
+- 最终状态/风险/用户操作：**ACCEPTED**（L2：自动检查 PASS → 独立只读 Review PASS + 增量复核 PASS）。用户 2026-09-29 本机看过后
+  「没问题，推pr」。风险：写用户数据的批量循环，逐份版本化、失败可见、不重试；最坏情况是部分成功，列表刷新后能看出哪份没改。
+  PR 指向 096 分支，**须在 PR #105 之后合并**。
+- 非阻断遗留项：见「已知限制」（Tab 环首元素、保存中禁关无单测、批量逐份耗时、不做批量移除标签）。
 - 日期与决定日志：2026-09-29 用户「资料库页也加上分配标签/主题」→ 选定逐条 + 批量 → 登记本任务。
 
 此区禁止放入或变更任务授权、风险等级、允许路径、检查要求、实现或测试记录。
