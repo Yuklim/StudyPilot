@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
 
-import { RENDERER_OPTIONS, createRenderer, renderSnapshot } from './snapshotMarkdown'
+import { MATH_OPTIONS, RENDERER_OPTIONS, createRenderer, renderSnapshot } from './snapshotMarkdown'
 
 const noFrozen = new Map<string, string>()
 
@@ -322,5 +322,69 @@ describe('a leading h1 identical to the page title is not rendered twice', () =>
     expect(renderSnapshot(body, noFrozen, null, { pageTitle: null })).toBe(plain)
     expect(renderSnapshot(body, noFrozen, null, { pageTitle: '' })).toBe(plain)
     expect(plain).toContain('<h1>冻结的标题</h1>')
+  })
+})
+
+describe('formulas (TASK-095)', () => {
+  const noFrozen = new Map<string, string>()
+  const render = (markdown: string) => {
+    const host = document.createElement('div')
+    host.innerHTML = renderSnapshot(markdown, noFrozen)
+    return host
+  }
+
+  it('runs KaTeX with the safe options, asserted on the configuration itself', () => {
+    expect(MATH_OPTIONS.trust).toBe(false)
+    expect(MATH_OPTIONS.throwOnError).toBe(false)
+    expect(MATH_OPTIONS.output).toBe('html')
+    expect(MATH_OPTIONS.delimiters).toBe('all')
+    expect(RENDERER_OPTIONS.html).toBe(false)
+  })
+
+  it.each([
+    ['dollars block', '$$\n\\begin{aligned} u = \\frac{1}{m} \\sum h_{i} \\end{aligned}\n$$', true],
+    [
+      'bracket block',
+      '\\[ \\sigma = \\left( \\frac{1}{m} \\sum (h_i - u)^2 \\right)^{1/2} \\]',
+      true,
+    ],
+    ['dollar inline', '均值记作 $u = \\frac{1}{m} \\sum h_i$ ，其中 m 是神经元数。', false],
+    ['paren inline', '平滑项 \\(\\epsilon\\) 防止分母为零。', false],
+  ])('renders %s through KaTeX', (_name, markdown, display) => {
+    const host = render(markdown)
+    expect(host.querySelector('.katex')).not.toBeNull()
+    expect(host.querySelector('.katex-display') !== null).toBe(display)
+    // 只出 HTML 那份：没有 MathML 的隐藏副本，纯文本里公式只出现一次。
+    expect(host.querySelector('.katex-mathml')).toBeNull()
+    expect(host.querySelector('math')).toBeNull()
+  })
+
+  it('leaves money alone: a dollar followed by a digit is not a formula', () => {
+    const host = render('这本书 $5 而那本 $10，都不贵。')
+    expect(host.querySelector('.katex')).toBeNull()
+    expect(host.textContent).toContain('$5 而那本 $10')
+  })
+
+  it('shows a broken formula as escaped source instead of throwing or dropping it', () => {
+    const host = render('$\\frac{1}{$')
+    expect(host.querySelector('script')).toBeNull()
+    expect(host.textContent).toContain('\\frac{1}{')
+  })
+
+  it.each([
+    ['a tag inside math', '$<script>alert(1)</script>$', 'script'],
+    ['an untrusted href command', '$\\href{javascript:alert(1)}{x}$', 'a'],
+    ['an image command', '$\\includegraphics[height=1em]{https://evil.test/x.png}$', 'img'],
+  ])('keeps %s out of the DOM', (_name, markdown, tag) => {
+    const host = render(markdown)
+    expect(host.querySelector(tag)).toBeNull()
+    expect(host.querySelector('[href]')).toBeNull()
+    expect(host.querySelector('[onerror], [onclick], [onload]')).toBeNull()
+  })
+
+  it('still escapes raw HTML around a formula', () => {
+    const host = render('<img src=x onerror=alert(1)> 与 $x^2$')
+    expect(host.querySelector('img')).toBeNull()
+    expect(host.querySelector('.katex')).not.toBeNull()
   })
 })

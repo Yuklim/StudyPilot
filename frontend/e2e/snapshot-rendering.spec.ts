@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 
 /**
  * 走真实后端：正文里的图片，冻结过的显示**本机那一份**，没冻的按原址加载。
@@ -103,4 +103,54 @@ test('a rendered snapshot shows the local copy of a frozen image', async ({ page
   // 后者在用户选择自动加载之后就不成立了。
   const unexpected = [...new Set(external)].filter((origin) => origin !== ORIGIN_HOST)
   expect(unexpected).toEqual([])
+})
+
+/** 直接打后端造数（与其他 spec 同一写法）。 */
+async function call(page: Page, path: string, method = 'GET', body?: unknown) {
+  return page.evaluate(
+    async ([target, verb, payload]) => {
+      const bootstrap = await fetch('/api/v1/local-session', {
+        headers: { 'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'cors' },
+      })
+      const token = ((await bootstrap.json()) as { data: { token: string } }).data.token
+      const response = await fetch('/api/v1' + target, {
+        method: verb as string,
+        headers: { 'X-StudyPilot-Token': token, 'Content-Type': 'application/json' },
+        body: payload === undefined ? undefined : JSON.stringify(payload),
+      })
+      return { status: response.status, ...(await response.json().catch(() => ({}))) }
+    },
+    [path, method, body] as const,
+  )
+}
+
+test('formulas in a snapshot are drawn by KaTeX and never widen the page (TASK-095)', async ({
+  page,
+}) => {
+  await page.goto('/resources')
+  const created = await call(page, '/resources', 'POST', {
+    source_type: 'WEB',
+    title: '批量归一化 · 公式',
+    source_url: 'https://example.test/formulas',
+  })
+  const id = created.data.id as string
+  const long = Array.from({ length: 12 }, (_, i) => `x_{${i}}^{2} + y_{${i}}^{2}`).join(' + ')
+  const put = await call(page, `/resources/${id}/snapshot`, 'PUT', {
+    content: `# 公式\n\n均值 $u = \\frac{1}{m} \\sum h_i$ 与方差：\n\n$$\n\\sigma = \\left( \\frac{1}{m} \\sum (h_i - u)^2 \\right)^{1/2}\n$$\n\n很长的一条：\n\n\\[ ${long} \\]\n`,
+  })
+  expect([200, 201]).toContain(put.status)
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto(`/resources/${id}`)
+    await expect(page.locator('.snapshot-rendered .katex-display').first()).toBeVisible()
+    expect(await page.locator('.snapshot-rendered .katex').count()).toBeGreaterThanOrEqual(3)
+    // KaTeX 的字体真的装进来了：公式里的字用的是它的字体，不是回退的系统字体。
+    const family = await page
+      .locator('.snapshot-rendered .katex .mathnormal')
+      .first()
+      .evaluate((el) => getComputedStyle(el).fontFamily)
+    expect(family).toContain('KaTeX')
+    // 过宽的块级公式在自己的框里横滚，页面不横向溢出。
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  }
 })
