@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-093"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "改公共契约（§4.15 新增两个字段、PATCH 语义从「note_id 必填」改为「三字段至少一个、省略不动」）+ 一次迁移 0010（highlights 加两列带 CHECK）+ 关键数据模型；命中 risk-policy.json 的 docs/contracts/**、backend/**/models/**、backend/**/migrations/**。执行链：1 Worker → 自动检查 → 独立只读 Reviewer → 独立只读 Integration/Acceptance → 主 Agent 汇总。"
 risk_flags = ["public-api", "migration", "critical-data"]
@@ -141,8 +141,9 @@ checks = ["backend", "contracts"]
   > **跨模块**：`highlights.ts` `object()` 不拒绝多余键、`highlightAt` 只挑字段；前端 PATCH 仍发 `{note_id, expected_version}`，满足 minProperties 2。`test_highlights.py` 字段集断言含 `style`/`color`。
   > **allowed_paths**：12 个路径全部存在，索引 093 行状态与记录一致；未见改动超出清单。
   > **Findings**：No findings。**剩余风险**：无 git 无法验证候选 SHA 与工作区一致，以记录与文件内容为准；索引行状态在 MERGED 时需同步更新。
-- 最终状态/风险/用户操作：**ACCEPTED**（L3 执行链走完：实现 → 每轮机械检查 → 独立只读 Reviewer 两轮 → 独立只读
-  Integration/Acceptance PASS）。风险：改了契约、数据模型与迁移；降级在有非默认样式时会拒绝（有意为之）。
+- 最终状态/风险/用户操作：**MERGED**——PR #101 于 2026-09-26 合进了 TASK-092 分支（base 未自动改指向），2026-09-29 用户合并
+  PR #103（092 分支 → main，merge `413804f`）后进入 main；本条 MERGED 登记按 §5 并入 TASK-096 的控制面提交。合并前状态为
+  **ACCEPTED**（L3 执行链走完：实现 → 每轮机械检查 → 独立只读 Reviewer 两轮 → 独立只读 Integration/Acceptance PASS）。风险：改了契约、数据模型与迁移；降级在有非默认样式时会拒绝（有意为之）。
   **等待用户操作**：随 TASK-094 一起本机看过后推 PR；094 未合并前，093 单独合并也不影响现有阅读器。
 - 非阻断遗留项：无。
 - 日期与决定日志：2026-09-26 用户看过草图答「可以，按草图开 TASK-093 和 094」→ 登记本任务。

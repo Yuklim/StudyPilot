@@ -377,7 +377,6 @@ export function ClassificationManager() {
   return (
     <section className="resource-sheet" aria-label="分类整理">
       <div className="classification-intro">
-        <span className="small-label">SMALL LABELS, GROWING IDEAS</span>
         <h2>把好奇，收进自己的索引册。</h2>
         <p className="resource-hint">主题定方向，标签串线索。不必一次整理完。</p>
       </div>

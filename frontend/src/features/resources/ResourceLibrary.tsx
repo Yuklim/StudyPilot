@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
-import { BookSketch, Icon } from '../../shell/Icon'
+import { Icon } from '../../shell/Icon'
 import { displayTime, listResources, sourceLabels, statusLabels } from './api'
 import { ResourceDeleteDialog, type DeleteTarget } from './ResourceDeleteDialog'
 import { resourceTitle } from './resourceTitle'
@@ -335,14 +335,11 @@ export function ResourceLibrary() {
       {result?.error !== undefined && <ResourceError error={result.error} retry={retry} />}
       {data && data.data.length === 0 && (
         <div className="empty-sheet">
-          <div className="book-mat">
-            <BookSketch />
-          </div>
           <h2>{filtered || page > 1 ? '这一页没有找到资料' : '给想学的内容，留一个位置'}</h2>
           <p>
             {filtered || page > 1
               ? '试试其他搜索词，或重置筛选回到第一页。'
-              : '从一篇网页或一段文字开始，一点点填满自己的知识手帐。'}
+              : '从一篇网页或一段文字开始。'}
           </p>
           <Link className="text-link" to="/resources/new">
             收藏第一份好奇

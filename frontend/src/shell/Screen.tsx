@@ -9,15 +9,12 @@ import { RecordHistory } from '../features/learning/RecordHistory'
 import { NoteEditorPage } from '../features/notes/NoteEditorPage'
 import { NotesPage } from '../features/notes/NotesPage'
 
-import { BookSketch, Icon } from './Icon'
+import { Icon } from './Icon'
 import type { ShellPage } from './pages'
 
 function EmptyPage({ page }: { page: ShellPage }) {
   return (
     <section className="empty-sheet" aria-label={page.title + '页面预留'}>
-      <div className="book-mat">
-        <BookSketch />
-      </div>
       <span className="small-label">
         {page.path === '*' ? 'PAGE NOT FOUND' : '这一页，留给接下来的积累'}
       </span>
@@ -38,7 +35,6 @@ function Overview() {
     <>
       <section className="welcome-note" aria-labelledby="welcome-title">
         <div className="welcome-copy">
-          <span className="eyebrow">A LITTLE EVERY DAY</span>
           <h2 id="welcome-title">让学习，成为日常的一小部分。</h2>
           <p>
             收好值得读的内容，记下自己的理解。
@@ -53,12 +49,6 @@ function Overview() {
               收藏一份内容 <Icon name="plus" />
             </Link>
           </div>
-        </div>
-        <div className="journal-decoration" aria-hidden="true">
-          <span className="washi-tape" />
-          <span className="journal-date">a page for your thoughts</span>
-          <BookSketch />
-          <span className="journal-signature">一点一滴，都算数。</span>
         </div>
       </section>
 

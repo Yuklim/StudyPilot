@@ -55,14 +55,3 @@ export function Icon({ name }: { name: IconName }) {
     </svg>
   )
 }
-
-// Reuse the existing TASK-002 book sketch, not a new external illustration asset.
-export function BookSketch() {
-  return (
-    <svg className="book-sketch" viewBox="0 0 180 90" fill="none" aria-hidden="true">
-      <path d="M10 22C42 15 67 19 88 34V77C67 64 42 61 10 68V22Z" />
-      <path d="M170 22C138 15 113 19 92 34V77C113 64 138 61 170 68V22Z" />
-      <path d="M90 33V80M27 34C44 31 59 34 72 42M108 42C121 34 136 31 153 34" />
-    </svg>
-  )
-}

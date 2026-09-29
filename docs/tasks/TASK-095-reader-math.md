@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-095"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L3"
 risk_reason = "改的是 `snapshotMarkdown.ts`——本项目唯一的 XSS 边界（`html: false` 的 markdown-it 渲染器，输出经 dangerouslySetInnerHTML 进 DOM）。公式渲染必然要往这条管线里加一个会产出 HTML 的插件（KaTeX），安全性质从「渲染器转义一切」变成「渲染器转义一切 + KaTeX 在 trust:false 下只产出它自己生成的、内容已转义的标记」。命中 risk_flags 的 security。执行链：1 Worker → 自动检查 → 独立只读 Reviewer → 独立只读 Integration/Acceptance。"
 risk_flags = ["security", "business"]
@@ -139,7 +139,8 @@ checks = ["frontend"]
   > 5. 登记 → TASK-091/092 记录 `status` MERGED、EVIDENCE 写了 #99 `e1e4e6a`、#100 `fcefef7`；索引行同为 MERGED；093/094 ACCEPTED 与各自记录一致；095 IN_PROGRESS 与记录一致。→ 满足。
   > 安全边界：`snapshotMarkdown.ts:19` `RENDERER_OPTIONS` 既有测试仍断言；`:41-47` `MATH_OPTIONS` 五键与记录一致；`:71` `md.use(katex, MATH_OPTIONS)`。插件源确认 `strict` 被覆盖、走 `logger` 正确。`main.tsx:9` 引入 KaTeX CSS；`package.json`/lock 均为精确版本。跨模块：allowed_paths 11 项全在 `frontend/` 与 `docs/tasks/`，无 `backend/`、`docs/contracts/`。
   > Findings（非阻断）：记录「新增 6 个 it 块」已过时，实为 7 个、12 条。剩余风险：`RENDERER_OPTIONS`「一字未动」继承第一轮 Reviewer 的完整 diff 结论；`output:'html'` 无障碍代价与公式高亮取渲染文本已记为已知限制。
-- 最终状态/风险/用户操作：**ACCEPTED**（L3 执行链走完：实现 → 每轮机械检查 → 独立只读 Reviewer 两轮 → 独立只读
+- 最终状态/风险/用户操作：**MERGED**——2026-09-29 用户合并 PR #104，merge `324e9c4`；本条 MERGED 登记按 §5 并入 TASK-096 的
+  控制面提交。合并前状态为 **ACCEPTED**（L3 执行链走完：实现 → 每轮机械检查 → 独立只读 Reviewer 两轮 → 独立只读
   Integration/Acceptance PASS）。风险：改了 XSS 边界，靠 KaTeX `trust:false` + 全量转义 + 直接断言配置的测试兜住；
   最坏情况是某条冷门 LaTeX 显示成红色源码。**等待用户操作**：推 PR（指向 main），**须在 PR #103 之后合并**；合并后
   重启启动脚本（前端依赖变了要 `npm ci`——启动脚本会做）。
