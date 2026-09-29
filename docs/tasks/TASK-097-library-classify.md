@@ -82,6 +82,11 @@ checks = ["frontend"]
 - **第二次实现提交（按第一轮 Review F1）**：第 6 条单测原本只断言「没发请求」、撤掉实现也不会红——改成「多份 + 不改主题 +
   无标签 = 没事可做 → 关闭、不发请求、不调 onSaved」的真断言。重跑：该文件 6/6；`check_task.py --worktree` → 退出码 0，
   **CHECKS PASS**，`product_fingerprint=6c33b755d66e115c0b1b2e98c309d8918bb25c6a82067c655ba11dcfafe92060`（vitest 852）。
+- **第三次实现提交（PR #106 的 CI 抓到的）**：新 e2e 给三份资料挂了主题、测完没还原；同一次运行里后面的 `scaffold.spec.ts`
+  守着「资料库只发批准过的读请求」，而资料有主题时资料库会按 id 读主题名（`/api/v1/topics/{id}`，既有行为，守卫白名单里没有）
+  → CI 红、本机单跑绿（库是空的）。改法：用例末尾把三份资料的 `topic_id` PATCH 回 null，沙盒还原；**不动守卫**。
+  重跑：本机**全套** e2e **87/87**（按 CI 同样的字母序）；`check_task.py --worktree` → 退出码 0，**CHECKS PASS**，
+  `product_fingerprint=fb98254909899559113b160aa04a372965cb880a0980ddc7f4a870489047fdb7`（vitest 852）。教训同 094：改了会留数据的 e2e，本机要跑全套。
 - 已知限制/未完成项：
   - Tab 环的首元素是第一个 radio：当选中的是别的主题时，Shift-Tab 会先出到浏览器界面再回来（Review F2，可选）。
   - 「保存中禁止关闭」没有单测，代码与删除弹窗同构、e2e 走真路径（Review F3）。

@@ -461,4 +461,17 @@ test('topics and tags can be assigned from the library, one row or several at on
     return out
   }, seeded.ids)
   expect(stored).toEqual(seeded.ids.map(() => ({ topic: seeded.topic, tags: [seeded.tag] })))
+  // 把沙盒还原：资料挂着主题时，资料库会按 id 去读主题名（`/api/v1/topics/{id}`），而同一次
+  // 运行里后面的 scaffold.spec.ts 守着「资料库只发批准过的读请求」——留着主题会让它红。
+  await page.evaluate(async (list) => {
+    const modulePath = '/src/api/client.ts'
+    const { api } = await import(modulePath)
+    for (const id of list) {
+      const got = (await api.request(`/api/v1/resources/${id}`)) as { data: { version: number } }
+      await api.request(`/api/v1/resources/${id}`, {
+        method: 'PATCH',
+        body: { topic_id: null, expected_version: got.data.version },
+      })
+    }
+  }, seeded.ids)
 })
