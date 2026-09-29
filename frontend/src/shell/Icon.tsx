@@ -23,6 +23,8 @@ export type IconName =
   | 'highlighter'
   | 'underline'
   | 'eraser'
+  // TASK-097：资料库行上的「分类」。
+  | 'tags'
 
 const paths: Record<IconName, string> = {
   overview: 'M3 10 12 3l9 7M5 9v11h5v-6h4v6h5V9',
@@ -46,6 +48,7 @@ const paths: Record<IconName, string> = {
   underline: 'M6 4v6a6 6 0 0 0 12 0V4M4 20h16',
   eraser:
     'M7 21l-4.3-4.3a2.4 2.4 0 0 1 0-3.4l9.6-9.6a2.4 2.4 0 0 1 3.4 0l5.6 5.6a2.4 2.4 0 0 1 0 3.4L13 21M22 21H7M5 11l9 9',
+  tags: 'M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82zM7 7h.01',
 }
 
 export function Icon({ name }: { name: IconName }) {

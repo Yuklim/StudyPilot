@@ -2,7 +2,8 @@ import { useCallback, useMemo, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
 import { Icon } from '../../shell/Icon'
-import { displayTime, listResources, sourceLabels, statusLabels } from './api'
+import { displayTime, listResources, sourceLabels, statusLabels, type Resource } from './api'
+import { LibraryClassifyDialog } from './LibraryClassifyDialog'
 import { ResourceDeleteDialog, type DeleteTarget } from './ResourceDeleteDialog'
 import { resourceTitle } from './resourceTitle'
 import { ResourceError, ResourceProgress } from './ResourceState'
@@ -152,6 +153,9 @@ export function ResourceLibrary() {
     [key],
   )
   const [deleteTargets, setDeleteTargets] = useState<DeleteTarget[] | null>(null)
+  // 分类弹窗（TASK-097）：一份或勾选的多份；保存成功后重读列表。
+  const [classifyTargets, setClassifyTargets] = useState<Resource[] | null>(null)
+  const closeClassify = useCallback(() => setClassifyTargets(null), [])
   const rows = data?.data ?? []
   const target = (item: (typeof rows)[number]): DeleteTarget => ({
     id: item.id,
@@ -372,6 +376,13 @@ export function ResourceLibrary() {
               </button>
               <button
                 type="button"
+                className="journal-button"
+                onClick={() => setClassifyTargets(rows.filter((item) => selected.has(item.id)))}
+              >
+                设置分类
+              </button>
+              <button
+                type="button"
                 className="journal-button danger"
                 onClick={() => setDeleteTargets(selectedTargets)}
               >
@@ -427,6 +438,15 @@ export function ResourceLibrary() {
                 </div>
                 <button
                   type="button"
+                  className="journal-button icon-button resource-classify"
+                  aria-label={`分类 ${resourceTitle(item)}`}
+                  title="设置主题与标签"
+                  onClick={() => setClassifyTargets([item])}
+                >
+                  <Icon name="tags" />
+                </button>
+                <button
+                  type="button"
                   className="journal-button icon-button resource-delete"
                   aria-label={`删除 ${resourceTitle(item)}`}
                   title="删除"
@@ -452,6 +472,15 @@ export function ResourceLibrary() {
                     {sourceLabels[item.source_type]}
                   </span>
                   <span>{item.source_name || '未填写来源名称'}</span>
+                  <button
+                    type="button"
+                    className="journal-button icon-button resource-classify"
+                    aria-label={`分类 ${resourceTitle(item)}`}
+                    title="设置主题与标签"
+                    onClick={() => setClassifyTargets([item])}
+                  >
+                    <Icon name="tags" />
+                  </button>
                   <button
                     type="button"
                     className="journal-button icon-button resource-delete"
@@ -518,6 +547,9 @@ export function ResourceLibrary() {
           onClose={closeDeletion}
           onDeleted={afterDeletion}
         />
+      )}
+      {classifyTargets && classifyTargets.length > 0 && (
+        <LibraryClassifyDialog targets={classifyTargets} onClose={closeClassify} onSaved={retry} />
       )}
     </section>
   )
