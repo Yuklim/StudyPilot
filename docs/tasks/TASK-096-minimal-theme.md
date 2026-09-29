@@ -15,6 +15,7 @@ allowed_paths = [
   "frontend/src/shell/Screen.tsx",
   "frontend/src/shell/Icon.tsx",
   "frontend/src/shell/ShellPages.test.tsx",
+  "frontend/src/ErrorBoundary.tsx",
   "frontend/src/features/resources/ResourceLibrary.tsx",
   "frontend/src/features/resources/ResourceLibrary.test.tsx",
   "frontend/src/features/taxonomy/ClassificationManager.tsx",
@@ -93,6 +94,16 @@ checks = ["frontend"]
     方块，收起态守卫要 44px）→ 收起态补回 44px 高 → 该 spec 绿 → 全套重跑 **86/86**。
   - 真机截图（一次性 spec，已移出工作区）：概览、资料库、阅读器（含高亮/下划线/公式/右栏）、我的心得、新心得、学习记录、
     分类整理七页各两轮，第二轮与方案 2 草图对得上。
+- **第二次实现提交（按第一轮 Review，RETURNED → 修）**：
+  - 必须修复 F1–F3：删规则的脚本把三条复合选择器的前半截粘到了下一条规则上（`.welcome-copy .welcome-copy h2`、
+    `.journal-decoration .overview-actions`、`.page-heading .page-heading p`），概览标题、快速开始按钮组、窄屏页头的样式
+    因此失效而 e2e 没有守卫——已改回正确选择器，并用 `^\s*\.x \.y \{` 模式全文核过没有第四处。
+  - F4「粘贴」来源标签被映成红字 → `--text-2`；F5 `.resource-card::before` 两条「胶带」伪元素删掉；F6 `.capability-list strong`
+    回 `--ink`、删除确认正文回 `--text-2`；F7 「后续能力」链接与 PDF 占位文字由 `--faint` 改 `--muted`（对比度 <3:1 → ≥4.5:1）；
+    F8 两处 `.sidebar-note` 死选择器删掉，`ErrorBoundary.tsx` 的眉标 span 删掉（补进 allowed_paths，理由：与其余眉标一致；
+    `.small-label` 的三处小标题是内容标题不是装饰，保留）。
+  - 重跑：七页截图第三轮（概览标题与按钮组回位）；全套 e2e **86/86**；`check_task.py --worktree` → 退出码 0，**CHECKS PASS**，
+    `files=12`，`product_fingerprint=d82960ebe1f5c95a5c0a4cd43d88da472c990763377f8a28fd8cc71ec9c54cb0`（vitest 846）。
 - 已知限制/未完成项：
   - 色值映射是按色相/明度机械做的，个别地方的深浅可能与设计意图差一档（例如某些 hover 底色），用户看过截图或本机后再微调。
   - README 与截图仍是旧风格（随下一次文档追平）。

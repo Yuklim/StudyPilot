@@ -207,10 +207,10 @@ p {
   min-height: 38px;
   padding: 9px 13px;
   font-size: 13px;
-  color: var(--faint);
+  color: var(--muted);
 }
 .nav-section-more .primary-nav a:hover {
-  color: var(--muted);
+  color: var(--ink);
 }
 .add-link {
   display: flex;
@@ -331,7 +331,7 @@ p {
   z-index: 1;
   min-width: 0;
 }
-.welcome-copy .welcome-copy h2 {
+.welcome-copy h2 {
   margin: 14px 0 12px;
   font: 600 24px/1.55 var(--font-sans);
   letter-spacing: 0.5px;
@@ -364,7 +364,7 @@ p {
 .text-link:hover .icon {
   transform: translateX(3px);
 }
-.journal-decoration .overview-actions {
+.overview-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
@@ -423,7 +423,7 @@ p {
   display: block;
   font-size: 13px;
   font-weight: 600;
-  color: var(--muted);
+  color: var(--ink);
 }
 .capability-list small {
   display: block;
@@ -930,7 +930,7 @@ fieldset:disabled {
   overflow-wrap: anywhere;
 }
 .deletion-dialog-body {
-  color: var(--danger);
+  color: var(--text-2);
   font-size: 13px;
   line-height: 1.9;
 }
@@ -1465,21 +1465,6 @@ fieldset:disabled {
   background: var(--paper);
   overflow-wrap: anywhere;
 }
-.resource-card::before {
-  content: '';
-  display: block;
-  position: absolute;
-  top: -5px;
-  left: 23px;
-  width: 43px;
-  height: 10px;
-  background: var(--surface-2);
-  transform: rotate(-4deg);
-}
-.resource-card:nth-child(even)::before {
-  background: var(--surface-2);
-  transform: rotate(3deg);
-}
 .resource-card-heading {
   display: flex;
   align-items: center;
@@ -1500,7 +1485,7 @@ fieldset:disabled {
 }
 .source-chip.paste {
   background: var(--surface-2);
-  color: var(--danger);
+  color: var(--text-2);
 }
 .resource-card h2 {
   font: 600 20px/1.7 var(--font-sans);
@@ -1834,7 +1819,6 @@ fieldset:disabled {
     grid-row: 3;
   }
   .nav-label,
-  .sidebar-note,
   .sidebar-footer {
     display: none;
   }
@@ -1889,7 +1873,7 @@ fieldset:disabled {
   .page-heading h1 {
     font-size: 28px;
   }
-  .page-heading .page-heading p {
+  .page-heading p {
     font-size: 12px;
   }
   .preview-notice {
@@ -2778,7 +2762,6 @@ a.source-chip:focus-visible {
 }
 .app-shell.nav-collapsed .brand-copy,
 .app-shell.nav-collapsed .nav-label,
-.app-shell.nav-collapsed .sidebar-note,
 .app-shell.nav-collapsed .sidebar-footer {
   display: none;
 }
@@ -3315,7 +3298,7 @@ a.source-chip:focus-visible {
 /* 远离视口的页只占位：canvas 交还给浏览器，几十页的文档才不会把内存吃满。 */
 .pdf-page-placeholder {
   font-size: 13px;
-  color: var(--faint);
+  color: var(--muted);
 }
 /* **这次改版的落点**（TASK-081）：不再用 `calc(100vh - 常数)` 扣一个拍出来的数，
    而是让这一列**按剩余空间填满**——顶栏在窄屏会换行变高，任何常数都会在某一档偏掉
