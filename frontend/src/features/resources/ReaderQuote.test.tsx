@@ -63,6 +63,8 @@ function mount(initial = sample()) {
             start_offset: typeof sent.start_offset === 'number' ? sent.start_offset : 0,
             end_offset: typeof sent.end_offset === 'number' ? sent.end_offset : 11,
             page_number: null,
+            style: typeof sent.style === 'string' ? sent.style : 'mark',
+            color: typeof sent.color === 'string' ? sent.color : 'yellow',
             note_id: (sent.note_id as string | null) ?? null,
             version: init.method === 'PATCH' ? 2 : 1,
             created_at: '2026-09-19T02:00:00Z',
@@ -229,12 +231,18 @@ describe('记下这段', () => {
     expect(editor().value.endsWith('> 当隐藏层只有一层时叫两层网络。\n\n> 第二节。\n\n')).toBe(true)
   })
 
-  it('marks the passage without opening the composer (TASK-072)', async () => {
+  it('with a tool on, a selection is marked on mouseup in the current look, without opening anything (TASK-094)', async () => {
     mount()
     const paragraph = await screen.findByText(/神经网络主要由输入层/)
+    await screen.findByRole('toolbar', { name: '标注工具' })
+    // 没选工具时点颜色，顺手切到荧光笔。
+    fireEvent.click(screen.getByRole('radio', { name: '绿色' }))
+    expect(screen.getByRole('button', { name: '荧光笔' })).toHaveAttribute('aria-pressed', 'true')
     selectText('神经网络主要由输入层、隐藏层、输出层构成。', paragraph.firstChild)
-    fireEvent.click(screen.getByRole('button', { name: '标下来' }))
-    // 锚点按渲染后的正文取：原文 + 前后文 + 偏移，一起发出去。
+    // 胶囊不出现；松手即落色。
+    expect(screen.queryByRole('button', { name: '记下这段' })).toBeNull()
+    fireEvent.mouseUp(document)
+    // 锚点按渲染后的正文取：原文 + 前后文 + 偏移，一起发出去；颜色跟着当前色，默认样式不发。
     await waitFor(() => expect(marked).toHaveLength(1))
     expect(marked[0]!.method).toBe('POST')
     expect(marked[0]!.body.exact).toBe('神经网络主要由输入层、隐藏层、输出层构成。')
@@ -243,12 +251,24 @@ describe('记下这段', () => {
       (marked[0]!.body.start_offset as number) +
         '神经网络主要由输入层、隐藏层、输出层构成。'.length,
     )
-    // 只标记：右栏落在「高亮」Tab 上，心得 Tab 没被选中。
-    expect(screen.getByRole('tab', { name: /高亮/ })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByRole('tab', { name: '心得' })).toHaveAttribute('aria-selected', 'false')
-    // 切回心得看一眼：草稿一个字都没多。
-    fireEvent.click(screen.getByRole('tab', { name: '心得' }))
-    expect(editor()).toHaveValue('')
+    expect(marked[0]!.body.color).toBe('green')
+    expect(marked[0]!.body.style).toBeUndefined()
+    // 只标记：右栏没被打开——颜色本身就是反馈。
+    expect(screen.getByRole('button', { name: '心得' })).toHaveAttribute('aria-expanded', 'false')
+    // 换成下划线：再选一段，松手落下划线，颜色照旧。
+    fireEvent.click(screen.getByRole('button', { name: '下划线' }))
+    expect(screen.getByRole('button', { name: '荧光笔' })).toHaveAttribute('aria-pressed', 'false')
+    selectText('第二节。', screen.getByText('第二节。').firstChild)
+    fireEvent.mouseUp(document)
+    await waitFor(() => expect(marked).toHaveLength(2))
+    expect(marked[1]!.body).toMatchObject({ style: 'underline', color: 'green' })
+    // 再按一下取消工具：选中只出「记下这段」，「标下来」已经没有了。
+    fireEvent.click(screen.getByRole('button', { name: '下划线' }))
+    selectText('开头。', screen.getByText('开头。').firstChild)
+    expect(screen.getByRole('button', { name: '记下这段' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '标下来' })).toBeNull()
+    fireEvent.mouseUp(document)
+    expect(marked).toHaveLength(2)
   })
 
   it('marks what was quoted and binds the note that gets saved for it (TASK-072)', async () => {
@@ -278,9 +298,10 @@ describe('记下这段', () => {
     selectText('神经网络主要由输入层、隐藏层、输出层构成。', paragraph.firstChild)
     fireEvent.click(pill()!)
     await waitFor(() => expect(marked).toHaveLength(1))
-    // 改主意：只标一下别的段落（明确不想配心得）。
+    // 改主意：开荧光笔只标一下别的段落（明确不想配心得）。
+    fireEvent.click(screen.getByRole('button', { name: '荧光笔' }))
     selectText('第二节。', screen.getByText('第二节。').firstChild)
-    fireEvent.click(screen.getByRole('button', { name: '标下来' }))
+    fireEvent.mouseUp(document)
     await waitFor(() => expect(marked).toHaveLength(2))
     // 之后随手写的一条心得不该被配到任何一条高亮上。
     fireEvent.click(screen.getByRole('tab', { name: '心得' }))
@@ -466,7 +487,7 @@ describe('PDF 上的胶囊（TASK-087）', () => {
    * 直接渲染组件（不走整页）：PDF 那条路的正文根是 `.pdf-reader-pages`，里面是 pdf.js
    * 文字层的 span。这里造一个同形状的 DOM，验的是**正文根可换**与**按钮少一个**。
    */
-  function harness(canMark: boolean) {
+  function harness(canMark: boolean, tool: 'mark' | null = null) {
     const host = document.createElement('div')
     const pages = document.createElement('div')
     pages.className = 'pdf-reader-pages'
@@ -484,6 +505,7 @@ describe('PDF 上的胶囊（TASK-087）', () => {
         canMark={canMark}
         onQuote={onQuote}
         onMark={onMark}
+        tool={tool}
       />,
     )
     return { host, pages, span, onQuote, onMark }
@@ -499,20 +521,21 @@ describe('PDF 上的胶囊（TASK-087）', () => {
     expect(onQuote).toHaveBeenCalledWith('> 注意力机制在算什么', expect.anything())
   })
 
-  it('hides 「标下来」 where there is nowhere to put a highlight', () => {
-    const { span, onMark } = harness(false)
+  it('with the highlighter on but nowhere to put a highlight, mouseup marks nothing and the pill stays', () => {
+    const { span, onMark } = harness(false, 'mark')
     selectText('注意力机制在算什么', span.firstChild)
-    expect(screen.queryByRole('button', { name: '标下来' })).toBeNull()
+    fireEvent.mouseUp(document)
     expect(onMark).not.toHaveBeenCalled()
-    // 分隔线跟着一起消失，胶囊里不留一条孤零零的竖线。
-    expect(document.querySelector('.reader-quote-divider')).toBeNull()
+    expect(screen.getByRole('button', { name: '记下这段' })).not.toBeNull()
+    expect(screen.queryByRole('button', { name: '标下来' })).toBeNull()
   })
 
-  it('still offers both hands where highlights do have a home', () => {
-    const { span } = harness(true)
+  it('with the highlighter on where highlights do have a home, mouseup marks and no pill appears', () => {
+    const { span, onMark } = harness(true, 'mark')
     selectText('注意力机制在算什么', span.firstChild)
-    expect(screen.getByRole('button', { name: '标下来' })).not.toBeNull()
-    expect(screen.getByRole('button', { name: '记下这段' })).not.toBeNull()
+    expect(screen.queryByRole('button', { name: '记下这段' })).toBeNull()
+    fireEvent.mouseUp(document)
+    expect(onMark).toHaveBeenCalledWith(expect.any(Range))
   })
 
   it('follows a selection that scrolls inside the reader, not just the window', () => {
@@ -553,26 +576,27 @@ describe('按选区判能不能标（TASK-089）', () => {
         canMark={canMark}
         onQuote={onQuote}
         onMark={onMark}
+        tool="mark"
       />,
     )
     return { span, onMark, onQuote }
   }
 
-  it('offers 「标下来」 when the predicate accepts the selection', () => {
+  it('marks on mouseup when the predicate accepts the selection', () => {
     const accept = vi.fn(() => true)
     const { span, onMark } = harness(accept)
     selectText('同一页里的一句', span.firstChild)
     expect(accept).toHaveBeenCalledWith(expect.any(Range))
-    const button = screen.getByRole('button', { name: '标下来' })
-    fireEvent.mouseDown(button)
-    fireEvent.click(button)
-    expect(onMark).toHaveBeenCalledWith(expect.any(Range))
     expect(screen.queryByText('选区跨页或落到页外，只能记下这段')).toBeNull()
+    fireEvent.mouseUp(document)
+    expect(onMark).toHaveBeenCalledWith(expect.any(Range))
   })
 
   it('keeps only 「记下这段」 and says why when the predicate refuses (cross-page)', () => {
-    const { span, onQuote } = harness(() => false)
+    const { span, onQuote, onMark } = harness(() => false)
     selectText('同一页里的一句', span.firstChild)
+    fireEvent.mouseUp(document)
+    expect(onMark).not.toHaveBeenCalled()
     expect(screen.queryByRole('button', { name: '标下来' })).toBeNull()
     expect(screen.getByText('选区跨页或落到页外，只能记下这段')).toBeInTheDocument()
     // 引文照走。

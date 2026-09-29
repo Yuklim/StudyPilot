@@ -345,6 +345,9 @@ test('the outline sits left of the body, follows scrolling, and the three column
   const body = (await main.locator('.resource-snapshot').first().boundingBox())!
   expect(body.x - (outlineBox.x + outlineBox.width)).toBeLessThanOrEqual(64)
   expect(body.x + body.width / 2).toBeLessThanOrEqual(1440 / 2)
+  // 文章头（标题 + 来源徽章）与正文同一条左边线：第一版只挪了正文，标题留在原地居中。
+  const header = (await main.locator('.reader-header').boundingBox())!
+  expect(Math.abs(header.x - body.x)).toBeLessThanOrEqual(1)
 
   // 进度线：学习进度 0% → 绿色部分宽 0；写一条学习记录后变宽。
   const bar = page.locator('.reader-progress-bar')

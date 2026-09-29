@@ -6,6 +6,7 @@ import {
   createHighlight,
   deleteHighlight,
   listHighlights,
+  updateHighlight,
   type Highlight,
 } from './highlights'
 
@@ -25,6 +26,8 @@ function row(overrides: Partial<Highlight> = {}): Highlight {
     start_offset: 7,
     end_offset: 18,
     page_number: null,
+    style: 'mark',
+    color: 'yellow',
     note_id: null,
     version: 1,
     created_at: '2026-09-19T02:00:00Z',
@@ -189,5 +192,62 @@ describe('page anchors (TASK-089)', () => {
     await expect(createHighlight(resourceId, anchor)).rejects.toMatchObject({
       code: 'INVALID_RESPONSE',
     })
+  })
+})
+
+describe('the look (TASK-093 / TASK-094)', () => {
+  const anchor = {
+    exact: row().exact,
+    prefix: row().prefix,
+    suffix: row().suffix,
+    start_offset: row().start_offset,
+    end_offset: row().end_offset,
+  }
+
+  it('sends the look only when it is not the default, and refuses a row with an unknown look', async () => {
+    const request = vi.spyOn(api, 'request')
+    request.mockResolvedValueOnce({ data: row() })
+    await createHighlight(resourceId, anchor)
+    expect(request.mock.calls.at(-1)![1]).toEqual({ method: 'POST', body: anchor })
+    request.mockResolvedValueOnce({ data: row({ style: 'underline', color: 'green' }) })
+    const styled = await createHighlight(resourceId, anchor, null, null, {
+      style: 'underline',
+      color: 'green',
+    })
+    expect(request.mock.calls.at(-1)![1]).toEqual({
+      method: 'POST',
+      body: { ...anchor, style: 'underline', color: 'green' },
+    })
+    expect(styled.style).toBe('underline')
+    // 样子是闭集：不认识的不是「按默认画」，是响应不对。
+    request.mockResolvedValueOnce({ data: { ...row(), color: 'red' } })
+    await expect(createHighlight(resourceId, anchor)).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    })
+  })
+
+  it('patches only the fields it is asked to, and refuses an empty or unknown change before sending', async () => {
+    const request = vi.spyOn(api, 'request')
+    request.mockResolvedValueOnce({ data: row({ color: 'blue', version: 2 }) })
+    const recoloured = await updateHighlight(resourceId, row(), { color: 'blue' })
+    expect(request).toHaveBeenLastCalledWith(base + '/' + row().id, {
+      method: 'PATCH',
+      body: { expected_version: 1, color: 'blue' },
+    })
+    expect(recoloured.color).toBe('blue')
+    request.mockResolvedValueOnce({ data: row({ style: 'underline', version: 3 }) })
+    await updateHighlight(resourceId, row({ version: 2 }), { style: 'underline', note_id: null })
+    expect(request).toHaveBeenLastCalledWith(base + '/' + row().id, {
+      method: 'PATCH',
+      body: { expected_version: 2, note_id: null, style: 'underline' },
+    })
+    request.mockClear()
+    await expect(updateHighlight(resourceId, row(), {})).rejects.toMatchObject({
+      code: 'INVALID_REQUEST',
+    })
+    await expect(
+      updateHighlight(resourceId, row(), { color: 'red' as never }),
+    ).rejects.toMatchObject({ code: 'INVALID_REQUEST' })
+    expect(request).not.toHaveBeenCalled()
   })
 })
