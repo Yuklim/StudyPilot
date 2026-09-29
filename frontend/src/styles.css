@@ -2547,6 +2547,13 @@ a.source-chip:focus-visible {
 .snapshot-rendered :is(h3) {
   font-size: 1.12em;
 }
+/* 公式（TASK-095）：块级公式比正文列宽时在自己的框里横向滚，页面不出横向滚动条
+   （既有 e2e 守着 320/390px 不横向溢出）。KaTeX 自己的样式随 `katex.min.css` 进来。 */
+.snapshot-rendered .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 0;
+}
 .snapshot-rendered blockquote {
   margin: 1.2em 0;
   padding-left: 14px;

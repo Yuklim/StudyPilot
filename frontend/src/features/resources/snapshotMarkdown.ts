@@ -1,3 +1,4 @@
+import { katex } from '@mdit/plugin-katex'
 import MarkdownIt from 'markdown-it'
 import type Token from 'markdown-it/lib/token.mjs'
 
@@ -16,6 +17,34 @@ import type Token from 'markdown-it/lib/token.mjs'
  * - `breaks: false`：与 CommonMark 一致，不改变已存正文的语义。
  */
 export const RENDERER_OPTIONS = { html: false, linkify: false, breaks: false } as const
+
+/**
+ * 公式（TASK-095，用户 2026-09-29「公式好像不能正常渲染」）。抓下来的文章里公式是标准 LaTeX
+ * （`$$…$$`、`\[…\]`、`$…$`、`\(…\)`），交给 KaTeX 画。**这是这条渲染管线里第二个会产出
+ * HTML 的东西**（第一个是 markdown-it 自己），所以下面每一项同样不是偏好，测试直接断言它们：
+ *
+ * - `trust: false`：`\href`、`\url`、`\includegraphics`、`\htmlId` 这类能把正文字符串放进
+ *   属性的命令一律不信任——KaTeX 会把它们当错误渲染成转义后的源码。
+ * - `throwOnError: false`：写错的公式以转义后的源码显示（带 `.katex-error`），不抛、不吞。
+ *   抓来的正文里错公式很常见，一条错的不该让整篇渲染失败。
+ * - `logger: () => 'ignore'`：LaTeX 严格模式的告警（中文进数学模式等）不算错、不写控制台。插件会用
+ *   自己的 `strict` 回调覆盖传入的 `strict` 选项、再问 `logger`——直接传 `strict:'ignore'` 不生效
+ *   （独立 Review F1），所以这里给的是 `logger`。
+ * - `output: 'html'`：不输出 MathML 那份（视觉隐藏的）副本。阅读器的高亮锚点与「记下这段」都按
+ *   **全部文本节点**取纯文本（`highlightAnchor.ts` `mapText`），两份并存会让公式的文字出现两次。
+ * - `delimiters: 'all'`：四种写法都认；`$5 和 $10` 这种货币写法不算（`$` 后不能是空白、
+ *   闭合 `$` 后不能是数字，插件自带的规则）。
+ *
+ * `html: false` 不受影响：KaTeX 收到的是 markdown-it 切出来的公式**源码字符串**，输出里所有
+ * 文本都经它转义；正文里的原始 HTML 仍是字面文本。
+ */
+export const MATH_OPTIONS = {
+  delimiters: 'all',
+  trust: false,
+  throwOnError: false,
+  logger: () => 'ignore' as const,
+  output: 'html',
+} as const
 
 /** 正文里一张图片的去向。 */
 export type ImageSource =
@@ -39,6 +68,7 @@ export const INLINE_IMAGE = /^data:image\/(?:png|jpeg|gif|webp);base64,[A-Za-z0-
  */
 export function createRenderer(resolve: (src: string) => ImageSource | null): MarkdownIt {
   const md = new MarkdownIt(RENDERER_OPTIONS)
+  md.use(katex, MATH_OPTIONS)
 
   md.renderer.rules.image = (tokens, index, _options, _env, self) => {
     const token = tokens[index]

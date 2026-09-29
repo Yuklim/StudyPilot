@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-091"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L1"
 risk_reason = "只改一处宽屏布局 CSS（目录开着时正文块在正文列里的横向位置），不碰契约、数据、后端与任何交互逻辑；用户看得见、能当场核对。CSS 在 jsdom 里量不出来，守卫加在既有的 reader-layout e2e 用例里（两条断言，对应用户的两句话）。执行链：1 Worker → 自动检查 + 自检 → 主 Agent 汇总；Review/验收 N/A。"
 risk_flags = ["small-ui"]
@@ -106,7 +106,8 @@ checks = ["frontend"]
 - Review：L1 N/A。主 Agent 自检：范围只有 `styles.css` 一条规则与 e2e 两条断言；断言已证明会咬（见实现与测试）；
   既有三栏/正文列 ≥740px/目录开关断言未动且全绿。
 - Acceptance：L1 N/A。
-- 最终状态/风险/用户操作：**ACCEPTED**。风险：纯视觉；最坏情况是用户觉得 48px 仍紧或仍松，改一个数即可。
+- 最终状态/风险/用户操作：**MERGED**——2026-09-26 用户合并 PR #99，merge 提交 `e1e4e6a`；第二次实现（文章头也靠左，`f8eefd3`/`21c043b`）
+  推送晚于合并，随 PR #103 进 main。本条 MERGED 登记按 §5 并入 TASK-095 的控制面提交。合并前状态为 **ACCEPTED**。风险：纯视觉；最坏情况是用户觉得 48px 仍紧或仍松，改一个数即可。
   **等待用户操作**：请在本机 1440 宽左右的窗口里打开一份有目录的网页资料，看目录与正文的距离与正文位置；
   按既定偏好，**你看过说没问题再推 PR**。
 - 非阻断遗留项：无。

@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-092"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L2"
 risk_reason = "改的是共享 API 客户端里「哪些 DELETE 路径允许带 If-Match」的安全白名单（`frontend/src/api/client.ts`），一处放行，不改契约、后端与数据；但白名单是全前端删除动作的守门口，且用户可见行为是删数据，须独立只读 Review 核对放行的路径形状确实只有高亮条目那一种。执行链：1 Worker → 自动检查 → 1 独立只读 Reviewer 检查最终 diff；独立验收 N/A。"
 risk_flags = ["business", "local-fix"]
@@ -104,7 +104,8 @@ checks = ["frontend"]
   > **Findings：No findings**
   > **剩余风险/下一步**：PDF 高亮走同一路径随修复生效但无独立 e2e（记录已如实列为已知限制，可记录后继续）；证据写回后请核对候选 SHA 仍为 `c4b6b19`。
 - Acceptance：L2 N/A。
-- 最终状态/风险/用户操作：**ACCEPTED**（L2：自动检查 PASS → 独立只读 Review PASS，No findings）。
+- 最终状态/风险/用户操作：**MERGED**——2026-09-26 用户合并 PR #100，merge 提交 `fcefef7`；本条 MERGED 登记按 §5 并入
+  TASK-095 的控制面提交。合并前状态为 **ACCEPTED**（L2：自动检查 PASS → 独立只读 Review PASS，No findings）。
   风险：一处白名单放行，Reviewer 已逐形状核对只多了高亮条目路径。**等待用户操作**：本机试一次
   「高亮 Tab → 删除 → 确认删除」，颜色与条目应当场消失；看过后再推 PR（PR 指向 091 的分支）。
 - 非阻断遗留项：PDF 上的高亮删除没有单独 e2e（同一条路径，随本修复生效）。
