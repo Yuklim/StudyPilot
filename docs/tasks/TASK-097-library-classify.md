@@ -96,7 +96,7 @@ checks = ["frontend"]
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：`6db4ec1`（= `4910de9` 实现 + 登记，再加按 Review F1 的 `6db4ec1`）。本条证据写回是之后的另一个提交。
+- 候选 SHA：`9c38f92`（= `4910de9` 实现 + 登记 → 按 Review F1 的 `6db4ec1` → 按 CI 的 `9c38f92`）。每次证据写回都是之后的另一个提交。
 - Review：独立只读 Reviewer（`.claude/agents/reviewer.md`，工具仅 Read/Grep/Glob，运行器层无写工具）。
   **第一轮**（`a8d5bbc..4910de9`）报告原文：
   > 权限证据：仅 Read/Grep/Glob（无 Write/Edit/Bash，运行器层面只读）。
@@ -113,11 +113,16 @@ checks = ["frontend"]
   > 权限证据：仅 Read/Grep/Glob。
   > **结论：PASS，覆盖最终候选 `6db4ec1`**（继承上一轮范围；增量仅改 `LibraryClassifyDialog.test.tsx` 第 6 条，与记录「第二次实现提交」段一致，F2/F3 已入已知限制）。
   > 一条说明（非缺陷）：单独撤掉 `save()` 里 `plan.length === 0 → onClose()` 那段，该用例不会红——空 plan 走到底也会 `onClose()`，可观测结果相同（早返回只是省掉「正在保存 0/0」闪现）。但撤掉 `changesFor` 的「无变更返回 null」或 `plan` 过滤，会发空 PATCH → `INVALID_REQUEST` 列为失败、`onClose` 不调 → 红。测试已真实绑定「没事可做 → 关闭、不发请求、不调 onSaved」，F1 处置成立。
+  PR #106 的 CI e2e 红（新用例留下带主题的资料，后面的 scaffold 守卫红）→ 修成 `9c38f92`，请同一 Reviewer **第二次增量复核**（`6db4ec1..9c38f92`）报告原文：
+  > 权限证据：仅 Read/Grep/Glob。
+  > **结论：PASS，覆盖 `9c38f92`**（继承前两轮；增量仅 `resource-pages.spec.ts:464-476` 还原段，与「第三次实现提交」段一致）。
+  > **Findings（均非阻断）**：① 还原放在断言后：断言失败时沙盒不还原、同次运行 scaffold 连带红——但那次运行本就红，只是多一条噪音；可选改 `try/finally`。② 守卫判断：`/api/v1/topics/{id}` 是资料库既有读（`api.ts:214-233 withTopics`），`scaffold.spec.ts:50` 白名单本就落后于实现，且守卫结果与沙盒数据耦合，任何后续留主题的 e2e 都会再踩。**更正确的做法是把 `GET /api/v1/topics/<uuid>` 加进白名单**；但该文件不在本任务 allowed_paths，本次不动守卫、只还原是对的，建议另开 L1 补白名单。③ 一致。
 - Acceptance：L2 N/A。
-- 最终状态/风险/用户操作：**ACCEPTED**（L2：自动检查 PASS → 独立只读 Review PASS + 增量复核 PASS）。用户 2026-09-29 本机看过后
+- 最终状态/风险/用户操作：**ACCEPTED**（L2：自动检查 PASS → 独立只读 Review PASS + 两轮增量复核 PASS）。用户 2026-09-29 本机看过后
   「没问题，推pr」。风险：写用户数据的批量循环，逐份版本化、失败可见、不重试；最坏情况是部分成功，列表刷新后能看出哪份没改。
   PR 指向 096 分支，**须在 PR #105 之后合并**。
-- 非阻断遗留项：见「已知限制」（Tab 环首元素、保存中禁关无单测、批量逐份耗时、不做批量移除标签）。
+- 非阻断遗留项：见「已知限制」（Tab 环首元素、保存中禁关无单测、批量逐份耗时、不做批量移除标签）；**建议另开 L1**：
+  `scaffold.spec.ts` 的读请求白名单补上资料库既有的 `GET /api/v1/topics/{id}`，守卫不再与沙盒数据耦合；e2e 还原段可改 `try/finally`。
 - 日期与决定日志：2026-09-29 用户「资料库页也加上分配标签/主题」→ 选定逐条 + 批量 → 登记本任务。
 
 此区禁止放入或变更任务授权、风险等级、允许路径、检查要求、实现或测试记录。
