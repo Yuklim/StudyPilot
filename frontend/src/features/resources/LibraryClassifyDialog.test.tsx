@@ -202,12 +202,17 @@ describe('LibraryClassifyDialog', () => {
     expect(onClose).not.toHaveBeenCalled()
   })
 
-  it('refuses to save "set a topic" with no topic chosen', async () => {
-    const { patches } = mock()
-    const { dialog } = open([sample(), sample({ id: '00000000-0000-4000-8000-000000000042' })])
+  it('with several resources, "keep" topic and no tags means nothing to do: closes without a request', async () => {
+    const { patches, request } = mock()
+    const { onClose, onSaved, dialog } = open([
+      sample(),
+      sample({ id: '00000000-0000-4000-8000-000000000042' }),
+    ])
     await within(dialog()).findByRole('radio', { name: '不改' })
-    // 还没选主题就把模式切成「设为」：靠界面做不到，这里直接点保存看默认路径——「不改」+ 无标签 = 没事可做 → 关闭。
     fireEvent.click(within(dialog()).getByRole('button', { name: '保存' }))
-    await waitFor(() => expect(patches).toHaveLength(0))
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
+    expect(patches).toHaveLength(0)
+    expect(onSaved).not.toHaveBeenCalled()
+    expect(request.mock.calls.filter(([, init]) => init?.method === 'PATCH')).toHaveLength(0)
   })
 })

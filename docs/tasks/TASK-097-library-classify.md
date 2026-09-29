@@ -79,7 +79,12 @@ checks = ["frontend"]
     `product_fingerprint=e3f22a3c62fff8253384f70a601f774dfdc9442bc451bebf1ac5e9bf3166e5b6`，`profiles=frontend`（lint/format/`tsc -b`/build；vitest 39 文件 **852** 条全过）。
   - `npx playwright test e2e/resource-pages.spec.ts` → **9/9**（含新增；隔离沙盒）。
   - 真机截图（一次性 spec，已移出工作区）：单份弹窗（预填主题与标签）与批量弹窗（默认「不改」、标签为追加）。
+- **第二次实现提交（按第一轮 Review F1）**：第 6 条单测原本只断言「没发请求」、撤掉实现也不会红——改成「多份 + 不改主题 +
+  无标签 = 没事可做 → 关闭、不发请求、不调 onSaved」的真断言。重跑：该文件 6/6；`check_task.py --worktree` → 退出码 0，
+  **CHECKS PASS**，`product_fingerprint=6c33b755d66e115c0b1b2e98c309d8918bb25c6a82067c655ba11dcfafe92060`（vitest 852）。
 - 已知限制/未完成项：
+  - Tab 环的首元素是第一个 radio：当选中的是别的主题时，Shift-Tab 会先出到浏览器界面再回来（Review F2，可选）。
+  - 「保存中禁止关闭」没有单测，代码与删除弹窗同构、e2e 走真路径（Review F3）。
   - 批量是逐份请求，几十份时要等几秒（进度可见）；没有批量接口也不打算为此加。
   - 批量不做「移除标签」；卡片视图的「分类」按钮在窄屏与删除按钮并排，未单独适配。
 
