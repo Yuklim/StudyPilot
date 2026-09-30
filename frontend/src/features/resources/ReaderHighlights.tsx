@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 
 import { ApiError } from '../../api/client'
 import { deleteNote, detachNote, listNotes, saveNote, type Note } from '../notes/api'
-import { AnnotationComposer, type PendingAnchor } from './AnnotationComposer'
+import { AnnotationComposer, type ComposeOutcome, type PendingAnchor } from './AnnotationComposer'
 import { displayTime, failureText } from './api'
 import { CommentBox } from './CommentBox'
 import { rangeFor, type Anchor } from './highlightAnchor'
@@ -111,6 +111,7 @@ export function ReaderHighlights({
   captureSelection,
   markSelection,
   onOpenPanel,
+  onHighlights,
 }: {
   resourceId: string
   /** 渲染后的正文元素；正文还没渲染（读取中、源码视图）时为 null。PDF 模式下不看它。 */
@@ -139,6 +140,8 @@ export function ReaderHighlights({
   markSelection: (range: Range) => Promise<Highlight | null>
   /** 气泡里点「写评论」时把右栏打开、切到「注释」。 */
   onOpenPanel?: () => void
+  /** 当前读到的高亮列表（含本地覆盖）每变一版就回传：父级建高亮前靠它去重（TASK-099）。 */
+  onHighlights?: (rows: Highlight[]) => void
 }) {
   const load = useCallback(
     () =>
@@ -206,6 +209,10 @@ export function ReaderHighlights({
       .filter((note) => !(edits?.removed ?? []).includes(note.id))
       .map((note) => edits?.map[note.id] ?? note)
   }, [result, noteEdits])
+  // 读取中不回传：换版重读时 `highlights` 会先空一拍，回传空表会把父级刚记进去的新一条抹掉（Review F1）。
+  useEffect(() => {
+    if (result) onHighlights?.(highlights)
+  }, [result, highlights, onHighlights])
   function upsertNote(note: Note, added = false) {
     setNoteEdits((current) => {
       const same =
@@ -350,7 +357,11 @@ export function ReaderHighlights({
       const hit = rowsRef.current.find((row) => row.range !== null && contains(row.range, point))
       if (!hit) return
       if (toolRef.current === 'eraser') void erase(hit.highlight)
-      else setBubble({ id: hit.highlight.id, x: clientX, y: clientY })
+      else if (toolRef.current === 'note') {
+        // 「注释」工具（TASK-099）：点到哪条就写哪条的评论，不出气泡。
+        onOpenPanel?.()
+        setFocusTarget({ id: hit.highlight.id, token: Date.now() })
+      } else setBubble({ id: hit.highlight.id, x: clientX, y: clientY })
     }
     for (const node of containers) {
       node.addEventListener('mousedown', onMouseDown)
@@ -362,7 +373,7 @@ export function ReaderHighlights({
         node.removeEventListener('click', onClick)
       }
     }
-  }, [containers, erase])
+  }, [containers, erase, onOpenPanel])
   // 气泡：Esc 或点到外面就关。
   useEffect(() => {
     if (!bubble) return
@@ -503,19 +514,30 @@ export function ReaderHighlights({
   // 顶部「写心得…」：有选区先标高亮，再建心得、配上；标不了（跨页等）就只建心得。
   // 高亮建了、心得却没存成：把那条高亮撤掉再抛错——写作框里文字与选区都还在，人再存一次
   // 会重新标，不会留下一条多余的高亮（Review F4）。
-  async function compose(text: string, anchor: PendingAnchor | null): Promise<{ paired: boolean }> {
+  // 选区正好是一条**已有评论**的高亮（父级去重后回的是那条，TASK-099）：不改绑，心得存成独立心得。
+  async function compose(
+    text: string,
+    anchor: PendingAnchor | null,
+  ): Promise<{ outcome: ComposeOutcome }> {
     const target = anchor ? await markSelection(anchor.range) : null
+    // 「已有评论」按列表里真配上的心得判，不看裸的 note_id：悬挂绑定（心得已被解绑走）显示为没评论，
+    // 这里也应当配上去（Review F2）。
+    const taken =
+      target !== null &&
+      highlightRows.some((row) => row.highlight.id === target.id && row.note !== null)
+    // 只有这次新建的高亮才在心得失败时回滚：本来就有的那条不是这次的产物。
+    const fresh = target !== null && !highlights.some((row) => row.id === target.id)
     let created: Note
     try {
       created = await saveNote(resourceId, text, null)
     } catch (cause) {
-      if (target) await deleteHighlight(resourceId, target).catch(() => undefined)
+      if (target && fresh) await deleteHighlight(resourceId, target).catch(() => undefined)
       if (alive.current) retry()
       throw cause
     }
-    if (target) await updateHighlight(resourceId, target, { note_id: created.id })
+    if (target && !taken) await updateHighlight(resourceId, target, { note_id: created.id })
     if (alive.current) retry()
-    return { paired: target !== null }
+    return { outcome: !anchor ? 'alone' : !target ? 'unmarked' : taken ? 'taken' : 'paired' }
   }
   function jump(row: HighlightRow) {
     if (row.range) {

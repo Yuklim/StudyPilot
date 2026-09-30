@@ -299,6 +299,65 @@ test('a note written at the top with text selected marks it first; without a sel
   )
 })
 
+test('the same passage is never highlighted twice, and the 注释 tool writes on it directly (TASK-099)', async ({
+  page,
+}) => {
+  // 用户 2026-09-30 本机检查：「同样的内容能够被多次保存」「把注释也做成工具栏」。
+  const id = await seed(page, 'G')
+  await page.goto(`/resources/${id}`)
+  await expect(page.getByRole('toolbar', { name: '标注工具' })).toBeVisible()
+  // ① 荧光笔标同一段两次：服务端只有一条。
+  await markWithTool(page, '荧光笔', '输入层、隐藏层、输出层')
+  await expect.poll(() => painted(page)).toEqual(['输入层、隐藏层、输出层'])
+  await markWithTool(page, '荧光笔', '输入层、隐藏层、输出层')
+  await page.waitForTimeout(300)
+  expect((await call(page, `/resources/${id}/highlights`)).data).toHaveLength(1)
+  // 换个颜色再标同一段：还是那一条，只是变绿。
+  await page.getByRole('radio', { name: '绿色' }).click()
+  await markWithTool(page, '荧光笔', '输入层、隐藏层、输出层')
+  await expect
+    .poll(() => painted(page, 'studypilot-mark-green'))
+    .toEqual(['输入层、隐藏层、输出层'])
+  expect(await painted(page)).toEqual([])
+  let stored = (await call(page, `/resources/${id}/highlights`)).data
+  expect(stored).toHaveLength(1)
+  expect(stored[0]).toMatchObject({ color: 'green' })
+  await page.getByRole('button', { name: '荧光笔' }).click()
+
+  // ② 「注释」工具：选中另一段 → 标下 + 右栏打开 + 评论框聚焦；写了就配上。
+  await page.getByRole('button', { name: '注释' }).click()
+  await expect(page.getByRole('button', { name: '注释' })).toHaveAttribute('aria-pressed', 'true')
+  await select(page, '误差逆传播算法')
+  await page.evaluate(() => document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true })))
+  const list = page.getByRole('list', { name: '注释列表' })
+  const comment = list.getByRole('textbox', { name: '评论：误差逆传播算法' })
+  await expect(comment).toBeFocused()
+  await comment.fill('BP 在这里。')
+  await page.keyboard.press('Control+Enter')
+  await expect(list.getByText('已保存')).toBeVisible()
+  await expect
+    .poll(async () => {
+      const rows = (await call(page, `/resources/${id}/highlights`)).data as {
+        exact: string
+        note_id: string | null
+      }[]
+      return rows.map((row) => [row.exact, row.note_id !== null]).sort()
+    })
+    .toEqual([
+      ['误差逆传播算法', true],
+      ['输入层、隐藏层、输出层', false],
+    ])
+
+  // ③ 「注释」工具开着点正文里已有的高亮：不出气泡，直接聚焦它的评论框。
+  await page.keyboard.press('Escape')
+  const at = await centerOf(page, 'studypilot-mark-green')
+  await page.mouse.click(at.x, at.y)
+  expect(await page.getByRole('dialog', { name: '这条高亮' }).count()).toBe(0)
+  await expect(list.getByRole('textbox', { name: '评论：输入层、隐藏层、输出层' })).toBeFocused()
+  stored = (await call(page, `/resources/${id}/highlights`)).data
+  expect(stored).toHaveLength(2)
+})
+
 test('the toolbar look sticks: green highlighter, bubble to underline, eraser with undo', async ({
   page,
 }) => {

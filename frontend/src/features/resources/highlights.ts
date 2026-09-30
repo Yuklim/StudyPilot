@@ -25,7 +25,8 @@ export const COLOR_LABELS: Record<HighlightColor, string> = {
 }
 export const STYLE_LABELS: Record<HighlightStyle, string> = { mark: '高亮', underline: '下划线' }
 /** 顶栏工具（TASK-094）：荧光笔、下划线各按当前色落标注；橡皮点一下即删。 */
-export type AnnotationTool = 'mark' | 'underline' | 'eraser'
+/** 顶栏工具：荧光笔 / 下划线 / 橡皮（TASK-094）；「注释」（TASK-099）= 标高亮并直接写评论、点已有高亮写评论。 */
+export type AnnotationTool = 'mark' | 'underline' | 'eraser' | 'note'
 /**
  * CSS Custom Highlight API 的注册表名：一种样子一个名字，CSS 里各一条 `::highlight()` 规则。
  * PDF 的另起一套（只给底色/线色、不给字色，见 `styles.css`）。
