@@ -23,6 +23,8 @@ export type IconName =
   | 'highlighter'
   | 'underline'
   | 'eraser'
+  // TASK-099：顶栏的「注释」工具（对话气泡 + 一笔）。
+  | 'comment'
   // TASK-097：资料库行上的「分类」。
   | 'tags'
 
@@ -48,6 +50,7 @@ const paths: Record<IconName, string> = {
   underline: 'M6 4v6a6 6 0 0 0 12 0V4M4 20h16',
   eraser:
     'M7 21l-4.3-4.3a2.4 2.4 0 0 1 0-3.4l9.6-9.6a2.4 2.4 0 0 1 3.4 0l5.6 5.6a2.4 2.4 0 0 1 0 3.4L13 21M22 21H7M5 11l9 9',
+  comment: 'M4 5h16v11H9l-5 4zM8 9h8M8 12h5',
   tags: 'M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82zM7 7h.01',
 }
 

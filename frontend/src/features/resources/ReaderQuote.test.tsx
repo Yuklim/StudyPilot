@@ -380,6 +380,80 @@ describe('记下这段', () => {
   })
 })
 
+describe('「注释」工具与去重（TASK-099）', () => {
+  it('marking the same passage twice keeps one highlight: same look sends nothing, another colour is one PATCH', async () => {
+    mount()
+    const paragraph = await screen.findByText(/神经网络主要由输入层/)
+    await screen.findByRole('toolbar', { name: '标注工具' })
+    fireEvent.click(screen.getByRole('button', { name: '荧光笔' }))
+    selectText('神经网络主要由输入层、隐藏层、输出层构成。', paragraph.firstChild)
+    fireEvent.mouseUp(document)
+    await waitFor(() => expect(marked).toHaveLength(1))
+    // 等右栏读到这条（去重靠列表回传的清单；这里列表默认挂着）。
+    await waitFor(() => expect(stored).toHaveLength(1))
+    // 同样的选区、同样的颜色再标一次：什么都不发。
+    selectText('神经网络主要由输入层、隐藏层、输出层构成。', paragraph.firstChild)
+    fireEvent.mouseUp(document)
+    await new Promise((done) => setTimeout(done, 50))
+    expect(marked).toHaveLength(1)
+    // 换个颜色再标：只 PATCH 那一条的样子，不建第二条。
+    fireEvent.click(screen.getByRole('radio', { name: '绿色' }))
+    selectText('神经网络主要由输入层、隐藏层、输出层构成。', paragraph.firstChild)
+    fireEvent.mouseUp(document)
+    await waitFor(() => expect(marked).toHaveLength(2))
+    expect(marked[1]!.method).toBe('PATCH')
+    expect(marked[1]!.path).toBe(`${detailPath}/highlights/${highlightId}`)
+    expect(marked[1]!.body).toEqual({ color: 'green', expected_version: 1 })
+    expect(marked.filter((call) => call.method === 'POST')).toHaveLength(1)
+  })
+
+  it('with the 注释 tool on, a selection is marked and its comment box takes focus; the comment binds to it', async () => {
+    mount()
+    const paragraph = await screen.findByText(/神经网络主要由输入层/)
+    await screen.findByRole('toolbar', { name: '标注工具' })
+    fireEvent.click(screen.getByRole('button', { name: '注释' }))
+    expect(screen.getByRole('button', { name: '注释' })).toHaveAttribute('aria-pressed', 'true')
+    selectText('神经网络主要由输入层、隐藏层、输出层构成。', paragraph.firstChild)
+    expect(pill()).toBeNull()
+    fireEvent.mouseUp(document)
+    await waitFor(() => expect(marked).toHaveLength(1))
+    // 当前颜色是默认的黄：按 TASK-094 的约定默认样子不发。
+    expect(marked[0]!.body.exact).toBe('神经网络主要由输入层、隐藏层、输出层构成。')
+    expect(marked[0]!.body.color).toBeUndefined()
+    // 与荧光笔不同：右栏打开、在「注释」Tab，焦点落进这条的评论框。
+    expect(screen.getByRole('button', { name: '心得' })).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('tab', { name: '注释' })).toHaveAttribute('aria-selected', 'true')
+    await waitFor(() => expect(comment()).toHaveFocus())
+    fireEvent.change(comment(), { target: { value: '要记的。' } })
+    fireEvent.keyDown(comment(), { key: 'Enter', metaKey: true })
+    await waitFor(() => expect(marked).toHaveLength(2))
+    expect(marked[1]!.method).toBe('PATCH')
+    expect(marked[1]!.body).toEqual({ note_id: savedNoteId, expected_version: 1 })
+  })
+
+  it('a composer note on a passage that already has a comment is kept standalone and says so', async () => {
+    mount()
+    const paragraph = await screen.findByText(/神经网络主要由输入层/)
+    // 先用「记下这段」标一条并写上评论。
+    selectText('神经网络主要由输入层、隐藏层、输出层构成。', paragraph.firstChild)
+    fireEvent.click(pill()!)
+    await waitFor(() => expect(comment()).toHaveFocus())
+    fireEvent.change(comment(), { target: { value: '第一条评论。' } })
+    fireEvent.keyDown(comment(), { key: 'Enter', metaKey: true })
+    await waitFor(() => expect(marked).toHaveLength(2))
+    await waitFor(() => expect(stored[0]!.note_id).toBe(savedNoteId))
+    // 同一段再选中、点进顶部写作框写心得：不建第二条高亮、不改绑，心得成独立心得。
+    selectText('神经网络主要由输入层、隐藏层、输出层构成。', paragraph.firstChild)
+    fireEvent.mouseDown(editor())
+    fireEvent.focus(editor())
+    expect(screen.getByText(/将配到：/)).toBeInTheDocument()
+    fireEvent.change(editor(), { target: { value: '另一条想法。' } })
+    fireEvent.keyDown(editor(), { key: 'Enter', metaKey: true })
+    expect(await screen.findByText('那段已经有评论了：这条存成了独立心得。')).toBeInTheDocument()
+    expect(marked).toHaveLength(2)
+  })
+})
+
 describe('记为学习进度', () => {
   it('writes a study record on one click when the reading position is ahead, then the button goes away', async () => {
     // 用户 2026-09-17：「点了保存进度直接保存就可以，不要再返回确认」。

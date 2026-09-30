@@ -797,6 +797,28 @@ describe('样子与正文上的点选（TASK-094）', () => {
     expect(screen.queryByText(/已经配给/)).toBeNull()
   })
 
+  it('with the 注释 tool on, a click on a passage opens the panel and focuses its comment box, no bubble (TASK-099)', async () => {
+    const registry = paint()
+    mock([highlight()])
+    const rendered = body()
+    const onOpenPanel = vi.fn()
+    const onHighlights = vi.fn()
+    panel(rendered, { tool: 'note', onOpenPanel, onHighlights })
+    await waitFor(() => expect(registry.has('studypilot-mark-yellow')).toBe(true))
+    // 列表读到之后把清单交给父级（去重用）。
+    await waitFor(() =>
+      expect(onHighlights).toHaveBeenLastCalledWith([
+        expect.objectContaining({ id: highlight().id }),
+      ]),
+    )
+    caretAt(rendered.querySelector('p')!.firstChild!, 10)
+    fireEvent.mouseDown(rendered, { clientX: 40, clientY: 20 })
+    fireEvent.click(rendered, { clientX: 40, clientY: 20 })
+    expect(onOpenPanel).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('dialog', { name: '这条高亮' })).toBeNull()
+    await waitFor(() => expect(commentOf(screen.getByRole('listitem'))).toHaveFocus())
+  })
+
   it('with the eraser on, a click deletes at once and 撤销 recreates the same anchor with the same look', async () => {
     const registry = paint()
     const request = mock(

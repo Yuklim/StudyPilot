@@ -19,6 +19,7 @@ import { anchorFrom } from './highlightAnchor'
 import { AnnotationTools } from './AnnotationTools'
 import {
   createHighlight,
+  updateHighlight,
   type AnnotationTool,
   type Highlight,
   type HighlightColor,
@@ -332,6 +333,12 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
   const [markError, setMarkError] = useState<string | null>(null)
   // 胶囊「记下这段」刚标下的那条：让「注释」Tab 把焦点放进它的评论框。
   const [focusHighlight, setFocusHighlight] = useState<{ id: string; token: number }>()
+  // 「注释」Tab 此刻读到的高亮（TASK-099）：建高亮前按锚点在这里找，同一段话不建第二条。
+  // 放 ref：只在 `mark()` 里读，变了不需要重渲染。
+  const knownHighlights = useRef<Highlight[]>([])
+  const takeHighlights = useCallback((rows: Highlight[]) => {
+    knownHighlights.current = rows
+  }, [])
   // 顶栏的标注工具（TASK-094）：按下的工具与当前颜色只在本页内存，刷新回到「没选工具」
   // （用户选定不记忆）。点颜色时若没选工具或选的是橡皮，顺手切到荧光笔。
   const [tool, setTool] = useState<AnnotationTool | null>(null)
@@ -392,8 +399,31 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
       const anchor = anchorFrom(container, range)
       if (!anchor) return null
       setMarkError(null)
+      // 去重（TASK-099，用户「同样的内容能够被多次保存」）：锚点完全相同的已有一条就用它——
+      // 样子不同按当前的改一次，相同则什么都不发。
+      const same = knownHighlights.current.find(
+        (row) =>
+          row.page_number === page &&
+          row.exact === anchor.exact &&
+          row.start_offset === anchor.start_offset &&
+          row.end_offset === anchor.end_offset,
+      )
       try {
+        if (same) {
+          if (same.style === look.style && same.color === look.color) return same
+          // 只发变了的字段（契约：PATCH 三字段任选、省略不动）。
+          const restyled = await updateHighlight(resourceId, same, {
+            ...(same.style !== look.style ? { style: look.style } : {}),
+            ...(same.color !== look.color ? { color: look.color } : {}),
+          })
+          knownHighlights.current = knownHighlights.current.map((row) =>
+            row.id === restyled.id ? restyled : row,
+          )
+          setHighlightRevision((value) => value + 1)
+          return restyled
+        }
         const created = await createHighlight(resourceId, anchor, null, page, look)
+        knownHighlights.current = [...knownHighlights.current, created]
         setHighlightRevision((value) => value + 1)
         return created
       } catch (cause) {
@@ -404,13 +434,22 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
     [readerMain, resourceId, pdfOriginal, pageOfRange],
   )
   const takeMark = useCallback(
-    (range: Range) => {
+    async (range: Range) => {
       // 工具开着时的落色（TASK-094）：不开右栏、不切 Tab——颜色本身就是反馈，一路标下去
-      // 不该每次都弹出右栏。
-      void mark(range, { style: tool === 'underline' ? 'underline' : 'mark', color })
+      // 不该每次都弹出右栏。「注释」工具（TASK-099）例外：标下就打开右栏、焦点落进这条的评论框。
+      const created = await mark(range, {
+        style: tool === 'underline' ? 'underline' : 'mark',
+        color,
+      })
+      if (tool === 'note' && created) {
+        setSideTab('annotations')
+        setNotesOpen(true)
+        setFocusHighlight({ id: created.id, token: Date.now() })
+      }
     },
     [mark, tool, color],
   )
+  const takeMarkFromTool = useCallback((range: Range) => void takeMark(range), [takeMark])
   // 胶囊「记下这段」（TASK-098 起）：先按当前颜色标成高亮，打开「注释」Tab、焦点落进这条的
   // 评论框，评论一保存就配上。标不了（PDF 跨页等）退回 TASK-068 的路：引文进顶部写作框。
   const takeQuoteAndMark = useCallback(
@@ -627,7 +666,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
               selector={pdfOriginal ? '.pdf-reader-pages' : '.snapshot-rendered'}
               canMark={pdfOriginal ? canMarkPdfRange : true}
               onQuote={(quote, range) => void takeQuoteAndMark(quote, range)}
-              onMark={takeMark}
+              onMark={takeMarkFromTool}
               tool={tool}
             />
             {/* 标签与「收下它是因为」TASK-067 起在右栏「信息」Tab（用户 2026-09-17 选定），
@@ -719,6 +758,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
                 captureSelection={captureBodySelection}
                 markSelection={markSelection}
                 onOpenPanel={openAnnotations}
+                onHighlights={takeHighlights}
               />
             </div>
             <div

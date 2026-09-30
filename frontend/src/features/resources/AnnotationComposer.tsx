@@ -4,6 +4,13 @@ import { LEAVE_EVENT } from '../../shell/pages'
 
 /** 点进写作框那一刻正文里的选区：引文（给人看）与 Range（给标高亮用）。 */
 export type PendingAnchor = { quote: string; range: Range }
+export type ComposeOutcome = 'paired' | 'alone' | 'unmarked' | 'taken'
+const OUTCOME_TEXT: Record<ComposeOutcome, string> = {
+  paired: '心得已保存，并配到刚标下的那段。',
+  alone: '心得已保存。',
+  unmarked: '心得已保存；那段没能标成高亮。',
+  taken: '那段已经有评论了：这条存成了独立心得。',
+}
 
 /**
  * 右栏顶部的「写心得…」框（TASK-098）。用户规则：写心得时正文有选区 → 自动标高亮并配对；
@@ -28,8 +35,12 @@ export function AnnotationComposer({
   quoteRequest?: { token: number; quotes: string[] }
   /** 读正文里此刻的选区；没有（或不在正文里）给 null。 */
   captureSelection: () => PendingAnchor | null
-  /** 保存：文字 + 可能的选区。回「有没有配上」决定提示；抛错即失败（文字与选区都保留，父级负责回滚已建的高亮）。 */
-  onSubmit: (text: string, anchor: PendingAnchor | null) => Promise<{ paired: boolean }>
+  /**
+   * 保存：文字 + 可能的选区。回实际结果决定提示：`paired` 配上了、`unmarked` 那段标不成高亮、`taken` 那段
+   * 已有评论（心得存为独立心得，不改绑）、`alone` 本来就没选区；抛错即失败（文字与选区都保留，父级负责
+   * 回滚已建的高亮）。
+   */
+  onSubmit: (text: string, anchor: PendingAnchor | null) => Promise<{ outcome: ComposeOutcome }>
 }) {
   const [text, setText] = useState('')
   const [anchor, setAnchor] = useState<PendingAnchor | null>(null)
@@ -93,18 +104,12 @@ export function AnnotationComposer({
     setError('')
     setNotice('')
     try {
-      const { paired } = await onSubmit(text, anchor)
+      const { outcome } = await onSubmit(text, anchor)
       if (!alive.current) return
       setText('')
       setAnchor(null)
-      // 按实际结果说话：选区标不成高亮时心得照存、但没配上（原因在右栏顶部另有提示，Review F4）。
-      setNotice(
-        paired
-          ? '心得已保存，并配到刚标下的那段。'
-          : anchor
-            ? '心得已保存；那段没能标成高亮。'
-            : '心得已保存。',
-      )
+      // 按实际结果说话：选区标不成高亮时心得照存、但没配上（原因在右栏顶部另有提示，TASK-098 Review F4）。
+      setNotice(OUTCOME_TEXT[outcome])
     } catch (cause) {
       if (!alive.current) return
       setError(cause instanceof Error ? cause.message : '没有保存成功。')

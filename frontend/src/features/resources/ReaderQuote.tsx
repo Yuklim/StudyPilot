@@ -62,11 +62,14 @@ export function ReaderQuote({
    * 出胶囊、加一句「选区跨页或落到页外，只能记下这段」的提示。
    */
   canMark?: boolean | ((range: Range) => boolean)
-  /** 顶栏当前按下的工具（TASK-094）；荧光笔/下划线让选区松手即落色，橡皮与没选工具一样只出胶囊。 */
+  /**
+   * 顶栏当前按下的工具（TASK-094）；荧光笔/下划线/注释让选区松手即交给 `onMark`（父级按工具决定
+   * 只上色还是顺带打开评论框），橡皮与没选工具一样只出胶囊。
+   */
   tool?: AnnotationTool | null
 }) {
   const [selection, setSelection] = useState<QuoteSelection | null>(null)
-  const marking = tool === 'mark' || tool === 'underline'
+  const marking = tool === 'mark' || tool === 'underline' || tool === 'note'
   useEffect(() => {
     if (!container) return
     const update = () => setSelection(readSelection(container.querySelector(selector)))

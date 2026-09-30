@@ -14,6 +14,9 @@ import {
  * 点颜色的时候若没选工具（或选的是橡皮），顺手切到荧光笔：用户点了一个颜色，多半是想马上
  * 用它标点什么，让他再去按一下荧光笔是多一步。
  *
+ * 「注释」（TASK-099，用户 2026-09-30「把注释也做成工具栏」）：开着时选中文字 = 按当前颜色标高亮并直接写评论；
+ * 点正文里已有的高亮 = 写它的评论。它也用当前颜色。
+ *
  * 图标按钮不留文字节点、名字由 `aria-label` 提供（顶栏既有约定，见 `ResourceToolbar`）。
  */
 export function AnnotationTools({
@@ -64,6 +67,16 @@ export function AnnotationTools({
         onClick={() => toggle('underline')}
       >
         <Icon name="underline" />
+      </button>
+      <button
+        type="button"
+        className={`journal-button icon-button reader-tool ${color}`}
+        aria-pressed={tool === 'note'}
+        aria-label="注释"
+        title="注释：选中文字就标成高亮并写评论；点已有的高亮就写它的评论"
+        onClick={() => toggle('note')}
+      >
+        <Icon name="comment" />
       </button>
       <button
         type="button"
