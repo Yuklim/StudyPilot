@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-096"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L2"
 risk_reason = "全站视觉改版：把 styles.css 里 164 个散落色值收成一套设计变量并换成灰 + 蓝强调的新色板，去衬线、统一圆角，删掉手帐装饰（便签、眉标、副标题、徽章、书本插画、签名）。不改任何交互与数据，但改动面大（一个 3900 行的样式文件 + 4 个组件的装饰性 JSX），且用户可见；须独立只读 Reviewer 检查最终 diff；独立验收 N/A。执行链：1 Worker → 自动检查 → 1 独立只读 Reviewer。"
 risk_flags = ["business"]
@@ -128,7 +128,7 @@ checks = ["frontend"]
   > ① 三条选择器已回到与 base 规则同义的 `.welcome-copy h2`（声明块与原规则一致，仅字体换 sans）、`.overview-actions`（flex/wrap/gap 同原）、媒体查询里的 `.page-heading p`。全文复核无第四处。② F5 删除后 `.resource-card` 的 `position: relative` 已无绝对定位后代依赖，属无害残留，可选清理。③ F4/F6/F7/F8 改动与记录逐条一致；`allowed_paths` 含 `ErrorBoundary.tsx`；`files=12` = 7 产品 + 5 文档；`.eyebrow`/`.sidebar-note` 已无引用。
   > **No findings**（阻断级）。
 - Acceptance：L2 N/A。
-- 最终状态/风险/用户操作：**ACCEPTED**（L2：自动检查 PASS → 独立只读 Review 一轮 RETURNED + 增量复核 PASS）。风险：纯视觉；
+- 最终状态/风险/用户操作：**MERGED**——2026-09-29 用户合并 PR #105，merge `0d1e198`；本条 MERGED 登记按 §5 并入 TASK-098 的控制面提交。合并前状态为 **ACCEPTED**（L2：自动检查 PASS → 独立只读 Review 一轮 RETURNED + 增量复核 PASS）。风险：纯视觉；
   最坏情况是某处深浅不合意，改一个变量或一条规则即可。**等待用户操作**：刷新本机页面看过（工作区已在本分支，前端热更新），
   说可以再推 PR。
 - 非阻断遗留项：`.resource-card` 多余的 `position: relative`（无害）；`.small-label` 三处保留；README/截图待文档追平。
