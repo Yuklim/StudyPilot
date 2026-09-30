@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-099"
-status = "IN_PROGRESS"
+status = "ACCEPTED"
 risk = "L2"
 risk_reason = "阅读器交互增补（纯前端）：顶栏新增「注释」工具（开着时选中文字 = 标高亮 + 打开右栏聚焦评论框；点已有高亮 = 聚焦它的评论框），并在建高亮前按锚点去重（同一段话再标一次不再建第二条，只按当前颜色改样子）。写用户数据的路径有变化（去重会改走 PATCH），须独立只读 Reviewer 检查最终 diff；独立验收 N/A。执行链：1 Worker → 自动检查 → 1 独立只读 Reviewer。"
 risk_flags = ["business"]
@@ -84,12 +84,37 @@ checks = ["frontend"]
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据
 
-- 候选 SHA：
-- Review：（L2，待独立只读 Reviewer）
+- 候选 SHA：首轮 `cb5ac13`（PASS with notes）→ 最终 **`c96d209`**（增量复核 PASS with notes）。
+- Review（L2，独立只读 Reviewer 子代理 `.claude/agents/reviewer.md`，仅 Read/Grep/Glob；两轮同一 Reviewer）：
+
+  **R1（候选 `cb5ac13`）原文**：
+
+  > **只读证明**：本 Agent 仅授予 Read/Grep/Glob，无 Write/Edit/Bash，未改任何文件。
+  > **候选/基线**：candidate `cb5ac13`，base `736ee78`；按干净工作区直接审 12 个改动文件，均在 `allowed_paths` 内（styles.css 未动，注释按钮复用 `.reader-tools .reader-tool ${color}` 尺寸/按下态，足够；640px 以下整组 `display:none` 仍成立；1440px 顶栏一行守卫由全套 e2e 89 passed 覆盖）。
+  > **授权对照**：去重按「页号+exact+偏移」精确匹配，三条入口（工具松手、胶囊、写作框）都经 `ResourceDetail.mark()`；「注释」工具两条路（选中即标+聚焦评论框；点已有高亮直接聚焦、无气泡）实现准确，未越出非目标。dedup 命中已有高亮返回「那条」的语义对三个调用方都合理。`fresh` 用提交时渲染闭包的 `highlights` 判断，可靠。测试真守行为：单测三条断言了 POST 计数、PATCH 只带 `color`+`expected_version`、`taken` 文案且无 PATCH；`setTimeout 50ms` 那条是确定性的；e2e 走真后端核对服务端条数。
+  > **Findings**
+  > - **F1（可记录后继续）** `ReaderHighlights.tsx:212-214` + `ResourceDetail.tsx:426`。`setHighlightRevision` 换 key 后 `useResourceQuery` 返回 `undefined`，`highlights` 变 `[]`，effect 立刻 `onHighlights([])` 把 `mark()` 刚写进 ref 的那条抹掉，直到列表重读回来。记录「新建的一条也立刻记进清单」实际不成立。建议：`if (result) onHighlights?.(highlights)`，并订正记录。
+  > - **F2（可记录后继续）** `ReaderHighlights.tsx:522` `taken = target.note_id !== null`。高亮可带悬挂 `note_id`（心得在 /notes 解除绑定时后端不清高亮侧）；此时写作框会提示「那段已经有评论了」而评论框却是空的。可用 `highlightRows` 里的 `row.note != null` 判 `taken`。
+  > - **F3（可选建议）** `ResourceDetail.tsx:444-448`：注释工具下 `mark()` 失败时什么都不打开，`markError` 落在收起的右栏里看不见。可在失败时也 `setNotesOpen(true)`。
+  > - **F4（可选建议）** `ResourceDetail.tsx:415-423`：去重换色走 `setHighlightRevision` 整表重读，与面板的本地覆盖不一致；功能正确。
+  > **结论：PASS with notes**（F1 建议同任务顺手修+订正记录）。
+
+  **R2（增量 `cb5ac13..c96d209`）原文**：
+
+  > **只读证明**：仅 Read/Grep/Glob，无写工具，未改任何文件。
+  > **范围**：增量 diff 3 文件 77 行，已用 Grep 确认工作区含全部三处修订。**继承 R1 对 cb5ac13 已核对无问题的全部范围**；增量未触及这些路径以外的代码。
+  > **F1 验证**：`result` 与 `highlights` 同源变化，加进依赖不会多触发；`result === undefined` 时跳过，父级 ref 里 `mark()` 刚写入的一条得以保留——修订成立。列表读失败时回传 `[]`、去重关闭：正确行为。首次挂载不回传，与记录「首次列表还没读完那一瞬可能漏判」一致。无漏回传。
+  > **F2 验证**：新建 target → `taken=false` → 配对；已有且真配心得 → `taken=true`；悬挂 `note_id` → `taken=false` → 覆盖悬挂值，与 `saveComment` 一致。
+  > **F3 验证**：注释工具下无论成败都开右栏/切 Tab，成功才聚焦；无害。
+  > **Findings（本轮）**
+  > - **F5（可记录后继续）** F1/F2/F3 均无新增测试绑定；现有 870 条未退化。不阻断。
+  > - 证据说明：全套 e2e 89 passed 绑定的是 cb5ac13；本轮只跑 4 个 spec 24 passed。F1 只改变回传时机、不改渲染，风险低，接受。
+  > **结论：PASS with notes**（覆盖 c96d209；F5 与 F4 一并记入非阻断遗留项即可）。
+
 - Acceptance：L2 N/A。
-- 最终状态/风险/用户操作：
-- 非阻断遗留项：
-- 日期与决定日志：2026-09-30 用户本机检查 098 提出两点 → 登记本任务（叠在 098 分支 `736ee78` 上）。
+- 最终状态/风险/用户操作：**ACCEPTED**（L2）。待用户本机看过后 push 开 PR（→ 098 分支）；合并顺序 098 → 099；用户合并后登记 MERGED。
+- 非阻断遗留项：R1 F4（去重换色走整表重读，可改走本地覆盖通道）；R2 F5（F1/F2/F3 三处修正路径没有专门用例）。
+- 日期与决定日志：2026-09-30 用户本机检查 098 提出两点 → 登记本任务（叠在 098 分支 `736ee78` 上）→ 候选 `cb5ac13` R1 PASS with notes → 修订 `c96d209` R2 PASS with notes → ACCEPTED。
 
 此区禁止放入或变更任务授权、风险等级、允许路径、检查要求、实现或测试记录。
 <!-- EVIDENCE:END -->
