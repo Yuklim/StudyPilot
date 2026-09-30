@@ -76,11 +76,10 @@ test('a PDF original is read inside the app, not just downloadable', async ({ pa
   // 门禁不接受浏览器发的文档/框架请求，所以页面里不能有 iframe/embed/object 直连接口。
   expect(await page.locator('iframe, embed, object').count()).toBe(0)
 
-  // PDF 资料也有「高亮」Tab（TASK-089 起；TASK-073 曾按用户看草图后的确认把它藏起来，
-  // 那时高亮的锚点只能落在快照正文里——现在按页锚定，两种阅读器都有这个 Tab）。
+  // PDF 资料也有「注释」Tab（TASK-089 起高亮按页锚定，两种阅读器都有；TASK-098 起高亮与心得合成一个 Tab）。
   await page.locator('.reader-toolbar').getByRole('button', { name: '心得', exact: true }).click()
-  await expect(page.getByRole('tab', { name: '心得' })).toBeVisible()
-  await expect(page.getByRole('tab', { name: /高亮/ })).toBeVisible()
+  await expect(page.getByRole('tab', { name: /注释/ })).toBeVisible()
+  await expect(page.getByRole('tab', { name: '信息' })).toBeVisible()
 })
 
 test('it comes back to the page it was left on', async ({ page }) => {
@@ -250,10 +249,9 @@ test('text on a PDF page can be selected and quoted into a note', async ({ page 
   // 盖住字的那一版这里会塌到接近 0。
   expect(after.dark).toBeGreaterThan(before.dark * 0.8)
 
-  // ⑥ 点下去，引文进右栏心得草稿。
+  // ⑥ 点下去：这一页的选区标成高亮，焦点落进它的评论框（TASK-098）。
   await page.getByRole('button', { name: '记下这段' }).click()
-  const draft = page.getByRole('textbox', { name: '这次想记下什么？' })
-  await expect(draft).toHaveValue(/> StudyPilot page one/)
+  await expect(page.getByRole('textbox', { name: '评论：StudyPilot page one' })).toBeFocused()
 })
 
 test('a bookmarked PDF gets the same outline column as an article', async ({ page }) => {

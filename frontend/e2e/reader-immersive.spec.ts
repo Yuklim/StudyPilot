@@ -182,7 +182,7 @@ test('opening the notes overlay mid-article does not throw the reading position 
     await expect(page.locator('.reader-notes')).toBeVisible()
     // **写作框必须真的拿到焦点**：只断言「页面没滚」的话，将来聚焦失效（按钮变成纯
     // 开合、不再聚焦）会让这条在"什么都没发生"的状态下照样通过。
-    await expect(page.getByRole('textbox', { name: '这次想记下什么？' })).toBeFocused()
+    await expect(page.getByRole('textbox', { name: '写心得' })).toBeFocused()
     const after = await page.evaluate(() => window.scrollY)
     expect(Math.abs(after - before), `${width}px 下展开心得没有把阅读位置拽走`).toBeLessThanOrEqual(
       2,

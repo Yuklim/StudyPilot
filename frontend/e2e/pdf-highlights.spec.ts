@@ -82,7 +82,7 @@ async function selectOnPage(page: Page, pageNumber: number, text: string) {
 }
 
 async function openHighlights(page: Page) {
-  const tab = page.getByRole('tab', { name: /高亮/ })
+  const tab = page.getByRole('tab', { name: /注释/ })
   if (!(await tab.isVisible())) {
     await page.locator('.reader-toolbar').getByRole('button', { name: '心得', exact: true }).click()
   }
@@ -111,9 +111,9 @@ test('a passage on a PDF page can be marked, is painted, and survives a reload',
   await page.evaluate(() => document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true })))
   expect(await page.getByRole('button', { name: '记下这段' }).count()).toBe(0)
 
-  // ② 打开右栏「高亮」Tab，条目带页码；接口里存的也带 page_number。
+  // ② 打开右栏「注释」Tab，条目带页码；接口里存的也带 page_number。
   await openHighlights(page)
-  const list = page.getByRole('list', { name: '高亮列表' })
+  const list = page.getByRole('list', { name: '注释列表' })
   await expect(list.getByRole('listitem')).toHaveCount(1)
   await expect(list).toContainText('StudyPilot page one')
   await expect(list).toContainText('第 1 页')
@@ -129,7 +129,7 @@ test('a passage on a PDF page can be marked, is painted, and survives a reload',
   await page.reload()
   await expect(page.getByLabel('第 1 页')).toBeVisible()
   await openHighlights(page)
-  await expect(page.getByRole('list', { name: '高亮列表' })).toContainText('StudyPilot page one')
+  await expect(page.getByRole('list', { name: '注释列表' })).toContainText('StudyPilot page one')
   await expect.poll(() => painted(page)).toEqual(['StudyPilot page one'])
   // 没有被判成孤立。
   expect(await page.locator('.reader-highlight-orphan').count()).toBe(0)
@@ -163,28 +163,30 @@ test('a selection that crosses two pages can be quoted but not marked', async ({
   await expect(page.getByText('选区跨页或落到页外，只能记下这段')).toBeVisible()
   expect((await call(page, `/resources/${id}/highlights`)).data).toEqual([])
 
-  // 引文照走：两页的文字都进了草稿，但没有高亮被创建。
+  // 标不了就退回 TASK-068 的路：两页的文字以引用进顶部「写心得」框，没有高亮被创建。
   await page.getByRole('button', { name: '记下这段' }).click()
-  const draft = page.getByRole('textbox', { name: '这次想记下什么？' })
+  const draft = page.getByRole('textbox', { name: '写心得' })
   await expect(draft).toHaveValue(/StudyPilot page one[\s\S]*StudyPilot page two/)
+  await expect(draft).toBeFocused()
   expect((await call(page, `/resources/${id}/highlights`)).data).toHaveLength(0)
 })
 
 test('quoting a passage on a PDF page pairs the saved note with its highlight', async ({
   page,
 }) => {
-  // 用户 2026-09-22 的原话：「加了心得之后高亮也不会保存」——现在「记下这段」既标高亮也进草稿，
-  // 心得保存后自动配对。
+  // 用户 2026-09-22 的原话：「加了心得之后高亮也不会保存」——TASK-098 起「记下这段」立即标高亮，
+  // 焦点落进这条的评论框，评论保存后自动配对。
   const id = await seedPdf(page, 'PDF 高亮 · C')
   await page.goto(`/resources/${id}`)
   await expect(page.getByLabel('第 1 页')).toBeVisible()
   await selectOnPage(page, 1, 'StudyPilot page one')
   await page.getByRole('button', { name: '记下这段' }).click()
 
-  const draft = page.getByRole('textbox', { name: '这次想记下什么？' })
-  await expect(draft).toHaveValue(/> StudyPilot page one/)
-  await draft.fill('> StudyPilot page one\n\n这一页值得记。')
-  await page.getByRole('button', { name: '保存心得' }).click()
+  const comment = page.getByRole('textbox', { name: '评论：StudyPilot page one' })
+  await expect(comment).toBeFocused()
+  await comment.fill('这一页值得记。')
+  await page.keyboard.press('Control+Enter')
+  await expect(page.getByRole('list', { name: '注释列表' }).getByText('已保存')).toBeVisible()
 
   await expect
     .poll(async () => {
@@ -220,7 +222,7 @@ test('a highlight on a page outside the render window is not called lost, and ju
   expect(await page.locator('.pdf-page[data-page="9"] .pdf-text-layer').count()).toBe(0)
 
   await openHighlights(page)
-  const list = page.getByRole('list', { name: '高亮列表' })
+  const list = page.getByRole('list', { name: '注释列表' })
   await expect(list).toContainText('第 9 页')
   expect(await page.locator('.reader-highlight-orphan').count()).toBe(0)
   expect(await painted(page)).toEqual([])

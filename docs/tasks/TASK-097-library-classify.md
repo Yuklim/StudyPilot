@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-097"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L2"
 risk_reason = "纯前端新功能：资料库页每行加「分类」按钮弹出主题/标签选择，多选后可批量设主题、批量追加标签；走已批准的 updateResource PATCH（topic_id / 整组 tag_ids + expected_version），不改后端与契约。写入用户数据（分类归属）且是新交互，须独立只读 Reviewer 检查最终 diff；独立验收 N/A。执行链：1 Worker → 自动检查 → 1 独立只读 Reviewer。"
 risk_flags = ["business"]
@@ -118,7 +118,7 @@ checks = ["frontend"]
   > **结论：PASS，覆盖 `9c38f92`**（继承前两轮；增量仅 `resource-pages.spec.ts:464-476` 还原段，与「第三次实现提交」段一致）。
   > **Findings（均非阻断）**：① 还原放在断言后：断言失败时沙盒不还原、同次运行 scaffold 连带红——但那次运行本就红，只是多一条噪音；可选改 `try/finally`。② 守卫判断：`/api/v1/topics/{id}` 是资料库既有读（`api.ts:214-233 withTopics`），`scaffold.spec.ts:50` 白名单本就落后于实现，且守卫结果与沙盒数据耦合，任何后续留主题的 e2e 都会再踩。**更正确的做法是把 `GET /api/v1/topics/<uuid>` 加进白名单**；但该文件不在本任务 allowed_paths，本次不动守卫、只还原是对的，建议另开 L1 补白名单。③ 一致。
 - Acceptance：L2 N/A。
-- 最终状态/风险/用户操作：**ACCEPTED**（L2：自动检查 PASS → 独立只读 Review PASS + 两轮增量复核 PASS）。用户 2026-09-29 本机看过后
+- 最终状态/风险/用户操作：**MERGED**——2026-09-29 用户合并 PR #106，merge `cb0cfaa`；本条 MERGED 登记按 §5 并入 TASK-098 的控制面提交。合并前状态为 **ACCEPTED**（L2：自动检查 PASS → 独立只读 Review PASS + 两轮增量复核 PASS）。用户 2026-09-29 本机看过后
   「没问题，推pr」。风险：写用户数据的批量循环，逐份版本化、失败可见、不重试；最坏情况是部分成功，列表刷新后能看出哪份没改。
   PR 指向 096 分支，**须在 PR #105 之后合并**。
 - 非阻断遗留项：见「已知限制」（Tab 环首元素、保存中禁关无单测、批量逐份耗时、不做批量移除标签）；**建议另开 L1**：

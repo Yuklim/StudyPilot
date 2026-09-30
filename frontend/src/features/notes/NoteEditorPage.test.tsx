@@ -535,15 +535,14 @@ describe('write-note entry points', () => {
       return { data: [] }
     })
     renderWithRouter(<App />, `/resources/${resourceId}`)
-    const notes = await screen.findByRole('form', { name: '心得编辑' })
-    fireEvent.change(within(notes).getByRole('textbox'), { target: { value: '侧栏里写到一半' } })
+    // TASK-098 起右栏是「注释」列表，顶部的「写心得」框仍是会被 ⌘J 带走的那份草稿。
+    const notes = await screen.findByRole('textbox', { name: '写心得' })
+    fireEvent.change(notes, { target: { value: '侧栏里写到一半' } })
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
     fireEvent.keyDown(document, { key: 'j', metaKey: true })
     expect(confirm).toHaveBeenCalledOnce()
     expect(screen.queryByRole('heading', { name: '新心得', level: 1 })).toBeNull()
-    expect(within(screen.getByRole('form', { name: '心得编辑' })).getByRole('textbox')).toHaveValue(
-      '侧栏里写到一半',
-    )
+    expect(screen.getByRole('textbox', { name: '写心得' })).toHaveValue('侧栏里写到一半')
     confirm.mockReturnValue(true)
     fireEvent.keyDown(document, { key: 'j', metaKey: true })
     expect(await screen.findByRole('heading', { name: '新心得', level: 1 })).toBeInTheDocument()

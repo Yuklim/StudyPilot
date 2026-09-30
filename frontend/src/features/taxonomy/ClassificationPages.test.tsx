@@ -324,7 +324,7 @@ describe('classification selection and resource integration', () => {
     })
     renderWithRouter(<App />, `/resources/${resourceId}`)
     await screen.findByText('合成阅读资料')
-    fireEvent.change(screen.getByLabelText('这次想记下什么？'), {
+    fireEvent.change(screen.getByRole('textbox', { name: '写心得' }), {
       target: { value: '修改标签也要保留这份草稿' },
     })
     openFromMenu('编辑标签')
@@ -344,7 +344,10 @@ describe('classification selection and resource integration', () => {
       ).toBeInTheDocument(),
     )
     expect(screen.getByRole('button', { name: '收起标签管理' })).toBeInTheDocument()
-    expect(screen.getByLabelText('这次想记下什么？')).toHaveValue('修改标签也要保留这份草稿')
+    // 此刻在「信息」Tab，写作框藏着：草稿仍在。
+    expect(screen.getByRole('textbox', { name: '写心得', hidden: true })).toHaveValue(
+      '修改标签也要保留这份草稿',
+    )
     await screen.findByRole('button', { name: '已添加 合成标签' })
     click('解除标签 合成标签')
     expect(await screen.findByRole('alert')).toHaveTextContent('没有自动重试')

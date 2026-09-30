@@ -212,9 +212,9 @@ describe('reader toolbar', () => {
     expect(more()).toBeVisible()
     // 正文列里不再有标签/保存原因。
     expect(document.querySelector('.reader-main .reader-context')).toBeNull()
-    // 打开右栏 → 默认「心得」Tab；切到「信息」才看到标签与保存原因。
+    // 打开右栏 → 默认「注释」Tab（TASK-098 起合并了高亮与心得）；切到「信息」才看到标签与保存原因。
     fireEvent.click(screen.getByRole('button', { name: '心得' }))
-    expect(screen.getByRole('tab', { name: '心得' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: '注释' })).toHaveAttribute('aria-selected', 'true')
     fireEvent.click(screen.getByRole('tab', { name: '信息' }))
     expect(screen.getByRole('tab', { name: '信息' })).toHaveAttribute('aria-selected', 'true')
     expect(
@@ -226,8 +226,8 @@ describe('reader toolbar', () => {
     expect(within(info).getByText('来源')).toBeInTheDocument()
     expect(within(info).getByText('学习进度')).toBeInTheDocument()
     expect(within(info).getByText('收藏时间')).toBeInTheDocument()
-    // 心得写作框仍然挂载着（只是隐藏）：切 Tab 不能丢草稿。
-    const notesPanel = document.getElementById('reader-tabpanel-notes')!
+    // 注释列表（含顶部写作框）仍然挂载着（只是隐藏）：切 Tab 不能丢草稿、正文也要继续上色。
+    const notesPanel = document.getElementById('reader-tabpanel-annotations')!
     expect(notesPanel).not.toBeVisible()
     expect(within(notesPanel).getByRole('textbox', { hidden: true })).toBeInTheDocument()
   })
@@ -619,16 +619,12 @@ describe('reader toolbar', () => {
     // 收起态点击＝展开并聚焦写作框。
     fireEvent.click(toggle)
     expect(toggle).toHaveAttribute('aria-expanded', 'true')
-    await waitFor(() =>
-      expect(screen.getByRole('textbox', { name: '这次想记下什么？' })).toHaveFocus(),
-    )
+    await waitFor(() => expect(screen.getByRole('textbox', { name: '写心得' })).toHaveFocus())
     // 展开态再点＝焦点回写作框（先把焦点挪走再点，证明真是按钮带回来的）。
     screen.getByRole('button', { name: '更多操作' }).focus()
     fireEvent.click(toggle)
     expect(toggle).toHaveAttribute('aria-expanded', 'true')
-    await waitFor(() =>
-      expect(screen.getByRole('textbox', { name: '这次想记下什么？' })).toHaveFocus(),
-    )
+    await waitFor(() => expect(screen.getByRole('textbox', { name: '写心得' })).toHaveFocus())
     // Esc 收起，焦点还给触发按钮。
     fireEvent.keyDown(document, { key: 'Escape' })
     await waitFor(() => expect(toggle).toHaveAttribute('aria-expanded', 'false'))
