@@ -441,11 +441,11 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
         style: tool === 'underline' ? 'underline' : 'mark',
         color,
       })
-      if (tool === 'note' && created) {
-        setSideTab('annotations')
-        setNotesOpen(true)
-        setFocusHighlight({ id: created.id, token: Date.now() })
-      }
+      if (tool !== 'note') return
+      // 标不成也把右栏打开：失败原因显示在右栏顶部，收着就看不见（Review F3）。
+      setSideTab('annotations')
+      setNotesOpen(true)
+      if (created) setFocusHighlight({ id: created.id, token: Date.now() })
     },
     [mark, tool, color],
   )

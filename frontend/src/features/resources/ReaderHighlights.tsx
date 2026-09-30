@@ -209,9 +209,10 @@ export function ReaderHighlights({
       .filter((note) => !(edits?.removed ?? []).includes(note.id))
       .map((note) => edits?.map[note.id] ?? note)
   }, [result, noteEdits])
+  // 读取中不回传：换版重读时 `highlights` 会先空一拍，回传空表会把父级刚记进去的新一条抹掉（Review F1）。
   useEffect(() => {
-    onHighlights?.(highlights)
-  }, [highlights, onHighlights])
+    if (result) onHighlights?.(highlights)
+  }, [result, highlights, onHighlights])
   function upsertNote(note: Note, added = false) {
     setNoteEdits((current) => {
       const same =
@@ -519,7 +520,11 @@ export function ReaderHighlights({
     anchor: PendingAnchor | null,
   ): Promise<{ outcome: ComposeOutcome }> {
     const target = anchor ? await markSelection(anchor.range) : null
-    const taken = target !== null && target.note_id !== null
+    // 「已有评论」按列表里真配上的心得判，不看裸的 note_id：悬挂绑定（心得已被解绑走）显示为没评论，
+    // 这里也应当配上去（Review F2）。
+    const taken =
+      target !== null &&
+      highlightRows.some((row) => row.highlight.id === target.id && row.note !== null)
     // 只有这次新建的高亮才在心得失败时回滚：本来就有的那条不是这次的产物。
     const fresh = target !== null && !highlights.some((row) => row.id === target.id)
     let created: Note

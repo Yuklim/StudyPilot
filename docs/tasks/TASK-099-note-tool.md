@@ -63,8 +63,8 @@ checks = ["frontend"]
   - `ReaderQuote.tsx`：`note` 工具也算「松手即交给 onMark」；`ResourceDetail.takeMark` 在 `note` 下标完打开右栏、
     聚焦该条评论框。`ReaderHighlights` 点选：`note` 工具下命中即 `onOpenPanel` + 聚焦该行，不出气泡。
   - 去重：`ReaderHighlights` 通过新 prop `onHighlights` 把当前清单回传，`ResourceDetail.mark()` 建高亮前按
-    页号 + exact + 偏移找相同锚点——有则样子相同直接返回、不同只 PATCH 变了的字段；新建的一条也立刻记进清单
-    （连标两次不等重读）。
+    页号 + exact + 偏移找相同锚点——有则样子相同直接返回、不同只 PATCH 变了的字段；新建的一条也立刻记进清单，
+    列表读取中不回传空表（Review F1 修订，此前重读那一拍会把它抹掉）。
   - 写作框：`onSubmit` 改回 `{ outcome }` 四态；选区是已有评论的高亮 → 心得存为独立心得并提示「那段已经有评论了」，
     不改绑；回滚只针对本次新建的高亮。
   - 测试：`ReaderQuote.test` 新 describe 三条（同段两次只一条 / 换色只 PATCH color；注释工具标下即聚焦并配对；
@@ -76,7 +76,9 @@ checks = ["frontend"]
   - `cd frontend && npx playwright test` → **89 passed (1.3m)**。
   - `backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-099-note-tool.md --worktree`
     → `CHECKS PASS`，`files=12 product_fingerprint=4b7184e33e0942f2cdc634198b22bd75b00e81e44239aa8a899ce939f4f5fcec`。
-- 已知限制：去重只认锚点完全相同；部分重叠仍会各建一条。去重依据是右栏已读到的清单，列表还没读完的那一瞬
+- Review R1（PASS with notes）修订：F1 列表读取中不回传清单；F2 写作框的「已有评论」按列表里真配上的心得判，
+  悬挂 note_id 不算；F3 注释工具下标不成也打开右栏让错误可见。F4（换色走整表重读而非本地覆盖）记为遗留。
+- 已知限制：去重只认锚点完全相同；部分重叠仍会各建一条。去重依据是右栏已读到的清单，首次列表还没读完的那一瞬
   （打开页面立刻标）可能漏判一次。
 
 <!-- EVIDENCE:BEGIN -->
