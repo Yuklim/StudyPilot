@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { Link } from 'react-router-dom'
 
 import { ApiError } from '../../api/client'
-import { failureText } from './api'
-import { listNotes, type Note } from '../notes/api'
-import { noteTitle } from '../notes/noteTitle'
+import { deleteNote, detachNote, listNotes, saveNote, type Note } from '../notes/api'
+import { AnnotationComposer, type PendingAnchor } from './AnnotationComposer'
+import { displayTime, failureText } from './api'
+import { CommentBox } from './CommentBox'
 import { rangeFor, type Anchor } from './highlightAnchor'
 import {
   COLOR_LABELS,
@@ -22,31 +24,36 @@ import {
 import { useResourceQuery } from './useResourceQuery'
 
 /**
- * 阅读器右栏的「高亮」Tab（TASK-072，用户 2026-09-19 在 Pencil 草图上确认）。
+ * 阅读器右栏的「注释」列表（TASK-072 起是「高亮」Tab；TASK-098 起合并了「心得」Tab，用户 2026-09-29
+ * 定案：像 Zotero 那样不用跳到别处就能写）。
  *
- * **上色不插节点。** 用 CSS Custom Highlight API 直接给 `Range` 着色：一段 200 行的代码块
- * 若按老办法包 `<span>` 会产生上千个节点、打碎无障碍树，两条高亮重叠时还得拆节点。正文
- * 由 `snapshotMarkdown.ts` 渲染，那里是本项目唯一的 XSS 边界，这里一个字符都不往里写。
- * 浏览器不支持这个 API 时**降级为不上色**，列表照常可用（jsdom 走的就是这条路）。
+ * **一个列表两种条目**：高亮/下划线（带或不带评论）按文中顺序排；不挂高亮的心得排在它们之后、新的在前。
+ * 评论就地写（`CommentBox`）：没有心得就新建一条并配到这条高亮上，有则改内容；顶部「写心得…」框
+ * （`AnnotationComposer`）在点进去那一刻若正文有选区，保存时先按当前颜色标高亮再配对。
  *
- * **定位在这里做，不在服务端。** 服务端只存锚点（契约 4.15）。每次正文渲染完，按
- * `exact` → 前后文 → 偏移附近 四级把锚点落回当前正文；落不回的就是**孤立**，排在列表最后
- * 并说明原因——内容不丢，正文换回来自动对上，孤立状态也不写回服务端。
+ * **上色不插节点。** 用 CSS Custom Highlight API 直接给 `Range` 着色，一种样子一个名字（`registryName`）。
+ * 浏览器不支持时降级为不上色，列表照常可用（jsdom 走的就是这条路）。
  *
- * **PDF 上按页定位**（TASK-089）：父级把已渲染的文字层按页号交进来（`pages`），每条高亮在
- * 它自己那一页的容器里跑同一套四级定位。**那一页还没渲染 ≠ 孤立**——只有那一页已经渲染
- * 仍找不到，才说「原文位置已找不到」。上色用带 `-pdf` 后缀的一套名字（只给底色/线色，
- * 文字层的字是透明的，不能像正文那样再给字色）。
+ * **定位在这里做，不在服务端。** 每次正文渲染完按 `exact` → 前后文 → 偏移附近 四级把锚点落回当前正文；
+ * 落不回的就是**孤立**，排在高亮之后并说明原因——内容不丢，正文换回来自动对上，孤立状态不写回服务端。
+ * **PDF 上按页定位**（TASK-089）：父级把已渲染的文字层按页号交进来（`pages`），那一页还没渲染 ≠ 孤立。
  *
- * **配的心得可能已经不在本资料里**（心得被 `detachNote` 解绑或后贴到别处，TASK-071 遗留
- * F5）。那种悬挂绑定按「没配心得」展示，并允许重新配一条，不报错、不丢高亮。
- *
- * **正文上的点选（TASK-094）。** 上色没有 DOM 节点，点到哪条只能按坐标反查：
- * `caretPositionFromPoint` 取落点，再问每条 `Range.isPointInRange`。没选工具时点中出**气泡**
- * （写心得 / 换色 / 高亮⇄下划线）；顶栏橡皮开着时点一下**立刻删**，底部出「已删除 · 撤销」，
- * 撤销按同样的锚点、页码、样子重建，原本配的心得也一并接回（用户 2026-09-26 选定）。气泡与提示
- * 用 portal 挂在 body 上——本组件住在右栏 Tab 里，Tab 隐藏时 `position: fixed` 的东西也会跟着藏。
+ * **正文上的点选**（TASK-094）：上色没有 DOM 节点，点到哪条只能按坐标反查（`caretPositionFromPoint` +
+ * `Range.isPointInRange`）。没选工具时点中出**气泡**（写评论 / 换色 / 高亮⇄下划线）；橡皮开着时点一下
+ * **立刻删**，底部出「已删除 · 撤销」，撤销按同样锚点、样子重建，原本配的心得也接回。气泡与提示用
+ * portal 挂在 body 上——右栏 Tab 隐藏时 `position: fixed` 的东西也会跟着藏。
  */
+
+export type HighlightRow = {
+  kind: 'highlight'
+  highlight: Highlight
+  range: Range | null
+  note: Note | null
+  /** 这条高亮所在的文本此刻**能不能被定位**：网页 = 正文已渲染；PDF = 它那一页的文字层已渲染。 */
+  locatable: boolean
+}
+export type NoteRow = { kind: 'note'; note: Note }
+export type AnnotationRow = HighlightRow | NoteRow
 
 type Point = { node: Node; offset: number }
 /** 视口坐标下的文字落点；Chromium 128+ 有标准的 `caretPositionFromPoint`，旧的走 `caretRangeFromPoint`。 */
@@ -72,25 +79,38 @@ function contains(range: Range, point: Point): boolean {
     return false
   }
 }
-
-export type HighlightRow = {
-  highlight: Highlight
-  range: Range | null
-  note: Note | null
-  /** 这条高亮所在的文本此刻**能不能被定位**：网页 = 正文已渲染；PDF = 它那一页的文字层已渲染。 */
-  locatable: boolean
+function anchorOf(highlight: Highlight): Anchor {
+  return {
+    exact: highlight.exact,
+    prefix: highlight.prefix,
+    suffix: highlight.suffix,
+    start_offset: highlight.start_offset,
+    end_offset: highlight.end_offset,
+  }
+}
+function firstLine(text: string): string {
+  const line = text.split('\n').find((row) => row.trim()) ?? ''
+  return line.length > 24 ? line.slice(0, 24) + '…' : line
+}
+function excerpt(text: string): string {
+  return text.length > 24 ? text.slice(0, 24) + '…' : text
 }
 
 export function ReaderHighlights({
   resourceId,
   rendered,
   revision,
-  onWriteNote,
-  onOpenNote,
   onCount,
   pages = null,
   onJumpPage,
   tool = null,
+  available = true,
+  focusRequest = 0,
+  quoteRequest,
+  focusHighlight,
+  captureSelection,
+  markSelection,
+  onOpenPanel,
 }: {
   resourceId: string
   /** 渲染后的正文元素；正文还没渲染（读取中、源码视图）时为 null。PDF 模式下不看它。 */
@@ -101,21 +121,31 @@ export function ReaderHighlights({
   onJumpPage?: (page: number) => void
   /** 父级每新增一条高亮就 +1，用来重新读列表。 */
   revision: number
-  /** 「写心得」：切到心得 Tab 写一条，保存后由父级配到这条高亮上。 */
-  onWriteNote: (highlight: Highlight) => void
-  /** 「改写心得」：切到心得 Tab（那条心得在那里编辑）。 */
-  onOpenNote: (note: Note) => void
+  /** 注释总数（高亮 + 不挂高亮的心得）变化时回传，做角标。 */
   onCount?: (total: number) => void
   /** 顶栏当前按下的工具（TASK-094）：橡皮让正文上的点选变成删除；其余情况点选出气泡。 */
   tool?: AnnotationTool | null
+  /** 父级正在刷新资料时为 false：不发写请求。 */
+  available?: boolean
+  /** 父级每次「想聚焦写作框」就 +1（心得按钮 = 开合 + 聚焦）。 */
+  focusRequest?: number
+  /** 标不了高亮时的退路：引文以 Markdown 引用进顶部写作框（TASK-068 队列语义）。 */
+  quoteRequest?: { token: number; quotes: string[] }
+  /** 父级要求聚焦某条高亮的评论框（胶囊「记下这段」刚标下的那条）。 */
+  focusHighlight?: { id: string; token: number }
+  /** 读正文里此刻的选区（给顶部写作框）。 */
+  captureSelection: () => PendingAnchor | null
+  /** 按当前颜色把选区标成高亮；标不了给 null。父级自己会让列表重读。 */
+  markSelection: (range: Range) => Promise<Highlight | null>
+  /** 气泡里点「写评论」时把右栏打开、切到「注释」。 */
+  onOpenPanel?: () => void
 }) {
   const load = useCallback(
     () =>
       Promise.all([
         listHighlights(resourceId),
-        // 只为显示「配了哪条心得」。读不到就当没有：心得列表的故障不该把整个高亮 Tab 变成
-        // 错误页、更不该让正文不上色（Review F2）。一页 100 条：超过这个数的资料里，落在
-        // 后面的心得会被当成悬挂绑定，代价只是多出一个「写心得」入口（已记录在任务里）。
+        // 心得读一页 100 条：既用来配对显示，也就是「不挂高亮的心得」的来源。读不到就当没有：
+        // 心得列表的故障不该把整个 Tab 变成错误页、更不该让正文不上色（Review F2）。
         listNotes(resourceId, 1, '-created_at', 100).then(
           (page) => page.data,
           () => [] as Note[],
@@ -123,21 +153,31 @@ export function ReaderHighlights({
       ]),
     [resourceId],
   )
-  const { result, retry } = useResourceQuery(`highlights:${resourceId}:${revision}`, load)
+  const { result, retry } = useResourceQuery(`annotations:${resourceId}:${revision}`, load)
   const [busy, setBusy] = useState<string | null>(null)
   const [confirming, setConfirming] = useState<string | null>(null)
+  const [menuFor, setMenuFor] = useState<string | null>(null)
   const [failure, setFailure] = useState<unknown>(null)
   const [removed, setRemoved] = useState<string[]>([])
-  // 本地覆盖（TASK-094）：换色/改型之后不重读整张列表——重读会先清空再上色，正文闪一下。
+  // 本地覆盖：换色/改型/写评论之后不重读整张列表——重读会先清空再上色，正文闪一下。
   // 列表真的换了一版（`result` 变）就丢掉覆盖，服务端的才是新的。
   const [patched, setPatched] = useState<{ base: unknown; map: Record<string, Highlight> }>({
     base: undefined,
     map: {},
   })
+  const [noteEdits, setNoteEdits] = useState<{
+    base: unknown
+    map: Record<string, Note>
+    added: Note[]
+    removed: string[]
+  }>({ base: undefined, map: {}, added: [], removed: [] })
   const [bubble, setBubble] = useState<{ id: string; x: number; y: number } | null>(null)
   const [toast, setToast] = useState<
     { kind: 'undo'; highlight: Highlight } | { kind: 'error'; text: string } | null
   >(null)
+  // 「解除绑定」之后的提示（带去「我的心得」的链接）。
+  const [detached, setDetached] = useState(false)
+  const [focusTarget, setFocusTarget] = useState<{ id: string; token: number } | null>(null)
   const alive = useRef(true)
   useEffect(() => {
     alive.current = true
@@ -145,6 +185,12 @@ export function ReaderHighlights({
       alive.current = false
     }
   }, [])
+  // 父级要求聚焦某条（胶囊「记下这段」刚标下的）：渲染期消费一次，转成本地聚焦目标。
+  const [seenFocus, setSeenFocus] = useState(0)
+  if (focusHighlight && focusHighlight.token !== seenFocus) {
+    setSeenFocus(focusHighlight.token)
+    setFocusTarget({ id: focusHighlight.id, token: focusHighlight.token })
+  }
 
   const highlights = useMemo(() => {
     const overlay = patched.base === result ? patched.map : {}
@@ -152,46 +198,86 @@ export function ReaderHighlights({
       .filter((row) => !removed.includes(row.id))
       .map((row) => overlay[row.id] ?? row)
   }, [result, removed, patched])
-  const notes = useMemo(() => result?.data?.[1] ?? [], [result])
+  const notes = useMemo(() => {
+    const fetched = result?.data?.[1] ?? []
+    const edits = noteEdits.base === result ? noteEdits : null
+    const list = [...(edits?.added ?? []), ...fetched]
+    return list
+      .filter((note) => !(edits?.removed ?? []).includes(note.id))
+      .map((note) => edits?.map[note.id] ?? note)
+  }, [result, noteEdits])
+  function upsertNote(note: Note, added = false) {
+    setNoteEdits((current) => {
+      const same =
+        current.base === result ? current : { base: result, map: {}, added: [], removed: [] }
+      return {
+        base: result,
+        map: { ...same.map, [note.id]: note },
+        added:
+          added && !same.added.some((row) => row.id === note.id)
+            ? [note, ...same.added]
+            : same.added,
+        removed: same.removed,
+      }
+    })
+  }
+  function dropNote(id: string) {
+    setNoteEdits((current) => {
+      const same =
+        current.base === result ? current : { base: result, map: {}, added: [], removed: [] }
+      return { ...same, base: result, removed: [...same.removed, id] }
+    })
+  }
+  function patchHighlight(updated: Highlight) {
+    setPatched((current) => ({
+      base: result,
+      map: { ...(current.base === result ? current.map : {}), [updated.id]: updated },
+    }))
+  }
 
   // 正文渲染完（或换了一版）就重新定位；`rendered` 由父级在 DOM 变化时换成新元素。
   // PDF 模式下则是「这一页的文字层渲染完」——容器按每条高亮自己的页号取。
-  const rows = useMemo<HighlightRow[]>(() => {
+  const rows = useMemo<AnnotationRow[]>(() => {
     const byId = new Map(notes.map((note) => [note.id, note]))
     const containerFor = (highlight: Highlight): Element | null => {
       if (pages) return highlight.page_number ? (pages.get(highlight.page_number) ?? null) : null
       return rendered
     }
-    const located = highlights.map((highlight) => {
+    const located: HighlightRow[] = highlights.map((highlight) => {
       const container = containerFor(highlight)
       return {
+        kind: 'highlight',
         highlight,
         range: container ? rangeFor(container, anchorOf(highlight)) : null,
         note: highlight.note_id ? (byId.get(highlight.note_id) ?? null) : null,
         locatable: container !== null,
       }
     })
-    // 孤立的排最后；其余按文中顺序（接口已按页码、页内位置排好，定位后以实际位置为准）。
-    return located.sort((a, b) => {
+    // 孤立的排在高亮里的最后；其余按文中顺序。
+    located.sort((a, b) => {
       const aLost = a.locatable && !a.range
       const bLost = b.locatable && !b.range
       if (aLost !== bLost) return aLost ? 1 : -1
       const byPage = (a.highlight.page_number ?? 0) - (b.highlight.page_number ?? 0)
       return byPage || a.highlight.start_offset - b.highlight.start_offset
     })
+    // 不挂高亮的心得：没有任何高亮指向它的那些，新的在前（接口已按 -created_at 给）。
+    const bound = new Set(highlights.map((h) => h.note_id).filter(Boolean))
+    const loose: NoteRow[] = notes
+      .filter((note) => !bound.has(note.id))
+      .map((note) => ({ kind: 'note', note }))
+    return [...located, ...loose]
   }, [highlights, notes, rendered, pages])
-  // **正文还没就绪不等于孤立**（Review F1）：快照还在读、切到源码视图、这份资料没有快照时
-  // 都没有可定位的正文，这时说「原文位置已找不到」是在冤枉数据。列表照列，只是不下判断。
-  // PDF 模式下这是按条判的（`row.locatable`）：视口外的页没渲染，那几条只是「还没看」。
+  const highlightRows = rows.filter((row): row is HighlightRow => row.kind === 'highlight')
+  // **正文还没就绪不等于孤立**：快照还在读、切到源码视图、这份资料没有快照时都没有可定位的正文。
   const locatable = pages ? pages.size > 0 : rendered !== null
 
   useEffect(() => {
-    onCount?.(highlights.length)
-  }, [highlights.length, onCount])
+    onCount?.(rows.length)
+  }, [rows.length, onCount])
 
-  // 上色。每次都整批重设：Range 会随正文变化失效，留着旧的比不上色更糟。
-  // TASK-094 起按「样式 × 颜色」分名注册（`registryName`），CSS 里每个名字一条规则；上一轮
-  // 用过、这一轮没有的名字要删掉，否则换色之后旧颜色还留在正文上。
+  // 上色。每次都整批重设：Range 会随正文变化失效，留着旧的比不上色更糟。按「样式 × 颜色」分名注册，
+  // 上一轮用过、这一轮没有的名字要删掉，否则换色之后旧颜色还留在正文上。
   const painted = useRef<Set<string>>(new Set())
   useEffect(() => {
     const registry = (globalThis as unknown as { CSS?: { highlights?: Map<string, unknown> } }).CSS
@@ -200,7 +286,7 @@ export function ReaderHighlights({
       .Highlight
     if (!registry || typeof Painter !== 'function') return
     const groups = new Map<string, Range[]>()
-    for (const row of rows) {
+    for (const row of highlightRows) {
       if (!row.range) continue
       const name = registryName(row.highlight, pages !== null)
       groups.set(name, [...(groups.get(name) ?? []), row.range])
@@ -212,22 +298,10 @@ export function ReaderHighlights({
       for (const name of painted.current) registry.delete(name)
       painted.current = new Set()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- highlightRows 由 rows 派生
   }, [rows, pages])
 
-  // 正文上的点选（TASK-094）。拖选之后的松手也会来一个 click——选区非空时不算点选，那是在选
-  // 文字（工具开着时它已经落色）。监听挂在正文容器上：网页是整篇正文，PDF 是每一页的文字层。
-  const rowsRef = useRef(rows)
-  const toolRef = useRef(tool)
-  useEffect(() => {
-    rowsRef.current = rows
-    toolRef.current = tool
-  }, [rows, tool])
-  const containers = useMemo(
-    () => (pages ? [...pages.values()] : rendered ? [rendered] : []),
-    [pages, rendered],
-  )
-  // 橡皮（TASK-094）：不问就删，但给撤销。失败也走底部提示——右栏 Tab 多半没开着，列表里的
-  // 那条 alert 用户看不见。
+  // 橡皮（TASK-094）：不问就删，但给撤销。失败也走底部提示——右栏多半没开着。
   const erase = useCallback(
     async (highlight: Highlight) => {
       if (busy) return
@@ -247,11 +321,20 @@ export function ReaderHighlights({
     },
     [busy, resourceId],
   )
+  // 正文上的点选。拖选之后的松手也会来一个 click——选区非空、或按下点与松开点离得远（工具开着时
+  // `ReaderQuote` 在 mouseup 里已把选区清掉）都不算点选。监听挂在正文容器上：网页是整篇正文，PDF 是每页文字层。
+  const rowsRef = useRef(highlightRows)
+  const toolRef = useRef(tool)
+  useEffect(() => {
+    rowsRef.current = highlightRows
+    toolRef.current = tool
+  })
+  const containers = useMemo(
+    () => (pages ? [...pages.values()] : rendered ? [rendered] : []),
+    [pages, rendered],
+  )
   useEffect(() => {
     if (!containers.length) return
-    // 拖选与点选的区分靠两样：选区还在（没选工具时拖选完选区留着）；或者按下点与松开点
-    // 离得远（工具开着时 `ReaderQuote` 在 mouseup 里已把选区清掉，随后的 click 到这里时
-    // 选区已经空了——Review F1）。超过几个像素就当拖动。
     let pressedAt: { x: number; y: number } | null = null
     const onMouseDown = (event: Event) => {
       const { clientX, clientY } = event as MouseEvent
@@ -302,6 +385,12 @@ export function ReaderHighlights({
     const timer = setTimeout(() => setToast(null), toast.kind === 'undo' ? 8000 : 6000)
     return () => clearTimeout(timer)
   }, [toast])
+  // 聚焦目标所在的条目滚进视野。
+  const itemRefs = useRef(new Map<string, HTMLLIElement>())
+  useEffect(() => {
+    if (!focusTarget) return
+    itemRefs.current.get(focusTarget.id)?.scrollIntoView?.({ block: 'nearest' })
+  }, [focusTarget])
 
   async function remove(highlight: Highlight) {
     if (busy) return
@@ -312,6 +401,42 @@ export function ReaderHighlights({
       if (!alive.current) return
       setRemoved((current) => [...current, highlight.id])
       setConfirming(null)
+      setMenuFor(null)
+    } catch (cause) {
+      if (alive.current) setFailure(cause)
+    } finally {
+      if (alive.current) setBusy(null)
+    }
+  }
+  // 解除绑定：这条心得回到「我的心得」，不再挂在这份资料下（NotesPanel 时代就有的入口，沿用）。
+  async function detach(note: Note) {
+    if (busy) return
+    if (!window.confirm('解除后这条心得回到「我的心得」，不再挂在这份资料下。确定解除吗？')) return
+    setBusy(note.id)
+    setFailure(null)
+    setDetached(false)
+    try {
+      await detachNote(note)
+      if (!alive.current) return
+      dropNote(note.id)
+      setMenuFor(null)
+      setDetached(true)
+    } catch (cause) {
+      if (alive.current) setFailure(cause)
+    } finally {
+      if (alive.current) setBusy(null)
+    }
+  }
+  async function removeNote(note: Note) {
+    if (busy) return
+    setBusy(note.id)
+    setFailure(null)
+    try {
+      await deleteNote(resourceId, note)
+      if (!alive.current) return
+      dropNote(note.id)
+      setConfirming(null)
+      setMenuFor(null)
     } catch (cause) {
       if (alive.current) setFailure(cause)
     } finally {
@@ -334,9 +459,8 @@ export function ReaderHighlights({
         )
       } catch (cause) {
         // 那条心得这会儿可能已经不在（删了、解绑到别处、或被别的高亮配走）——那是绑定的事，
-        // 不该让标下的那段话跟着丢：退一步不带心得再建一次（Review F4）。
-        // 共享客户端只认它列出的码：`NOTE_NOT_FOUND` 原样到达，`NOTE_ALREADY_HIGHLIGHTED`
-        // 变成带 409 的 `REQUEST_FAILED`。
+        // 不该让标下的那段话跟着丢：退一步不带心得再建一次。共享客户端只认它列出的码：
+        // `NOTE_NOT_FOUND` 原样到达，`NOTE_ALREADY_HIGHLIGHTED` 变成带 409 的 `REQUEST_FAILED`。
         if (highlight.note_id === null || !(cause instanceof ApiError)) throw cause
         const noteGone =
           cause.code === 'NOTE_NOT_FOUND' ||
@@ -349,150 +473,328 @@ export function ReaderHighlights({
       if (alive.current) setToast({ kind: 'error', text: failureText(cause) })
     }
   }
-  // 气泡里的换色 / 改型：一个版本化 PATCH，回来的那条盖住本地的。
+  // 换色 / 改型：一个版本化 PATCH，回来的那条盖住本地的。
   async function restyle(highlight: Highlight, changes: Partial<HighlightLook>) {
     setFailure(null)
     try {
       const updated = await updateHighlight(resourceId, highlight, changes)
-      if (alive.current)
-        setPatched((current) => ({
-          base: result,
-          map: { ...(current.base === result ? current.map : {}), [updated.id]: updated },
-        }))
+      if (alive.current) patchHighlight(updated)
     } catch (cause) {
       if (alive.current) setToast({ kind: 'error', text: failureText(cause) })
     }
   }
+  // 高亮下的评论：没有心得就新建一条并配上；有就改内容。
+  async function saveComment(row: HighlightRow, text: string) {
+    if (row.note) {
+      const saved = await saveNote(resourceId, text, row.note)
+      if (alive.current) upsertNote(saved)
+      return
+    }
+    const created = await saveNote(resourceId, text, null)
+    const updated = await updateHighlight(resourceId, row.highlight, { note_id: created.id })
+    if (!alive.current) return
+    upsertNote(created, true)
+    patchHighlight(updated)
+  }
+  async function saveLoose(note: Note, text: string) {
+    const saved = await saveNote(resourceId, text, note)
+    if (alive.current) upsertNote(saved)
+  }
+  // 顶部「写心得…」：有选区先标高亮，再建心得、配上；标不了（跨页等）就只建心得。
+  async function compose(text: string, anchor: PendingAnchor | null) {
+    const target = anchor ? await markSelection(anchor.range) : null
+    const created = await saveNote(resourceId, text, null)
+    if (target) await updateHighlight(resourceId, target, { note_id: created.id })
+    if (alive.current) retry()
+  }
+  function jump(row: HighlightRow) {
+    if (row.range) {
+      row.range.startContainer.parentElement?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      })
+    } else if (pages && row.highlight.page_number !== null && onJumpPage) {
+      onJumpPage(row.highlight.page_number)
+    }
+  }
 
-  if (result === undefined) {
-    return (
-      <p role="status" className="resource-loading">
-        正在读高亮…
-      </p>
-    )
-  }
-  if (result.error !== undefined) {
-    return (
-      <div className="resource-error" role="alert">
-        <p>{failureText(result.error)}</p>
-        <button type="button" className="journal-button" onClick={retry}>
-          重新加载
-        </button>
-      </div>
-    )
-  }
-  const orphans = rows.filter((row) => row.locatable && !row.range).length
+  const orphans = highlightRows.filter((row) => row.locatable && !row.range).length
   // 气泡说的是哪条：按 id 从当前行里找，那条已经不在（被删、被重读掉）就没有气泡。
-  const picked = bubble ? (rows.find((row) => row.highlight.id === bubble.id) ?? null) : null
+  const picked = bubble
+    ? (highlightRows.find((row) => row.highlight.id === bubble.id) ?? null)
+    : null
+  const loading = result === undefined
+  const failed = result?.error !== undefined
+
   return (
-    <div className="reader-highlights">
-      <p className="resource-hint reader-highlights-hint" aria-live="polite">
-        {rows.length === 0
-          ? '还没有标下任何一段'
-          : `共 ${rows.length} 条 · 按文中顺序${orphans ? ` · ${orphans} 条找不到原文` : ''}${
-              locatable ? '' : ' · 正文还没就绪'
-            }`}
-      </p>
-      {failure !== null && (
-        <p className="resource-error" role="alert">
-          {failureText(failure)}
+    <div className="reader-highlights annotation-panel">
+      <AnnotationComposer
+        disabled={!available}
+        focusRequest={focusRequest}
+        quoteRequest={quoteRequest}
+        captureSelection={captureSelection}
+        onSubmit={compose}
+      />
+      {loading && (
+        <p role="status" className="resource-loading">
+          正在读注释…
         </p>
       )}
-      {rows.length === 0 ? (
-        <div className="empty-sheet reader-highlights-empty">
-          <h2>还没有标下任何一段</h2>
-          <p>
-            顶栏选好荧光笔或下划线，在正文里选中一句话就标下了。想写点什么，就在没选工具时选中
-            文字、点「记下这段」，心得保存后会自动配到这条高亮上；点一下正文上已有的高亮也能给它写。
-          </p>
+      {failed && (
+        <div className="resource-error" role="alert">
+          <p>{failureText(result.error)}</p>
+          <button type="button" className="journal-button" onClick={retry}>
+            重新加载
+          </button>
         </div>
-      ) : (
-        <ul className="reader-highlights-list" aria-label="高亮列表">
-          {rows.map(({ highlight, range, note, locatable: found }) => (
-            <li key={highlight.id} className={!found || range ? undefined : 'orphaned'}>
-              {found && !range && (
-                <p className="reader-highlight-orphan">
-                  {pages
-                    ? '在那一页上已找不到这段——PDF 换过、或页码对不上。内容留着。'
-                    : '原文位置已找不到——正文换过一版。内容留着，换回来会自动对上。'}
-                </p>
-              )}
-              <span className="reader-highlight-look">
-                <span className={`look-dot ${highlight.color}`} aria-hidden="true" />
-                {STYLE_LABELS[highlight.style]}
-              </span>
-              {highlight.page_number !== null && (
-                <span className="source-chip reader-highlight-page">
-                  第 {highlight.page_number} 页
-                </span>
-              )}
-              <blockquote className="reader-highlight-quote">{highlight.exact}</blockquote>
-              {note && (
-                <p className="reader-highlight-note">✎ {noteTitle(note.content) ?? '无标题心得'}</p>
-              )}
-              <div className="reader-highlight-actions">
-                {range ? (
-                  <button
-                    type="button"
-                    className="text-link"
-                    onClick={() =>
-                      range.startContainer.parentElement?.scrollIntoView({
-                        behavior: 'smooth',
-                        block: 'center',
-                      })
-                    }
-                  >
-                    跳到正文
-                  </button>
-                ) : (
-                  // PDF 上那一页还没渲染：让阅读器跳过去，渲染完自然会定位上色。
-                  pages &&
-                  !found &&
-                  highlight.page_number !== null &&
-                  onJumpPage && (
-                    <button
-                      type="button"
-                      className="text-link"
-                      onClick={() => onJumpPage(highlight.page_number!)}
+      )}
+      {!loading && !failed && (
+        <>
+          <p className="resource-hint reader-highlights-hint" aria-live="polite">
+            {rows.length === 0
+              ? '还没有注释'
+              : `${rows.length} 条 · 按文中顺序${orphans ? ` · ${orphans} 条找不到原文` : ''}${
+                  locatable ? '' : ' · 正文还没就绪'
+                }`}
+          </p>
+          {failure !== null && (
+            <p className="resource-error" role="alert">
+              {failureText(failure)}
+            </p>
+          )}
+          {detached && (
+            <p className="note-saved" role="status">
+              已解除为独立心得。
+              <Link className="text-link" to="/notes">
+                去「我的心得」查看
+              </Link>
+            </p>
+          )}
+          {rows.length === 0 ? (
+            <p className="quiet-empty">
+              顶栏选好荧光笔或下划线，在正文里选中一句话就标下了；想写点什么，选中文字后点「记下这段」，
+              或在上面的框里直接写。
+            </p>
+          ) : (
+            <ul className="annotation-list" aria-label="注释列表">
+              {rows.map((row) => {
+                const id = row.kind === 'highlight' ? row.highlight.id : row.note.id
+                const focusToken = focusTarget?.id === id ? focusTarget.token : 0
+                const open = menuFor === id
+                if (row.kind === 'note') {
+                  const { note } = row
+                  return (
+                    <li
+                      key={id}
+                      ref={(node) => {
+                        if (node) itemRefs.current.set(id, node)
+                        else itemRefs.current.delete(id)
+                      }}
+                      className="annotation-item note"
                     >
-                      跳到第 {highlight.page_number} 页
-                    </button>
+                      <div className="annotation-item-head">
+                        <span className="annotation-kind">✎ 心得 · 未挂高亮</span>
+                        <button
+                          type="button"
+                          className="text-link annotation-more"
+                          aria-label={`更多：心得 ${firstLine(note.content)}`}
+                          aria-expanded={open}
+                          onClick={() => {
+                            setMenuFor(open ? null : id)
+                            setConfirming(null)
+                          }}
+                        >
+                          ⋯
+                        </button>
+                      </div>
+                      <CommentBox
+                        label={`心得：${firstLine(note.content)}`}
+                        initial={note.content}
+                        placeholder="写点什么…"
+                        focusToken={focusToken}
+                        disabled={!available}
+                        rows={3}
+                        onSave={(text) => saveLoose(note, text)}
+                      />
+                      <div className="annotation-meta">
+                        <time dateTime={note.created_at}>{displayTime(note.created_at)}</time>
+                      </div>
+                      {open && (
+                        <div className="annotation-actions">
+                          <Link
+                            className="text-link"
+                            to={`/notes/${note.id}?resource=${resourceId}`}
+                          >
+                            整页编辑
+                          </Link>
+                          <button
+                            type="button"
+                            className="text-link"
+                            disabled={busy === id}
+                            onClick={() => void detach(note)}
+                          >
+                            解除绑定
+                          </button>
+                          {confirming === id ? (
+                            <>
+                              <button
+                                type="button"
+                                className="text-link danger"
+                                disabled={busy === id}
+                                onClick={() => void removeNote(note)}
+                              >
+                                {busy === id ? '正在删除…' : '确认删除心得'}
+                              </button>
+                              <button
+                                type="button"
+                                className="text-link"
+                                onClick={() => setConfirming(null)}
+                              >
+                                取消
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              className="text-link danger"
+                              onClick={() => setConfirming(id)}
+                            >
+                              删除心得
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </li>
                   )
-                )}
-                <button
-                  type="button"
-                  className="text-link"
-                  onClick={() => (note ? onOpenNote(note) : onWriteNote(highlight))}
-                >
-                  {note ? '改写心得' : '写心得'}
-                </button>
-                {confirming === highlight.id ? (
-                  <>
-                    <button
-                      type="button"
-                      className="text-link danger"
-                      disabled={busy === highlight.id}
-                      onClick={() => void remove(highlight)}
-                    >
-                      {busy === highlight.id ? '正在删除…' : '确认删除'}
-                    </button>
-                    <button type="button" className="text-link" onClick={() => setConfirming(null)}>
-                      取消
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    className="text-link danger"
-                    onClick={() => setConfirming(highlight.id)}
+                }
+                const { highlight, range, note, locatable: found } = row
+                return (
+                  <li
+                    key={id}
+                    ref={(node) => {
+                      if (node) itemRefs.current.set(id, node)
+                      else itemRefs.current.delete(id)
+                    }}
+                    className={`annotation-item ${highlight.style} ${highlight.color}${
+                      !found || range ? '' : ' orphaned'
+                    }`}
                   >
-                    删除
-                  </button>
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
+                    <div className="annotation-item-head">
+                      <span className="annotation-kind">
+                        <span className={`look-dot ${highlight.color}`} aria-hidden="true" />
+                        {STYLE_LABELS[highlight.style]}
+                        {highlight.page_number !== null && ` · 第 ${highlight.page_number} 页`}
+                      </span>
+                      <button
+                        type="button"
+                        className="text-link annotation-more"
+                        aria-label={`更多：${excerpt(highlight.exact)}`}
+                        aria-expanded={open}
+                        onClick={() => {
+                          setMenuFor(open ? null : id)
+                          setConfirming(null)
+                        }}
+                      >
+                        ⋯
+                      </button>
+                    </div>
+                    {found && !range && (
+                      <p className="reader-highlight-orphan">
+                        {pages
+                          ? '在那一页上已找不到这段——PDF 换过、或页码对不上。内容留着。'
+                          : '原文位置已找不到——正文换过一版。内容留着，换回来会自动对上。'}
+                      </p>
+                    )}
+                    <blockquote className="reader-highlight-quote">{highlight.exact}</blockquote>
+                    <CommentBox
+                      label={`评论：${excerpt(highlight.exact)}`}
+                      initial={note?.content ?? ''}
+                      placeholder="添加评论…"
+                      focusToken={focusToken}
+                      disabled={!available}
+                      onSave={(text) => saveComment(row, text)}
+                    />
+                    <div className="annotation-meta">
+                      {range ? (
+                        <button type="button" className="text-link" onClick={() => jump(row)}>
+                          跳到正文
+                        </button>
+                      ) : (
+                        pages &&
+                        !found &&
+                        highlight.page_number !== null &&
+                        onJumpPage && (
+                          <button type="button" className="text-link" onClick={() => jump(row)}>
+                            跳到第 {highlight.page_number} 页
+                          </button>
+                        )
+                      )}
+                      <time dateTime={highlight.created_at}>
+                        {displayTime(highlight.created_at)}
+                      </time>
+                    </div>
+                    {open && (
+                      <div className="annotation-actions">
+                        <div className="reader-tool-colors" role="radiogroup" aria-label="颜色">
+                          {HIGHLIGHT_COLORS.map((option) => (
+                            <button
+                              key={option}
+                              type="button"
+                              role="radio"
+                              className={`reader-tool-color ${option}`}
+                              aria-checked={highlight.color === option}
+                              aria-label={`${COLOR_LABELS[option]}色`}
+                              title={`${COLOR_LABELS[option]}色`}
+                              onClick={() => void restyle(highlight, { color: option })}
+                            />
+                          ))}
+                        </div>
+                        <button
+                          type="button"
+                          className="text-link"
+                          onClick={() =>
+                            void restyle(highlight, {
+                              style: highlight.style === 'mark' ? 'underline' : 'mark',
+                            })
+                          }
+                        >
+                          {highlight.style === 'mark' ? '改为下划线' : '改为高亮'}
+                        </button>
+                        {confirming === id ? (
+                          <>
+                            <button
+                              type="button"
+                              className="text-link danger"
+                              disabled={busy === id}
+                              onClick={() => void remove(highlight)}
+                            >
+                              {busy === id ? '正在删除…' : '确认删除'}
+                            </button>
+                            <button
+                              type="button"
+                              className="text-link"
+                              onClick={() => setConfirming(null)}
+                            >
+                              取消
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            className="text-link danger"
+                            onClick={() => setConfirming(id)}
+                          >
+                            删除高亮
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </>
       )}
       {picked &&
         bubble &&
@@ -508,12 +810,12 @@ export function ReaderHighlights({
               className="reader-bubble-button primary"
               onClick={() => {
                 setBubble(null)
-                if (picked.note) onOpenNote(picked.note)
-                else onWriteNote(picked.highlight)
+                onOpenPanel?.()
+                setFocusTarget({ id: picked.highlight.id, token: Date.now() })
               }}
             >
               <span aria-hidden="true">✎ </span>
-              {picked.note ? '改写心得' : '写心得'}
+              {picked.note ? '改评论' : '写评论'}
             </button>
             <span className="reader-bubble-divider" aria-hidden="true" />
             <div className="reader-tool-colors" role="radiogroup" aria-label="颜色">
@@ -563,14 +865,4 @@ export function ReaderHighlights({
         )}
     </div>
   )
-}
-
-function anchorOf(highlight: Highlight): Anchor {
-  return {
-    exact: highlight.exact,
-    prefix: highlight.prefix,
-    suffix: highlight.suffix,
-    start_offset: highlight.start_offset,
-    end_offset: highlight.end_offset,
-  }
 }

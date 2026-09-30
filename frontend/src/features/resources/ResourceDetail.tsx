@@ -12,11 +12,12 @@ import { ReaderOutline } from './ReaderOutline'
 import { useOutline, useOutlineCurrent, type OutlineItem } from './outline'
 import { currentBookmark, type PdfBookmark } from './pdfOutline'
 import { ReaderQuote } from './ReaderQuote'
+import { readSelection } from './quoteSelection'
 import { ReaderHighlights } from './ReaderHighlights'
+import type { PendingAnchor } from './AnnotationComposer'
 import { anchorFrom } from './highlightAnchor'
 import { AnnotationTools } from './AnnotationTools'
 import {
-  bindHighlightNote,
   createHighlight,
   type AnnotationTool,
   type Highlight,
@@ -31,8 +32,6 @@ import {
   writePosition,
 } from './readerPosition'
 import { ReaderHeader, ReaderInfo, ResourceToolbar } from './ResourceToolbar'
-import { NotesPanel } from '../notes/NotesPanel'
-import type { Note } from '../notes/api'
 import { resourceTitle } from './resourceTitle'
 import { useResourceQuery } from './useResourceQuery'
 import { useHeadingSlot } from '../../shell/heading'
@@ -140,9 +139,6 @@ function useSqueezeLayout(fallback = true): boolean {
   return squeeze
 }
 
-/** 「在等心得」的配对最多留这么久（毫秒）：过了就不配，宁可让用户再点一次「写心得」。 */
-const PENDING_MS = 10 * 60 * 1000
-
 export function ResourceDetail({ resourceId }: { resourceId: string }) {
   const navigate = useNavigate()
   const load = useCallback(() => getResource(resourceId), [resourceId])
@@ -233,15 +229,19 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [notesOpen, closeNotes])
   const receiveCount = useCallback((total: number) => setNotesCount(total), [])
-  // 右栏两个 Tab（TASK-067）：「心得」= NotesPanel，「信息」= 标签 / 保存原因 / 来源 / 进度。
-  // 标签与保存原因从正文顶部移进来（用户 2026-09-17 选定「按草图移入信息 Tab」，推翻
-  // TASK-046 的「上下文层留在正文顶部」）。⌘J / 心得按钮总是落到「心得」Tab。
-  const [sideTab, setSideTab] = useState<'highlights' | 'notes' | 'info'>('notes')
+  // 右栏两个 Tab：「注释」= 高亮与心得合成一个列表（TASK-098，此前 TASK-067/072 是「高亮」「心得」
+  // 两个 Tab），「信息」= 标签 / 保存原因 / 来源 / 进度（用户 2026-09-17 选定移入）。
+  // 顶栏心得按钮总是落到「注释」Tab 并聚焦顶部写作框。
+  const [sideTab, setSideTab] = useState<'annotations' | 'info'>('annotations')
   function openNotesTab() {
-    setSideTab('notes')
+    setSideTab('annotations')
     setNotesOpen(true)
     askEditorFocus()
   }
+  const openAnnotations = useCallback(() => {
+    setSideTab('annotations')
+    setNotesOpen(true)
+  }, [])
 
   // --- TASK-067：左侧目录栏 ---
   // 目录从渲染后的正文 DOM 收集（见 ReaderOutline）：正文列元素进 state 而不是 ref，
@@ -310,14 +310,14 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
   // 没有快捷键（用户 2026-09-17：「快捷键我觉得可以先不做」）：开关只有顶栏的「目录」按钮。
 
   // --- TASK-068：「记下这段」→ 心得草稿；「记为学习进度」用的阅读百分比 ---
-  // 引文是**待消费队列**而不是单个槽位：`NotesPanel` 在 `available=false`（父级正在刷新
+  // 引文是**待消费队列**而不是单个槽位：写作框在 `available=false`（父级正在刷新
   // 资料）的瞬态里留着 token 不消费，这段窗口内连点两次「记下这段」时，单槽位会被后一次
   // 覆盖、前一段引文丢掉（TASK-068 Review F2）。队列里每点一次追加一段，`token` 即长度，
   // 面板按已消费下标一次把未消费的都追加进草稿。组件按 `resourceId` 重挂（`Screen.tsx`），
   // 换资料时队列跟着清空。
   const [quoteRequest, setQuoteRequest] = useState<{ token: number; quotes: string[] }>()
   const takeQuote = useCallback((quote: string) => {
-    setSideTab('notes')
+    setSideTab('annotations')
     setNotesOpen(true)
     setQuoteRequest((current) => {
       const quotes = [...(current?.quotes ?? []), quote]
@@ -326,16 +326,12 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
   }, [])
 
   // --- TASK-072：高亮 ---
-  // 每标下一条就让「高亮」Tab 重读列表；`pendingNote` 记住「这条高亮在等一条心得」，
-  // 心得一保存就配上去。一次只挂一条：连点两次「记下这段」而心得还没保存时，配对目标
-  // 是最后一次，先前那条留作没配心得的高亮（不丢数据，已记录在任务里）。
+  // 每标下一条就让「注释」Tab 重读列表。TASK-098 起心得与高亮的配对就地完成（评论框、写作框），
+  // 不再有「在等一条心得」的挂起状态。
   const [highlightRevision, setHighlightRevision] = useState(0)
-  const [highlightCount, setHighlightCount] = useState<number | null>(null)
-  // 「在等一条心得」的那条高亮。它必须会**过期**（Review F3）：点了「记下这段」却放弃草稿、
-  // 或转头去改别的心得时，之后随手写的一条心得不该被配到那条旧高亮上——界面里目前没有解绑
-  // 入口，配错了不好收拾。除了几处显式清空，再给一个时限兜底。
-  const pendingNote = useRef<{ highlight: Highlight; at: number } | null>(null)
   const [markError, setMarkError] = useState<string | null>(null)
+  // 胶囊「记下这段」刚标下的那条：让「注释」Tab 把焦点放进它的评论框。
+  const [focusHighlight, setFocusHighlight] = useState<{ id: string; token: number }>()
   // 顶栏的标注工具（TASK-094）：按下的工具与当前颜色只在本页内存，刷新回到「没选工具」
   // （用户选定不记忆）。点颜色时若没选工具或选的是橡皮，顺手切到荧光笔。
   const [tool, setTool] = useState<AnnotationTool | null>(null)
@@ -375,29 +371,34 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
     return Number.isInteger(page) && page >= 1 ? { page, layer: start } : null
   }, [])
   const canMarkPdfRange = useCallback((range: Range) => pageOfRange(range) !== null, [pageOfRange])
+  /**
+   * 把选区标成高亮。标不了（PDF 跨页、正文没渲染、锚点取不到）给 null；请求失败也给 null
+   * 并把原因显示在右栏顶部。标成了就让「注释」Tab 重读列表。
+   */
   const mark = useCallback(
-    async (range: Range, keep: (highlight: Highlight) => void, look: HighlightLook) => {
+    async (range: Range, look: HighlightLook): Promise<Highlight | null> => {
       // 锚点取自哪段文本：网页是整篇正文；PDF 是选区所在的那一页（TASK-089）。
       let container: Element | null
       let page: number | null = null
       if (pdfOriginal) {
         const at = pageOfRange(range)
-        if (!at) return
+        if (!at) return null
         container = at.layer
         page = at.page
       } else {
         container = readerMain?.querySelector('.snapshot-rendered') ?? null
       }
-      if (!container) return
+      if (!container) return null
       const anchor = anchorFrom(container, range)
-      if (!anchor) return
+      if (!anchor) return null
       setMarkError(null)
       try {
         const created = await createHighlight(resourceId, anchor, null, page, look)
-        keep(created)
         setHighlightRevision((value) => value + 1)
+        return created
       } catch (cause) {
         setMarkError(failureText(cause))
+        return null
       }
     },
     [readerMain, resourceId, pdfOriginal, pageOfRange],
@@ -405,63 +406,40 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
   const takeMark = useCallback(
     (range: Range) => {
       // 工具开着时的落色（TASK-094）：不开右栏、不切 Tab——颜色本身就是反馈，一路标下去
-      // 不该每次都弹出右栏。只标记、明确不想配心得：把上一次还在等的配对丢掉。
-      pendingNote.current = null
-      void mark(range, () => {}, { style: tool === 'underline' ? 'underline' : 'mark', color })
+      // 不该每次都弹出右栏。
+      void mark(range, { style: tool === 'underline' ? 'underline' : 'mark', color })
     },
     [mark, tool, color],
   )
-  // TASK-089 起 PDF 与网页走同一条路：引文进草稿 + 标高亮 + 心得保存后配对。
-  // 跨页的选区 `mark()` 会早退（取不到单一页），引文照进草稿——正是用户要的行为。
+  // 胶囊「记下这段」（TASK-098 起）：先按当前颜色标成高亮，打开「注释」Tab、焦点落进这条的
+  // 评论框，评论一保存就配上。标不了（PDF 跨页等）退回 TASK-068 的路：引文进顶部写作框。
   const takeQuoteAndMark = useCallback(
-    (quote: string, range: Range | null) => {
-      takeQuote(quote)
-      // 取不到选区时只进草稿、不标高亮：引文是用户已经看见的动作，不该被上色失败连累。
-      if (range)
-        void mark(
-          range,
-          (created) => {
-            pendingNote.current = { highlight: created, at: Date.now() }
-          },
-          // 「记下这段」标的是当前颜色的高亮（不是下划线）：它是「写心得」这只手，样子按默认。
-          { style: 'mark', color },
-        )
+    async (quote: string, range: Range | null) => {
+      // 「记下这段」标的是当前颜色的高亮（不是下划线）：它是「写心得」这只手，样子按默认。
+      const created = range ? await mark(range, { style: 'mark', color }) : null
+      if (!created) {
+        takeQuote(quote)
+        return
+      }
+      setSideTab('annotations')
+      setNotesOpen(true)
+      setFocusHighlight({ id: created.id, token: Date.now() })
     },
     [mark, takeQuote, color],
   )
-  // 心得保存成功：若有在等的高亮，就把它配上去（契约：`note_id` 必须显式给出）。
-  const bindSavedNote = useCallback(
-    async (note: Note) => {
-      const waiting = pendingNote.current
-      pendingNote.current = null
-      if (!waiting || note.resource_id !== resourceId) return
-      // 过期就不配了：宁可让用户自己再点一次「写心得」，也不要把心得配到早就忘了的那段上。
-      if (Date.now() - waiting.at > PENDING_MS) return
-      try {
-        await bindHighlightNote(resourceId, waiting.highlight, note.id)
-        setHighlightRevision((value) => value + 1)
-      } catch (cause) {
-        setMarkError(failureText(cause))
-      }
-    },
-    [resourceId],
+  // 顶部写作框点进去那一刻正文里的选区：引文给人看，Range 复制一份留给保存时标高亮
+  // （原 Range 会随选区塌掉）。PDF 上跨页的选区标不了，但仍算选区——保存时标不成就只建心得。
+  const captureBodySelection = useCallback((): PendingAnchor | null => {
+    const body = readerMain?.querySelector(pdfOriginal ? '.pdf-reader-pages' : '.snapshot-rendered')
+    const found = readSelection(body ?? null)
+    if (!found) return null
+    const range = window.getSelection()?.getRangeAt(0)
+    return range ? { quote: found.text, range: range.cloneRange() } : null
+  }, [readerMain, pdfOriginal])
+  const markSelection = useCallback(
+    (range: Range) => mark(range, { style: 'mark', color }),
+    [mark, color],
   )
-  const openNoteFromHighlight = useCallback(() => {
-    // 去改的是**既有**心得，不是要给谁配一条新的：清掉在等的配对。
-    pendingNote.current = null
-    setSideTab('notes')
-    setNotesOpen(true)
-  }, [])
-  const writeNoteForHighlight = useCallback(
-    (highlight: Highlight) => {
-      pendingNote.current = { highlight, at: Date.now() }
-      setSideTab('notes')
-      setNotesOpen(true)
-      askEditorFocus()
-    },
-    [askEditorFocus],
-  )
-  const receiveHighlightCount = useCallback((total: number) => setHighlightCount(total), [])
 
   /**
    * 顶栏里给 PDF 控件留的挂载点（TASK-081）。放 state 而不是 ref：ref 的变化不会触发
@@ -648,7 +626,7 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
               container={readerMain}
               selector={pdfOriginal ? '.pdf-reader-pages' : '.snapshot-rendered'}
               canMark={pdfOriginal ? canMarkPdfRange : true}
-              onQuote={takeQuoteAndMark}
+              onQuote={(quote, range) => void takeQuoteAndMark(quote, range)}
               onMark={takeMark}
               tool={tool}
             />
@@ -678,39 +656,19 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
               section 祖先里会被映射成 generic，region 查询会落空。 */}
           <section className="reader-notes" aria-label="记录与理解" ref={notesOverlay}>
             <div className="reader-notes-heading">
-              {/* 两个 Tab（TASK-067）。NotesPanel **保持挂载**（草稿与角标数量都在它里面），
-                  「信息」选中时只是 CSS 显隐，不卸载。 */}
+              {/* 两个 Tab：「注释」（TASK-098 起合并了 TASK-067 的「心得」与 TASK-072 的「高亮」）
+                  与「信息」。「信息」选中时注释列表只是 CSS 显隐，不卸载（正文上色靠它）。 */}
               <div className="reader-side-tabs" role="tablist" aria-label="右栏">
-                {/* 「高亮」Tab。TASK-073 曾对 PDF 隐藏它（那时高亮锚点只能落在快照正文里）；
-                    TASK-089 起 PDF 的高亮按页锚定，这个 Tab 两种阅读器都有。 */}
-                {
-                  <button
-                    type="button"
-                    role="tab"
-                    id="reader-tab-highlights"
-                    aria-selected={sideTab === 'highlights'}
-                    aria-controls="reader-tabpanel-highlights"
-                    className="reader-side-tab"
-                    onClick={() => setSideTab('highlights')}
-                  >
-                    高亮
-                    {highlightCount !== null && highlightCount > 0 && (
-                      <span className="notes-badge" aria-hidden="true">
-                        {highlightCount}
-                      </span>
-                    )}
-                  </button>
-                }
                 <button
                   type="button"
                   role="tab"
-                  id="reader-tab-notes"
-                  aria-selected={sideTab === 'notes'}
-                  aria-controls="reader-tabpanel-notes"
+                  id="reader-tab-annotations"
+                  aria-selected={sideTab === 'annotations'}
+                  aria-controls="reader-tabpanel-annotations"
                   className="reader-side-tab"
-                  onClick={() => setSideTab('notes')}
+                  onClick={() => setSideTab('annotations')}
                 >
-                  心得
+                  注释
                   {notesCount !== null && notesCount > 0 && (
                     <span className="notes-badge" aria-hidden="true">
                       {notesCount}
@@ -738,42 +696,29 @@ export function ResourceDetail({ resourceId }: { resourceId: string }) {
                 {markError}
               </p>
             )}
-            {
-              <div
-                role="tabpanel"
-                id="reader-tabpanel-highlights"
-                aria-labelledby="reader-tab-highlights"
-                hidden={sideTab !== 'highlights'}
-              >
-                <ReaderHighlights
-                  key={resourceId}
-                  resourceId={resourceId}
-                  rendered={readerMain?.querySelector('.snapshot-rendered') ?? null}
-                  // PDF：按页定位（TASK-089）；那一页没渲染时可以让阅读器跳过去。
-                  pages={pdfOriginal ? pdfLayers : null}
-                  onJumpPage={pdfOriginal ? pdfOutline.goTo : undefined}
-                  revision={highlightRevision}
-                  onWriteNote={writeNoteForHighlight}
-                  onOpenNote={openNoteFromHighlight}
-                  onCount={receiveHighlightCount}
-                  tool={tool}
-                />
-              </div>
-            }
             <div
               role="tabpanel"
-              id="reader-tabpanel-notes"
-              aria-labelledby="reader-tab-notes"
-              hidden={sideTab !== 'notes'}
+              id="reader-tabpanel-annotations"
+              aria-labelledby="reader-tab-annotations"
+              hidden={sideTab !== 'annotations'}
             >
-              <NotesPanel
+              <ReaderHighlights
                 key={resourceId}
                 resourceId={resourceId}
+                rendered={readerMain?.querySelector('.snapshot-rendered') ?? null}
+                // PDF：按页定位（TASK-089）；那一页没渲染时可以让阅读器跳过去。
+                pages={pdfOriginal ? pdfLayers : null}
+                onJumpPage={pdfOriginal ? pdfOutline.goTo : undefined}
+                revision={highlightRevision}
+                onCount={receiveCount}
+                tool={tool}
                 available={!!item}
                 focusRequest={focusRequest}
                 quoteRequest={quoteRequest}
-                onCount={receiveCount}
-                onSaved={bindSavedNote}
+                focusHighlight={focusHighlight}
+                captureSelection={captureBodySelection}
+                markSelection={markSelection}
+                onOpenPanel={openAnnotations}
               />
             </div>
             <div

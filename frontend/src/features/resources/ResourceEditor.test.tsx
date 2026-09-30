@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { api, ApiError } from '../../api/client'
@@ -309,10 +309,9 @@ describe('resource editor', () => {
       return { data: item }
     })
     renderWithRouter(<ResourceDetail resourceId={resourceId} />)
-    const notes = await screen.findByRole('form', { name: '心得编辑' })
-    fireEvent.change(within(notes).getByRole('textbox'), {
-      target: { value: '不能丢失的心得草稿' },
-    })
+    // TASK-098 起右栏是「注释」列表，草稿在顶部的「写心得」框里。
+    const notes = await screen.findByRole('textbox', { name: '写心得' })
+    fireEvent.change(notes, { target: { value: '不能丢失的心得草稿' } })
     // TASK-043 起「编辑资料」在工具条的 ⋯ 菜单里。心得草稿必须活过这一整套操作：
     // 开菜单 → 进编辑面板 → 改标题 → 保存 → 详情重新读取。
     fireEvent.click(screen.getByRole('button', { name: '更多操作' }))
@@ -321,8 +320,6 @@ describe('resource editor', () => {
     change('标题', '新的资料标题')
     submit()
     await screen.findByRole('heading', { name: '新的资料标题' })
-    expect(within(screen.getByRole('form', { name: '心得编辑' })).getByRole('textbox')).toHaveValue(
-      '不能丢失的心得草稿',
-    )
+    expect(screen.getByRole('textbox', { name: '写心得' })).toHaveValue('不能丢失的心得草稿')
   })
 })

@@ -78,7 +78,7 @@ test('the reader puts the body first and keeps its context in view', async ({ pa
   // 正文列里没有它，正文紧接标题；打开右栏、切到「信息」才看到。
   await expect(page.locator('.reader-main .reader-context')).toHaveCount(0)
   await page.getByRole('button', { name: '心得' }).click()
-  await expect(page.getByRole('tab', { name: '心得' })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('tab', { name: /注释/ })).toHaveAttribute('aria-selected', 'true')
   await page.getByRole('tab', { name: '信息' }).click()
   await expect(page.getByRole('navigation', { name: '资料标签' })).toContainText(
     '阅读器改版 · 算法',
@@ -441,7 +441,7 @@ test('a selected passage becomes a blockquote in the notes draft, and the readin
     .first()
   await expect(paragraph).toBeVisible()
 
-  // 选中一段正文 → 胶囊出现 → 点它 → 心得草稿末尾是 `> 引文`，写作框聚焦。
+  // 选中一段正文 → 胶囊出现 → 点它 → 这段立即标成高亮，焦点落进它的评论框（TASK-098）。
   await paragraph.evaluate((element) => {
     const range = document.createRange()
     range.selectNodeContents(element)
@@ -452,14 +452,15 @@ test('a selected passage becomes a blockquote in the notes draft, and the readin
   const pill = page.getByRole('button', { name: '记下这段' })
   await expect(pill).toBeVisible()
   await pill.click()
-  const editor = page.getByRole('textbox', { name: '这次想记下什么？' })
-  await expect(editor).toBeVisible()
-  await expect(editor).toBeFocused()
-  await expect(editor).toHaveValue(/^> 第 1 段填充文字，撑出滚动距离。\n\n$/)
+  const list = page.getByRole('list', { name: '注释列表' })
+  const comment = list.getByRole('textbox', { name: /^评论：第 1 段填充文字/ })
+  await expect(comment).toBeVisible()
+  await expect(comment).toBeFocused()
+  await expect(list).toContainText('第 1 段填充文字，撑出滚动距离。')
   await expect(pill).toHaveCount(0)
-  await editor.type('这段很关键。')
-  await page.getByRole('button', { name: '保存心得', exact: true }).click()
-  await expect(page.getByRole('list', { name: '心得列表' })).toContainText('第 1 段填充文字')
+  await comment.fill('这段很关键。')
+  await page.keyboard.press('Control+Enter')
+  await expect(list.getByText('已保存')).toBeVisible()
 
   // 滚到中段 → 顶栏出现「记为学习进度 N%」→ 点一下直接写（用户 2026-09-17：「不要再返回确认」）
   // → 徽章与进度线更新、按钮消失、阅读位置不动。

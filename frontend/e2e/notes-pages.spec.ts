@@ -6,10 +6,18 @@ test.use({ timezoneId: 'Asia/Shanghai', trace: 'off' })
 // TASK-045 起阅读器的写作区是**默认收起的右侧心得区**：资料详情页刚打开时它不在可访问
 // 树里（CSS `display:none`，组件仍挂载）。这些流程第一步都是「心得区得可见」，所以统一
 // 从这里进：点工具条「心得」= 展开并聚焦写作框（心得按钮＝开合 + 聚焦一体）。
+// TASK-098 起右栏是「注释」列表：顶部一个「写心得」框（失焦 / ⌘↩ 保存），条目就地可改。
 async function openNotes(page: Page) {
   await page.locator('.reader-toolbar').getByRole('button', { name: '心得', exact: true }).click()
-  await expect(page.getByRole('form', { name: '心得编辑' })).toBeVisible()
+  await expect(page.getByRole('textbox', { name: '写心得' })).toBeVisible()
 }
+const composer = (page: Page) => page.getByRole('textbox', { name: '写心得' })
+const annotations = (page: Page) => page.getByRole('list', { name: '注释列表' })
+/** 列表里某条心得的就地编辑框（可访问名 = 「心得：」+ 首行，超过 24 字截断）。 */
+const noteBox = (page: Page, firstLine: string) =>
+  annotations(page).getByRole('textbox', {
+    name: `心得：${firstLine.length > 24 ? firstLine.slice(0, 24) + '…' : firstLine}`,
+  })
 async function createResource(page: Page, title: string) {
   await page.goto('/resources/new')
   await page.getByLabel('标题').fill(title)
@@ -17,7 +25,7 @@ async function createResource(page: Page, title: string) {
   await page.getByRole('button', { name: '保存到资料库' }).click()
   await expect(page).toHaveURL(/\/resources\/[0-9a-f-]{36}$/)
   await openNotes(page)
-  await expect(page.getByText('还没有心得，写下一句话就可以开始。')).toBeVisible()
+  await expect(page.getByText('还没有注释')).toBeVisible()
   return page.url().split('/').at(-1)!
 }
 
@@ -62,18 +70,16 @@ test('quick notes save, reopen, edit and delete without learning paperwork; resp
   })
   const id = await createResource(page, '随手心得 · 留下一点理解')
   const original = await call(page, '/resources/' + id)
-  const form = page.getByRole('form', { name: '心得编辑' })
-  await expect(form.getByRole('textbox')).toHaveCount(1)
-  await expect(form.locator('input,select')).toHaveCount(0)
+  // 写心得没有任何学习记录字段。
   for (const label of ['学习开始时间', '本次时长（秒）', '学习后状态', '学习后进度（%）'])
     await expect(page.getByLabel(label, { exact: true })).toHaveCount(0)
   const content =
     '懂了一点：先提出问题，再回到原文找依据。\n<script>document.body.dataset.executed="yes"</script>'
-  await form.getByRole('textbox').fill(content)
-  await form.getByRole('button', { name: '保存心得', exact: true }).focus()
-  await page.keyboard.press('Enter')
-  await expect(form.getByRole('status')).toContainText('心得已保存')
-  await expect(page.getByRole('list', { name: '心得列表' })).toContainText(content)
+  await composer(page).fill(content)
+  await page.keyboard.press('Control+Enter')
+  await expect(page.getByText('心得已保存。')).toBeVisible()
+  await expect(composer(page)).toHaveValue('')
+  await expect(noteBox(page, '懂了一点：先提出问题，再回到原文找依据。')).toHaveValue(content)
   for (const width of [320, 390, 1440]) {
     await page.setViewportSize({ width, height: width === 1440 ? 1050 : 844 })
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
@@ -81,23 +87,23 @@ test('quick notes save, reopen, edit and delete without learning paperwork; resp
   }
   await page.reload()
   await openNotes(page) // 刷新后心得区回到默认收起
-  const list = page.getByRole('list', { name: '心得列表' })
-  await expect(list.locator('li')).toHaveCount(1)
-  await expect(list).toContainText(content)
+  await expect(annotations(page).getByRole('listitem')).toHaveCount(1)
+  const box = noteBox(page, '懂了一点：先提出问题，再回到原文找依据。')
+  await expect(box).toHaveValue(content)
   expect(await page.evaluate(() => document.body.dataset.executed)).toBeUndefined()
-  await list.getByRole('button', { name: '编辑', exact: true }).click()
-  await expect(form.getByRole('textbox')).toHaveValue(content)
-  await form.getByRole('textbox').fill('补充：把自己的理解与原文分开放。')
-  await form.getByRole('button', { name: '保存修改', exact: true }).click()
-  await expect(form.getByRole('status')).toContainText('心得已保存')
-  await expect(list).toContainText('补充：把自己的理解与原文分开放。')
-  await expect(list).toContainText('更新于')
-  await list.getByRole('button', { name: '删除', exact: true }).click()
-  await expect(form.getByRole('button', { name: '确认删除心得' })).toBeDisabled()
-  await form.getByRole('checkbox', { name: '我确认永久删除上方这条心得' }).check()
-  await form.getByRole('button', { name: '确认删除心得' }).click()
-  await expect(form.getByRole('status')).toContainText('这条心得已删除')
-  await expect(page.getByText('还没有心得，写下一句话就可以开始。')).toBeVisible()
+  // 就地改：失焦即存。
+  await box.fill('补充：把自己的理解与原文分开放。')
+  await page.getByRole('tab', { name: '信息' }).focus()
+  await expect(annotations(page).getByText('已保存')).toBeVisible()
+  expect((await call(page, `/resources/${id}/notes`)).body.data[0].content).toBe(
+    '补充：把自己的理解与原文分开放。',
+  )
+  // 删：⋯ 菜单 → 删除心得 → 确认。
+  const row = annotations(page).getByRole('listitem').first()
+  await row.getByRole('button', { name: /^更多：/ }).click()
+  await row.getByRole('button', { name: '删除心得', exact: true }).click()
+  await row.getByRole('button', { name: '确认删除心得' }).click()
+  await expect(page.getByText('还没有注释')).toBeVisible()
   const after = await call(page, '/resources/' + id)
   expect(after.body.data).toEqual(original.body.data)
   const history = await call(page, '/resources/' + id + '/study-records')
@@ -106,54 +112,60 @@ test('quick notes save, reopen, edit and delete without learning paperwork; resp
   expect(errors).toEqual([])
 })
 
-test('real concurrent edits and deletes retain the draft and require latest-version confirmation', async ({
+test('real concurrent edits and deletes keep the draft and refuse to overwrite without the latest version', async ({
   page,
 }) => {
   const id = await createResource(page, '随手心得 · 多处编辑')
-  const form = page.getByRole('form', { name: '心得编辑' })
-  await form.getByRole('textbox').fill('初稿')
-  await form.getByRole('button', { name: '保存心得', exact: true }).click()
-  const list = page.getByRole('list', { name: '心得列表' })
-  await expect(list.locator('li')).toHaveCount(1)
+  await composer(page).fill('初稿')
+  await page.keyboard.press('Control+Enter')
+  await expect(page.getByText('心得已保存。')).toBeVisible()
+  await expect(annotations(page).getByRole('listitem')).toHaveCount(1)
   const saved = (await call(page, '/resources/' + id + '/notes')).body.data[0]
   const path = `/resources/${id}/notes/${saved.id}`
-  await list.getByRole('button', { name: '编辑', exact: true }).click()
-  await expect(form.getByRole('textbox')).toHaveValue('初稿')
-  await form.getByRole('textbox').fill('本页不能丢的草稿')
+  const box = noteBox(page, '初稿')
+  await expect(box).toHaveValue('初稿')
+  await box.fill('本页不能丢的草稿')
+  // 别处先改了一版。
   expect(
     (await call(page, path, 'PATCH', { expected_version: 1, content: '另一处的更新' })).status,
   ).toBe(200)
-  await form.getByRole('button', { name: '保存修改' }).click()
-  await expect(form.getByRole('alert')).toContainText('操作结果需要核对')
-  await expect(form.getByRole('textbox')).toHaveValue('本页不能丢的草稿')
-  await expect(form.getByRole('button', { name: '保存修改' })).toBeDisabled()
-  await form.getByRole('button', { name: '保留草稿，读取最新心得' }).click()
-  await expect(form.getByRole('region', { name: '最新已保存内容' })).toContainText('另一处的更新')
-  await form.getByRole('checkbox', { name: '我已核对最新心得，确认仍需保存当前草稿' }).check()
-  await form.getByRole('button', { name: '保存修改' }).click()
-  await expect(form.getByRole('status')).toContainText('心得已保存')
-  await expect(list).toContainText('本页不能丢的草稿')
-  await list.getByRole('button', { name: '删除', exact: true }).click()
-  await expect(form.getByText('删除这条心得？')).toBeVisible()
+  await page.getByRole('tab', { name: '信息' }).focus()
+  // TASK-098：版本冲突就地提示、文字保留、不重试、不覆盖——服务端仍是别处那一版。
+  await expect(annotations(page).getByRole('alert')).toContainText('内容已被修改')
+  await expect(box).toHaveValue('本页不能丢的草稿')
+  expect((await call(page, path)).body.data.content).toBe('另一处的更新')
+  // 刷新后读到最新的；再改就按最新版本存。
+  await page.reload()
+  await openNotes(page)
+  const latest = noteBox(page, '另一处的更新')
+  await expect(latest).toHaveValue('另一处的更新')
+  await latest.fill('本页不能丢的草稿')
+  await page.keyboard.press('Control+Enter')
+  await expect(annotations(page).getByText('已保存')).toBeVisible()
+  expect((await call(page, path)).body.data.content).toBe('本页不能丢的草稿')
+  // 删除同样按版本：别处又改了一次，这里的删除被拒；刷新后再删才成。
   expect(
     (await call(page, path, 'PATCH', { expected_version: 3, content: '删除前又改了一次' })).status,
   ).toBe(200)
-  await form.getByRole('checkbox', { name: '我确认永久删除上方这条心得' }).check()
-  await form.getByRole('button', { name: '确认删除心得' }).click()
-  await expect(form.getByRole('alert')).toContainText('操作结果需要核对')
-  await form.getByRole('button', { name: '保留草稿，读取最新心得' }).click()
-  await expect(form).toContainText('删除前又改了一次')
-  await expect(form.getByRole('button', { name: '确认删除心得' })).toBeDisabled()
-  await form.getByRole('checkbox', { name: '我确认永久删除上方这条心得' }).check()
-  await form.getByRole('button', { name: '确认删除心得' }).click()
-  await expect(form.getByRole('status')).toContainText('这条心得已删除')
+  const row = annotations(page).getByRole('listitem').first()
+  await row.getByRole('button', { name: /^更多：/ }).click()
+  await row.getByRole('button', { name: '删除心得', exact: true }).click()
+  await row.getByRole('button', { name: '确认删除心得' }).click()
+  await expect(page.getByRole('alert')).toContainText('内容已被修改')
+  expect((await call(page, path)).status).toBe(200)
+  await page.reload()
+  await openNotes(page)
+  const fresh = annotations(page).getByRole('listitem').first()
+  await expect(fresh).toContainText('未挂高亮')
+  await fresh.getByRole('button', { name: /^更多：/ }).click()
+  await fresh.getByRole('button', { name: '删除心得', exact: true }).click()
+  await fresh.getByRole('button', { name: '确认删除心得' }).click()
+  await expect(page.getByText('还没有注释')).toBeVisible()
+  expect((await call(page, path)).status).toBe(404)
 })
 
-test('uncertain response never replays writes and latest-list evidence survives refresh errors', async ({
-  page,
-}) => {
+test('a lost response never replays the write and the draft stays in the box', async ({ page }) => {
   const id = await createResource(page, '随手心得 · 断网不重复')
-  const form = page.getByRole('form', { name: '心得编辑' })
   let writes = 0
   page.on('request', (request) => {
     if (request.method() === 'POST' && request.url().endsWith(`/resources/${id}/notes`)) writes++
@@ -173,26 +185,21 @@ test('uncertain response never replays writes and latest-list evidence survives 
       return response
     }
   }, id)
-  await form.getByRole('textbox').fill('已经送出但响应丢失的心得')
-  await form.getByRole('button', { name: '保存心得', exact: true }).click()
-  await expect(form.getByRole('alert')).toContainText('操作结果需要核对')
-  await expect(form.getByRole('button', { name: '保存心得', exact: true })).toBeDisabled()
-  await expect(form.getByRole('textbox')).toHaveValue('已经送出但响应丢失的心得')
-  await form.getByRole('button', { name: '保留草稿，读取最新心得' }).click()
-  await expect(form.getByRole('region', { name: '刚读取的最新心得' })).toContainText(
-    '已经送出但响应丢失的心得',
-  )
+  await composer(page).fill('已经送出但响应丢失的心得')
+  await page.keyboard.press('Control+Enter')
+  // 失败原因就地显示、文字保留；不自动重发（服务端已经收下了那一条）。TASK-098 起没有
+  // NotesPanel 那套「操作结果需要核对 → 读取最新」的恢复流程：响应丢失按连接失败提示，人自己核对。
+  await expect(page.getByRole('alert')).toContainText('无法连接本机服务')
+  await expect(composer(page)).toHaveValue('已经送出但响应丢失的心得')
   expect(writes).toBe(1)
   expect((await call(page, '/resources/' + id + '/notes')).body.page.total_items).toBe(1)
-  await page.context().setOffline(true)
-  await form.getByRole('button', { name: '保留草稿，读取最新心得' }).click()
-  await expect(form.getByRole('alert')).toContainText('无法连接本机服务')
-  await expect(form.getByRole('button', { name: '保存心得', exact: true })).toBeDisabled()
-  await page.context().setOffline(false)
+  // 失焦也不会再发一次：文字没变过、上一次没成功——这条是人自己决定的事。
+  await page.getByRole('tab', { name: '信息' }).focus()
+  await page.waitForTimeout(300)
   expect(writes).toBe(1)
 })
 
-test('real note pages keep drafts when paging, and legacy history remains reachable', async ({
+test('real notes all list in the reader, a draft is saved on blur and survives tag edits, and legacy history remains reachable', async ({
   page,
 }) => {
   const id = await createResource(page, '随手心得 · 继续翻页')
@@ -203,15 +210,17 @@ test('real note pages keep drafts when paging, and legacy history remains reacha
   }
   await page.reload()
   await openNotes(page) // 刷新后心得区回到默认收起
-  const list = page.getByRole('list', { name: '心得列表' })
-  await expect(list.locator('li')).toHaveCount(20)
-  await page.getByRole('textbox', { name: '这次想记下什么？' }).fill('翻页也要留着的草稿')
-  await page.getByRole('button', { name: '下一页心得' }).click()
-  await expect(list.locator('li')).toHaveCount(1)
-  await expect(page.getByRole('textbox', { name: '这次想记下什么？' })).toHaveValue(
-    '翻页也要留着的草稿',
-  )
-  await expect(page.getByRole('button', { name: '下一页心得' })).toBeDisabled()
+  // TASK-098 起注释列表一次读 100 条、不分页：21 条全在，新的在前。
+  const list = annotations(page)
+  await expect(list.locator('li')).toHaveCount(21)
+  await expect(list.getByRole('listitem').first()).toContainText('未挂高亮')
+  await expect(noteBox(page, '合成心得 21')).toBeVisible()
+  // 写一句不按保存：点去别处（失焦）就存下了——TASK-098 的写作框没有「草稿」状态。
+  let posts = 0
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && request.url().endsWith(`/resources/${id}/notes`)) posts++
+  })
+  await composer(page).fill('失焦也要存下的一句')
   expect((await call(page, '/tags', 'POST', { name: '000心得草稿保全' })).status).toBe(201)
   // TASK-043 起编辑标签在阅读器工具条的 ⋯ 菜单里；改完标签面板不再被刷新掀掉，
   // 所以这里看常驻标签行有没有跟着变，而不是看面板有没有折叠回按钮。
@@ -224,11 +233,14 @@ test('real note pages keep drafts when paging, and legacy history remains reacha
   await expect(
     page.getByRole('navigation', { name: '资料标签' }).getByText('000心得草稿保全'),
   ).toBeVisible()
-  await page.getByRole('tab', { name: '心得' }).click()
-  // 这才是本条要守的东西：改标签这一串操作不能把心得草稿冲掉。
-  await expect(page.getByRole('textbox', { name: '这次想记下什么？' })).toHaveValue(
-    '翻页也要留着的草稿',
-  )
+  await page.getByRole('tab', { name: /注释/ }).click()
+  // 这才是本条要守的东西：改标签这一串操作不能把刚写的那句冲掉——它已在失焦时存下、只存了一次，
+  // 资料重读之后仍在列表最前。
+  await expect(composer(page)).toHaveValue('')
+  await expect(list.locator('li')).toHaveCount(22)
+  await expect(noteBox(page, '失焦也要存下的一句')).toHaveValue('失焦也要存下的一句')
+  expect(posts).toBe(1)
+  expect((await call(page, `/resources/${id}/notes`)).body.page.total_items).toBe(22)
   // 学习状态改由工具条上的徽章进入，且**直接落在状态表单上**（用户选「点开即改」）。
   await page.getByRole('button', { name: '未开始 · 0%' }).click()
   await expect(page.getByLabel('学习后状态')).toBeVisible()
@@ -307,10 +319,9 @@ test('deleting a resource cascades only its own notes and leaves standalone note
 }) => {
   const id = await createResource(page, '独立心得隔离 · 删除测试')
   // Attach one note to the resource.
-  const form = page.getByRole('form', { name: '心得编辑' })
-  await form.getByRole('textbox').fill('这条会随资料一起删除')
-  await form.getByRole('button', { name: '保存心得', exact: true }).click()
-  await expect(page.getByRole('list', { name: '心得列表' })).toContainText('这条会随资料一起删除')
+  await composer(page).fill('这条会随资料一起删除')
+  await page.keyboard.press('Control+Enter')
+  await expect(noteBox(page, '这条会随资料一起删除')).toHaveValue('这条会随资料一起删除')
   // Add a standalone note through the full-page editor (TASK-061: the notes page itself
   // no longer has a composer). Clear leftovers first so the count below is this test's own.
   await page.goto('/notes')
@@ -408,10 +419,11 @@ test('standalone note attaches to a resource and detaches back through the real 
   await openLink.click()
   await expect(page).toHaveURL(new RegExp(`/resources/${id}$`))
   await openNotes(page) // 详情页的心得区默认收起
-  const boundList = page.getByRole('list', { name: '心得列表' })
-  await expect(boundList).toContainText(standaloneNote)
+  const boundList = annotations(page)
+  await expect(noteBox(page, standaloneNote)).toHaveValue(standaloneNote)
   expect((await call(page, `/resources/${id}/notes`)).body.page.total_items).toBe(1)
-  // TASK-062：绑定心得卡上有「整页编辑」，去编辑页并带着这份资料作为返回处。
+  // TASK-062：绑定心得条目的 ⋯ 菜单里有「整页编辑」，去编辑页并带着这份资料作为返回处。
+  await boundList.getByRole('button', { name: /^更多：心得/ }).click()
   const fullPage = boundList.getByRole('link', { name: '整页编辑' })
   await expect(fullPage).toHaveAttribute('href', new RegExp(`^/notes/[0-9a-f-]+\\?resource=${id}$`))
   await fullPage.click()
@@ -422,13 +434,13 @@ test('standalone note attaches to a resource and detaches back through the real 
   await expect(page).toHaveURL(new RegExp(`/resources/${id}$`))
   await openNotes(page)
 
-  // Detach it back to standalone from the bound list, confirming the dialog.
+  // Detach it back to standalone from the bound list (⋯ menu), confirming the dialog.
   page.once('dialog', (dialog) => void dialog.accept())
+  await boundList.getByRole('button', { name: /^更多：心得/ }).click()
   await boundList.getByRole('button', { name: '解除绑定', exact: true }).click()
-  const boundEditor = page.getByRole('form', { name: '心得编辑' })
-  const detached = boundEditor.getByRole('status')
-  await expect(detached).toContainText('已解除为独立心得')
-  await expect(boundList).not.toContainText(standaloneNote)
+  const detached = page.getByText('已解除为独立心得')
+  await expect(detached).toBeVisible()
+  await expect(noteBox(page, standaloneNote)).toHaveCount(0)
   expect((await call(page, `/resources/${id}/notes`)).body.page.total_items).toBe(0)
 
   // Following the notice back to 我的心得, the note is standalone once more.
@@ -506,7 +518,7 @@ test('a note started from the reader is bound to that resource', async ({ page }
   await page.getByRole('link', { name: '返回资料' }).click()
   await expect(page).toHaveURL(`/resources/${id}`)
   await openNotes(page)
-  await expect(page.getByRole('list', { name: '心得列表' })).toContainText('从阅读器按快捷键写下的')
+  await expect(noteBox(page, '从阅读器按快捷键写下的')).toHaveValue('从阅读器按快捷键写下的')
 })
 
 test('an image pasted into the editor is embedded as base64, previewed, saved and shown on the notes page', async ({

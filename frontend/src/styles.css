@@ -3160,15 +3160,7 @@ a.source-chip:focus-visible {
   font-weight: 600;
   cursor: pointer;
 }
-/* 右栏条目上的「样子」：颜色点 + 种类。 */
-.reader-highlight-look {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-right: 8px;
-  font-size: 11px;
-  color: var(--muted);
-}
+/* 右栏条目上的颜色点。 */
 .look-dot {
   width: 10px;
   height: 10px;
@@ -3457,30 +3449,178 @@ a.source-chip:focus-visible {
 .reader-highlights-hint {
   margin: 0;
 }
-/* PDF 高亮条目上的页码标（TASK-089）。 */
-.reader-highlight-page {
-  display: inline-block;
-  margin-bottom: 6px;
-}
-.reader-highlights-list {
+/* 「注释」列表（TASK-098）：高亮/下划线条目在前，不挂高亮的心得在后；条目之间只用一条细线分隔。 */
+.annotation-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
   margin: 0;
   padding: 0;
   list-style: none;
+  border-top: 1px solid var(--line);
 }
-.reader-highlights-list > li {
+.annotation-item {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--paper);
+  padding: 12px 0 14px 12px;
+  border-bottom: 1px solid var(--line);
+  border-left: 3px solid var(--line-strong);
 }
-.reader-highlights-list > li.orphaned {
+.annotation-item.yellow {
+  border-left-color: var(--mark-yellow);
+}
+.annotation-item.green {
+  border-left-color: var(--mark-green);
+}
+.annotation-item.blue {
+  border-left-color: var(--mark-blue);
+}
+.annotation-item.pink {
+  border-left-color: var(--mark-pink);
+}
+.annotation-item.underline.yellow {
+  border-left-color: var(--line-yellow);
+}
+.annotation-item.underline.green {
+  border-left-color: var(--line-green);
+}
+.annotation-item.underline.blue {
+  border-left-color: var(--line-blue);
+}
+.annotation-item.underline.pink {
+  border-left-color: var(--line-pink);
+}
+.annotation-item.note {
+  border-left-color: var(--line-strong);
+}
+.annotation-item.orphaned {
   background: var(--surface);
+}
+.annotation-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.annotation-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.annotation-more {
+  padding: 0 6px;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--muted);
+}
+.annotation-more:hover,
+.annotation-more[aria-expanded='true'] {
+  color: var(--ink);
+}
+.annotation-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--faint);
+}
+.annotation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+.annotation-actions .text-link.danger {
+  color: var(--muted);
+}
+/* 就地评论框：不像表单，像一行可以直接写的文字；聚焦时才描边。 */
+.comment-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.comment-box textarea {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink);
+  resize: vertical;
+}
+.comment-box textarea::placeholder {
+  color: var(--faint);
+}
+.comment-box textarea:hover {
+  border-color: var(--line);
+}
+.comment-box textarea:focus {
+  border-color: var(--accent);
+  outline: none;
+  background: var(--bg);
+}
+.comment-box.has-error textarea {
+  border-color: var(--danger);
+}
+.comment-box-status {
+  align-self: flex-end;
+  font-size: 12px;
+  color: var(--faint);
+}
+.comment-box-status.resource-error {
+  align-self: stretch;
+  margin: 0;
+  padding: 6px 8px;
+}
+/* 顶部「写心得…」框。 */
+.annotation-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.annotation-composer textarea {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--bg);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink);
+  resize: vertical;
+}
+.annotation-composer textarea:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+.annotation-composer .resource-hint {
+  margin: 0;
+  font-size: 12px;
+}
+.annotation-anchor {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  font-size: 12px;
+  color: var(--text-2);
 }
 .reader-highlight-orphan {
   margin: 0;
@@ -3489,33 +3629,14 @@ a.source-chip:focus-visible {
 }
 .reader-highlight-quote {
   margin: 0;
-  padding: 8px 10px;
-  border-radius: 6px;
-  background: var(--mark-soft);
+  padding: 0 0 0 10px;
+  border-left: 2px solid var(--line);
   font-size: 13px;
   line-height: 1.7;
-  color: var(--ink);
+  color: var(--text-2);
 }
-.reader-highlights-list > li.orphaned .reader-highlight-quote {
-  background: var(--surface-2);
+.annotation-item.orphaned .reader-highlight-quote {
   color: var(--muted);
-}
-.reader-highlight-note {
-  margin: 0;
-  font-size: 12px;
-  color: var(--green);
-}
-.reader-highlight-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  align-items: center;
-}
-.reader-highlight-actions .text-link.danger {
-  color: var(--muted);
-}
-.reader-highlights-empty {
-  padding: 20px;
 }
 /* 「记为学习进度 N%」：与状态徽章并排的次级按钮。**只在宽屏（≥1280px）显示**：窄屏顶栏本就
    一行排满，多一个文字按钮会折成三行（320px 实测 57→151px），随滚动出现的这次增高还会把

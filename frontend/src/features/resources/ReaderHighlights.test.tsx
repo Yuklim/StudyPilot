@@ -1,4 +1,5 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { api, ApiError } from '../../api/client'
@@ -7,8 +8,9 @@ import { ReaderHighlights } from './ReaderHighlights'
 import type { Highlight } from './highlights'
 
 /**
- * 右栏「高亮」Tab（TASK-072）：定位、上色、孤立、悬挂绑定、删除确认；TASK-094 起还有按样子分名上色、
- * 正文上的点选（气泡 / 橡皮 + 撤销）。
+ * 右栏「注释」Tab（TASK-072 起是「高亮」Tab；TASK-098 合并了心得）：定位、上色、孤立、悬挂绑定、
+ * 删除确认；TASK-094 起还有按样子分名上色、正文上的点选（气泡 / 橡皮 + 撤销）；TASK-098 起就地评论、
+ * 顶部写作框（有选区 → 先标高亮再配对）、不挂高亮的心得排在高亮之后。
  * 上色用的 CSS Custom Highlight API 在 jsdom 里不存在，用例自己塞一个替身来断言
  * 「交给它的是 Range、而且正文 DOM 一个节点都没多」；不塞替身时组件必须照常工作。
  */
@@ -74,29 +76,34 @@ function paint() {
   vi.stubGlobal('Highlight', FakeHighlight)
   return registry
 }
+// 不挂高亮的心得那一行有「整页编辑」链接：要一个路由上下文。
 const panel = (rendered: Element | null, extra: Record<string, unknown> = {}) =>
   render(
     <ReaderHighlights
       resourceId={resourceId}
       rendered={rendered}
       revision={0}
-      onWriteNote={() => {}}
-      onOpenNote={() => {}}
+      captureSelection={() => null}
+      markSelection={async () => null}
       {...extra}
     />,
+    { wrapper: MemoryRouter },
   )
+/** 一条高亮下面的评论框（可访问名称 = 「评论：」+ 原文摘录）。 */
+const commentOf = (item: HTMLElement) => within(item).getByRole('textbox', { name: /^评论：/ })
 
 afterEach(() => {
   document.body.innerHTML = ''
 })
 
 describe('reader highlights panel', () => {
+  const base = `/api/v1/resources/${resourceId}/highlights`
   it('paints located passages through the highlight registry without touching the body', async () => {
     const registry = paint()
     mock([highlight()])
     const rendered = body()
     panel(rendered)
-    await screen.findByRole('list', { name: '高亮列表' })
+    await screen.findByRole('list', { name: '注释列表' })
     await waitFor(() => expect(registry.has('studypilot-mark-yellow')).toBe(true))
     const painted = registry.get('studypilot-mark-yellow') as { ranges: Range[] }
     expect(painted.ranges).toHaveLength(1)
@@ -111,7 +118,7 @@ describe('reader highlights panel', () => {
     vi.stubGlobal('Highlight', undefined)
     mock([highlight()])
     panel(body())
-    expect(await screen.findByText(/共 1 条 · 按文中顺序/)).toBeInTheDocument()
+    expect(await screen.findByText(/1 条 · 按文中顺序/)).toBeInTheDocument()
   })
 
   it('keeps a passage whose text is gone, marks it and puts it last', async () => {
@@ -159,11 +166,79 @@ describe('reader highlights panel', () => {
     )
     panel(body())
     const items = await screen.findAllByRole('listitem')
-    expect(within(items[0]!).getByText('✎ 三层结构')).toBeInTheDocument()
-    expect(within(items[0]!).getByRole('button', { name: '改写心得' })).toBeInTheDocument()
-    // 悬挂绑定：按「没配心得」展示，并且可以重新配一条。
-    expect(within(items[1]!).queryByText(/^✎/)).toBeNull()
-    expect(within(items[1]!).getByRole('button', { name: '写心得' })).toBeInTheDocument()
+    // 配了心得的那条：评论框里就是心得内容；配着的心得不再另外作为「未挂高亮」列一遍。
+    expect(items).toHaveLength(2)
+    expect(commentOf(items[0]!)).toHaveValue('# 三层结构\n要记牢')
+    // 悬挂绑定：按「没配心得」展示——评论框空着，写了就会配一条新的。
+    expect(commentOf(items[1]!)).toHaveValue('')
+    expect(screen.queryByText(/未挂高亮/)).toBeNull()
+  })
+
+  it('lists notes bound to no highlight after the highlights, newest first, editable in place (TASK-098)', async () => {
+    paint()
+    const older = boundNote({
+      id: '018f1f58-4eb2-4a0d-a716-fb81b1960401',
+      content: '先记下的',
+      created_at: '2026-09-01T00:00:00Z',
+    })
+    const newer = boundNote({
+      id: '018f1f58-4eb2-4a0d-a716-fb81b1960402',
+      content: '后记下的',
+      created_at: '2026-09-02T00:00:00Z',
+    })
+    const request = mock([highlight()], [newer, older])
+    panel(body())
+    const items = await screen.findAllByRole('listitem')
+    expect(items).toHaveLength(3)
+    expect(items[1]).toHaveTextContent('未挂高亮')
+    expect(within(items[1]!).getByRole('textbox', { name: '心得：后记下的' })).toHaveValue(
+      '后记下的',
+    )
+    expect(within(items[2]!).getByRole('textbox', { name: '心得：先记下的' })).toHaveValue(
+      '先记下的',
+    )
+    // 角标数 = 高亮 + 不挂高亮的心得。
+    // 就地改：失焦即 PATCH，带版本。
+    const box = within(items[2]!).getByRole('textbox', { name: '心得：先记下的' })
+    request.mockResolvedValueOnce({ data: { ...older, content: '先记下的，改过', version: 2 } })
+    fireEvent.change(box, { target: { value: '先记下的，改过' } })
+    fireEvent.blur(box)
+    await waitFor(() =>
+      expect(request).toHaveBeenLastCalledWith(
+        `/api/v1/resources/${resourceId}/notes/${older.id}`,
+        {
+          method: 'PATCH',
+          body: { content: '先记下的，改过', expected_version: 1 },
+        },
+      ),
+    )
+    expect(await within(items[2]!).findByText('已保存')).toBeInTheDocument()
+    // 菜单里能整页编辑、删心得（删要确认一次）。
+    fireEvent.click(within(items[2]!).getByRole('button', { name: /^更多：心得/ }))
+    expect(within(items[2]!).getByRole('link', { name: '整页编辑' })).toHaveAttribute(
+      'href',
+      `/notes/${older.id}?resource=${resourceId}`,
+    )
+    fireEvent.click(within(items[2]!).getByRole('button', { name: '删除心得' }))
+    request.mockResolvedValueOnce(undefined)
+    fireEvent.click(within(items[2]!).getByRole('button', { name: '确认删除心得' }))
+    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(2))
+    expect(request).toHaveBeenLastCalledWith(`/api/v1/resources/${resourceId}/notes/${older.id}`, {
+      method: 'DELETE',
+      ifMatchVersion: 2,
+    })
+  })
+
+  it('reports highlights plus unbound notes as the count', async () => {
+    paint()
+    mock(
+      [highlight({ note_id: boundNote().id })],
+      [boundNote(), boundNote({ id: '018f1f58-4eb2-4a0d-a716-fb81b1960403' })],
+    )
+    const counts: number[] = []
+    panel(body(), { onCount: (total: number) => counts.push(total) })
+    await screen.findAllByRole('listitem')
+    await waitFor(() => expect(counts.at(-1)).toBe(2))
   })
 
   it('does not call a passage lost while there is no body to look in (Review F1)', async () => {
@@ -191,7 +266,7 @@ describe('reader highlights panel', () => {
     })
     panel(body())
     // 心得列表只用来显示「配了哪条」，它挂了不该让整个 Tab 变错误页、更不该不上色。
-    await screen.findByRole('list', { name: '高亮列表' })
+    await screen.findByRole('list', { name: '注释列表' })
     await waitFor(() => expect(registry.has('studypilot-mark-yellow')).toBe(true))
     expect(screen.queryByRole('alert')).toBeNull()
   })
@@ -201,28 +276,154 @@ describe('reader highlights panel', () => {
     const request = mock([highlight()])
     panel(body())
     const item = (await screen.findAllByRole('listitem'))[0]!
-    fireEvent.click(within(item).getByRole('button', { name: '删除' }))
-    // 一次确认：直接点「删除」不发请求。
+    // 删除藏在 ⋯ 菜单里；点「删除高亮」只是问一句，不发请求。
+    fireEvent.click(within(item).getByRole('button', { name: /^更多：/ }))
+    fireEvent.click(within(item).getByRole('button', { name: '删除高亮' }))
     expect(request.mock.calls.filter(([, init]) => init?.method === 'DELETE')).toHaveLength(0)
     request.mockResolvedValueOnce(undefined)
     fireEvent.click(within(item).getByRole('button', { name: '确认删除' }))
-    await waitFor(() => expect(screen.queryByRole('list', { name: '高亮列表' })).toBeNull())
+    await waitFor(() => expect(screen.queryByRole('list', { name: '注释列表' })).toBeNull())
     const [path, init] = request.mock.calls.at(-1)!
     expect(path).toBe(`/api/v1/resources/${resourceId}/highlights/${highlight().id}`)
     expect(init).toMatchObject({ method: 'DELETE', ifMatchVersion: 1 })
-    expect(screen.getByRole('heading', { name: '还没有标下任何一段' })).toBeInTheDocument()
+    expect(screen.getByText('还没有注释')).toBeInTheDocument()
   })
 
-  it('hands the highlight back when the reader wants to write about it', async () => {
+  it('a comment under a highlight without a note creates the note and binds it; a second edit only PATCHes the note (TASK-098)', async () => {
+    paint()
+    const request = mock([highlight()])
+    panel(body())
+    const item = (await screen.findAllByRole('listitem'))[0]!
+    const box = commentOf(item)
+    // 清空或原样不发请求。
+    fireEvent.blur(box)
+    expect(request.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0)
+    const created = boundNote({
+      id: '018f1f58-4eb2-4a0d-a716-fb81b1960501',
+      content: '这一段要记牢',
+    })
+    request
+      .mockResolvedValueOnce({ data: created })
+      .mockResolvedValueOnce({ data: highlight({ note_id: created.id, version: 2 }) })
+    fireEvent.change(box, { target: { value: '这一段要记牢' } })
+    fireEvent.keyDown(box, { key: 'Enter', metaKey: true })
+    // 先建心得，再把它配到这条高亮上（版本化 PATCH）。
+    await waitFor(() =>
+      expect(request).toHaveBeenLastCalledWith(`${base}/${highlight().id}`, {
+        method: 'PATCH',
+        body: { note_id: created.id, expected_version: 1 },
+      }),
+    )
+    expect(request).toHaveBeenCalledWith(`/api/v1/resources/${resourceId}/notes`, {
+      method: 'POST',
+      body: { content: '这一段要记牢' },
+    })
+    expect(await within(item).findByText('已保存')).toBeInTheDocument()
+    // 这条心得现在是「配着的」：不再另列为未挂高亮。
+    expect(screen.getAllByRole('listitem')).toHaveLength(1)
+    // 再改：只 PATCH 心得，不再碰高亮。
+    request.mockResolvedValueOnce({
+      data: { ...created, content: '这一段要记牢，还有下一段', version: 2 },
+    })
+    fireEvent.change(box, { target: { value: '这一段要记牢，还有下一段' } })
+    fireEvent.blur(box)
+    await waitFor(() =>
+      expect(request).toHaveBeenLastCalledWith(
+        `/api/v1/resources/${resourceId}/notes/${created.id}`,
+        {
+          method: 'PATCH',
+          body: { content: '这一段要记牢，还有下一段', expected_version: 1 },
+        },
+      ),
+    )
+  })
+
+  it('keeps the text and shows the reason when a comment cannot be saved', async () => {
+    paint()
+    const request = mock([highlight({ note_id: boundNote().id })], [boundNote()])
+    panel(body())
+    const item = (await screen.findAllByRole('listitem'))[0]!
+    const box = commentOf(item)
+    request.mockRejectedValueOnce(new ApiError('VERSION_CONFLICT', 409))
+    fireEvent.change(box, { target: { value: '改一下' } })
+    fireEvent.blur(box)
+    expect(await within(item).findByRole('alert')).toHaveTextContent('内容已被修改')
+    expect(box).toHaveValue('改一下')
+  })
+
+  it('the composer: with a captured selection it marks first, then creates the note and binds it; without, just the note', async () => {
+    paint()
+    const request = mock([])
+    const rendered = body()
+    const range = document.createRange()
+    range.selectNodeContents(rendered.querySelector('p')!.firstChild!)
+    range.setStart(rendered.querySelector('p')!.firstChild!, 7)
+    range.setEnd(rendered.querySelector('p')!.firstChild!, 18)
+    let selection: { quote: string; range: Range } | null = {
+      quote: '输入层、隐藏层、输出层',
+      range,
+    }
+    const markSelection = vi.fn(async () =>
+      highlight({ id: '018f1f58-4eb2-4a0d-a716-fb81b1960601' }),
+    )
+    panel(rendered, { captureSelection: () => selection, markSelection })
+    await screen.findByText('还没有注释')
+    const box = screen.getByRole('textbox', { name: '写心得' })
+    // 点进去那一刻记住选区，显示成小片。
+    fireEvent.mouseDown(box)
+    fireEvent.focus(box)
+    expect(screen.getByText(/将配到：『输入层、隐藏层、输出层』/)).toBeInTheDocument()
+    const created = boundNote({ id: '018f1f58-4eb2-4a0d-a716-fb81b1960602', content: '三层' })
+    request.mockResolvedValueOnce({ data: created }).mockResolvedValueOnce({
+      data: highlight({
+        id: '018f1f58-4eb2-4a0d-a716-fb81b1960601',
+        note_id: created.id,
+        version: 2,
+      }),
+    })
+    fireEvent.change(box, { target: { value: '三层' } })
+    fireEvent.blur(box)
+    await waitFor(() => expect(markSelection).toHaveBeenCalledWith(range))
+    await waitFor(() =>
+      expect(request).toHaveBeenCalledWith(`${base}/018f1f58-4eb2-4a0d-a716-fb81b1960601`, {
+        method: 'PATCH',
+        body: { note_id: created.id, expected_version: 1 },
+      }),
+    )
+    expect(await screen.findByText('心得已保存，并配到刚标下的那段。')).toBeInTheDocument()
+    expect(box).toHaveValue('')
+    // 没选区：只建心得。「不配」也走这条路。
+    selection = null
+    request.mockResolvedValueOnce({
+      data: boundNote({ id: '018f1f58-4eb2-4a0d-a716-fb81b1960603', content: '独立的' }),
+    })
+    fireEvent.mouseDown(box)
+    fireEvent.change(box, { target: { value: '独立的' } })
+    fireEvent.keyDown(box, { key: 'Enter', ctrlKey: true })
+    expect(await screen.findByText('心得已保存。')).toBeInTheDocument()
+    expect(markSelection).toHaveBeenCalledTimes(1)
+    expect(request).toHaveBeenCalledWith(`/api/v1/resources/${resourceId}/notes`, {
+      method: 'POST',
+      body: { content: '独立的' },
+    })
+  })
+
+  it('focuses the comment box of the highlight the parent points at (TASK-098)', async () => {
     paint()
     mock([highlight()])
-    const wanted: string[] = []
-    panel(body(), { onWriteNote: (row: Highlight) => wanted.push(row.id) })
+    const { rerender } = panel(body())
     const item = (await screen.findAllByRole('listitem'))[0]!
-    await act(async () => {
-      fireEvent.click(within(item).getByRole('button', { name: '写心得' }))
-    })
-    expect(wanted).toEqual([highlight().id])
+    rerender(
+      <ReaderHighlights
+        resourceId={resourceId}
+        rendered={document.querySelector('.snapshot-rendered')}
+        revision={0}
+        captureSelection={() => null}
+        markSelection={async () => null}
+        focusHighlight={{ id: highlight().id, token: 1 }}
+      />,
+    )
+    await waitFor(() => expect(commentOf(item)).toHaveFocus())
   })
 })
 
@@ -269,7 +470,7 @@ describe('PDF：按页定位（TASK-089）', () => {
       [2, pageLayer(2, 'StudyPilot page two')],
     ])
     panel(null, { pages })
-    const list = await screen.findByRole('list', { name: '高亮列表' })
+    const list = await screen.findByRole('list', { name: '注释列表' })
     const items = within(list).getAllByRole('listitem')
     expect(items).toHaveLength(2)
     expect(items[0]).toHaveTextContent('第 1 页')
@@ -310,7 +511,7 @@ describe('PDF：按页定位（TASK-089）', () => {
       pages: new Map<number, Element>([[1, pageLayer(1, 'StudyPilot page one')]]),
       onJumpPage,
     })
-    const list = await screen.findByRole('list', { name: '高亮列表' })
+    const list = await screen.findByRole('list', { name: '注释列表' })
     expect(within(list).queryByText(/已找不到/)).toBeNull()
     expect(list.querySelectorAll('li.orphaned')).toHaveLength(0)
     const jump = within(list).getByRole('button', { name: '跳到第 9 页' })
@@ -332,7 +533,7 @@ describe('PDF：按页定位（TASK-089）', () => {
       }),
     ])
     panel(null, { pages: new Map<number, Element>([[1, pageLayer(1, 'StudyPilot page one')]]) })
-    const list = await screen.findByRole('list', { name: '高亮列表' })
+    const list = await screen.findByRole('list', { name: '注释列表' })
     expect(within(list).getByText(/在那一页上已找不到/)).toBeInTheDocument()
     expect(list.querySelectorAll('li.orphaned')).toHaveLength(1)
   })
@@ -386,8 +587,8 @@ describe('样子与正文上的点选（TASK-094）', () => {
     const registry = paint()
     const request = mock([highlight()])
     const rendered = body()
-    const onWriteNote = vi.fn()
-    panel(rendered, { onWriteNote })
+    const onOpenPanel = vi.fn()
+    panel(rendered, { onOpenPanel })
     await waitFor(() => expect(registry.has('studypilot-mark-yellow')).toBe(true))
     const text = rendered.querySelector('p')!.firstChild!
     // 落点在 7..18 之外：什么都不出。
@@ -422,10 +623,11 @@ describe('样子与正文上的点选（TASK-094）', () => {
     expect(registry.has('studypilot-mark-blue')).toBe(false)
     expect(within(bubble).getByRole('button', { name: '改为高亮' })).toBeInTheDocument()
     expect(screen.getByRole('listitem')).toHaveTextContent('下划线')
-    // 写心得：把这条交回父级，气泡关掉。
-    fireEvent.click(within(bubble).getByRole('button', { name: '写心得' }))
-    expect(onWriteNote).toHaveBeenCalledWith(expect.objectContaining({ id: highlight().id }))
+    // 写评论：让父级打开右栏，焦点落进这条的评论框，气泡关掉。
+    fireEvent.click(within(bubble).getByRole('button', { name: '写评论' }))
+    expect(onOpenPanel).toHaveBeenCalledTimes(1)
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '这条高亮' })).toBeNull())
+    await waitFor(() => expect(commentOf(screen.getByRole('listitem'))).toHaveFocus())
     // 再点开、按 Esc 关掉。
     fireEvent.click(rendered, { clientX: 40, clientY: 20 })
     await screen.findByRole('dialog', { name: '这条高亮' })

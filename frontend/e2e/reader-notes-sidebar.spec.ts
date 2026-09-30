@@ -80,20 +80,20 @@ test('wide screen: notes are collapsed by default and squeeze the reading column
   await toggle(page).click()
   await expect(toggle(page)).toHaveAttribute('aria-expanded', 'true')
   await expect(notes(page)).toBeVisible()
-  await expect(page.getByRole('textbox', { name: '这次想记下什么？' })).toBeFocused()
+  await expect(page.getByRole('textbox', { name: '写心得' })).toBeFocused()
   const openWidth = (await main(page).boundingBox())!.width
   expect(closedWidth - openWidth).toBeGreaterThan(300)
   expect(closedWidth - openWidth).toBeLessThan(420)
   // 展开态正文也不横向溢出。
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
 
-  // 在侧栏里新增一条心得 → 角标实时从 2 变 3（数据来自侧栏自己的 total_items）。
-  await page.getByRole('textbox', { name: '这次想记下什么？' }).fill('展开时记下的一条')
-  await page.getByRole('button', { name: '保存心得', exact: true }).click()
-  // 按文字定位：保存后列表刷新，CI 上「正在翻开心得…」会与这条提示同时在场，裸的
-  // `getByRole('status')` 触发 strict mode（PR #71/#72 首跑失败、同提交重跑通过）；同文件
-  // 下面删除那一步早已这样写。
-  await expect(page.getByText(/心得已保存/)).toBeVisible()
+  // 在侧栏里新增一条心得（TASK-098：顶部「写心得」框，⌘/Ctrl+↩ 保存）→ 角标实时从 2 变 3
+  // （角标 = 高亮 + 不挂高亮的心得，数据来自注释列表自己的读取）。
+  await page.getByRole('textbox', { name: '写心得' }).fill('展开时记下的一条')
+  await page.keyboard.press('Control+Enter')
+  // 按文字定位：保存后列表刷新，CI 上「正在读注释…」会与这条提示同时在场，裸的
+  // `getByRole('status')` 触发 strict mode（PR #71/#72 首跑失败、同提交重跑通过）。
+  await expect(page.getByText('心得已保存。')).toBeVisible()
   await expect(toggle(page)).toContainText('3')
 
   // Esc 收起并把焦点还给「心得」按钮，正文回到满宽。
@@ -103,41 +103,41 @@ test('wide screen: notes are collapsed by default and squeeze the reading column
   await expect(toggle(page)).toBeFocused()
   expect(Math.abs((await main(page).boundingBox())!.width - closedWidth)).toBeLessThanOrEqual(2)
 
-  // 再开一次：刚才保存的那条已在列表里（写入真实后端）。
+  // 再开一次：刚才保存的那条已在列表里（写入真实后端），就地可改。
   await toggle(page).click()
-  await expect(page.getByRole('list', { name: '心得列表' })).toContainText('展开时记下的一条')
-
-  // 删除刚存的那条 → 角标实时从 3 回落 2：总数随删除减少，不是只增不减。此刻写作框
-  // 是空的（保存后已重置），删除不会撞上「放弃未保存草稿」的确认。
   const savedCard = page
-    .getByRole('list', { name: '心得列表' })
+    .getByRole('list', { name: '注释列表' })
     .getByRole('listitem')
-    .filter({ hasText: '展开时记下的一条' })
-  await savedCard.getByRole('button', { name: '删除', exact: true }).click()
-  await expect(page.getByText('删除这条心得？')).toBeVisible()
-  await page.getByRole('checkbox', { name: '我确认永久删除上方这条心得' }).check()
-  await page.getByRole('button', { name: '确认删除心得', exact: true }).click()
-  // 按文字定位：CI 上这一瞬心得列表可能正在刷新，`getByRole('status')` 会同时命中
-  // 「正在翻开心得…」而触发 strict mode（PR #64 首跑失败、重跑通过）。
-  await expect(page.getByText('这条心得已删除，资料与其他记录仍保留。')).toBeVisible()
+    .filter({ has: page.getByRole('textbox', { name: '心得：展开时记下的一条' }) })
+  await expect(savedCard).toHaveCount(1)
+
+  // 删除刚存的那条（⋯ 菜单里，一次确认）→ 角标实时从 3 回落 2：总数随删除减少，不是只增不减。
+  await savedCard.getByRole('button', { name: /^更多：/ }).click()
+  await savedCard.getByRole('button', { name: '删除心得', exact: true }).click()
+  await savedCard.getByRole('button', { name: '确认删除心得', exact: true }).click()
+  await expect(savedCard).toHaveCount(0)
   await expect(toggle(page)).toContainText('2')
   expect((await call(page, `/resources/${id}/notes`)).body.page.total_items).toBe(2)
 
-  // **收起不丢未保存草稿**（条件 6）：写一句不保存，用「收起」收起再展开，草稿还在——
-  // 这靠侧栏「收起时保持挂载、CSS 显隐」成立，卸载就会把草稿丢掉。
-  await page.getByRole('textbox', { name: '这次想记下什么？' }).fill('这条还没保存的草稿')
+  // **收起不丢刚写的字**（条件 6）：写一句不按保存，点「收起」——失焦即存（TASK-098），
+  // 再展开时它已在列表里、角标也跟着变。
+  await page.getByRole('textbox', { name: '写心得' }).fill('收起前写的一条')
   await page
     .getByRole('region', { name: '记录与理解' })
     .getByRole('button', { name: '收起', exact: true })
     .click()
   await expect(notes(page)).toBeHidden()
   await expect(toggle(page)).toBeFocused()
+  await expect(toggle(page)).toContainText('3')
   await toggle(page).click()
-  await expect(page.getByRole('textbox', { name: '这次想记下什么？' })).toHaveValue(
-    '这条还没保存的草稿',
-  )
+  await expect(page.getByRole('textbox', { name: '写心得' })).toHaveValue('')
+  await expect(
+    page
+      .getByRole('list', { name: '注释列表' })
+      .getByRole('textbox', { name: '心得：收起前写的一条' }),
+  ).toHaveValue('收起前写的一条')
   // 后端也确认新增落库、删除同步，不是只在本地屏幕上。
-  expect((await call(page, `/resources/${id}/notes`)).body.page.total_items).toBe(2)
+  expect((await call(page, `/resources/${id}/notes`)).body.page.total_items).toBe(3)
 })
 
 test('narrow screen: notes float over the reading area without squeezing it, and the body is inert', async ({
@@ -153,7 +153,7 @@ test('narrow screen: notes float over the reading area without squeezing it, and
     // 展开＝浮层：正文宽度不变（不挤压），正文容器 inert（Tab 进不去），焦点进写作框。
     await toggle(page).click()
     await expect(notes(page)).toBeVisible()
-    await expect(page.getByRole('textbox', { name: '这次想记下什么？' })).toBeFocused()
+    await expect(page.getByRole('textbox', { name: '写心得' })).toBeFocused()
     const openWidth = (await main(page).boundingBox())!.width
     expect(Math.abs(openWidth - closedWidth), '窄屏展开不该挤压正文').toBeLessThanOrEqual(2)
     expect(await main(page).evaluate((element) => element.hasAttribute('inert'))).toBe(true)

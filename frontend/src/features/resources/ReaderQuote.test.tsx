@@ -41,9 +41,12 @@ const highlightId = '018f1f58-4eb2-4a0d-a716-fb81b1960201'
 const savedNoteId = '018f1f58-4eb2-4a0d-a716-fb81b1960301'
 /** 本次挂载里发出的高亮写请求，按顺序记下来。 */
 let marked: { method: string; path: string; body: Record<string, unknown> }[] = []
+/** 已标下的高亮：GET 列表回它们（TASK-098 起「记下这段」之后右栏要能列出刚标的那条）。 */
+let stored: Record<string, unknown>[] = []
 
-function mount(initial = sample()) {
+function mount(initial = sample(), { failMark = false } = {}) {
   marked = []
+  stored = []
   // 保存学习记录后详情重读要拿到新进度（真实后端如此），否则「记为学习进度」不会消失。
   let item = initial
   const request = vi.spyOn(api, 'request').mockImplementation(async (path: string, init) => {
@@ -53,28 +56,38 @@ function mount(initial = sample()) {
       if (init?.method === 'POST' || init?.method === 'PATCH') {
         const sent = (init.body ?? {}) as Record<string, unknown>
         marked.push({ method: init.method, path, body: sent })
-        return {
-          data: {
-            id: highlightId,
-            resource_id: resourceId,
-            exact: typeof sent.exact === 'string' ? sent.exact : '输入层、隐藏层、输出层',
-            prefix: (sent.prefix as string | null) ?? null,
-            suffix: (sent.suffix as string | null) ?? null,
-            start_offset: typeof sent.start_offset === 'number' ? sent.start_offset : 0,
-            end_offset: typeof sent.end_offset === 'number' ? sent.end_offset : 11,
-            page_number: null,
-            style: typeof sent.style === 'string' ? sent.style : 'mark',
-            color: typeof sent.color === 'string' ? sent.color : 'yellow',
-            note_id: (sent.note_id as string | null) ?? null,
-            version: init.method === 'PATCH' ? 2 : 1,
-            created_at: '2026-09-19T02:00:00Z',
-            updated_at: '2026-09-19T02:00:00Z',
-          },
+        if (failMark) throw new ApiError('NETWORK_ERROR')
+        // PATCH 只带要改的字段：回的仍是那条高亮（锚点不变），版本 +1。
+        if (init.method === 'PATCH') {
+          const changes = Object.fromEntries(
+            Object.entries(sent).filter(([key]) => key !== 'expected_version'),
+          )
+          const row = { ...stored[0]!, ...changes, version: 2 }
+          stored = [row]
+          return { data: row }
         }
+        const row = {
+          id: highlightId,
+          resource_id: resourceId,
+          exact: typeof sent.exact === 'string' ? sent.exact : '输入层、隐藏层、输出层',
+          prefix: (sent.prefix as string | null) ?? null,
+          suffix: (sent.suffix as string | null) ?? null,
+          start_offset: typeof sent.start_offset === 'number' ? sent.start_offset : 0,
+          end_offset: typeof sent.end_offset === 'number' ? sent.end_offset : 11,
+          page_number: null,
+          style: typeof sent.style === 'string' ? sent.style : 'mark',
+          color: typeof sent.color === 'string' ? sent.color : 'yellow',
+          note_id: (sent.note_id as string | null) ?? null,
+          version: 1,
+          created_at: '2026-09-19T02:00:00Z',
+          updated_at: '2026-09-19T02:00:00Z',
+        }
+        stored = [row]
+        return { data: row }
       }
       return {
-        data: [],
-        page: { number: 1, size: 100, total_items: 0, total_pages: 0, has_more: false },
+        data: stored,
+        page: { number: 1, size: 100, total_items: stored.length, total_pages: 1, has_more: false },
       }
     }
     if (path === `${detailPath}/snapshot/assets`) return { data: [] }
@@ -174,8 +187,10 @@ function selectText(text: string, node: Node | null) {
 }
 
 const pill = () => screen.queryByRole('button', { name: '记下这段' })
-const editor = () =>
-  screen.getByRole('textbox', { name: '这次想记下什么？' }) as HTMLTextAreaElement
+/** 右栏顶部的「写心得」框（TASK-098）。 */
+const editor = () => screen.getByRole('textbox', { name: '写心得' }) as HTMLTextAreaElement
+/** 刚标下那条高亮的就地评论框。 */
+const comment = () => screen.getByRole('textbox', { name: /^评论：/ }) as HTMLTextAreaElement
 
 beforeEach(() => {
   localStorage.clear()
@@ -206,29 +221,70 @@ describe('记下这段', () => {
     expect(pill()).toBeNull()
   })
 
-  it('appends the quote to the notes draft, opens the notes tab and focuses the editor', async () => {
+  it("「记下这段」 marks at once, opens the 注释 tab and focuses that highlight's comment box; the comment saved there is bound to it (TASK-098)", async () => {
     mount()
+    const paragraph = await screen.findByText(/神经网络主要由输入层/)
+    const selection = selectText('神经网络主要由输入层、隐藏层、输出层构成。', paragraph.firstChild)
+    fireEvent.click(pill()!)
+    // 先标下来（当前颜色的高亮）……
+    await waitFor(() => expect(marked).toHaveLength(1))
+    expect(marked[0]!.method).toBe('POST')
+    expect(marked[0]!.body.exact).toBe('神经网络主要由输入层、隐藏层、输出层构成。')
+    expect(marked[0]!.body.style).toBeUndefined()
+    // ……右栏打开、在「注释」Tab，焦点落进这条的评论框；引文不再进顶部写作框。
+    expect(screen.getByRole('tab', { name: '注释' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('region', { name: '记录与理解' })).toBeVisible()
+    await waitFor(() => expect(comment()).toHaveFocus())
+    expect(editor()).toHaveValue('')
+    expect(selection.removeAllRanges).toHaveBeenCalled()
+    expect(pill()).toBeNull()
+    // 在评论框里写、⌘↩：建心得，再把它配到刚标的那条上（版本化 PATCH）。
+    fireEvent.change(comment(), { target: { value: '这段要记住。' } })
+    fireEvent.keyDown(comment(), { key: 'Enter', metaKey: true })
+    await waitFor(() => expect(marked).toHaveLength(2))
+    expect(marked[1]!.method).toBe('PATCH')
+    expect(marked[1]!.path).toBe(`${detailPath}/highlights/${highlightId}`)
+    expect(marked[1]!.body).toEqual({ note_id: savedNoteId, expected_version: 1 })
+    await waitFor(() =>
+      expect(
+        screen.queryAllByRole('status').length + screen.queryAllByRole('alert').length,
+      ).toBeGreaterThan(0),
+    )
+    console.log(
+      'DBG',
+      [...document.querySelectorAll('[role=status],[role=alert]')].map((n) => n.textContent),
+    )
+    expect(await screen.findByText('已保存')).toBeInTheDocument()
+  })
+
+  it('falls back to quoting into the composer when the passage cannot be marked (TASK-098)', async () => {
+    mount(sample(), { failMark: true })
     const paragraph = await screen.findByText(/神经网络主要由输入层/)
     // 右栏收起时草稿也在（组件常驻）；先写点东西，验证引文是**追加**、以空行分隔。
     fireEvent.change(editor(), { target: { value: '已有的一句。  ' } })
-    const selection = selectText(
+    selectText(
       '神经网络主要由输入层、隐藏层、输出层构成。\n当隐藏层只有一层时叫两层网络。',
       paragraph.firstChild,
     )
     fireEvent.click(pill()!)
-    expect(screen.getByRole('tab', { name: '心得' })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByRole('region', { name: '记录与理解' })).toBeVisible()
+    await waitFor(() => expect(marked).toHaveLength(1))
+    // 标不成：原因在右栏里说，引文照旧以 Markdown 引用进顶部写作框并聚焦（TASK-068 的路）。
+    expect(screen.getByRole('tab', { name: '注释' })).toHaveAttribute('aria-selected', 'true')
+    expect(await screen.findByRole('alert')).toHaveTextContent(/连接失败/)
     expect(editor()).toHaveValue(
       '已有的一句。\n\n> 神经网络主要由输入层、隐藏层、输出层构成。\n> 当隐藏层只有一层时叫两层网络。\n\n',
     )
     await waitFor(() => expect(editor()).toHaveFocus())
     expect(editor().selectionStart).toBe(editor().value.length)
-    expect(selection.removeAllRanges).toHaveBeenCalled()
     expect(pill()).toBeNull()
     // 再记一段：接在后面，不覆盖。
     selectText('第二节。', screen.getByText('第二节。').firstChild)
     fireEvent.click(pill()!)
-    expect(editor().value.endsWith('> 当隐藏层只有一层时叫两层网络。\n\n> 第二节。\n\n')).toBe(true)
+    await waitFor(() =>
+      expect(editor().value.endsWith('> 当隐藏层只有一层时叫两层网络。\n\n> 第二节。\n\n')).toBe(
+        true,
+      ),
+    )
   })
 
   it('with a tool on, a selection is marked on mouseup in the current look, without opening anything (TASK-094)', async () => {
@@ -271,44 +327,47 @@ describe('记下这段', () => {
     expect(marked).toHaveLength(2)
   })
 
-  it('marks what was quoted and binds the note that gets saved for it (TASK-072)', async () => {
+  it('a note written in the composer with no selection stands alone: no highlight, no binding (TASK-098)', async () => {
     mount()
     const paragraph = await screen.findByText(/神经网络主要由输入层/)
+    await screen.findByRole('toolbar', { name: '标注工具' })
+    // 开荧光笔标一段（松手即落色，选区随之清掉）。
+    fireEvent.click(screen.getByRole('button', { name: '荧光笔' }))
     selectText('神经网络主要由输入层、隐藏层、输出层构成。', paragraph.firstChild)
-    fireEvent.click(pill()!)
-    // 「记下这段」= 引文进草稿 + 顺手标下来。
+    fireEvent.mouseUp(document)
     await waitFor(() => expect(marked).toHaveLength(1))
-    expect(marked[0]!.method).toBe('POST')
-    expect(editor().value).toContain('> 神经网络主要由输入层、隐藏层、输出层构成。')
-
-    fireEvent.change(editor(), { target: { value: '这段要记住。' } })
-    fireEvent.submit(screen.getByRole('form', { name: '心得编辑' }))
-    // 心得一保存就配到刚标下的那条高亮上；解绑与改绑都走同一个 PATCH。
-    await waitFor(() => expect(marked).toHaveLength(2))
-    expect(marked[1]!.method).toBe('PATCH')
-    expect(marked[1]!.path).toBe(`${detailPath}/highlights/${highlightId}`)
-    expect(marked[1]!.body).toMatchObject({ expected_version: 1 })
-    expect(marked[1]!.body.note_id).toBe(savedNoteId)
+    // 打开右栏、在顶部框里写：没有选区，就是这份资料的独立心得——只建心得，不 PATCH 任何高亮。
+    fireEvent.click(screen.getByRole('button', { name: '心得' }))
+    await waitFor(() => expect(editor()).toHaveFocus())
+    expect(screen.queryByText(/将配到/)).toBeNull()
+    fireEvent.change(editor(), { target: { value: '与上面那段无关的一句。' } })
+    fireEvent.keyDown(editor(), { key: 'Enter', metaKey: true })
+    expect(await screen.findByText('心得已保存。')).toBeInTheDocument()
+    expect(editor()).toHaveValue('')
+    expect(marked.filter((call) => call.method === 'PATCH')).toHaveLength(0)
   })
 
-  it('drops a pending pairing when the reader turns to an existing note (Review F3)', async () => {
+  it('a note written in the composer while text is selected marks that text first and binds to it (TASK-098)', async () => {
     mount()
     const paragraph = await screen.findByText(/神经网络主要由输入层/)
-    // 先「记下这段」——这条高亮开始等一条心得。
+    fireEvent.click(screen.getByRole('button', { name: '心得' }))
+    await waitFor(() => expect(editor()).toHaveFocus())
+    // 正文里选中一段，再点进写作框：那一刻的选区被记住并显示出来。
     selectText('神经网络主要由输入层、隐藏层、输出层构成。', paragraph.firstChild)
-    fireEvent.click(pill()!)
-    await waitFor(() => expect(marked).toHaveLength(1))
-    // 改主意：开荧光笔只标一下别的段落（明确不想配心得）。
-    fireEvent.click(screen.getByRole('button', { name: '荧光笔' }))
-    selectText('第二节。', screen.getByText('第二节。').firstChild)
-    fireEvent.mouseUp(document)
+    fireEvent.mouseDown(editor())
+    fireEvent.focus(editor())
+    expect(
+      screen.getByText(/将配到：『神经网络主要由输入层、隐藏层、输出层构成。』/),
+    ).toBeInTheDocument()
+    fireEvent.change(editor(), { target: { value: '三层结构。' } })
+    fireEvent.keyDown(editor(), { key: 'Enter', metaKey: true })
+    // 先按当前颜色标高亮，再建心得、配上去。
     await waitFor(() => expect(marked).toHaveLength(2))
-    // 之后随手写的一条心得不该被配到任何一条高亮上。
-    fireEvent.click(screen.getByRole('tab', { name: '心得' }))
-    fireEvent.change(editor(), { target: { value: '与上面两段都无关的一句。' } })
-    fireEvent.submit(screen.getByRole('form', { name: '心得编辑' }))
-    await waitFor(() => expect(screen.getByText(/心得已保存/)).toBeInTheDocument())
-    expect(marked.filter((call) => call.method === 'PATCH')).toHaveLength(0)
+    expect(marked[0]!.method).toBe('POST')
+    expect(marked[0]!.body.exact).toBe('神经网络主要由输入层、隐藏层、输出层构成。')
+    expect(marked[1]!.method).toBe('PATCH')
+    expect(marked[1]!.body).toEqual({ note_id: savedNoteId, expected_version: 1 })
+    expect(await screen.findByText('心得已保存，并配到刚标下的那段。')).toBeInTheDocument()
   })
 
   it('formats multi-line selections as a Markdown blockquote and ignores oversized ones', () => {

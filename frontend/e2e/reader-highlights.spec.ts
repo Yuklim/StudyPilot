@@ -73,7 +73,7 @@ async function select(page: Page, text: string) {
  * （TASK-045 起「按钮＝开合 + 聚焦」），Tab 在栏里。
  */
 async function openHighlights(page: Page) {
-  const tab = page.getByRole('tab', { name: /高亮/ })
+  const tab = page.getByRole('tab', { name: /注释/ })
   if (!(await tab.isVisible())) {
     await page.locator('.reader-toolbar').getByRole('button', { name: '心得', exact: true }).click()
   }
@@ -118,10 +118,10 @@ test('a marked passage survives a reload and is painted without touching the bod
 
   await markWithTool(page, '荧光笔', '输入层、隐藏层、输出层')
 
-  // 右栏不自动打开（颜色本身就是反馈）；打开「高亮」Tab，列表里就是刚标的那段。
+  // 右栏不自动打开（颜色本身就是反馈）；打开「注释」Tab，列表里就是刚标的那段。
   await expect(page.getByRole('button', { name: '心得' })).toHaveAttribute('aria-expanded', 'false')
   await openHighlights(page)
-  const list = page.getByRole('list', { name: '高亮列表' })
+  const list = page.getByRole('list', { name: '注释列表' })
   await expect(list.getByRole('listitem')).toHaveCount(1)
   await expect(list).toContainText('输入层、隐藏层、输出层')
   expect((await call(page, `/resources/${id}/highlights`)).data).toHaveLength(1)
@@ -133,7 +133,7 @@ test('a marked passage survives a reload and is painted without touching the bod
   // 刷新后重新定位：锚点是存下来的，位置是现算的。
   await page.reload()
   await openHighlights(page)
-  await expect(page.getByRole('list', { name: '高亮列表' })).toContainText('输入层、隐藏层、输出层')
+  await expect(page.getByRole('list', { name: '注释列表' })).toContainText('输入层、隐藏层、输出层')
   await expect.poll(() => painted(page)).toEqual(['输入层、隐藏层、输出层'])
 })
 
@@ -142,7 +142,7 @@ test('when the body is replaced the passage is kept and marked as lost', async (
   await page.goto(`/resources/${id}`)
   await markWithTool(page, '荧光笔', '误差逆传播算法')
   await openHighlights(page)
-  await expect(page.getByRole('list', { name: '高亮列表' })).toContainText('误差逆传播算法')
+  await expect(page.getByRole('list', { name: '注释列表' })).toContainText('误差逆传播算法')
 
   // 整份换掉正文：那段话不在了。
   const snapshot = (await call(page, `/resources/${id}/snapshot`)).data as { version: number }
@@ -154,7 +154,7 @@ test('when the body is replaced the passage is kept and marked as lost', async (
 
   await page.reload()
   await openHighlights(page)
-  const list = page.getByRole('list', { name: '高亮列表' })
+  const list = page.getByRole('list', { name: '注释列表' })
   // 内容留着，并说清原因；不静默消失，也不乱标到别的地方。
   await expect(list).toContainText('误差逆传播算法')
   await expect(list).toContainText('原文位置已找不到')
@@ -167,7 +167,7 @@ test('when the body is replaced the passage is kept and marked as lost', async (
   })
   await page.reload()
   await openHighlights(page)
-  await expect(page.getByRole('list', { name: '高亮列表' })).not.toContainText('原文位置已找不到')
+  await expect(page.getByRole('list', { name: '注释列表' })).not.toContainText('原文位置已找不到')
   await expect.poll(() => painted(page)).toEqual(['误差逆传播算法'])
 })
 
@@ -180,36 +180,49 @@ test('deleting from the tab really deletes: the row, the paint and the server ro
   await page.goto(`/resources/${id}`)
   await markWithTool(page, '荧光笔', '输入层、隐藏层、输出层')
   await openHighlights(page)
-  const list = page.getByRole('list', { name: '高亮列表' })
+  const list = page.getByRole('list', { name: '注释列表' })
   await expect(list.getByRole('listitem')).toHaveCount(1)
   await expect.poll(() => painted(page)).toEqual(['输入层、隐藏层、输出层'])
 
+  // TASK-098 起删除在条目的 ⋯ 菜单里，仍是一次确认。
   const row = list.getByRole('listitem').first()
-  await row.getByRole('button', { name: '删除' }).click()
+  await row.getByRole('button', { name: /^更多：/ }).click()
+  await row.getByRole('button', { name: '删除高亮' }).click()
   await row.getByRole('button', { name: '确认删除' }).click()
-  await expect(page.getByRole('heading', { name: '还没有标下任何一段' })).toBeVisible()
+  await expect(page.getByText('还没有注释')).toBeVisible()
   await expect(page.getByRole('alert')).toHaveCount(0)
   await expect.poll(() => painted(page)).toEqual([])
   expect((await call(page, `/resources/${id}/highlights`)).data).toEqual([])
   // 刷新后也不会回来。
   await page.reload()
   await openHighlights(page)
-  await expect(page.getByRole('heading', { name: '还没有标下任何一段' })).toBeVisible()
+  await expect(page.getByText('还没有注释')).toBeVisible()
 })
 
-test('「记下这段」marks the passage and pairs the note that follows', async ({ page }) => {
+test('「记下这段」marks the passage at once and the comment written in place is paired with it', async ({
+  page,
+}) => {
+  // TASK-098（用户 2026-09-29 定案「像 Zotero 那样不用跳到别处就能写」）：胶囊 = 立即按当前颜色标高亮
+  // + 打开右栏「注释」+ 焦点落进这条的评论框；评论一保存就配上。
   const id = await seed(page, 'C')
   await page.goto(`/resources/${id}`)
   await select(page, '当隐藏层只有一层时')
   await page.getByRole('button', { name: '记下这段' }).click()
 
-  const editor = page.getByRole('textbox', { name: '这次想记下什么？' })
-  await expect(editor).toHaveValue(/> 当隐藏层只有一层时/)
-  await editor.fill('> 当隐藏层只有一层时\n\n两层网络这个叫法要记住。')
-  await page.getByRole('button', { name: '保存心得', exact: true }).click()
-  await expect(page.getByText(/心得已保存/)).toBeVisible()
+  // 高亮先落了：正文上色、服务端有一条、还没配心得。
+  await expect.poll(() => painted(page)).toEqual(['当隐藏层只有一层时'])
+  const list = page.getByRole('list', { name: '注释列表' })
+  await expect(page.getByRole('tab', { name: /注释/ })).toHaveAttribute('aria-selected', 'true')
+  const comment = list.getByRole('textbox', { name: '评论：当隐藏层只有一层时' })
+  await expect(comment).toBeFocused()
+  // 引文不再进顶部写作框。
+  await expect(page.getByRole('textbox', { name: '写心得' })).toHaveValue('')
 
-  // 后端那条高亮已经配上了刚保存的心得。
+  await comment.fill('两层网络这个叫法要记住。')
+  await page.keyboard.press('Control+Enter')
+  await expect(list.getByText('已保存')).toBeVisible()
+
+  // 后端那条高亮已经配上了刚保存的心得；心得内容就是评论框里写的。
   await expect
     .poll(async () => {
       const rows = (await call(page, `/resources/${id}/highlights`)).data as {
@@ -218,12 +231,72 @@ test('「记下这段」marks the passage and pairs the note that follows', asyn
       return rows.length === 1 ? rows[0]!.note_id !== null : false
     })
     .toBe(true)
+  const notes = (await call(page, `/resources/${id}/notes`)).data as { content: string }[]
+  expect(notes.map((row) => row.content)).toEqual(['两层网络这个叫法要记住。'])
+  // 配着的心得不另列为「未挂高亮」；刷新后评论仍在这条下面。
+  await expect(list.getByRole('listitem')).toHaveCount(1)
+  await page.reload()
   await openHighlights(page)
-  // 列表里那条高亮显示「配了心得」：心得的首行就是引文本身（与「我的心得」同一口径），
-  // 所以这里认的是「有 ✎ 那一行」与动作变成「改写心得」，不是心得的第二行。
-  const row = page.getByRole('list', { name: '高亮列表' }).getByRole('listitem').first()
-  await expect(row).toContainText('✎')
-  await expect(row.getByRole('button', { name: '改写心得' })).toBeVisible()
+  await expect(list.getByRole('textbox', { name: '评论：当隐藏层只有一层时' })).toHaveValue(
+    '两层网络这个叫法要记住。',
+  )
+  // 再改评论：失焦即存，只改心得。
+  await list.getByRole('textbox', { name: '评论：当隐藏层只有一层时' }).fill('改成这句。')
+  await page.getByRole('tab', { name: '信息' }).focus()
+  await expect(list.getByText('已保存')).toBeVisible()
+  await expect
+    .poll(async () =>
+      (await call(page, `/resources/${id}/notes`)).data.map((r: { content: string }) => r.content),
+    )
+    .toEqual(['改成这句。'])
+})
+
+test('a note written at the top with text selected marks it first; without a selection it stands alone', async ({
+  page,
+}) => {
+  // 用户规则：「如果只写心得，就自动高亮选中文字，并自动配对；如果没有选中文字的心得，就是独立心得」。
+  const id = await seed(page, 'F')
+  await page.goto(`/resources/${id}`)
+  await expect(page.getByRole('heading', { name: '神经网络', exact: true, level: 1 })).toBeVisible()
+  await openHighlights(page)
+  const composer = page.getByRole('textbox', { name: '写心得' })
+  // ① 没有选区：独立心得。
+  await composer.fill('对这篇的整体感想。')
+  await page.keyboard.press('Control+Enter')
+  await expect(page.getByText('心得已保存。')).toBeVisible()
+  await expect(composer).toHaveValue('')
+  const list = page.getByRole('list', { name: '注释列表' })
+  await expect(list.getByRole('listitem')).toHaveCount(1)
+  await expect(list).toContainText('未挂高亮')
+  expect((await call(page, `/resources/${id}/highlights`)).data).toEqual([])
+
+  // ② 选中一段再点进写作框：记住选区；保存时先标高亮再配对。
+  await select(page, '误差逆传播算法')
+  await composer.click()
+  await expect(page.getByText(/将配到：『误差逆传播算法』/)).toBeVisible()
+  await composer.fill('BP 算法的位置。')
+  await page.keyboard.press('Control+Enter')
+  await expect(page.getByText('心得已保存，并配到刚标下的那段。')).toBeVisible()
+  await expect.poll(() => painted(page)).toEqual(['误差逆传播算法'])
+  await expect
+    .poll(async () => {
+      const rows = (await call(page, `/resources/${id}/highlights`)).data as {
+        exact: string
+        note_id: string | null
+      }[]
+      return rows.map((row) => [row.exact, row.note_id !== null])
+    })
+    .toEqual([['误差逆传播算法', true]])
+  // 列表：高亮（带评论）在前，独立心得在后；角标 = 1 + 1。
+  await expect(list.getByRole('listitem')).toHaveCount(2)
+  await expect(list.getByRole('listitem').first()).toContainText('误差逆传播算法')
+  await expect(
+    list.getByRole('listitem').first().getByRole('textbox', { name: '评论：误差逆传播算法' }),
+  ).toHaveValue('BP 算法的位置。')
+  await expect(list.getByRole('listitem').last()).toContainText('未挂高亮')
+  await expect(page.locator('.reader-toolbar').getByRole('button', { name: '心得' })).toContainText(
+    '2',
+  )
 })
 
 test('the toolbar look sticks: green highlighter, bubble to underline, eraser with undo', async ({
@@ -251,6 +324,7 @@ test('the toolbar look sticks: green highlighter, bubble to underline, eraser wi
   await page.mouse.click(at.x, at.y)
   const bubble = page.getByRole('dialog', { name: '这条高亮' })
   await expect(bubble).toBeVisible()
+  await expect(bubble.getByRole('button', { name: '写评论' })).toBeVisible()
   await bubble.getByRole('button', { name: '改为下划线' }).click()
   await expect
     .poll(() => painted(page, 'studypilot-underline-green'))

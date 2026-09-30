@@ -70,8 +70,10 @@ for (const source of ['WEB', 'PASTE', 'FILE'] as const) {
     await expect(page.getByRole('form', { name: '编辑资料表单' })).toHaveCount(0)
     // TASK-045：心得区默认收起，先点「心得」展开（开合 + 聚焦一体）。
     await page.locator('.reader-toolbar').getByRole('button', { name: '心得', exact: true }).click()
-    await expect(page.getByRole('form', { name: '心得编辑' })).toBeVisible()
-    const note = page.getByRole('form', { name: '心得编辑' }).getByRole('textbox')
+    // TASK-098 起右栏是「注释」列表，顶部「写心得」框失焦即存：这句会在打开编辑器时存下，
+    // 之后整套「改标题 → 保存 → 详情重读」都不能把它弄丢。
+    const note = page.getByRole('textbox', { name: '写心得' })
+    await expect(note).toBeVisible()
     await note.fill('编辑资料时不能丢失的心得草稿')
     await openEditor(page)
     const form = page.getByRole('form', { name: '编辑资料表单' })
@@ -103,7 +105,11 @@ for (const source of ['WEB', 'PASTE', 'FILE'] as const) {
     await form.getByRole('button', { name: '保存资料修改' }).focus()
     await page.keyboard.press('Enter')
     await expect(page.getByRole('heading', { name: `整理好了 · ${source}` })).toBeVisible()
-    await expect(note).toHaveValue('编辑资料时不能丢失的心得草稿')
+    await expect(
+      page
+        .getByRole('list', { name: '注释列表' })
+        .getByRole('textbox', { name: '心得：编辑资料时不能丢失的心得草稿' }),
+    ).toHaveValue('编辑资料时不能丢失的心得草稿')
     const after = (await call(page, path)).data
     expect(after).toMatchObject({
       title: `整理好了 · ${source}`,
@@ -117,7 +123,9 @@ for (const source of ['WEB', 'PASTE', 'FILE'] as const) {
     expect(after.original_file).toEqual(before.original_file)
     expect(after.tags).toEqual(before.tags)
     expect(after.review_plan).toEqual(before.review_plan)
-    expect((await call(page, path + '/notes')).data[0].content).toBe('编辑资料之前保存的心得')
+    expect(
+      (await call(page, path + '/notes')).data.map((row: { content: string }) => row.content),
+    ).toEqual(['编辑资料时不能丢失的心得草稿', '编辑资料之前保存的心得'])
     expect((await call(page, path + '/study-records')).page.total_items).toBe(0)
     if (source === 'PASTE') expect(after.pasted_content).toBe(original)
     await page.reload()
