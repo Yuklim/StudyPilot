@@ -113,18 +113,26 @@ checks = ["frontend"]
     「操作结果需要核对 → 读取最新」恢复流程在阅读器里不再存在，改为断言不重发 + 文字保留）、`reader-immersive`、
     `resource-edit-pages`（后两个为此补进 allowed_paths）。
 - 命令与真实结果（2026-09-29，macOS 本机，Node 22 / Chromium via Playwright）：
-  - `cd frontend && npx vitest run` → 40 files / 864 tests passed。
+  - `cd frontend && npx vitest run` → 40 files / 864 tests passed（首轮候选）；Review 修订后 866 passed。
   - `cd frontend && npx tsc -b && npx eslint . && npx prettier --check src e2e` → 通过（eslint 仅 `PdfReader.tsx:64`
     既有 react-refresh 警告，基线同）。
-  - `cd frontend && npx playwright test` → **88 passed (1.3m)**，隔离沙盒真后端。
+  - `cd frontend && npx playwright test` → **88 passed (1.3m)**，隔离沙盒真后端；Review 修订后重跑 88 passed (1.2m)。
   - `backend/.venv/bin/python scripts/governance/check_task.py --task docs/tasks/TASK-098-annotation-panel.md --worktree`
-    → `CHECKS PASS`，`files=24 product_fingerprint=3033837bd9296f8df8ea6b59368c8f242552f3110a9978b1e54e85cd3a1e395f`。
+    → 首轮候选 `47c4176`：`CHECKS PASS`，`product_fingerprint=3033837b…95f`；Review 修订后：`CHECKS PASS`，
+    `files=24 product_fingerprint=400c38e761b7ef2b31f0c68ba6499ddd789c5a72fe889023a424bafe41a76078`。
   - `backend/.venv/bin/python scripts/governance/validate_governance.py` → PASS。
+- Review R1（RETURNED）修订摘要：F1 `CommentBox` 补存改为「落地后下一帧由 effect 触发」（`again` 成状态），闭包里的
+  `saved`/`onSave` 才是新的，不会再建第二条心得或用旧版本 PATCH；F2 「不配」按钮 `mousedown` 不夺焦点；F3 评论框拿到
+  焦点后回 `onFocused` 清掉聚焦请求；F4 写作框提示按实际配对结果说话，高亮建了、心得没存成则撤掉那条高亮再报错；
+  F5 删掉残留调试代码；F6 删掉 `.reader-notes .notes-panel` 无引用规则。各补单测（F1 有状态 mock：一次 POST + 一次
+  PATCH 心得；F2 `fireEvent.mouseDown` 返回 false；F3 重挂后不再抢焦点；F4 两种失败路径）。
 - 已知限制/未完成项：
   - 顶部「写心得…」框**失焦即存**：点去别处（收起、菜单、编辑器）都会把已写的字存成心得——这是草图定的语义，
     也意味着阅读器里不再有「未保存草稿」状态；旧 e2e 里三条「草稿保留」用例据此改成「失焦已存」。
   - 评论 / 心得都是 textarea 就地编辑，不再在右栏里渲染 Markdown 预览（整页编辑器仍有）。
   - 心得超过 100 条的资料，右栏只列前 100 条（接口单页上限）；角标也按这 100 条算。
+  - （Review F7）评论框 / 心得框的可访问名取引文前 24 字或心得首行，同前缀的两条会撞名；心得行的名字随内容变。
+  - （Review F8）评论保存后父级回填的是 `cleanContent` 结果，末尾空白会在自动保存后被规整掉。
 
 <!-- EVIDENCE:BEGIN -->
 ## 状态与最终证据

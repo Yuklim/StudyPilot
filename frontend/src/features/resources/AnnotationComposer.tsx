@@ -28,8 +28,8 @@ export function AnnotationComposer({
   quoteRequest?: { token: number; quotes: string[] }
   /** 读正文里此刻的选区；没有（或不在正文里）给 null。 */
   captureSelection: () => PendingAnchor | null
-  /** 保存：文字 + 可能的选区。抛错即失败（文字保留）。 */
-  onSubmit: (text: string, anchor: PendingAnchor | null) => Promise<void>
+  /** 保存：文字 + 可能的选区。回「有没有配上」决定提示；抛错即失败（文字与选区都保留，父级负责回滚已建的高亮）。 */
+  onSubmit: (text: string, anchor: PendingAnchor | null) => Promise<{ paired: boolean }>
 }) {
   const [text, setText] = useState('')
   const [anchor, setAnchor] = useState<PendingAnchor | null>(null)
@@ -93,11 +93,18 @@ export function AnnotationComposer({
     setError('')
     setNotice('')
     try {
-      await onSubmit(text, anchor)
+      const { paired } = await onSubmit(text, anchor)
       if (!alive.current) return
       setText('')
       setAnchor(null)
-      setNotice(anchor ? '心得已保存，并配到刚标下的那段。' : '心得已保存。')
+      // 按实际结果说话：选区标不成高亮时心得照存、但没配上（原因在右栏顶部另有提示，Review F4）。
+      setNotice(
+        paired
+          ? '心得已保存，并配到刚标下的那段。'
+          : anchor
+            ? '心得已保存；那段没能标成高亮。'
+            : '心得已保存。',
+      )
     } catch (cause) {
       if (!alive.current) return
       setError(cause instanceof Error ? cause.message : '没有保存成功。')
@@ -132,7 +139,13 @@ export function AnnotationComposer({
       {anchor && (
         <p className="annotation-anchor" aria-label="将配到的选区">
           将配到：『{anchor.quote.length > 40 ? anchor.quote.slice(0, 40) + '…' : anchor.quote}』
-          <button type="button" className="text-link" onClick={() => setAnchor(null)}>
+          {/* mousedown 不夺焦点：不然 textarea 先失焦、带着这段选区把心得存了，「不配」就晚了（Review F2）。 */}
+          <button
+            type="button"
+            className="text-link"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => setAnchor(null)}
+          >
             不配
           </button>
         </p>

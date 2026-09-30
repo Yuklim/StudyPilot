@@ -338,6 +338,49 @@ describe('reader highlights panel', () => {
     )
   })
 
+  it('a comment edited while its first save is in flight is saved once more as an edit, not as a second note (Review F1)', async () => {
+    paint()
+    const request = mock([highlight()])
+    panel(body())
+    const item = (await screen.findAllByRole('listitem'))[0]!
+    const box = commentOf(item)
+    const created = boundNote({ id: '018f1f58-4eb2-4a0d-a716-fb81b1960511', content: '第一版' })
+    let release!: () => void
+    request
+      .mockImplementationOnce(
+        () =>
+          new Promise((done) => {
+            release = () => done({ data: created })
+          }),
+      )
+      .mockResolvedValueOnce({ data: highlight({ note_id: created.id, version: 2 }) })
+      .mockResolvedValueOnce({ data: { ...created, content: '第二版', version: 2 } })
+    fireEvent.change(box, { target: { value: '第一版' } })
+    fireEvent.blur(box)
+    await screen.findByText('保存中…')
+    // 还在飞：再改一版、再失焦。
+    fireEvent.change(box, { target: { value: '第二版' } })
+    fireEvent.blur(box)
+    release()
+    await waitFor(() =>
+      expect(request).toHaveBeenLastCalledWith(
+        `/api/v1/resources/${resourceId}/notes/${created.id}`,
+        {
+          method: 'PATCH',
+          body: { content: '第二版', expected_version: 1 },
+        },
+      ),
+    )
+    // 只建过一条心得、只配过一次。
+    expect(request.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1)
+    expect(
+      request.mock.calls.filter(
+        ([path, init]) => init?.method === 'PATCH' && path.includes('/highlights/'),
+      ),
+    ).toHaveLength(1)
+    expect(screen.getAllByRole('listitem')).toHaveLength(1)
+  })
+
   it('keeps the text and shows the reason when a comment cannot be saved', async () => {
     paint()
     const request = mock([highlight({ note_id: boundNote().id })], [boundNote()])
@@ -392,7 +435,21 @@ describe('reader highlights panel', () => {
     )
     expect(await screen.findByText('心得已保存，并配到刚标下的那段。')).toBeInTheDocument()
     expect(box).toHaveValue('')
-    // 没选区：只建心得。「不配」也走这条路。
+    // 「不配」：按钮按下不夺焦点（否则 textarea 先失焦、带着选区把心得存了，Review F2）；丢掉选区后只建心得。
+    fireEvent.mouseDown(box)
+    expect(screen.getByText(/将配到/)).toBeInTheDocument()
+    const drop = screen.getByRole('button', { name: '不配' })
+    expect(fireEvent.mouseDown(drop)).toBe(false)
+    fireEvent.click(drop)
+    expect(screen.queryByText(/将配到/)).toBeNull()
+    request.mockResolvedValueOnce({
+      data: boundNote({ id: '018f1f58-4eb2-4a0d-a716-fb81b1960604', content: '不配的' }),
+    })
+    fireEvent.change(box, { target: { value: '不配的' } })
+    fireEvent.blur(box)
+    expect(await screen.findByText('心得已保存。')).toBeInTheDocument()
+    expect(markSelection).toHaveBeenCalledTimes(1)
+    // 没选区：只建心得。
     selection = null
     request.mockResolvedValueOnce({
       data: boundNote({ id: '018f1f58-4eb2-4a0d-a716-fb81b1960603', content: '独立的' }),
@@ -406,6 +463,44 @@ describe('reader highlights panel', () => {
       method: 'POST',
       body: { content: '独立的' },
     })
+  })
+
+  it('the composer says so when the passage could not be marked, and rolls the highlight back when the note fails (Review F4)', async () => {
+    paint()
+    const request = mock([])
+    const rendered = body()
+    const range = document.createRange()
+    range.setStart(rendered.querySelector('p')!.firstChild!, 7)
+    range.setEnd(rendered.querySelector('p')!.firstChild!, 18)
+    const markSelection = vi
+      .fn<() => Promise<Highlight | null>>()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue(highlight({ id: '018f1f58-4eb2-4a0d-a716-fb81b1960701' }))
+    panel(rendered, { captureSelection: () => ({ quote: '输入层', range }), markSelection })
+    await screen.findByText('还没有注释')
+    const box = screen.getByRole('textbox', { name: '写心得' })
+    // ① 标不成（父级返回 null）：心得照存，但提示不说「配到」。
+    fireEvent.mouseDown(box)
+    request.mockResolvedValueOnce({
+      data: boundNote({ id: '018f1f58-4eb2-4a0d-a716-fb81b1960702', content: '一' }),
+    })
+    fireEvent.change(box, { target: { value: '一' } })
+    fireEvent.blur(box)
+    expect(await screen.findByText('心得已保存；那段没能标成高亮。')).toBeInTheDocument()
+    // ② 标成了、心得却没存成：撤掉刚建的高亮，文字与选区都留着。
+    fireEvent.mouseDown(box)
+    request.mockRejectedValueOnce(new ApiError('NETWORK_ERROR')).mockResolvedValueOnce(undefined)
+    fireEvent.change(box, { target: { value: '二' } })
+    fireEvent.blur(box)
+    expect(await screen.findByRole('alert')).toHaveTextContent('无法连接本机服务')
+    await waitFor(() =>
+      expect(request).toHaveBeenCalledWith(`${base}/018f1f58-4eb2-4a0d-a716-fb81b1960701`, {
+        method: 'DELETE',
+        ifMatchVersion: 1,
+      }),
+    )
+    expect(box).toHaveValue('二')
+    expect(screen.getByText(/将配到/)).toBeInTheDocument()
   })
 
   it('focuses the comment box of the highlight the parent points at (TASK-098)', async () => {
@@ -424,6 +519,21 @@ describe('reader highlights panel', () => {
       />,
     )
     await waitFor(() => expect(commentOf(item)).toHaveFocus())
+    // 聚焦请求消费即清：列表重读、条目重挂之后不再抢焦点（Review F3）。
+    screen.getByRole('textbox', { name: '写心得' }).focus()
+    rerender(
+      <ReaderHighlights
+        resourceId={resourceId}
+        rendered={document.querySelector('.snapshot-rendered')}
+        revision={1}
+        captureSelection={() => null}
+        markSelection={async () => null}
+        focusHighlight={{ id: highlight().id, token: 1 }}
+      />,
+    )
+    const again = (await screen.findAllByRole('listitem'))[0]!
+    expect(again).not.toBe(item)
+    expect(commentOf(again)).not.toHaveFocus()
   })
 })
 

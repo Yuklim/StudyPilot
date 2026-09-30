@@ -501,11 +501,21 @@ export function ReaderHighlights({
     if (alive.current) upsertNote(saved)
   }
   // 顶部「写心得…」：有选区先标高亮，再建心得、配上；标不了（跨页等）就只建心得。
-  async function compose(text: string, anchor: PendingAnchor | null) {
+  // 高亮建了、心得却没存成：把那条高亮撤掉再抛错——写作框里文字与选区都还在，人再存一次
+  // 会重新标，不会留下一条多余的高亮（Review F4）。
+  async function compose(text: string, anchor: PendingAnchor | null): Promise<{ paired: boolean }> {
     const target = anchor ? await markSelection(anchor.range) : null
-    const created = await saveNote(resourceId, text, null)
+    let created: Note
+    try {
+      created = await saveNote(resourceId, text, null)
+    } catch (cause) {
+      if (target) await deleteHighlight(resourceId, target).catch(() => undefined)
+      if (alive.current) retry()
+      throw cause
+    }
     if (target) await updateHighlight(resourceId, target, { note_id: created.id })
     if (alive.current) retry()
+    return { paired: target !== null }
   }
   function jump(row: HighlightRow) {
     if (row.range) {
@@ -615,6 +625,7 @@ export function ReaderHighlights({
                         disabled={!available}
                         rows={3}
                         onSave={(text) => saveLoose(note, text)}
+                        onFocused={() => setFocusTarget(null)}
                       />
                       <div className="annotation-meta">
                         <time dateTime={note.created_at}>{displayTime(note.created_at)}</time>
@@ -713,6 +724,7 @@ export function ReaderHighlights({
                       focusToken={focusToken}
                       disabled={!available}
                       onSave={(text) => saveComment(row, text)}
+                      onFocused={() => setFocusTarget(null)}
                     />
                     <div className="annotation-meta">
                       {range ? (

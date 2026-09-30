@@ -5,7 +5,9 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
  * 只在**有改动且非空**时保存：清空不等于删除（删除走条目菜单），空文本不会发请求。
  * 保存失败保留文字、显示原因、不重试——版本冲突这种事要让人看见，不能悄悄覆盖。
  *
- * 保存中又改了字：等这次回来再按最新文字补存一次，不并发发两条。
+ * 保存中又改了字：等这次回来再按最新文字补存一次，不并发发两条。补存放在**下一次渲染之后**（`again` 是状态，
+ * 由 effect 触发）：这时 `saved` 与父级给的 `onSave` 都是新的——父级在首次保存里把「没有心得」变成了「有心得」，
+ * 补存必须走「改心得」而不是再建一条（Review F1）。
  */
 export function CommentBox({
   label,
@@ -16,6 +18,7 @@ export function CommentBox({
   idleMs = 2000,
   rows = 2,
   onSave,
+  onFocused,
 }: {
   /** 可访问名称（每条评论框都不同，测试与读屏靠它）。 */
   label: string
@@ -29,6 +32,8 @@ export function CommentBox({
   rows?: number
   /** 把文字存起来；抛错即失败（文字保留、显示 `failureText`）。 */
   onSave: (text: string) => Promise<void>
+  /** 按 `focusToken` 拿到焦点之后回一声，父级据此清掉聚焦请求（不然列表重挂时会再抢一次焦点，Review F3）。 */
+  onFocused?: () => void
 }) {
   const [text, setText] = useState(initial)
   const [saved, setSaved] = useState(initial)
@@ -37,7 +42,7 @@ export function CommentBox({
   const box = useRef<HTMLTextAreaElement>(null)
   const alive = useRef(true)
   const inflight = useRef(false)
-  const again = useRef(false)
+  const [again, setAgain] = useState(false)
   // `save` 在事件与计时器里读最新文字，不把它塞进依赖：每次渲染后同步一份快照。
   const latest = useRef(text)
   useEffect(() => {
@@ -67,6 +72,8 @@ export function CommentBox({
     if (!node) return
     node.focus()
     node.setSelectionRange(node.value.length, node.value.length)
+    onFocused?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 只认 token
   }, [focusToken])
 
   const dirty = text.trim() !== saved.trim() && text.trim() !== ''
@@ -75,7 +82,7 @@ export function CommentBox({
     const value = latest.current
     if (value.trim() === '' || value.trim() === saved.trim()) return
     if (inflight.current) {
-      again.current = true
+      setAgain(true)
       return
     }
     inflight.current = true
@@ -92,12 +99,16 @@ export function CommentBox({
       setError(cause instanceof Error ? cause.message : '没有保存成功。')
     } finally {
       inflight.current = false
-      if (alive.current && again.current) {
-        again.current = false
-        void save()
-      }
     }
   }
+  // 补存：上一次在飞时又改了字。等这一帧渲染完再存，闭包里的 `saved`/`onSave` 才是新的。
+  // `state` 也在依赖里：标记是在飞行中立的，要等这次落地（state 变）再补。
+  useEffect(() => {
+    if (!again || inflight.current) return
+    setAgain(false)
+    void save()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 只由 again 与落地触发
+  }, [again, state])
   // 停笔自动保存：每次改动重置计时。
   useEffect(() => {
     if (!dirty || disabled) return

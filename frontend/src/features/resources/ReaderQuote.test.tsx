@@ -245,15 +245,6 @@ describe('记下这段', () => {
     expect(marked[1]!.method).toBe('PATCH')
     expect(marked[1]!.path).toBe(`${detailPath}/highlights/${highlightId}`)
     expect(marked[1]!.body).toEqual({ note_id: savedNoteId, expected_version: 1 })
-    await waitFor(() =>
-      expect(
-        screen.queryAllByRole('status').length + screen.queryAllByRole('alert').length,
-      ).toBeGreaterThan(0),
-    )
-    console.log(
-      'DBG',
-      [...document.querySelectorAll('[role=status],[role=alert]')].map((n) => n.textContent),
-    )
     expect(await screen.findByText('已保存')).toBeInTheDocument()
   })
 

@@ -2855,14 +2855,6 @@ a.source-chip:focus-visible {
 .reader-notes-heading .note-tab {
   letter-spacing: 2px;
 }
-/* NotesPanel 本身是一张卡片；进了侧栏就脱掉外套，免得两层卡片叠在一起。 */
-.reader-notes .notes-panel {
-  margin: 0;
-  padding: 12px 2px 6px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-}
 /* 右栏 Tab 行（TASK-067）：「心得 ②」「信息」。角标复用 `.notes-badge` 的配色，但在
    Tab 里是行内的，不再绝对定位到角上。 */
 .reader-side-tabs {
