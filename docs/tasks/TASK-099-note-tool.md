@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-099"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L2"
 risk_reason = "阅读器交互增补（纯前端）：顶栏新增「注释」工具（开着时选中文字 = 标高亮 + 打开右栏聚焦评论框；点已有高亮 = 聚焦它的评论框），并在建高亮前按锚点去重（同一段话再标一次不再建第二条，只按当前颜色改样子）。写用户数据的路径有变化（去重会改走 PATCH），须独立只读 Reviewer 检查最终 diff；独立验收 N/A。执行链：1 Worker → 自动检查 → 1 独立只读 Reviewer。"
 risk_flags = ["business"]
@@ -112,7 +112,7 @@ checks = ["frontend"]
   > **结论：PASS with notes**（覆盖 c96d209；F5 与 F4 一并记入非阻断遗留项即可）。
 
 - Acceptance：L2 N/A。
-- 最终状态/风险/用户操作：**ACCEPTED**（L2）。待用户本机看过后 push 开 PR（→ 098 分支）；合并顺序 098 → 099；用户合并后登记 MERGED。
+- 最终状态/风险/用户操作：**MERGED**——2026-09-30 用户合并 PR #109，merge `545f01a`（含最终候选 `c96d209`），在 PR #108 之后；本条 MERGED 登记按 §5 并入 TASK-100 的控制面提交。合并前状态为 **ACCEPTED**（L2）。
 - 非阻断遗留项：R1 F4（去重换色走整表重读，可改走本地覆盖通道）；R2 F5（F1/F2/F3 三处修正路径没有专门用例）。
 - 日期与决定日志：2026-09-30 用户本机检查 098 提出两点 → 登记本任务（叠在 098 分支 `736ee78` 上）→ 候选 `cb5ac13` R1 PASS with notes → 修订 `c96d209` R2 PASS with notes → ACCEPTED。
 

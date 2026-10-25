@@ -3,7 +3,7 @@
 ```toml
 schema_version = 2
 id = "TASK-098"
-status = "ACCEPTED"
+status = "MERGED"
 risk = "L2"
 risk_reason = "阅读器右栏交互重做（纯前端）：「高亮」「心得」两个 Tab 合成一个按文中顺序的「注释」列表，评论就地写、失焦/⌘↩/停笔自动保存；写心得时正文有选区则自动标高亮并配对。走已批准的心得与高亮接口（saveNote / updateHighlight / createHighlight），不改后端与契约。写用户数据的路径变多（自动保存、隐式建高亮）且大量既有 e2e 要改写，须独立只读 Reviewer 检查最终 diff；独立验收 N/A。执行链：1 Worker → 自动检查 → 1 独立只读 Reviewer。"
 risk_flags = ["business"]
@@ -177,7 +177,7 @@ checks = ["frontend"]
   > **剩余风险**：无阻断项；用户本机验收尚待主 Agent 确认。
 
 - Acceptance：L2 N/A。
-- 最终状态/风险/用户操作：**ACCEPTED**（L2）。风险不变。待用户本机看过后 push 开 PR → main；用户合并后登记 MERGED。
+- 最终状态/风险/用户操作：**MERGED**——2026-09-30 用户合并 PR #108，merge `dc587dd`（含最终候选 `66987c1`）；本条 MERGED 登记按 §5 并入 TASK-100 的控制面提交。合并前状态为 **ACCEPTED**（L2）。风险不变。
 - 非阻断遗留项：R1 F7/F8（已知限制段）；R2 N1/N2（三步写入中途双重故障可能留下一条未配评论的高亮或一条未配对的心得，重试会多一条）、N3（亚毫秒窗口，可忽略）。
 - 日期与决定日志：2026-09-29 用户提出 Zotero 式就地评论 → 规则定案 → Pencil 草图 → 「就这样」→ 登记本任务 → 候选 `47c4176` R1 RETURNED → 修订 `66987c1` R2 PASS with notes → ACCEPTED。
 
